@@ -7,6 +7,7 @@ import sys
 import typer
 
 from tehuti_cli.core.app import TehutiApp
+from tehuti_cli.storage.session import load_last_session
 
 
 cli = typer.Typer(
@@ -60,6 +61,20 @@ def main(
             help="Run in print mode (non-interactive).",
         ),
     ] = False,
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume",
+            help="Resume the last session for this working directory.",
+        ),
+    ] = False,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session-id",
+            help="Resume a specific session by ID.",
+        ),
+    ] = None,
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -75,7 +90,20 @@ def main(
         raise typer.Exit(code=app.run_print(stdin_text))
 
     work_dir = Path.cwd()
-    raise typer.Exit(code=app.run_shell(work_dir, show_banner=banner))
+    raise typer.Exit(code=app.run_shell(work_dir, show_banner=banner, resume=resume, session_id=session_id))
+
+
+@cli.command()
+def resume(session_id: str | None = typer.Option(None, help="Specific session ID (optional)")) -> None:
+    """Resume a previous Tehuti session."""
+    app = TehutiApp.create()
+    work_dir = Path.cwd()
+    if session_id is None:
+        last = load_last_session(work_dir)
+        if not last:
+            raise typer.Exit(code=app.run_shell(work_dir, show_banner=False, resume=False))
+        raise typer.Exit(code=app.run_shell(work_dir, show_banner=False, resume=True))
+    raise typer.Exit(code=app.run_shell(work_dir, show_banner=False, session_id=session_id))
 
 
 @cli.command()
@@ -124,6 +152,61 @@ def wire() -> None:
 def acp() -> None:
     """Run a minimal ACP-compatible stdio server (alias of wire)."""
     wire()
+
+
+@cli.command(name="tools")
+def check_tools() -> None:
+    """Check availability of external tools."""
+    import sys
+
+    sys.path.insert(0, "src")
+    from tehuti_cli.tool_availability import ToolAvailability
+
+    print(ToolAvailability.format_status())
+
+
+@cli.command(name="doctor")
+def doctor() -> None:
+    """Run diagnostics and check system health."""
+    import sys
+
+    sys.path.insert(0, "src")
+    from tehuti_cli.storage.config import load_config
+    from tehuti_cli.core.tools import ToolRegistry
+    from tehuti_cli.tool_availability import ToolAvailability
+
+    print("Tehuti System Diagnostics")
+    print("=" * 50)
+    print()
+
+    # Check config
+    try:
+        config = load_config()
+        print(f"✓ Configuration loaded")
+        print(f"  Provider: {config.provider.type}")
+        print(f"  Model: {config.provider.model}")
+        print(f"  YOLO mode: {config.default_yolo}")
+    except Exception as e:
+        print(f"✗ Configuration error: {e}")
+
+    print()
+
+    # Check tool registry
+    try:
+        registry = ToolRegistry(config)
+        tools = registry.list_tools()
+        print(f"✓ Tool registry: {len(tools)} tools registered")
+    except Exception as e:
+        print(f"✗ Tool registry error: {e}")
+
+    print()
+
+    # Check external tools
+    print(ToolAvailability.format_status())
+
+    print()
+    print("=" * 50)
+    print("Diagnostics complete")
 
 
 if __name__ == "__main__":

@@ -108,12 +108,14 @@ class TehutiLLM:
         self._save_cache(cache_path, providers)
         return providers
 
-    def chat(self, prompt: str) -> str:
+    def chat(self, prompt: str, stream: bool = False) -> str:
         if not self.config.provider.model:
             raise RuntimeError("No model set. Use /models to select one.")
-        return self.chat_messages([{"role": "user", "content": prompt}])
+        return self.chat_messages([{"role": "user", "content": prompt}], stream=stream)
 
-    def chat_messages(self, messages: list[dict[str, Any]]) -> str:
+    def chat_messages(
+        self, messages: list[dict[str, Any]], stream: bool = False
+    ) -> str:
         if not self.config.provider.model:
             raise RuntimeError("No model set. Use /models to select one.")
         provider = self.config.provider.type
@@ -125,12 +127,12 @@ class TehutiLLM:
                     model=self.config.provider.model,
                     messages=messages,
                     provider_order=self.config.openrouter.provider_order,
+                    stream=stream,
                 )
             except Exception as exc:
                 text = str(exc)
-                if (
-                    "free" in text.lower()
-                    and self.config.provider.model.endswith(":free")
+                if "free" in text.lower() and self.config.provider.model.endswith(
+                    ":free"
                 ):
                     original = self.config.provider.model
                     fallback = original.replace(":free", "")
@@ -138,25 +140,56 @@ class TehutiLLM:
                         model=fallback,
                         messages=messages,
                         provider_order=self.config.openrouter.provider_order,
+                        stream=stream,
                     )
                     self.config.provider.model = fallback
                     self.config.providers.openrouter.model = fallback
                     save_config(self.config)
                     self.last_notice = (
-                        f"Model {original} unavailable. "
-                        f"Switched to {fallback}."
+                        f"Model {original} unavailable. Switched to {fallback}."
                     )
                     return result
                 raise
         if provider == "openai":
             client = self._openai_client()
-            return client.chat(self.config.provider.model, messages)
+            return client.chat(self.config.provider.model, messages, stream=stream)
         if provider == "gemini":
             client = self._gemini_client()
-            return client.chat(self.config.provider.model, messages)
+            return client.chat(self.config.provider.model, messages, stream=stream)
         return ""
 
-    def _load_cache(self, path: Path, max_age_seconds: int) -> list[dict[str, Any]] | None:
+    def chat_stream(self, messages: list[dict[str, Any]]) -> tuple[str, Any]:
+        """Stream chat with progress callback.
+
+        Returns:
+            Tuple of (content, iterator) for custom handling
+        """
+        if not self.config.provider.model:
+            raise RuntimeError("No model set. Use /models to select one.")
+
+        provider = self.config.provider.type
+        if provider == "openrouter":
+            client = self._openrouter_client()
+            content = client.chat(
+                model=self.config.provider.model,
+                messages=messages,
+                provider_order=self.config.openrouter.provider_order,
+                stream=True,
+            )
+            return content, None
+        elif provider == "openai":
+            client = self._openai_client()
+            content = client.chat(self.config.provider.model, messages, stream=True)
+            return content, None
+        elif provider == "gemini":
+            client = self._gemini_client()
+            content = client.chat(self.config.provider.model, messages, stream=True)
+            return content, None
+        return "", None
+
+    def _load_cache(
+        self, path: Path, max_age_seconds: int
+    ) -> list[dict[str, Any]] | None:
         try:
             if not path.exists():
                 return None

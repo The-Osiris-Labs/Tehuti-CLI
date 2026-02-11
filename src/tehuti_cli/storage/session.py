@@ -58,11 +58,7 @@ def _work_dir_meta(work_dir: Path) -> WorkDirMeta:
 
 def create_session(work_dir: Path, session_id: str | None = None) -> Session:
     session_id = session_id or str(uuid.uuid4())
-    meta = _work_dir_meta(work_dir)
-    meta.last_session_id = session_id
-    metadata = load_metadata()
-    metadata.work_dirs[str(work_dir)] = meta
-    save_metadata(metadata)
+    set_last_session(work_dir, session_id)
     session_dir = SESSIONS_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     context_file = session_dir / "context.jsonl"
@@ -85,3 +81,27 @@ def load_last_session(work_dir: Path) -> Session | None:
     if not session_dir.exists():
         return None
     return Session(id=session_id, work_dir=work_dir, context_file=context_file, wire_file=wire_file)
+
+
+def load_session(session_id: str, work_dir: Path) -> Session | None:
+    if not session_id:
+        return None
+    session_dir = SESSIONS_DIR / session_id
+    if not session_dir.exists():
+        return None
+    context_file = session_dir / "context.jsonl"
+    wire_file = session_dir / "wire.jsonl"
+    if not context_file.exists():
+        context_file.touch()
+    if not wire_file.exists():
+        wire_file.touch()
+    set_last_session(work_dir, session_id)
+    return Session(id=session_id, work_dir=work_dir, context_file=context_file, wire_file=wire_file)
+
+
+def set_last_session(work_dir: Path, session_id: str) -> None:
+    meta = _work_dir_meta(work_dir)
+    meta.last_session_id = session_id
+    metadata = load_metadata()
+    metadata.work_dirs[str(work_dir)] = meta
+    save_metadata(metadata)

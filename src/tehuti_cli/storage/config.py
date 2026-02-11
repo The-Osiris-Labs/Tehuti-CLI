@@ -8,6 +8,8 @@ import tomlkit
 
 ProviderType = Literal["openrouter", "openai", "gemini"]
 ExecutionMode = Literal["standard", "autonomous", "dominant"]
+InteractionMode = Literal["auto", "chat", "plan", "act"]
+ApprovalMode = Literal["auto", "smart", "manual", "chat_only"]
 
 
 @dataclass
@@ -15,7 +17,7 @@ class ProviderConfig:
     type: ProviderType = "openrouter"
     base_url: str = "https://openrouter.ai/api/v1"
     api_key_env: str = "OPENROUTER_API_KEY"
-    model: str = "mistralai/devstral-2512:free"
+    model: str = "nvidia/nemotron-3-nano-30b-a3b:free"
 
 
 @dataclass
@@ -69,6 +71,9 @@ class Config:
     tool_output_limit: int = 0
     log_dir: Path = Path.home() / ".tehuti" / "logs"
     execution_mode: ExecutionMode = "autonomous"
+    interaction_mode: InteractionMode = "auto"
+    approval_mode: ApprovalMode = "auto"
+    session_autoresume: bool = False
 
 
 CONFIG_DIR = Path.home() / ".tehuti"
@@ -99,10 +104,14 @@ def load_config(path: Path | None = None) -> Config:
     web_deny_domains = list(doc.get("web_deny_domains", []))
     allow_tools = list(doc.get("allow_tools", []))
     deny_tools = list(doc.get("deny_tools", []))
-    external_tools_file = Path(doc.get("external_tools_file", str(Path.home() / ".tehuti" / "tools.json")))
+    external_tools_file = Path(
+        doc.get("external_tools_file", str(Path.home() / ".tehuti" / "tools.json"))
+    )
     favorite_models = list(doc.get("favorite_models", []))
     mcp_file = Path(doc.get("mcp_file", str(Path.home() / ".tehuti" / "mcp.json")))
-    skills_file = Path(doc.get("skills_file", str(Path.home() / ".tehuti" / "skills.json")))
+    skills_file = Path(
+        doc.get("skills_file", str(Path.home() / ".tehuti" / "skills.json"))
+    )
     experimental_flags = list(doc.get("experimental_flags", []))
     show_history = bool(doc.get("show_history", False))
     show_actions = bool(doc.get("show_actions", True))
@@ -111,28 +120,41 @@ def load_config(path: Path | None = None) -> Config:
     execution_mode = str(doc.get("execution_mode", "autonomous"))
     if execution_mode not in {"standard", "autonomous", "dominant"}:
         execution_mode = "autonomous"
+    interaction_mode = str(doc.get("interaction_mode", "auto"))
+    if interaction_mode not in {"auto", "chat", "plan", "act"}:
+        interaction_mode = "auto"
+    approval_mode = str(doc.get("approval_mode", "auto"))
+    if approval_mode not in {"auto", "smart", "manual", "chat_only"}:
+        approval_mode = "auto"
+    session_autoresume = bool(doc.get("session_autoresume", False))
 
     provider = ProviderConfig(
         type=provider_doc.get("type", "openrouter"),
         base_url=provider_doc.get("base_url", "https://openrouter.ai/api/v1"),
         api_key_env=provider_doc.get("api_key_env", "OPENROUTER_API_KEY"),
-        model=provider_doc.get("model", "mistralai/devstral-2512:free"),
+        model=provider_doc.get("model", "nvidia/nemotron-3-nano-30b-a3b:free"),
     )
-    if provider.model.startswith("/"):
-        provider.model = "mistralai/devstral-2512"
     providers = ProviderCatalog(
         openrouter=ProviderConfig(
             type="openrouter",
             base_url=providers_doc.get("openrouter", {}).get(
                 "base_url", "https://openrouter.ai/api/v1"
             ),
-            api_key_env=providers_doc.get("openrouter", {}).get("api_key_env", "OPENROUTER_API_KEY"),
-            model=providers_doc.get("openrouter", {}).get("model", "mistralai/devstral-2512:free"),
+            api_key_env=providers_doc.get("openrouter", {}).get(
+                "api_key_env", "OPENROUTER_API_KEY"
+            ),
+            model=providers_doc.get("openrouter", {}).get(
+                "model", "nvidia/nemotron-3-nano-30b-a3b:free"
+            ),
         ),
         openai=ProviderConfig(
             type="openai",
-            base_url=providers_doc.get("openai", {}).get("base_url", "https://api.openai.com/v1"),
-            api_key_env=providers_doc.get("openai", {}).get("api_key_env", "OPENAI_API_KEY"),
+            base_url=providers_doc.get("openai", {}).get(
+                "base_url", "https://api.openai.com/v1"
+            ),
+            api_key_env=providers_doc.get("openai", {}).get(
+                "api_key_env", "OPENAI_API_KEY"
+            ),
             model=providers_doc.get("openai", {}).get("model", ""),
         ),
         gemini=ProviderConfig(
@@ -140,7 +162,9 @@ def load_config(path: Path | None = None) -> Config:
             base_url=providers_doc.get("gemini", {}).get(
                 "base_url", "https://generativelanguage.googleapis.com/v1beta"
             ),
-            api_key_env=providers_doc.get("gemini", {}).get("api_key_env", "GEMINI_API_KEY"),
+            api_key_env=providers_doc.get("gemini", {}).get(
+                "api_key_env", "GEMINI_API_KEY"
+            ),
             model=providers_doc.get("gemini", {}).get("model", ""),
         ),
     )
@@ -148,7 +172,8 @@ def load_config(path: Path | None = None) -> Config:
         providers.openrouter.model = provider.model
     openrouter = OpenRouterRouting(
         provider_order=[
-            p for p in list(openrouter_doc.get("provider_order", []))
+            p
+            for p in list(openrouter_doc.get("provider_order", []))
             if isinstance(p, str) and p and not p.startswith("/")
         ],
     )
@@ -176,6 +201,9 @@ def load_config(path: Path | None = None) -> Config:
         tool_output_limit=tool_output_limit,
         log_dir=log_dir,
         execution_mode=execution_mode,  # type: ignore[arg-type]
+        interaction_mode=interaction_mode,  # type: ignore[arg-type]
+        approval_mode=approval_mode,  # type: ignore[arg-type]
+        session_autoresume=session_autoresume,
     )
 
 
@@ -184,32 +212,41 @@ def save_config(config: Config, path: Path | None = None) -> None:
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 
     doc = tomlkit.document()
-    doc.add("provider", {
-        "type": config.provider.type,
-        "base_url": config.provider.base_url,
-        "api_key_env": config.provider.api_key_env,
-        "model": config.provider.model,
-    })
-    doc.add("providers", {
-        "openrouter": {
-            "base_url": config.providers.openrouter.base_url,
-            "api_key_env": config.providers.openrouter.api_key_env,
-            "model": config.providers.openrouter.model,
+    doc.add(
+        "provider",
+        {
+            "type": config.provider.type,
+            "base_url": config.provider.base_url,
+            "api_key_env": config.provider.api_key_env,
+            "model": config.provider.model,
         },
-        "openai": {
-            "base_url": config.providers.openai.base_url,
-            "api_key_env": config.providers.openai.api_key_env,
-            "model": config.providers.openai.model,
+    )
+    doc.add(
+        "providers",
+        {
+            "openrouter": {
+                "base_url": config.providers.openrouter.base_url,
+                "api_key_env": config.providers.openrouter.api_key_env,
+                "model": config.providers.openrouter.model,
+            },
+            "openai": {
+                "base_url": config.providers.openai.base_url,
+                "api_key_env": config.providers.openai.api_key_env,
+                "model": config.providers.openai.model,
+            },
+            "gemini": {
+                "base_url": config.providers.gemini.base_url,
+                "api_key_env": config.providers.gemini.api_key_env,
+                "model": config.providers.gemini.model,
+            },
         },
-        "gemini": {
-            "base_url": config.providers.gemini.base_url,
-            "api_key_env": config.providers.gemini.api_key_env,
-            "model": config.providers.gemini.model,
+    )
+    doc.add(
+        "openrouter",
+        {
+            "provider_order": list(config.openrouter.provider_order),
         },
-    })
-    doc.add("openrouter", {
-        "provider_order": list(config.openrouter.provider_order),
-    })
+    )
     doc.add("keys_file", str(config.keys_file))
     doc.add("default_yolo", bool(config.default_yolo))
     doc.add("allow_shell", bool(config.allow_shell))
@@ -230,5 +267,8 @@ def save_config(config: Config, path: Path | None = None) -> None:
     doc.add("tool_output_limit", int(config.tool_output_limit))
     doc.add("log_dir", str(config.log_dir))
     doc.add("execution_mode", str(config.execution_mode))
+    doc.add("interaction_mode", str(config.interaction_mode))
+    doc.add("approval_mode", str(config.approval_mode))
+    doc.add("session_autoresume", bool(config.session_autoresume))
 
     cfg_path.write_text(tomlkit.dumps(doc), encoding="utf-8")

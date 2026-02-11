@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from typing import Any
 
@@ -64,7 +65,6 @@ class OpenRouterClient:
         if last_error:
             raise last_error
         return []
-        return list(data.get("data", []))
 
     def get_providers(self) -> list[dict[str, Any]]:
         last_error: Exception | None = None
@@ -89,10 +89,12 @@ class OpenRouterClient:
         provider_order: list[str] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        stream: bool = False,
     ) -> str:
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
+            "stream": stream,
         }
         if provider_order:
             payload["providers"] = {"order": provider_order}
@@ -100,6 +102,9 @@ class OpenRouterClient:
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+
+        if stream:
+            return self._chat_stream(model, messages, provider_order)
 
         last_error: Exception | None = None
         data: dict[str, Any] = {}
@@ -124,3 +129,54 @@ class OpenRouterClient:
             return ""
         message = choices[0].get("message", {})
         return str(message.get("content", ""))
+
+    def _chat_stream(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        provider_order: list[str] | None = None,
+    ) -> str:
+        """Stream chat response for real-time token display."""
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+        }
+        if provider_order:
+            payload["providers"] = {"order": provider_order}
+
+        last_error: Exception | None = None
+        for base in self._candidate_bases():
+            url = f"{base}/chat/completions"
+            try:
+                with httpx.Client(timeout=120.0) as client:
+                    with client.stream(
+                        "POST", url, headers=self._headers(), json=payload
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            raise RuntimeError(resp.text)
+                        content = ""
+                        for line in resp.iter_lines():
+                            if line.startswith("data: "):
+                                data_str = line[6:]
+                                if data_str == "[DONE]":
+                                    break
+                                try:
+                                    data = json.loads(data_str)
+                                    delta = (
+                                        data.get("choices", [{}])[0]
+                                        .get("delta", {})
+                                        .get("content", "")
+                                    )
+                                    if delta:
+                                        content += delta
+                                except json.JSONDecodeError:
+                                    pass
+                        return content
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        if last_error:
+            raise last_error
+        return ""
