@@ -22,8 +22,22 @@ class TehutiApp:
             save_config(config, config_file)
         return cls(config)
 
-    def run_shell(self, work_dir: Path, show_banner: bool = False) -> int:
-        session = load_last_session(work_dir) or create_session(work_dir)
+    def run_shell(
+        self,
+        work_dir: Path,
+        show_banner: bool = False,
+        resume: bool = False,
+        session_id: str | None = None,
+    ) -> int:
+        if session_id:
+            from tehuti_cli.storage.session import load_session
+
+            session = load_session(session_id, work_dir)
+        elif resume:
+            session = load_last_session(work_dir) or create_session(work_dir)
+        else:
+            session = create_session(work_dir)
+
         cfg = apply_workdir_overrides(self.config, work_dir)
         shell = Shell(cfg, work_dir, session=session, show_banner=show_banner)
         shell.run()
