@@ -52,3 +52,24 @@ Thumbs.db
 *.log
 .secrets/
 .keys/
+.env
+.env.local
+.tehuti/
+sessions/
+
+# Cache
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
