@@ -1,0 +1,11 @@
+{
+  "schema": "tehuti.activity.v1",
+  "event_version": "v1",
+  "event": "activity",
+  "session_id": "session-1",
+  "timestamp": "2026-02-13T00:00:00",
+  "surface": "cli_interactive",
+  "tool": "shell",
+  "success": true,
+  "summary": "Executed `shell` -> `pwd`"
+}

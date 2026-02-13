@@ -1,0 +1,32 @@
+{
+  "schema": "tehuti.tool_result.v1",
+  "tool": {
+    "name": "read",
+    "args": {
+      "path": "a.txt"
+    },
+    "idempotency_class": "safe_read",
+    "risk_class": "low",
+    "approval_policy": "auto",
+    "latency_budget_ms": 30000,
+    "retry_policy": "transient",
+    "max_retries": 2
+  },
+  "trace": {
+    "trace_id": "trace-abc123",
+    "started_at": "2026-02-12T00:00:00",
+    "ended_at": "2026-02-12T00:00:01",
+    "latency_ms": 10
+  },
+  "status": "success",
+  "result": {
+    "ok": true,
+    "output": "demo",
+    "normalized_output": {
+      "type": "text",
+      "content": "demo"
+    }
+  },
+  "error": null,
+  "audit": null
+}

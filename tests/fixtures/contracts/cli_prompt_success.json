@@ -1,0 +1,14 @@
+{
+  "schema": "tehuti.cli.prompt.v1",
+  "status": "success",
+  "bootstrap": {
+    "schema": "tehuti.preflight.v1",
+    "ok": true
+  },
+  "result": {
+    "schema": "tehuti.agent_task.v1",
+    "success": true
+  },
+  "events": [],
+  "tool_contracts": []
+}

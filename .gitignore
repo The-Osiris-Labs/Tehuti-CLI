@@ -1,12 +1,14 @@
-# Byte-compiled / optimized / DLL files
+# Python artifacts
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Packaging/build artifacts
 .Python
 build/
-develop-eggs/
 dist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
@@ -16,60 +18,45 @@ parts/
 sdist/
 var/
 wheels/
+*.egg
 *.egg-info/
 .installed.cfg
-*.egg
+src/*.egg-info/
 
 # Virtual environments
 .venv/
+.venv*/
 venv/
 ENV/
 env/
-.venv*
 
-# IDE
+# IDE/editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Testing
+# Test/lint/typecheck
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
 *.cover
 
-# Linting
-.ruff_cache/
-
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Project specific
+# Runtime/session/secrets
 *.log
 .secrets/
 .keys/
 .env
 .env.local
 .tehuti/
+.tehuti_ci_probe/
+.tehuti_test_home/
+.tehuti_test_sessions/
 sessions/
-
-# Cache
-.ruff_cache/
-.pytest_cache/
-.mypy_cache/
-__pycache__/
-
-# Build
-build/
-dist/
-*.egg-info/
-
-# OS
-.DS_Store
-Thumbs.db
-*.swp
-*.swo

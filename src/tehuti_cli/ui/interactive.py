@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List, Dict, Optional, Union
@@ -49,7 +50,12 @@ from tehuti_cli.ui.theme import (
     PROMPT_SUCCESS,
     PROMPT_ERROR,
 )
-from tehuti_cli.storage.session import set_last_session as save_session, load_last_session
+from tehuti_cli.storage.session import (
+    create_session,
+    load_last_session,
+    load_session,
+    set_last_session as save_session,
+)
 
 
 @dataclass
@@ -58,7 +64,7 @@ class ChatMessage:
 
     role: str
     content: str
-    timestamp: float = field(default_factory=lambda: asyncio.get_event_loop().time())
+    timestamp: float = field(default_factory=time.monotonic)
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     tool_results: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -151,8 +157,8 @@ class ChatShell:
                 # Load last session for this directory
                 last_session = load_last_session(self.work_dir)
                 if last_session:
-                    self.console.print(f"[info]Resuming session: {last_session}[/info]")
-                    self._load_session(last_session)
+                    self.console.print(f"[info]Resuming session: {last_session.id}[/info]")
+                    self._load_session(last_session.id)
         else:
             # Create new session
             self._create_new_session()
@@ -168,15 +174,33 @@ class ChatShell:
 
     def _load_session(self, session_id: str):
         """Load a specific session from storage."""
+        session = load_session(session_id, self.work_dir)
+        if session is None:
+            self.console.print(f"[warning]Session {session_id} not found; creating new session.[/warning]")
+            self._create_new_session()
+            return
         self.state.session_id = session_id
-        # TODO: Implement session loading from storage
-        # For now, just create a new session
+        self.state.messages = []
+        self.state.context = ""
+        for item in session.iter_context():
+            role = str(item.get("role", "user"))
+            content = str(item.get("content", ""))
+            if role not in {"user", "assistant", "system"}:
+                role = "user"
+            self.state.messages.append(ChatMessage(role=role, content=content))
         self.console.print(f"[info]Session {session_id} loaded[/info]")
 
     def _save_session_state(self):
         """Save the current session state to storage."""
-        # TODO: Implement session state saving
-        pass
+        if not self.state.session_id:
+            self._create_new_session()
+        session = load_session(self.state.session_id, self.work_dir)
+        if session is None:
+            session = create_session(self.work_dir, session_id=self.state.session_id)
+        # Rebuild persistent context from in-memory state for deterministic restore.
+        session.context_file.write_text("", encoding="utf-8")
+        for msg in self.state.messages:
+            session.append_context(msg.role, msg.content)
 
     def _manage_memory(self):
         """Manage conversation memory to prevent excessive token usage."""
@@ -396,13 +420,22 @@ Type your request or use /commands for help.
 
     def _thoth_status(self):
         """Show project progress tracking."""
-        self.console.print("[info]Thoth Status - Project Progress Tracking[/info]")
-        self.console.print("This feature is coming soon!")
+        self.console.print("[info]Runtime Status[/info]")
+        table = Table(border_style="gold")
+        table.add_column("Metric", style="gold")
+        table.add_column("Value", style="sand")
+        table.add_row("Messages", str(len(self.state.messages)))
+        table.add_row("Session", self.state.session_id or "n/a")
+        table.add_row("Working Directory", str(self.work_dir))
+        table.add_row("Provider", self.config.provider.type)
+        table.add_row("Model", self.config.provider.model or "not set")
+        table.add_row("YOLO", "enabled" if self.config.default_yolo else "disabled")
+        self.console.print(table)
 
     def _exit(self):
         """Exit the interactive shell."""
         self.console.print()
-        self.console.print("[success]Goodbye! 👋[/success]")
+        self.console.print("[success]Session closed.[/success]")
         sys.exit(0)
 
     async def _run_agent_loop(self, user_input: str):
@@ -414,8 +447,9 @@ Type your request or use /commands for help.
         # Manage memory to prevent excessive token usage
         self._manage_memory()
 
-        # Show thinking indicator
-        self.console.print(f"[gold]{PROMPT_THINKING}[/gold] Thinking...")
+        # Show dynamic thinking indicator
+        token_hint = max(1, len(user_input.strip()) // 4)
+        self.console.print(f"[gold]{PROMPT_THINKING}[/gold] Processing request (~{token_hint} token estimate)")
 
         try:
             # Convert messages to LLM format
@@ -436,6 +470,7 @@ Type your request or use /commands for help.
             # Process LLM response
             assistant_msg = ChatMessage(role="assistant", content=response)
             self.state.messages.append(assistant_msg)
+            self._save_session_state()
 
             # Print response with formatting
             self.console.print(f"[gold]{PROMPT_AGENT}[/gold] {response}")
@@ -511,7 +546,11 @@ Type your request or use /commands for help.
             self.console.print(f"[info]{PROMPT_SHELL} Executing: {tool_name}[/info]")
 
             try:
-                result = self.runtime.execute(tool_name, tool_args)
+                result, _trace_event = self.runtime.execute_with_tracing(
+                    tool_name,
+                    tool_args,
+                    timeout=30.0,
+                )
                 self._handle_tool_result(tool_name, result)
             except Exception as e:
                 self.console.print(f"[error]{PROMPT_ERROR} Error executing {tool_name}: {e}[/error]")
@@ -609,15 +648,20 @@ Type your request or use /commands for help.
 
     def _handle_tool_result(self, tool_name: str, result: ToolResult):
         """Handle tool execution results with rich visualization."""
+        output = str(result.output or "").strip()
         if result.ok:
-            self.console.print(f"[success]{PROMPT_SUCCESS} {tool_name} completed successfully[/success]")
-            if result.output.strip():
+            summary = output if output else f"{tool_name} returned no output."
+            if len(summary) > 180:
+                summary = summary[:177] + "..."
+            self.console.print(f"[success]{PROMPT_SUCCESS} {tool_name}: {summary}[/success]")
+            if output:
                 self.console.print()
                 # Truncate long outputs
-                output = self._truncate_output(result.output)
-                self.console.print(Panel(output, border_style="green"))
+                truncated = self._truncate_output(output)
+                self.console.print(Panel(truncated, border_style="green"))
         else:
-            self.console.print(f"[error]{PROMPT_ERROR} {tool_name} failed: {result.output}[/error]")
+            detail = output if output else "no error output"
+            self.console.print(f"[error]{PROMPT_ERROR} {tool_name} failed: {detail}[/error]")
 
     def _truncate_output(self, output: str, max_length: int = 1000) -> str:
         """Truncate long tool outputs for better readability."""

@@ -1,0 +1,11 @@
+{
+  "schema": "tehuti.cli.interactive.v1",
+  "status": "success",
+  "session_id": "session-1",
+  "result": {
+    "schema": "tehuti.agent_task.v1",
+    "success": true,
+    "response": "ok"
+  },
+  "events": []
+}

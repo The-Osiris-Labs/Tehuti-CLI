@@ -13,6 +13,7 @@ class OpenRouterClient:
     base_url: str
     api_key: str
     app_name: str | None = None
+    last_usage: dict[str, int] | None = None
 
     def _base(self) -> str:
         base = (self.base_url or "").rstrip("/")
@@ -91,6 +92,7 @@ class OpenRouterClient:
         max_tokens: int | None = None,
         stream: bool = False,
     ) -> str:
+        self.last_usage = None
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -118,6 +120,12 @@ class OpenRouterClient:
                 if resp.status_code >= 400:
                     raise RuntimeError(resp.text)
                 data = resp.json()
+                usage = data.get("usage") or {}
+                self.last_usage = {
+                    "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
+                    "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+                    "total_tokens": int(usage.get("total_tokens", 0) or 0),
+                }
                 break
         else:
             if last_error:

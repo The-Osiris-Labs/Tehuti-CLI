@@ -37,6 +37,9 @@ from tehuti_cli.storage.config import Config
 class ToolResult:
     ok: bool
     output: str
+    error_code: str | None = None
+    error_category: str | None = None
+    retryable: bool | None = None
 
 
 # External tools that require availability checks

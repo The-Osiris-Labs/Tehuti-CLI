@@ -1,0 +1,27 @@
+{
+  "schema": "tehuti.metrics.v1",
+  "counters": {},
+  "tool_failures_by_code": {},
+  "estimates": {
+    "token_estimate_total": 0,
+    "cost_estimate_usd_total": 0.0
+  },
+  "actuals": {
+    "token_actual_total": 0,
+    "cost_actual_usd_total": 0.0
+  },
+  "latency_ms": {
+    "tool": {
+      "count": 0,
+      "min": 0,
+      "max": 0,
+      "avg": 0
+    },
+    "agent_task": {
+      "count": 0,
+      "min": 0,
+      "max": 0,
+      "avg": 0
+    }
+  }
+}

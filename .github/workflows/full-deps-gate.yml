@@ -1,0 +1,37 @@
+name: full-deps-gate
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  full-deps-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install full dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: run integration confidence subset
+        run: |
+          python3 scripts/check_runtime_policy_consistency.py
+          python3 scripts/check_contract_coverage.py
+          python3 scripts/surface_conformance_runner.py
+          python3 -m pytest -q \
+            tests/test_contract_path_enforcement.py \
+            tests/test_retry_semantics_parity.py \
+            tests/test_protocol_lifecycle_conformance.py \
+            tests/test_mcp_contract_errors.py \
+            tests/test_a2a_protocol_errors.py \
+            tests/test_provider_usage_normalization.py \
+            tests/test_tooling_capability_baseline.py

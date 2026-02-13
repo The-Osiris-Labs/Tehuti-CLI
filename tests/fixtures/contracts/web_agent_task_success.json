@@ -1,0 +1,17 @@
+{
+  "schema": "tehuti.web.agent_task.v1",
+  "status": "success",
+  "trace_id": "trace-abc123",
+  "turn_id": "turn-abc123",
+  "bootstrap": {
+    "schema": "tehuti.preflight.v1",
+    "ok": true
+  },
+  "session_id": "session-1",
+  "result": {
+    "schema": "tehuti.agent_task.v1",
+    "success": true
+  },
+  "events": [],
+  "tool_contracts": []
+}

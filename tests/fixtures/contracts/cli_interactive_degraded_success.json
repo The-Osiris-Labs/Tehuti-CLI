@@ -1,0 +1,31 @@
+{
+  "schema": "tehuti.cli.interactive.v1",
+  "status": "success",
+  "trace_id": "abc123def456",
+  "turn_id": "turn123def456",
+  "session_id": "session-id",
+  "result": {
+    "schema": "tehuti.agent_task.v1",
+    "success": true,
+    "response": "Model request failed: provider unavailable. Live non-destructive local demo executed.",
+    "termination_reason": "provider_failure_recovered",
+    "degraded": true
+  },
+  "events": [
+    {
+      "schema": "tehuti.progress.v1",
+      "event_version": "v1",
+      "event": "loop_terminated",
+      "sequence": 1,
+      "session_id": "session-id",
+      "trace_id": "abc123def456",
+      "turn_id": "turn123def456",
+      "timestamp": "2026-02-13T00:00:00",
+      "surface": "cli_interactive",
+      "termination_reason": "provider_failure_recovered",
+      "has_error": false
+    }
+  ],
+  "phase_events": [],
+  "tool_contracts": []
+}

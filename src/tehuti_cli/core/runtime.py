@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
@@ -9,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+import concurrent.futures
 
 import httpx
 
@@ -22,11 +24,13 @@ from tehuti_cli.enhanced_web_tools import EnhancedWebTools
 from tehuti_cli.mcp_tools import MCPTools
 from tehuti_cli.tool_builder import ToolBuilder
 from tehuti_cli.streaming_tools import StreamingTools
+from tehuti_cli.core.telemetry import get_telemetry
 from tehuti_cli.core.delegates import DelegateManager, DelegateState
 from tehuti_cli.core.project_context import ProjectContext
 from tehuti_cli.core.task_graph import TaskGraph, TaskStatus, TaskPriority
 from tehuti_cli.core.blueprint import BlueprintManager, BlueprintStatus, BlueprintSectionType
 from tehuti_cli.core.automations import AutomationManager, AutomationState, Trigger, Action, TriggerType, ActionType
+from tehuti_cli.core.enhanced_tool_execution import ToolValidator, ToolRetryPolicy, ToolStatus
 
 
 class ToolSandbox:
@@ -35,6 +39,7 @@ class ToolSandbox:
         self.work_dir = work_dir.resolve()
 
     def _is_path_allowed(self, path: Path) -> bool:
+        # YOLO mode = unlimited access
         if self.config.default_yolo:
             return True
         allowed = [self.work_dir] + [Path(p).resolve() for p in self.config.allowed_paths]
@@ -55,7 +60,9 @@ class ToolSandbox:
             return ToolResult(False, "Path is outside allowed sandbox.")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return ToolResult(True, "OK")
+        size = len(content.encode("utf-8"))
+        lines = len(content.splitlines()) if content else 0
+        return ToolResult(True, f"Wrote {size} bytes ({lines} lines) to {path}")
 
     def edit_file(self, path: Path, old_string: str, new_string: str) -> ToolResult:
         if not self.config.allow_write and not self.config.default_yolo:
@@ -70,26 +77,55 @@ class ToolSandbox:
                 return ToolResult(False, "String to replace not found in file.")
             new_content = content.replace(old_string, new_string, 1)
             path.write_text(new_content, encoding="utf-8")
-            return ToolResult(True, "OK")
+            before_size = len(content.encode("utf-8"))
+            after_size = len(new_content.encode("utf-8"))
+            return ToolResult(
+                True,
+                (
+                    f"Edited {path}: replaced 1 occurrence "
+                    f"(size {before_size} -> {after_size} bytes)"
+                ),
+            )
         except UnicodeDecodeError:
             return ToolResult(False, "File is not a valid UTF-8 text file.")
         except Exception as exc:
             return ToolResult(False, str(exc))
 
-    def run_shell(self, command: str) -> ToolResult:
+    def run_shell(self, command: str, output_callback: Any | None = None) -> ToolResult:
         if not self.config.allow_shell and not self.config.default_yolo:
             return ToolResult(False, "Shell disabled. Use /allow-all or /permissions shell on.")
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 command,
                 shell=True,
                 cwd=str(self.work_dir),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                bufsize=1,
                 env=os.environ.copy(),
             )
-            return ToolResult(proc.returncode == 0, proc.stdout or "")
+            captured: list[str] = []
+            if proc.stdout is not None:
+                for line in iter(proc.stdout.readline, ""):
+                    if not line:
+                        break
+                    captured.append(line)
+                    if output_callback:
+                        try:
+                            output_callback(line)
+                        except Exception:
+                            pass
+                remainder = proc.stdout.read()
+                if remainder:
+                    captured.append(remainder)
+                    if output_callback:
+                        try:
+                            output_callback(remainder)
+                        except Exception:
+                            pass
+            proc.wait()
+            return ToolResult(proc.returncode == 0, "".join(captured))
         except Exception as exc:
             return ToolResult(False, str(exc))
 
@@ -131,6 +167,237 @@ class ToolRuntime:
         self.task_graph = TaskGraph(config, work_dir)
         self.blueprints = BlueprintManager(config, work_dir)
         self.automations = AutomationManager(config, work_dir)
+        self.tool_contract_schema = "tehuti.tool_result.v1"
+        self.mutation_audit_file = self.config.log_dir / "mutation_audit.jsonl"
+
+    def _tool_idempotency_class(self, tool: str) -> str:
+        spec = self.registry.get(tool)
+        if spec:
+            return spec.idempotency
+        return "system_exec"
+
+    def _tool_retry_budget(self, tool: str, requested_max_retries: int) -> int:
+        spec = self.registry.get(tool)
+        if not spec:
+            return max(0, int(requested_max_retries))
+        return max(0, min(int(requested_max_retries), int(spec.max_retries)))
+
+    def _tool_retry_backoff_seconds(self, tool: str, retry_count: int) -> float:
+        spec = self.registry.get(tool)
+        base = max(0.1, float(getattr(self.config, "retry_backoff_base_seconds", 1.0)))
+        cap = max(base, float(getattr(self.config, "retry_backoff_cap_seconds", 4.0)))
+        if spec and spec.idempotency == "safe_read":
+            multiplier = 2.0
+        elif spec and spec.idempotency == "idempotent_write":
+            multiplier = 1.5
+        else:
+            multiplier = 1.25
+        backoff = base * (multiplier ** max(0, int(retry_count)))
+        return min(backoff, cap)
+
+    def _should_retry_tool(self, tool: str, output: str, retry_count: int, max_retries: int) -> bool:
+        spec = self.registry.get(tool)
+        policy = getattr(spec, "retry_policy", "transient") if spec else "transient"
+        if policy == "never":
+            return False
+        if policy == "always":
+            return retry_count < max_retries
+        return ToolRetryPolicy.should_retry(tool, output, retry_count, max_retries, tool_spec=spec)
+
+    def _classify_tool_error(self, tool: str, output: str) -> tuple[str, str, bool]:
+        message = str(output or "").lower()
+        if tool.startswith("mcp_") or tool.startswith("a2a_"):
+            if "timeout" in message:
+                return ("protocol", "protocol_timeout", True)
+            if "not connected" in message:
+                return ("protocol", "protocol_not_connected", False)
+            if "not found" in message:
+                return ("protocol", "protocol_resource_not_found", False)
+            return ("protocol", "protocol_operation_failed", False)
+        if "denied by approval" in message:
+            return ("approval", "denied_by_approval", False)
+        if "validation error" in message:
+            return ("validation", "invalid_arguments", False)
+        if "timeout" in message:
+            return ("timeout", "execution_timeout", True)
+        if "unknown tool" in message:
+            return ("contract", "unknown_tool", False)
+        if "missing required arg" in message or "missing argument for tool" in message:
+            return ("validation", "missing_argument", False)
+        if "not installed" in message or "not in path" in message:
+            return ("dependency", "missing_dependency", False)
+        if "outside allowed sandbox" in message:
+            return ("sandbox", "path_not_allowed", False)
+        if "write tool disabled" in message or "shell disabled" in message:
+            return ("policy", "capability_disabled", False)
+        return ("execution", "tool_execution_failed", self._should_retry_tool(tool, output, 0, 1))
+
+    def _sanitize_audit_args(self, args: dict[str, Any]) -> dict[str, Any]:
+        sensitive_keys = {
+            "api_key",
+            "password",
+            "token",
+            "secret",
+            "key",
+            "credential",
+            "private_key",
+            "cert",
+            "auth",
+            "authorization",
+        }
+        sanitized: dict[str, Any] = {}
+        for key, value in (args or {}).items():
+            if str(key).lower() in sensitive_keys:
+                sanitized[key] = "***REDACTED***"
+            elif isinstance(value, dict):
+                sanitized[key] = self._sanitize_audit_args(value)
+            else:
+                sanitized[key] = value
+        return sanitized
+
+    def _should_audit_mutation(self, spec: Any | None, idempotency_class: str) -> bool:
+        if spec and getattr(spec, "risk_class", "") in {"high", "critical"}:
+            return True
+        return idempotency_class in {"mutating_write", "system_exec"}
+
+    def _write_mutation_audit(
+        self,
+        *,
+        trace_id: str,
+        tool: str,
+        args: dict[str, Any],
+        status: str,
+        latency_ms: int,
+        error_payload: dict[str, Any] | None,
+        idempotency_class: str,
+        spec: Any | None,
+    ) -> str | None:
+        try:
+            self.mutation_audit_file.parent.mkdir(parents=True, exist_ok=True)
+            audit_id = str(uuid.uuid4())[:12]
+            payload = {
+                "schema": "tehuti.mutation_audit.v1",
+                "audit_id": audit_id,
+                "timestamp": datetime.now().isoformat(),
+                "trace_id": trace_id,
+                "tool": tool,
+                "args": self._sanitize_audit_args(args),
+                "status": status,
+                "latency_ms": latency_ms,
+                "idempotency_class": idempotency_class,
+                "risk_class": getattr(spec, "risk_class", "unknown") if spec else "unknown",
+                "approval_policy": getattr(spec, "approval_policy", "unknown") if spec else "unknown",
+                "error": error_payload,
+            }
+            with self.mutation_audit_file.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload) + "\n")
+            return audit_id
+        except Exception:
+            return None
+
+    def execute_contract(
+        self,
+        tool: str,
+        args: dict[str, Any],
+        timeout: float = 30.0,
+        max_retries: int = 2,
+        enable_validation: bool = True,
+        trace_id: str | None = None,
+        output_callback: Any | None = None,
+    ) -> dict[str, Any]:
+        """Execute tool and return normalized, versioned contract envelope."""
+        started_at = datetime.now().isoformat()
+        started_perf = time.perf_counter()
+        resolved_trace_id = trace_id or str(uuid.uuid4())[:12]
+        spec = self.registry.get(tool)
+        idempotency_class = spec.idempotency if spec else self._tool_idempotency_class(tool)
+
+        effective_max_retries = self._tool_retry_budget(tool, max_retries)
+        result = self.execute_with_validation(
+            tool,
+            args,
+            timeout=timeout,
+            max_retries=effective_max_retries,
+            enable_validation=enable_validation,
+            output_callback=output_callback,
+        )
+        latency_ms = int((time.perf_counter() - started_perf) * 1000)
+        ended_at = datetime.now().isoformat()
+
+        error_payload: dict[str, Any] | None = None
+        if not result.ok:
+            if result.error_code and result.error_category:
+                category = result.error_category
+                code = result.error_code
+                retryable = bool(result.retryable)
+            else:
+                category, code, retryable = self._classify_tool_error(tool, result.output)
+            error_payload = {
+                "category": category,
+                "code": code,
+                "message": result.output,
+                "retryable": retryable,
+            }
+        get_telemetry().record_tool_contract(
+            success=result.ok,
+            error_code=(error_payload or {}).get("code"),
+            latency_ms=latency_ms,
+        )
+        audit_id = None
+        if self._should_audit_mutation(spec, idempotency_class):
+            audit_id = self._write_mutation_audit(
+                trace_id=resolved_trace_id,
+                tool=tool,
+                args=args,
+                status="success" if result.ok else "failed",
+                latency_ms=latency_ms,
+                error_payload=error_payload,
+                idempotency_class=idempotency_class,
+                spec=spec,
+            )
+
+        return {
+            "schema": self.tool_contract_schema,
+            "tool": {
+                "name": tool,
+                "args": args,
+                "idempotency_class": idempotency_class,
+                "risk_class": spec.risk_class if spec else "unknown",
+                "approval_policy": spec.approval_policy if spec else "unknown",
+                "latency_budget_ms": spec.latency_budget_ms if spec else int(timeout * 1000),
+                "retry_policy": spec.retry_policy if spec else "transient",
+                "max_retries": spec.max_retries if spec else int(max_retries),
+            },
+            "trace": {
+                "trace_id": resolved_trace_id,
+                "started_at": started_at,
+                "ended_at": ended_at,
+                "latency_ms": latency_ms,
+            },
+            "status": "success" if result.ok else "failed",
+            "result": {
+                "ok": result.ok,
+                "output": result.output,
+                "normalized_output": {
+                    "type": "text",
+                    "content": result.output,
+                },
+            },
+            "error": error_payload,
+            "audit": {
+                "schema": "tehuti.mutation_audit.v1",
+                "audit_id": audit_id,
+            }
+            if audit_id
+            else None,
+        }
+
+    def _resolve_tool_path(self, raw_path: str) -> Path:
+        """Resolve tool file paths relative to the runtime working directory."""
+        path = Path(raw_path)
+        if path.is_absolute():
+            return path
+        return (self.work_dir / path).resolve()
 
     def _truncate_output_lines(
         self,
@@ -203,7 +470,9 @@ class ToolRuntime:
         os_line = (snapshot.get("os", "").splitlines() or ["unknown"])[0].strip() or "unknown"
         uptime_line = (snapshot.get("uptime", "").splitlines() or ["unknown"])[0].strip() or "unknown"
         disk_lines = [line for line in snapshot.get("disk", "").splitlines() if line.strip()]
-        disk_summary = disk_lines[1].strip() if len(disk_lines) > 1 else (disk_lines[0].strip() if disk_lines else "unknown")
+        disk_summary = (
+            disk_lines[1].strip() if len(disk_lines) > 1 else (disk_lines[0].strip() if disk_lines else "unknown")
+        )
         mem_lines = [line for line in snapshot.get("memory", "").splitlines() if line.strip()]
         mem_summary = mem_lines[1].strip() if len(mem_lines) > 1 else (mem_lines[0].strip() if mem_lines else "unknown")
         proc_lines = [line for line in snapshot.get("processes", "").splitlines() if line.strip()]
@@ -227,12 +496,15 @@ class ToolRuntime:
             f"- Disk sample: {disk_summary}\n"
             f"- Memory sample: {mem_summary}\n"
             f"- Top CPU sample: {proc_summary}\n\n"
-            "Evidence:\n"
-            + "\n\n".join(findings)
+            "Evidence:\n" + "\n\n".join(findings)
         )
         return ToolResult(True, report)
 
     def approve(self, tool: str, args: dict[str, Any]) -> bool:
+        # YOLO mode = approve everything
+        if self.config.default_yolo:
+            return True
+
         if self.config.deny_tools and tool in self.config.deny_tools:
             return False
         if self.config.allow_tools and tool not in self.config.allow_tools:
@@ -242,13 +514,17 @@ class ToolRuntime:
         if approval_mode == "chat_only":
             return False
         if approval_mode == "manual":
-            # Manual mode requires explicit permissive toggle.
-            return bool(self.config.default_yolo)
-        if approval_mode == "smart" and self._is_high_risk_tool(tool, args):
             return False
+        if approval_mode == "smart":
+            spec = self.registry.get(tool)
+            if spec:
+                # Metadata-driven approval policy: deny tools that require manual approval.
+                if getattr(spec, "approval_policy", "auto") == "manual":
+                    return False
+            elif self._is_high_risk_tool(tool, args):
+                # Conservative fallback for unknown tools.
+                return False
 
-        if self.config.default_yolo:
-            return True
         return True
 
     def _is_high_risk_tool(self, tool: str, args: dict[str, Any]) -> bool:
@@ -311,17 +587,17 @@ class ToolRuntime:
             return True
         return False
 
-    def execute(self, tool: str, args: dict[str, Any]) -> ToolResult:
+    def execute(self, tool: str, args: dict[str, Any], output_callback: Any | None = None) -> ToolResult:
         if not self.approve(tool, args):
             return ToolResult(False, "Denied by approval.")
         match tool:
             case "read":
-                return self.sandbox.read_file(Path(args["path"]))
+                return self.sandbox.read_file(self._resolve_tool_path(args["path"]))
             case "write":
-                return self.sandbox.write_file(Path(args["path"]), args.get("content", ""))
+                return self.sandbox.write_file(self._resolve_tool_path(args["path"]), args.get("content", ""))
             case "edit":
                 return self.sandbox.edit_file(
-                    Path(args["path"]),
+                    self._resolve_tool_path(args["path"]),
                     args.get("old_string", ""),
                     args.get("new_string", ""),
                 )
@@ -329,7 +605,7 @@ class ToolRuntime:
                 command = args.get("command") or args.get("cmd")
                 if not command:
                     return ToolResult(False, "Missing required arg: command")
-                return self.sandbox.run_shell(str(command))
+                return self.sandbox.run_shell(str(command), output_callback=output_callback)
             case "fetch":
                 return self.sandbox.fetch_url(args["url"])
             case "host_discovery":
@@ -900,10 +1176,8 @@ class ToolRuntime:
                 )
             case "mcp_configure":
                 return self.mcp.mcp_configure(
-                    args.get("server_name", ""),
-                    args.get("command", ""),
-                    args.get("args"),
-                    args.get("env_vars"),
+                    args.get("servers", {}),
+                    args.get("output_path"),
                 )
             # Tool Builder
             case "tool_create_shell":
@@ -1069,7 +1343,10 @@ class ToolRuntime:
                     delegates = self.delegates.list_delegates(state=state_enum)
                 else:
                     delegates = self.delegates.list_delegates()
-                return ToolResult(True, "\n".join([d.to_dict() for d in delegates]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(d.to_dict(), ensure_ascii=True) for d in delegates),
+                )
             case "delegate_get":
                 delegate = self.delegates.get_delegate(args.get("delegate_id", ""))
                 if delegate:
@@ -1082,7 +1359,10 @@ class ToolRuntime:
                 )
             case "delegate_tree":
                 tree = self.delegates.get_delegate_tree(args.get("root_id", ""))
-                return ToolResult(True, "\n".join([t.to_dict() for t in tree]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(t.to_dict(), ensure_ascii=True) for t in tree),
+                )
             # Project Context Tools
             case "context_load":
                 content = self.project_context.load(force=args.get("force", False))
@@ -1158,10 +1438,16 @@ class ToolRuntime:
                 )
             case "task_schedulable":
                 tasks = self.task_graph.get_schedulable_tasks()
-                return ToolResult(True, "\n".join([t.to_dict() for t in tasks]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(t.to_dict(), ensure_ascii=True) for t in tasks),
+                )
             case "task_blocked":
                 tasks = self.task_graph.get_blocked_tasks()
-                return ToolResult(True, "\n".join([t.to_dict() for t in tasks]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(t.to_dict(), ensure_ascii=True) for t in tasks),
+                )
             case "task_stats":
                 stats = self.task_graph.get_statistics()
                 return ToolResult(True, str(stats))
@@ -1205,7 +1491,10 @@ class ToolRuntime:
                 return ToolResult(True, markdown)
             case "blueprint_list":
                 blueprints = self.blueprints.list_blueprints()
-                return ToolResult(True, "\n".join([b.to_dict() for b in blueprints]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(b.to_dict(), ensure_ascii=True) for b in blueprints),
+                )
             # Automation Tools
             case "automation_create":
                 return ToolResult(
@@ -1226,7 +1515,10 @@ class ToolRuntime:
                 return ToolResult(False, "Automation not found")
             case "automation_list":
                 automations = self.automations.list_automations()
-                return ToolResult(True, "\n".join([a.to_dict() for a in automations]))
+                return ToolResult(
+                    True,
+                    "\n".join(json.dumps(a.to_dict(), ensure_ascii=True) for a in automations),
+                )
             case "automation_add_trigger":
                 trigger = Trigger(
                     TriggerType(args.get("trigger_type", "command")),
@@ -1265,6 +1557,141 @@ class ToolRuntime:
                 command = spec.command.format(**args)
             except KeyError as exc:
                 return ToolResult(False, f"Missing argument for tool: {exc}")
-            return self.sandbox.run_shell(command)
+            return self.sandbox.run_shell(command, output_callback=output_callback if tool == "shell" else None)
 
         return ToolResult(False, f"Unknown tool: {tool}")
+
+    def execute_with_validation(
+        self,
+        tool: str,
+        args: dict[str, Any],
+        timeout: float = 30.0,
+        max_retries: int = 2,
+        enable_validation: bool = True,
+        output_callback: Any | None = None,
+    ) -> ToolResult:
+        """Execute a tool with validation, timeout protection, and retry logic.
+
+        This is a unified execution method that combines:
+        - Argument validation
+        - Approval checking
+        - Timeout protection
+        - Retry logic for transient failures
+
+        Args:
+            tool: Tool name
+            args: Tool arguments
+            timeout: Timeout in seconds (default: 30)
+            max_retries: Maximum retry attempts (default: 2)
+            enable_validation: Whether to validate arguments
+
+        Returns:
+            ToolResult with execution outcome
+        """
+        # Step 1: Validate arguments
+        if enable_validation:
+            is_valid, error_msg = ToolValidator.validate_args(tool, args)
+            if not is_valid:
+                return ToolResult(False, f"Validation error: {error_msg}")
+
+        # Step 2: Check approval
+        if not self.approve(tool, args):
+            return ToolResult(False, "Denied by approval policy")
+
+        # Step 3: Enforce metadata-driven risk policy in smart mode.
+        if not self.config.default_yolo and str(getattr(self.config, "approval_mode", "auto")) == "smart":
+            spec = self.registry.get(tool)
+            if spec and getattr(spec, "approval_policy", "auto") == "manual":
+                return ToolResult(False, "Denied by metadata policy")
+
+        # Step 4: Execute with timeout
+        retry_count = 0
+        last_error = ""
+        effective_max_retries = self._tool_retry_budget(tool, max_retries)
+
+        while retry_count <= effective_max_retries:
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self.execute, tool, args, output_callback)
+                    result = future.result(timeout=timeout)
+                    return result
+
+            except concurrent.futures.TimeoutError:
+                last_error = f"Timeout after {timeout}s"
+                if self._should_retry_tool(tool, last_error, retry_count, effective_max_retries):
+                    delay = self._tool_retry_backoff_seconds(tool, retry_count)
+                    retry_count += 1
+                    time.sleep(delay)
+                    continue
+                return ToolResult(False, f"Execution timeout: {last_error}")
+
+            except Exception as exc:
+                last_error = str(exc)
+                if self._should_retry_tool(tool, last_error, retry_count, effective_max_retries):
+                    delay = self._tool_retry_backoff_seconds(tool, retry_count)
+                    retry_count += 1
+                    time.sleep(delay)
+                    continue
+                return ToolResult(False, f"Execution error: {last_error}")
+
+        return ToolResult(False, f"Failed after {effective_max_retries} retries: {last_error}")
+
+    def execute_with_tracing(
+        self,
+        tool: str,
+        args: dict[str, Any],
+        tracer: Any | None = None,
+        timeout: float = 30.0,
+        output_callback: Any | None = None,
+    ) -> tuple[ToolResult, dict[str, Any]]:
+        """Execute a tool with optional tracing.
+
+        Args:
+            tool: Tool name
+            args: Tool arguments
+            tracer: Optional AgentTracer instance
+            timeout: Timeout in seconds
+
+        Returns:
+            Tuple of (ToolResult, trace_event)
+        """
+        trace_event = {
+            "tool": tool,
+            "args": args,
+            "start_time": datetime.now().isoformat(),
+            "status": "running",
+        }
+        if tracer:
+            tracer.log_tool_call(tool, args)
+
+        contract = self.execute_contract(tool, args, timeout=timeout, output_callback=output_callback)
+        trace = contract.get("trace", {}) if isinstance(contract, dict) else {}
+        result_payload = contract.get("result", {}) if isinstance(contract, dict) else {}
+        error_payload = contract.get("error", {}) if isinstance(contract, dict) else {}
+        status = str(contract.get("status", "failed")) if isinstance(contract, dict) else "failed"
+
+        ok = status == "success" and bool(result_payload.get("ok", False))
+        output = str(result_payload.get("output", ""))
+        if not ok and not output:
+            output = str(error_payload.get("message", ""))
+        result = ToolResult(
+            ok=ok,
+            output=output,
+            error_code=error_payload.get("code") if isinstance(error_payload, dict) else None,
+            error_category=error_payload.get("category") if isinstance(error_payload, dict) else None,
+            retryable=error_payload.get("retryable") if isinstance(error_payload, dict) else None,
+        )
+
+        duration_ms = int(trace.get("latency_ms", 0) or 0)
+        trace_event["end_time"] = datetime.now().isoformat()
+        trace_event["duration_ms"] = duration_ms
+        trace_event["status"] = "success" if result.ok else "failed"
+        trace_event["output_length"] = len(result.output) if result.output else 0
+        trace_event["trace_id"] = str(trace.get("trace_id", ""))
+        trace_event["contract_schema"] = contract.get("schema") if isinstance(contract, dict) else None
+        trace_event["error"] = error_payload if isinstance(error_payload, dict) else None
+
+        if tracer:
+            tracer.log_tool_result(tool, result.ok, duration_ms)
+
+        return result, trace_event

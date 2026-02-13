@@ -3,7 +3,7 @@ name = "tehuti-cli"
 version = "0.3.0"
 description = "Project Tehuti: The Deity Thoth AGI CLI - Ultimate Agentic AI Development Partner"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Project Tehuti"}]
 
@@ -95,7 +95,6 @@ tehuti = "tehuti_cli.cli:cli"
 
 [tool.pytest]
 addopts = ["-q", "--tb=short"]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]

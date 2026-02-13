@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Iterable
 
 from tehuti_cli.storage.metadata import WorkDirMeta, load_metadata, save_metadata
+from tehuti_cli.storage.paths import sessions_dir
 
 
-SESSIONS_DIR = Path.home() / ".tehuti" / "sessions"
+SESSIONS_DIR = sessions_dir()
 
 
 @dataclass
@@ -29,6 +30,11 @@ class Session:
         payload = {"role": role, "content": content}
         self.context_file.parent.mkdir(parents=True, exist_ok=True)
         with self.context_file.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload) + "\n")
+
+    def append_wire(self, payload: dict[str, object]) -> None:
+        self.wire_file.parent.mkdir(parents=True, exist_ok=True)
+        with self.wire_file.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload) + "\n")
 
     def iter_context(self) -> Iterable[dict[str, str]]:

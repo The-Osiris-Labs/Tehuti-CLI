@@ -136,7 +136,11 @@ class TaskExecutor:
                 if sig in seen:
                     continue
                 seen.add(sig)
-                result = self.runtime.execute(name, args)
+                result, _trace_event = self.runtime.execute_with_tracing(
+                    name,
+                    args,
+                    timeout=30.0,
+                )
                 out = str(result.output)
                 trace.append(
                     {

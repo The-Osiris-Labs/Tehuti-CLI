@@ -1,0 +1,18 @@
+{
+  "schema": "tehuti.agent_task.v1",
+  "success": true,
+  "session_id": "session-1",
+  "response": "done",
+  "thoughts": "processed",
+  "tool_calls": [],
+  "iterations": 1,
+  "latency_ms": 10,
+  "error": null,
+  "parse_status": "structured",
+  "parse_mode": "repair",
+  "termination_reason": "final_response",
+  "token_estimate": 10,
+  "cost_estimate_usd": 0.00001,
+  "token_actual": 10,
+  "cost_actual_usd": 0.00001
+}

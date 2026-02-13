@@ -1,0 +1,18 @@
+{
+  "schema": "tehuti.phase_stream.v1",
+  "event_version": "v1",
+  "event": "phase",
+  "sequence": 3,
+  "session_id": "session-1",
+  "surface": "cli_interactive",
+  "phase": "execute.done",
+  "phase_group": "execute",
+  "status": "done",
+  "detail": "2 actions, 1 evidence blocks",
+  "elapsed_ms": 187,
+  "timestamp": "2026-02-12T00:00:00",
+  "meta": {
+    "actions": 2,
+    "evidence_blocks": 1
+  }
+}

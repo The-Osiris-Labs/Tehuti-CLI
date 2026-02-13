@@ -8,9 +8,10 @@ from typing import Any
 import tomlkit
 
 from tehuti_cli.storage.config import Config
+from tehuti_cli.storage.paths import workdirs_dir
 
 
-WORKDIR_DIR = Path.home() / ".tehuti" / "workdirs"
+WORKDIR_DIR = workdirs_dir()
 
 
 def _workdir_key(work_dir: Path) -> str:

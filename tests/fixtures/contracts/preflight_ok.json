@@ -1,0 +1,10 @@
+{
+  "schema": "tehuti.preflight.v1",
+  "ok": true,
+  "summary": {
+    "total_checks": 4,
+    "failed_errors": 0,
+    "failed_warnings": 0
+  },
+  "checks": []
+}

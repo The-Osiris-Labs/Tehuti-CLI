@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
+from tehuti_cli.storage.paths import metadata_file
 
-METADATA_FILE = Path.home() / ".tehuti" / "metadata.json"
+METADATA_FILE = metadata_file()
 
 
 @dataclass

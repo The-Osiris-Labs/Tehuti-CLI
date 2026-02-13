@@ -1,0 +1,17 @@
+{
+  "schema": "tehuti.diagnostics.v1",
+  "count": 1,
+  "items": [
+    {
+      "kind": "surface_result",
+      "surface": "wire",
+      "success": false,
+      "latency_ms": 120,
+      "error_code": "a2a_timeout",
+      "trace_id": "trace-1",
+      "turn_id": "turn-1",
+      "retryable": true,
+      "details": {}
+    }
+  ]
+}

@@ -30,7 +30,8 @@ class PtyManager:
             return False, "Unknown session_id"
         try:
             session.child.sendline(input_text)
-            return True, "OK"
+            sent_len = len(input_text)
+            return True, f"Sent {sent_len} chars to session {session_id}"
         except Exception as exc:
             return False, str(exc)
 
@@ -52,6 +53,9 @@ class PtyManager:
             return False, "Unknown session_id"
         try:
             session.child.close(force=True)
-            return True, "Closed"
+            exit_status = session.child.exitstatus
+            signal_status = session.child.signalstatus
+            status_hint = f"exit={exit_status}" if exit_status is not None else f"signal={signal_status}"
+            return True, f"Closed session {session_id} ({status_hint})"
         except Exception as exc:
             return False, str(exc)

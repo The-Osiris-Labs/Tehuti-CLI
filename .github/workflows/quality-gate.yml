@@ -1,0 +1,40 @@
+name: quality-gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --no-deps
+          pip install \
+            pytest \
+            pytest-asyncio \
+            typer \
+            rich \
+            prompt-toolkit \
+            pydantic \
+            tomlkit \
+            httpx \
+            fastapi \
+            rapidfuzz \
+            numpy
+
+      - name: run quality gate
+        run: |
+          bash scripts/quality_gate.sh

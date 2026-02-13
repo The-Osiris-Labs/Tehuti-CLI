@@ -1,0 +1,15 @@
+{
+  "schema": "tehuti.metrics.v1",
+  "counters": {
+    "agent_task_total": 100,
+    "agent_task_failed_total": 2,
+    "wire_request_total": 40,
+    "wire_request_failed_total": 1,
+    "web_agent_task_request_failed_total": 1,
+    "web_prompt_request_failed_total": 0
+  },
+  "latency_ms": {
+    "agent_task": {"p95": 1200},
+    "tool": {"p95": 320}
+  }
+}

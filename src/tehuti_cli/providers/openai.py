@@ -11,6 +11,7 @@ import httpx
 class OpenAIClient:
     base_url: str
     api_key: str
+    last_usage: dict[str, int] | None = None
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -32,6 +33,7 @@ class OpenAIClient:
     ) -> str:
         url = f"{self.base_url}/chat/completions"
         payload = {"model": model, "messages": messages, "stream": stream}
+        self.last_usage = None
 
         if stream:
             return self._chat_stream(url, payload)
@@ -40,6 +42,12 @@ class OpenAIClient:
             resp = client.post(url, headers=self._headers(), json=payload)
             resp.raise_for_status()
             data = resp.json()
+        usage = data.get("usage") or {}
+        self.last_usage = {
+            "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+            "total_tokens": int(usage.get("total_tokens", 0) or 0),
+        }
         choices = data.get("choices", [])
         if not choices:
             return ""

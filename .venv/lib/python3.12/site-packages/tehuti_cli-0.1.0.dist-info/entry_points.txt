@@ -1,2 +1,0 @@
-[console_scripts]
-tehuti = tehuti_cli.cli:cli

@@ -232,11 +232,8 @@ class TaskGraph:
                     all_satisfied = False
                     break
 
-            if task.status == TaskStatus.PENDING:
-                if not all_satisfied:
-                    task.status = TaskStatus.BLOCKED
-                elif task.status == TaskStatus.BLOCKED:
-                    task.status = TaskStatus.PENDING
+            if task.status in (TaskStatus.PENDING, TaskStatus.BLOCKED):
+                task.status = TaskStatus.PENDING if all_satisfied else TaskStatus.BLOCKED
 
     def get_schedulable_tasks(self) -> list[Task]:
         schedulable = []

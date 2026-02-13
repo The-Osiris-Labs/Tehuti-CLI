@@ -1,0 +1,17 @@
+{
+  "schema": "tehuti.mutation_audit.v1",
+  "audit_id": "audit-1",
+  "timestamp": "2026-02-12T00:00:00",
+  "trace_id": "trace-abc123",
+  "tool": "write",
+  "args": {
+    "path": "a.txt",
+    "content": "***REDACTED***"
+  },
+  "status": "success",
+  "latency_ms": 10,
+  "idempotency_class": "mutating_write",
+  "risk_class": "high",
+  "approval_policy": "manual",
+  "error": null
+}

@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from tehuti_cli.storage.config import Config
+
+RiskClass = Literal["low", "medium", "high", "critical"]
+IdempotencyClass = Literal["safe_read", "idempotent_write", "mutating_write", "system_exec"]
+ApprovalPolicy = Literal["auto", "manual", "never"]
+RetryPolicy = Literal["never", "transient", "always"]
 
 
 @dataclass
@@ -14,6 +19,12 @@ class ToolSpec:
     description: str
     kind: str  # "builtin" or "external"
     command: str | None = None
+    risk_class: RiskClass = "medium"
+    idempotency: IdempotencyClass = "system_exec"
+    approval_policy: ApprovalPolicy = "auto"
+    latency_budget_ms: int = 30000
+    retry_policy: RetryPolicy = "transient"
+    max_retries: int = 1
 
 
 class ToolRegistry:
@@ -22,6 +33,188 @@ class ToolRegistry:
         self._tools: dict[str, ToolSpec] = {}
         self._load_builtin()
         self._load_external()
+        self._finalize_tool_metadata()
+
+    def _finalize_tool_metadata(self) -> None:
+        for spec in self._tools.values():
+            spec.risk_class = self._infer_risk_class(spec)
+            spec.idempotency = self._infer_idempotency(spec)
+            spec.approval_policy = self._infer_approval_policy(spec)
+            spec.latency_budget_ms = self._infer_latency_budget_ms(spec)
+            spec.retry_policy = self._infer_retry_policy(spec)
+            spec.max_retries = self._infer_max_retries(spec)
+
+    def _infer_idempotency(self, spec: ToolSpec) -> IdempotencyClass:
+        name = spec.name
+        read_only_tools = {
+            "read",
+            "fetch",
+            "web_search",
+            "web_fetch",
+            "git_status",
+            "git_log",
+            "git_branch",
+            "git_diff",
+            "docker_ps",
+            "docker_images",
+            "docker_logs",
+            "host_discovery",
+            "ls",
+            "find",
+            "grep",
+            "glob",
+            "web_fetch_render",
+            "web_scrape",
+            "api_get",
+            "extract_text",
+            "extract_links",
+            "extract_images",
+            "check_website_status",
+            "search_ddg",
+            "search_github",
+            "search_npm",
+            "search_pypi",
+            "search_dockerhub",
+            "file_tail",
+            "file_watch",
+            "mcp_list_servers",
+            "mcp_list_tools",
+            "mcp_list_resources",
+            "mcp_list_prompts",
+            "mcp_get_prompt",
+            "context_load",
+            "context_summary",
+            "context_sections",
+            "context_rules",
+            "context_personas",
+            "task_get",
+            "task_schedulable",
+            "task_blocked",
+            "task_stats",
+            "blueprint_get",
+            "blueprint_list",
+            "automation_get",
+            "automation_list",
+            "automation_stats",
+            "delegate_list",
+            "delegate_get",
+            "delegate_tree",
+            "tool_list",
+            "tool_validate",
+            "tool_template",
+        }
+        if name in read_only_tools or name.startswith("context_"):
+            return "safe_read"
+        if name in {"write", "edit"} or name.startswith("stream_") or name.startswith("tool_") or name.startswith("automation_"):
+            return "mutating_write"
+        if name in {"task_create", "task_update", "task_add_dep", "blueprint_create", "blueprint_add_section"}:
+            return "idempotent_write"
+        return "system_exec"
+
+    def _infer_risk_class(self, spec: ToolSpec) -> RiskClass:
+        name = spec.name
+        if spec.kind == "external":
+            return "high"
+        critical = {
+            "rm",
+            "shutdown",
+            "reboot",
+            "halt",
+            "mkfs",
+            "dd",
+            "userdel",
+            "groupdel",
+            "fdisk",
+            "parted",
+            "iptables",
+            "firewall-cmd",
+            "ufw",
+            "terraform",
+            "kubectl",
+            "systemctl",
+            "service",
+            "chown",
+        }
+        high = {
+            "write",
+            "edit",
+            "shell",
+            "docker_run",
+            "docker_exec",
+            "docker_build",
+            "git_push",
+            "git_pull",
+            "git_clone",
+            "ssh",
+            "apt_install",
+            "pip_install",
+            "npm_install",
+            "automation_create",
+            "automation_add_action",
+            "automation_add_trigger",
+            "delegate_create",
+            "delegate_cancel",
+            "tool_create_shell",
+            "tool_create_python",
+            "tool_create_api",
+            "tool_delete",
+            "tool_edit",
+            "tool_import",
+            "tool_clone",
+        }
+        medium = {
+            "fetch",
+            "web_fetch",
+            "web_fetch_render",
+            "api_get",
+            "api_post",
+            "api_graphql",
+            "mcp_connect",
+            "mcp_call_tool",
+            "mcp_read_resource",
+            "mcp_disconnect",
+            "browser_navigate",
+            "browser_click",
+            "browser_fill",
+            "browser_type",
+            "browser_press",
+            "browser_download",
+            "browser_evaluate",
+        }
+        if name in critical:
+            return "critical"
+        if name in high or name.startswith("stream_"):
+            return "high"
+        if name in medium:
+            return "medium"
+        return "low"
+
+    def _infer_approval_policy(self, spec: ToolSpec) -> ApprovalPolicy:
+        if spec.risk_class in {"high", "critical"}:
+            return "manual"
+        return "auto"
+
+    def _infer_latency_budget_ms(self, spec: ToolSpec) -> int:
+        name = spec.name
+        if name.startswith("stream_") or name in {"browser_pdf", "docker_build", "terraform", "kubectl", "pytest", "go_test", "cargo_test"}:
+            return 120000
+        if name in {"web_fetch_render", "browser_navigate", "browser_screenshot", "api_post", "api_graphql", "mcp_call_tool"}:
+            return 60000
+        return 30000
+
+    def _infer_retry_policy(self, spec: ToolSpec) -> RetryPolicy:
+        if spec.idempotency == "mutating_write" or spec.risk_class in {"high", "critical"}:
+            return "never"
+        if spec.idempotency == "safe_read":
+            return "transient"
+        return "transient"
+
+    def _infer_max_retries(self, spec: ToolSpec) -> int:
+        if spec.retry_policy == "never":
+            return 0
+        if spec.idempotency == "safe_read":
+            return 2
+        return 1
 
     def _load_builtin(self) -> None:
         # Core tools
@@ -312,6 +505,84 @@ class ToolRegistry:
         )
         self._tools["automation_add_action"] = ToolSpec("automation_add_action", "Add action to automation", "builtin")
         self._tools["automation_stats"] = ToolSpec("automation_stats", "Get automation statistics", "builtin")
+
+        # System Administration Tools
+        self._tools["sysctl"] = ToolSpec("sysctl", "View/modify kernel parameters", "builtin")
+        self._tools["modprobe"] = ToolSpec("modprobe", "Load kernel modules", "builtin")
+        self._tools["lsmod"] = ToolSpec("lsmod", "List loaded kernel modules", "builtin")
+        self._tools["insmod"] = ToolSpec("insmod", "Install kernel module", "builtin")
+        self._tools["rmmod"] = ToolSpec("rmmod", "Remove kernel module", "builtin")
+        self._tools["service"] = ToolSpec("service", "Manage system services", "builtin")
+        self._tools["systemctl"] = ToolSpec("systemctl", "Control systemd services", "builtin")
+        self._tools["init"] = ToolSpec("init", "Change system runlevel", "builtin")
+        self._tools["shutdown"] = ToolSpec("shutdown", "Shutdown the system", "builtin")
+        self._tools["reboot"] = ToolSpec("reboot", "Reboot the system", "builtin")
+        self._tools["halt"] = ToolSpec("halt", "Halt the system", "builtin")
+
+        # User Management
+        self._tools["useradd"] = ToolSpec("useradd", "Create new user account", "builtin")
+        self._tools["usermod"] = ToolSpec("usermod", "Modify user account", "builtin")
+        self._tools["userdel"] = ToolSpec("userdel", "Delete user account", "builtin")
+        self._tools["groupadd"] = ToolSpec("groupadd", "Create new group", "builtin")
+        self._tools["groupdel"] = ToolSpec("groupdel", "Delete group", "builtin")
+
+        # File Attributes
+        self._tools["chattr"] = ToolSpec("chattr", "Change file attributes", "builtin")
+        self._tools["lsattr"] = ToolSpec("lsattr", "List file attributes", "builtin")
+
+        # Storage Management
+        self._tools["mount"] = ToolSpec("mount", "Mount filesystem", "builtin")
+        self._tools["umount"] = ToolSpec("umount", "Unmount filesystem", "builtin")
+        self._tools["fdisk"] = ToolSpec("fdisk", "Partition table manipulator", "builtin")
+        self._tools["parted"] = ToolSpec("parted", "GNU Parted for partitions", "builtin")
+        self._tools["mkfs"] = ToolSpec("mkfs", "Create filesystem", "builtin")
+        self._tools["dd"] = ToolSpec("dd", "Data duplicator/convert", "builtin")
+
+        # Networking
+        self._tools["nc"] = ToolSpec("nc", "Netcat - network utility", "builtin")
+        self._tools["socat"] = ToolSpec("socat", "SOcket CAT - multipurpose relay", "builtin")
+        self._tools["iptables"] = ToolSpec("iptables", "IPv4 firewall administration", "builtin")
+        self._tools["ufw"] = ToolSpec("ufw", "Uncomplicated Firewall", "builtin")
+        self._tools["firewall-cmd"] = ToolSpec("firewall-cmd", "Firewalld command", "builtin")
+
+        # Process & System Monitoring
+        self._tools["cron"] = ToolSpec("cron", "Schedule periodic tasks", "builtin")
+        self._tools["crontab"] = ToolSpec("crontab", "Manage cron tables", "builtin")
+        self._tools["at"] = ToolSpec("at", "Schedule one-time tasks", "builtin")
+        self._tools["journalctl"] = ToolSpec("journalctl", "Query systemd journal", "builtin")
+        self._tools["dmesg"] = ToolSpec("dmesg", "Print kernel messages", "builtin")
+        self._tools["strace"] = ToolSpec("strace", "Trace system calls", "builtin")
+        self._tools["ltrace"] = ToolSpec("ltrace", "Trace library calls", "builtin")
+        self._tools["gdb"] = ToolSpec("gdb", "GNU Debugger", "builtin")
+
+        # Database Tools
+        self._tools["mongosh"] = ToolSpec("mongosh", "MongoDB shell", "builtin")
+        self._tools["mongo"] = ToolSpec("mongo", "Legacy MongoDB client", "builtin")
+
+        # Container Tools
+        self._tools["docker-compose"] = ToolSpec("docker-compose", "Docker Compose", "builtin")
+        self._tools["kubectl"] = ToolSpec("kubectl", "Kubernetes CLI", "builtin")
+        self._tools["helm"] = ToolSpec("helm", "Kubernetes package manager", "builtin")
+        self._tools["crictl"] = ToolSpec("crictl", "CRI container tool", "builtin")
+        self._tools["nerdctl"] = ToolSpec("nerdctl", "nerdctl Docker-compatible CLI", "builtin")
+
+        # Cloud CLI Tools
+        self._tools["aws"] = ToolSpec("aws", "AWS CLI", "builtin")
+        self._tools["az"] = ToolSpec("az", "Azure CLI", "builtin")
+        self._tools["gcloud"] = ToolSpec("gcloud", "Google Cloud CLI", "builtin")
+        self._tools["packer"] = ToolSpec("packer", "HashiCorp Packer", "builtin")
+
+        # Compilers & Build Tools
+        self._tools["gcc"] = ToolSpec("gcc", "GNU C Compiler", "builtin")
+        self._tools["g++"] = ToolSpec("g++", "GNU C++ Compiler", "builtin")
+        self._tools["clang"] = ToolSpec("clang", "LLVM C Compiler", "builtin")
+        self._tools["rustc"] = ToolSpec("rustc", "Rust Compiler", "builtin")
+        self._tools["go"] = ToolSpec("go", "Go Programming Language", "builtin")
+        self._tools["javac"] = ToolSpec("javac", "Java Compiler", "builtin")
+        self._tools["make"] = ToolSpec("make", "GNU Make", "builtin")
+        self._tools["cmake"] = ToolSpec("cmake", "CMake build system", "builtin")
+        self._tools["meson"] = ToolSpec("meson", "Meson build system", "builtin")
+        self._tools["ninja"] = ToolSpec("ninja", "Ninja build system", "builtin")
 
     def _load_external(self) -> None:
         path = self.config.external_tools_file

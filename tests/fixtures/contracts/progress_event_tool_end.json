@@ -1,0 +1,12 @@
+{
+  "schema": "tehuti.progress.v1",
+  "event_version": "v1",
+  "event": "tool_end",
+  "sequence": 1,
+  "session_id": "session-1",
+  "timestamp": "2026-02-12T00:00:00",
+  "surface": "agent_loop",
+  "tool": "read",
+  "success": true,
+  "execution_time_ms": 10
+}

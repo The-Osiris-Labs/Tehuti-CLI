@@ -1,0 +1,18 @@
+{
+  "tehuti.activity.v1:activity_event.json": "22b43aca13e5fc8182e6f3f6aadb80b11e6bf8680e511e976a63208c75fa0ee4",
+  "tehuti.agent_task.v1:agent_task_success.json": "89d66813881990853268314603a5fe6e50772696d28e2fbb88dd2b728081b908",
+  "tehuti.cli.interactive.v1:cli_interactive_degraded_success.json": "a8f6ee62fead131ea11adf7102fb4b6aaf8d07250b69aed8645924416514ad10",
+  "tehuti.cli.interactive.v1:cli_interactive_success.json": "584572351189d403684cdc0553fa06df0077264ab3fadf487d5286f9c20db88b",
+  "tehuti.cli.prompt.v1:cli_prompt_success.json": "d2ab266190bbf7899b7da084f4dfd0d06c8c75433e3a61bfc0d113ed25ac2c13",
+  "tehuti.diagnostics.v1:diagnostics_sample.json": "a92ee9f127c687f242b778f197932816e45fc2593fd3e74f9a9979d3876113fb",
+  "tehuti.metrics.v1:metrics_empty.json": "cef4161a10c7d948f89c3f61f7458fcb18e9ad7612d43f40ca61c95247f79f03",
+  "tehuti.mutation_audit.v1:mutation_audit_record.json": "9ae04eddedc30cbecda3ff2a9f55b0d981f18e9e2f832f4fc526cfc38c5c5533",
+  "tehuti.phase_stream.v1:phase_stream_event.json": "c73c155de0e2c9cabbf7a03aadbc51be8d53523532d86c478c11df19588d1d23",
+  "tehuti.preflight.v1:preflight_ok.json": "199ed58c8c62bfe219f0d5f9b0d406d5a988d13fbbcfb337907197001d81a348",
+  "tehuti.progress.v1:progress_event_tool_end.json": "098c1b2925ff50b7f2d583c6069842db6b95d2f49515267b6d22e25848135681",
+  "tehuti.tool_result.v1:tool_result_success.json": "21457649484a9c62c62ba63b6d3bf2dbf6969b82ea3a41b2f2a0eba01bd22f56",
+  "tehuti.web.agent_task.v1:web_agent_task_success.json": "6548d9e4d4c54a809b1a6e972355a3c96cb086b9f959832b3320a762a0b88124",
+  "tehuti.web.prompt.v1:web_prompt_success.json": "e1c953fb4c018f11266a229231ba9bd6898ce6cd3b92564b07444c400f5d0943",
+  "tehuti.wire.progress.v1:wire_progress_event.json": "17d36123809ff78042c193125b0d6d251c242d118b2cecc37017b00bc3c2ab3a",
+  "tehuti.wire.v1:wire_success.json": "006402e0afbfc7f12f34b70416f1ac22b9f0334963d160db32918c64a1a17677"
+}

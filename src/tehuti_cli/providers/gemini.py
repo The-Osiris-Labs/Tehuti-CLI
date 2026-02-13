@@ -11,6 +11,7 @@ import httpx
 class GeminiClient:
     base_url: str
     api_key: str
+    last_usage: dict[str, int] | None = None
 
     def list_models(self) -> list[dict[str, Any]]:
         url = f"{self.base_url}/models?key={self.api_key}"
@@ -23,6 +24,7 @@ class GeminiClient:
     def chat(
         self, model: str, messages: list[dict[str, Any]], stream: bool = False
     ) -> str:
+        self.last_usage = None
         url = f"{self.base_url}/models/{model}:generateContent?key={self.api_key}"
         contents = []
         for msg in messages:
@@ -41,6 +43,15 @@ class GeminiClient:
             resp = client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
+        usage = data.get("usageMetadata") or {}
+        prompt = int(usage.get("promptTokenCount", 0) or 0)
+        completion = int(usage.get("candidatesTokenCount", 0) or 0)
+        total = int(usage.get("totalTokenCount", 0) or (prompt + completion))
+        self.last_usage = {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": total,
+        }
         candidates = data.get("candidates", [])
         if not candidates:
             return ""

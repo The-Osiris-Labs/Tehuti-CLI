@@ -39,16 +39,106 @@ class MCPTools:
         self._servers: dict[str, Any] = {}
         self._clients: dict[str, Any] = {}
 
+    def _server_params(self, server_name: str) -> tuple[str, list[str], dict[str, str]]:
+        server = self._servers.get(server_name) or {}
+        command = str(server.get("command", ""))
+        args = list(server.get("args", []))
+        env = dict(server.get("env", {}))
+        return command, args, env
+
+    def _ok(self, output: str) -> ToolResult:
+        return ToolResult(True, output)
+
+    def _protocol_error(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+    ) -> ToolResult:
+        return ToolResult(
+            False,
+            message,
+            error_code=code,
+            error_category="protocol",
+            retryable=retryable,
+        )
+
+    def _operation_error(self, code: str, message: str) -> ToolResult:
+        return ToolResult(
+            False,
+            message,
+            error_code=code,
+            error_category="tool",
+            retryable=False,
+        )
+
+    def _classify_protocol_exception(
+        self,
+        exc: Exception,
+        *,
+        default_code: str,
+        default_retryable: bool,
+    ) -> tuple[str, bool]:
+        """Map transport/protocol exceptions to stable MCP protocol codes."""
+        name = exc.__class__.__name__.lower()
+        message = str(exc).lower()
+        signal = f"{name} {message}"
+
+        if "timeout" in signal:
+            return "mcp_timeout", True
+        if "unauthorized" in signal or "forbidden" in signal or "permission" in signal or "auth" in signal:
+            return "mcp_auth_failed", False
+        if "not found" in signal or "notfound" in signal:
+            return "mcp_not_found", False
+        if "json" in signal or "schema" in signal or "parse" in signal or "invalid" in signal:
+            return "mcp_invalid_payload", False
+        if "connection" in signal or "connect" in signal or "broken pipe" in signal:
+            return "mcp_transport_error", True
+        return default_code, default_retryable
+
+    def _load_configured_servers(self) -> dict[str, dict[str, Any]]:
+        mcp_file = self.config.mcp_file
+        if not mcp_file.exists():
+            return {}
+        data = json.loads(mcp_file.read_text(encoding="utf-8"))
+        servers = data.get("servers")
+        if isinstance(servers, dict):
+            return servers
+        # Backward/interop compatibility with MCP ecosystem naming.
+        mcp_servers = data.get("mcpServers")
+        if isinstance(mcp_servers, dict):
+            return mcp_servers
+        return {}
+
+    def _run_with_server_session(self, server_name: str, operation):
+        import asyncio
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        command, args, env = self._server_params(server_name)
+        if not command:
+            raise RuntimeError(f"Server '{server_name}' is missing command configuration")
+        server_params = StdioServerParameters(command=command, args=args, env=env)
+
+        async def _run():
+            stdio_transport = stdio_client(server_params)
+            async with stdio_transport as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    return await operation(session)
+
+        return asyncio.run(_run())
+
     def mcp_list_servers(self) -> ToolResult:
         """List configured MCP servers."""
         mcp_file = self.config.mcp_file
 
         if not mcp_file.exists():
-            return ToolResult(True, "No MCP servers configured. Create ~/.tehuti/mcp.json")
+            return self._ok("No MCP servers configured. Create ~/.tehuti/mcp.json")
 
         try:
-            data = json.loads(mcp_file.read_text())
-            servers = data.get("servers", {})
+            servers = self._load_configured_servers()
 
             output = f"## MCP Servers\n\n"
             output += f"**Config file:** {mcp_file}\n"
@@ -62,10 +152,10 @@ class MCPTools:
                 output += f"**Args:** {args}\n"
                 output += f"**Status:** {'Connected' if name in self._servers else 'Not connected'}\n\n"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to read MCP config: {exc}")
+            return self._protocol_error("mcp_invalid_config", f"Failed to read MCP config: {exc}")
 
     def mcp_connect(
         self,
@@ -76,32 +166,17 @@ class MCPTools:
     ) -> ToolResult:
         """Connect to an MCP server."""
         try:
-            import asyncio
-            from mcp import ClientSession, StdioServerParameters
-            from mcp.client.stdio import stdio_client
-
             if server_name in self._servers:
-                return ToolResult(False, f"Server '{server_name}' already connected")
+                return self._protocol_error("mcp_already_connected", f"Server '{server_name}' already connected")
 
-            server_params = StdioServerParameters(
-                command=command,
-                args=args or [],
-                env=env_vars or {},
-            )
-
-            async def connect():
-                stdio_transport = stdio_client(server_params)
-                async with stdio_transport as (read, write):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        tools = await session.list_tools()
-                        self._servers[server_name] = {
-                            "session": session,
-                            "tools": [t.name for t in tools],
-                        }
-                        return tools
-
-            tools = asyncio.run(connect())
+            self._servers[server_name] = {
+                "command": command,
+                "args": args or [],
+                "env": env_vars or {},
+                "tools": [],
+            }
+            tools = self._run_with_server_session(server_name, lambda session: session.list_tools())
+            self._servers[server_name]["tools"] = [t.name for t in tools]
 
             output = f"## MCP Server Connected\n\n"
             output += f"**Server:** {server_name}\n"
@@ -111,34 +186,36 @@ class MCPTools:
             for tool in tools:
                 output += f"- {tool.name}: {tool.description}\n"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except ImportError:
-            return ToolResult(
-                False,
-                "MCP not installed. Install with: pip install mcp",
-            )
+            return self._operation_error("mcp_dependency_missing", "MCP not installed. Install with: pip install mcp")
         except Exception as exc:
-            return ToolResult(False, f"Failed to connect to MCP server: {exc}")
+            code, retryable = self._classify_protocol_exception(
+                exc,
+                default_code="mcp_connect_failed",
+                default_retryable=True,
+            )
+            return self._protocol_error(code, f"Failed to connect to MCP server: {exc}", retryable=retryable)
 
     def mcp_disconnect(self, server_name: str) -> ToolResult:
         """Disconnect from an MCP server."""
         if server_name not in self._servers:
-            return ToolResult(False, f"Server '{server_name}' not connected")
+            return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
         try:
             del self._servers[server_name]
 
-            return ToolResult(True, f"Disconnected from '{server_name}'")
+            return self._ok(f"Disconnected from '{server_name}'")
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to disconnect: {exc}")
+            return self._protocol_error("mcp_disconnect_failed", f"Failed to disconnect: {exc}", retryable=True)
 
     def mcp_list_tools(self, server_name: str | None = None) -> ToolResult:
         """List available tools from MCP servers."""
         if server_name:
             if server_name not in self._servers:
-                return ToolResult(False, f"Server '{server_name}' not connected")
+                return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
             tools = self._servers[server_name].get("tools", [])
 
@@ -148,14 +225,14 @@ class MCPTools:
             for tool in tools:
                 output += f"- {tool}\n"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         all_tools = {}
         for name, server in self._servers.items():
             all_tools[name] = server.get("tools", [])
 
         if not all_tools:
-            return ToolResult(True, "No MCP servers connected")
+            return self._ok("No MCP servers connected")
 
         output = f"## All MCP Tools\n\n"
         total = 0
@@ -168,7 +245,7 @@ class MCPTools:
 
         output += f"**Total across all servers:** {total}\n"
 
-        return ToolResult(True, output)
+        return self._ok(output)
 
     def mcp_call_tool(
         self,
@@ -178,21 +255,16 @@ class MCPTools:
     ) -> ToolResult:
         """Call a tool on an MCP server."""
         if server_name not in self._servers:
-            return ToolResult(False, f"Server '{server_name}' not connected")
+            return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
         if tool_name not in self._servers[server_name].get("tools", []):
-            return ToolResult(False, f"Tool '{tool_name}' not found on server '{server_name}'")
+            return self._protocol_error("mcp_tool_not_found", f"Tool '{tool_name}' not found on server '{server_name}'")
 
         try:
-            import asyncio
-            from mcp import ClientSession
-
-            session = self._servers[server_name]["session"]
-
-            async def call():
-                return await session.call_tool(tool_name, arguments or {})
-
-            result = asyncio.run(call())
+            result = self._run_with_server_session(
+                server_name,
+                lambda session: session.call_tool(tool_name, arguments or {}),
+            )
 
             output = f"## MCP Tool Result\n\n"
             output += f"**Server:** {server_name}\n"
@@ -208,10 +280,15 @@ class MCPTools:
             else:
                 output += "(No output)"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to call tool: {exc}")
+            code, retryable = self._classify_protocol_exception(
+                exc,
+                default_code="mcp_call_failed",
+                default_retryable=True,
+            )
+            return self._protocol_error(code, f"Failed to call tool: {exc}", retryable=retryable)
 
     def mcp_read_resource(
         self,
@@ -220,18 +297,10 @@ class MCPTools:
     ) -> ToolResult:
         """Read a resource from an MCP server."""
         if server_name not in self._servers:
-            return ToolResult(False, f"Server '{server_name}' not connected")
+            return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
         try:
-            import asyncio
-            from mcp import ClientSession
-
-            session = self._servers[server_name]["session"]
-
-            async def read():
-                return await session.read_resource(uri)
-
-            result = asyncio.run(read())
+            result = self._run_with_server_session(server_name, lambda session: session.read_resource(uri))
 
             output = f"## MCP Resource\n\n"
             output += f"**Server:** {server_name}\n"
@@ -244,27 +313,24 @@ class MCPTools:
                     else:
                         output += str(content)
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to read resource: {exc}")
+            code, retryable = self._classify_protocol_exception(
+                exc,
+                default_code="mcp_read_resource_failed",
+                default_retryable=True,
+            )
+            return self._protocol_error(code, f"Failed to read resource: {exc}", retryable=retryable)
 
     def mcp_list_resources(self, server_name: str | None = None) -> ToolResult:
         """List available resources from MCP servers."""
         if server_name:
             if server_name not in self._servers:
-                return ToolResult(False, f"Server '{server_name}' not connected")
+                return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
             try:
-                import asyncio
-                from mcp import ClientSession
-
-                session = self._servers[server_name]["session"]
-
-                async def list():
-                    return await session.list_resources()
-
-                resources = asyncio.run(list())
+                resources = self._run_with_server_session(server_name, lambda session: session.list_resources())
 
                 output = f"## MCP Resources: {server_name}\n\n"
                 output += f"**Total:** {len(resources)}\n\n"
@@ -274,23 +340,20 @@ class MCPTools:
                     if resource.description:
                         output += f"  - {resource.description}\n"
 
-                return ToolResult(True, output)
+                return self._ok(output)
 
             except Exception as exc:
-                return ToolResult(False, f"Failed to list resources: {exc}")
+                code, retryable = self._classify_protocol_exception(
+                    exc,
+                    default_code="mcp_list_resources_failed",
+                    default_retryable=True,
+                )
+                return self._protocol_error(code, f"Failed to list resources: {exc}", retryable=retryable)
 
         all_resources = {}
         for name, server in self._servers.items():
             try:
-                import asyncio
-                from mcp import ClientSession
-
-                session = server["session"]
-
-                async def list_res():
-                    return await session.list_resources()
-
-                resources = asyncio.run(list_res())
+                resources = self._run_with_server_session(name, lambda session: session.list_resources())
                 all_resources[name] = [(r.uri, r.description) for r in resources]
             except Exception:
                 all_resources[name] = []
@@ -309,24 +372,16 @@ class MCPTools:
 
         output += f"**Total:** {total}\n"
 
-        return ToolResult(True, output)
+        return self._ok(output)
 
     def mcp_list_prompts(self, server_name: str | None = None) -> ToolResult:
         """List available prompts from MCP servers."""
         if server_name:
             if server_name not in self._servers:
-                return ToolResult(False, f"Server '{server_name}' not connected")
+                return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
             try:
-                import asyncio
-                from mcp import ClientSession
-
-                session = self._servers[server_name]["session"]
-
-                async def list_prompts():
-                    return await session.list_prompts()
-
-                prompts = asyncio.run(list_prompts())
+                prompts = self._run_with_server_session(server_name, lambda session: session.list_prompts())
 
                 output = f"## MCP Prompts: {server_name}\n\n"
                 output += f"**Total:** {len(prompts)}\n\n"
@@ -336,23 +391,20 @@ class MCPTools:
                     if prompt.description:
                         output += f"{prompt.description}\n\n"
 
-                return ToolResult(True, output)
+                return self._ok(output)
 
             except Exception as exc:
-                return ToolResult(False, f"Failed to list prompts: {exc}")
+                code, retryable = self._classify_protocol_exception(
+                    exc,
+                    default_code="mcp_list_prompts_failed",
+                    default_retryable=True,
+                )
+                return self._protocol_error(code, f"Failed to list prompts: {exc}", retryable=retryable)
 
         all_prompts = {}
         for name, server in self._servers.items():
             try:
-                import asyncio
-                from mcp import ClientSession
-
-                session = server["session"]
-
-                async def list_prompts():
-                    return await session.list_prompts()
-
-                prompts = asyncio.run(list_prompts())
+                prompts = self._run_with_server_session(name, lambda session: session.list_prompts())
                 all_prompts[name] = [p.name for p in prompts]
             except Exception:
                 all_prompts[name] = []
@@ -368,7 +420,7 @@ class MCPTools:
 
         output += f"**Total:** {total}\n"
 
-        return ToolResult(True, output)
+        return self._ok(output)
 
     def mcp_get_prompt(
         self,
@@ -378,18 +430,13 @@ class MCPTools:
     ) -> ToolResult:
         """Get a prompt template from an MCP server."""
         if server_name not in self._servers:
-            return ToolResult(False, f"Server '{server_name}' not connected")
+            return self._protocol_error("mcp_not_connected", f"Server '{server_name}' not connected")
 
         try:
-            import asyncio
-            from mcp import ClientSession
-
-            session = self._servers[server_name]["session"]
-
-            async def get_prompt():
-                return await session.get_prompt(prompt_name, arguments or {})
-
-            result = asyncio.run(get_prompt())
+            result = self._run_with_server_session(
+                server_name,
+                lambda session: session.get_prompt(prompt_name, arguments or {}),
+            )
 
             output = f"## MCP Prompt: {prompt_name}\n\n"
             output += f"**Server:** {server_name}\n\n"
@@ -403,10 +450,15 @@ class MCPTools:
                             output += str(message.content)
                     output += "\n\n"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to get prompt: {exc}")
+            code, retryable = self._classify_protocol_exception(
+                exc,
+                default_code="mcp_get_prompt_failed",
+                default_retryable=True,
+            )
+            return self._protocol_error(code, f"Failed to get prompt: {exc}", retryable=retryable)
 
     def mcp_configure(
         self,
@@ -433,10 +485,10 @@ class MCPTools:
                 output += f"**Command:** {cfg.get('command', 'N/A')}\n"
                 output += f"**Args:** {cfg.get('args', [])}\n"
 
-            return ToolResult(True, output)
+            return self._ok(output)
 
         except Exception as exc:
-            return ToolResult(False, f"Failed to save config: {exc}")
+            return self._operation_error("mcp_config_write_failed", f"Failed to save config: {exc}")
 
 
 async def mcp_call_tool_async(
@@ -446,34 +498,4 @@ async def mcp_call_tool_async(
     arguments: dict[str, Any] | None = None,
 ) -> ToolResult:
     """Async wrapper for mcp_call_tool."""
-    if server_name not in self._servers:
-        return ToolResult(False, f"Server '{server_name}' not connected")
-
-    if tool_name not in self._servers[server_name].get("tools", []):
-        return ToolResult(False, f"Tool '{tool_name}' not found on server '{server_name}'")
-
-    try:
-        from mcp import ClientSession
-
-        session = self._servers[server_name]["session"]
-
-        result = await session.call_tool(tool_name, arguments or {})
-
-        output = f"## MCP Tool Result\n\n"
-        output += f"**Server:** {server_name}\n"
-        output += f"**Tool:** {tool_name}\n"
-        output += f"**Arguments:** {json.dumps(arguments, indent=2)}\n\n"
-
-        if result.content:
-            for content in result.content:
-                if hasattr(content, "text"):
-                    output += f"{content.text}\n"
-                else:
-                    output += f"{content}\n"
-        else:
-            output += "(No output)"
-
-        return ToolResult(True, output)
-
-    except Exception as exc:
-        return ToolResult(False, f"Failed to call tool: {exc}")
+    return self.mcp_call_tool(server_name=server_name, tool_name=tool_name, arguments=arguments)
