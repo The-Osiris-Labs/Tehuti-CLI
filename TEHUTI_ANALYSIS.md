@@ -4,7 +4,7 @@
 
 This document consolidates all analysis findings and provides a clear roadmap to transform Tehuti CLI into a world-class terminal experience.
 
-**Last Updated:** 2026-02-22 (Final comprehensive audit complete)
+**Last Updated:** 2026-02-25 (Skills system and chat UI enhancements)
 
 ---
 
@@ -54,6 +54,12 @@ This document consolidates all analysis findings and provides a clear roadmap to
 | Animated spinner | ✅ Done | `ink-spinner` in chat UI |
 | Inline command autocomplete | ✅ Done | Shows suggestions when typing `/` |
 | Tab completion for commands | ✅ Done | Tab autocompletes command suggestions |
+| Skills system | ✅ Done | `src/agent/skills/manager.ts` and `src/agent/skills/tools.ts` |
+| Auto-apply expertise | ✅ Done | `src/agent/context.ts` integrates skills into system prompt |
+| `/skills` command | ✅ Done | List all available skills |
+| `/thinking` command | ✅ Done | Toggle extended thinking mode |
+| `/plan` command | ✅ Done | Enter plan mode (read-only exploration) |
+| `/compact` command | ✅ Done | Compact context to free up token space |
 
 ---
 
