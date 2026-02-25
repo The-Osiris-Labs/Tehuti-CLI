@@ -1,0 +1,99 @@
+{
+  "name": "tehuti-cli",
+  "$schema": "https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/tehuti.json",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "model": { 
+      "type": "string", 
+      "default": "anthropic/claude-sonnet-4",
+      "description": "The model to use for completions"
+    },
+    "fallbackModel": { 
+      "type": "string", 
+      "default": "anthropic/claude-haiku-4",
+      "description": "Fallback model if primary fails"
+    },
+    "apiKey": { 
+      "type": "string",
+      "description": "OpenRouter API key (can use env var references)"
+    },
+    "baseUrl": {
+      "type": "string",
+      "default": "https://openrouter.ai/api/v1",
+      "description": "OpenRouter API base URL"
+    },
+    "maxTokens": { 
+      "type": "integer", 
+      "default": 32000,
+      "minimum": 1,
+      "description": "Maximum tokens per completion"
+    },
+    "maxIterations": { 
+      "type": "integer", 
+      "default": 50,
+      "minimum": 1,
+      "description": "Maximum agent loop iterations"
+    },
+    "temperature": {
+      "type": "number",
+      "default": 0.7,
+      "minimum": 0,
+      "maximum": 2,
+      "description": "Sampling temperature"
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "defaultMode": {
+          "type": "string",
+          "enum": ["interactive", "trust", "readonly"],
+          "default": "interactive"
+        },
+        "alwaysAllow": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["read", "glob", "grep", "web_fetch", "web_search"]
+        },
+        "alwaysDeny": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "trustedMode": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "servers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string" },
+              "args": { 
+                "type": "array", 
+                "items": { "type": "string" },
+                "default": []
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "default": {}
+              },
+              "disabled": { "type": "boolean", "default": false }
+            },
+            "required": ["command"]
+          }
+        }
+      }
+    },
+    "debug": { "type": "boolean", "default": false },
+    "telemetry": { "type": "boolean", "default": false }
+  }
+}
