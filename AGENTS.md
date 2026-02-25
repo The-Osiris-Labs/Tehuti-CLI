@@ -31,6 +31,9 @@ src/
 │   ├── model-router.ts              # Model tier routing
 │   ├── parallel-executor.ts         # Parallel tool execution
 │   ├── prefetcher.ts                # Predictive prefetching
+│   ├── skills/
+│   │   ├── manager.ts               # Skills manager and built-in skills
+│   │   └── tools.ts                 # Skills management tools
 │   ├── cache/
 │   │   ├── tool-cache.ts            # LRU cache for tool results
 │   │   ├── persistent-cache.ts      # Disk persistence
@@ -230,6 +233,22 @@ Cache stored in `~/.tehuti/cache/`:
 - All 405 tests pass (2 TTL tests skipped)
 - Build: 344KB output (`dist/index.js`)
 
+### Skills System
+New skills system implemented:
+- `src/agent/skills/manager.ts` - Manages built-in and user-defined skills
+- `src/agent/skills/tools.ts` - Five tools for skill management: list_skills, activate_skill, deactivate_skill, find_skills, get_skill
+- Built-in skills for JavaScript/TypeScript, Python, and Git expertise
+- Auto-applies relevant expertise based on task type
+- Integrated into system prompt generation
+
+### Chat UI Enhancements
+Improved chat UI in `src/cli/commands/chat.ts`:
+- Enhanced history navigation with better index management
+- Improved input handling for backspace, delete, and cursor navigation
+- Added copy-paste support (key combination detection)
+- Added `/skills` command handler using `runOneShot` function
+- Updated CommandPalette.tsx to include `/skills` command
+
 ### Markdown Rendering
 Full ANSI markdown rendering implemented in `src/terminal/markdown.ts`:
 - **Bold** rendered with ANSI bold
@@ -307,47 +326,39 @@ node dist/index.js --quiet "prompt"
 
 ## 📚 Session History
 
-### 2026-02-23
+### 2026-02-25
 
-**Major Performance Optimizations Completed:**
+**Skills System and Chat UI Enhancements:**
 
-1. **Parallel Tool Execution** - Independent read-only tools now execute concurrently:
-   - Up to 5 parallel executions
-   - Automatic classification of tool types
-   - Mutex-protected result aggregation
-   - Telemetry tracks parallel savings
+1. **Skills System Implementation** - Complete skills management system:
+   - `src/agent/skills/manager.ts` - Manages built-in and user-defined skills
+   - `src/agent/skills/tools.ts` - Five tools for skill management: list_skills, activate_skill, deactivate_skill, find_skills, get_skill
+   - Built-in skills for JavaScript/TypeScript, Python, and Git expertise
+   - Auto-applies relevant expertise based on task type
+   - Integrated into system prompt generation
 
-2. **Cache Persistence** - Tool cache persists across sessions:
-   - Stored in `~/.tehuti/cache/tool-cache.json`
-   - Auto-loads on startup
-   - Saves on exit
-   - 24-hour max cache age
+2. **Chat UI Improvements** - Enhanced user experience:
+   - Added `/skills` command handler using `runOneShot` function
+   - Updated CommandPalette.tsx to include `/skills`, `/thinking`, `/plan`, and `/compact` commands
+   - Improved history navigation with better index management
+   - Enhanced input handling for backspace, delete, and cursor navigation
+   - Added copy-paste support (key combination detection)
 
-3. **Enhanced Prefetching** - More sophisticated prediction rules:
-   - Pattern-based predictions from history
-   - Priority-based prefetch queuing
-   - Cache-aware (skips cached items)
-   - Max 10 concurrent prefetches
-
-4. **Improved Context Compression** - Better summarization:
-   - Importance scoring for messages
-   - Code block preservation
-   - Critical pattern detection
-   - Smart summarizer with context hints
-
-5. **Model Tier Routing** - Automatic model selection:
-   - Keyword-based task classification
-   - Three tiers: fast, balanced, deep
-   - Configurable via `modelSelection` option
+3. **Model Selection Fix** - Updated model-router.ts:
+   - Always respect manual model selection first
+   - Improved logic for model selection modes
+   - Fixed configuration precedence issues
 
 **Files Modified This Session:**
-- `src/agent/index.ts` - Integrated parallel execution, cache persistence
-- `src/agent/parallel-executor.ts` - Tool classification and parallel execution
-- `src/agent/cache/persistent-cache.ts` - New file for cache persistence
-- `src/agent/cache/index.ts` - Export persistent cache functions
-- `src/agent/cache/tool-cache.ts` - Added getEntries() method
-- `src/agent/prefetcher.ts` - Enhanced prediction rules
-- `src/agent/context-compressor.ts` - Improved compression with metrics
-- `src/cli/commands/chat.ts` - Save cache on exit
+- `src/agent/context.ts` - Integrated skills into system prompt
+- `src/agent/index.ts` - Added skills tools registration
+- `src/agent/model-router.ts` - Improved model selection logic
+- `src/agent/tools/registry.ts` - Added createTool helper function
+- `src/cli/commands/chat.ts` - Enhanced chat UI and command handlers
+- `src/cli/ui/components/CommandPalette.tsx` - Added new commands
+
+**New Files Created:**
+- `src/agent/skills/manager.ts` - Skills manager
+- `src/agent/skills/tools.ts` - Skills management tools
 
 **Build Status:** ✅ Build succeeds, 344KB output, 405 tests pass

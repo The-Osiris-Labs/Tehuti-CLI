@@ -152,7 +152,7 @@ export function CommandPalette({
 
 	useEffect(() => {
 		setSelectedIndex(0);
-	}, [query]);
+	}, [filteredCommands.length]);
 
 	useInput(
 		(char, key) => {
@@ -292,6 +292,13 @@ export function createCommands(options: {
 	onSave?: () => void;
 	onLoad?: () => void;
 	onStats?: () => void;
+	onCompact?: () => void;
+	onThinking?: () => void;
+	onPlan?: () => void;
+	onSkills?: () => void;
+	onActivateSkill?: (skillId: string) => void;
+	onDeactivateSkill?: (skillId: string) => void;
+	onGetSkill?: (skillId: string) => void;
 }): CommandItem[] {
 	return [
 		{
@@ -315,6 +322,13 @@ export function createCommands(options: {
 			description: "Show performance metrics and optimization statistics",
 			category: "session",
 			action: options.onStats || (() => {}),
+		},
+		{
+			id: "/compact",
+			label: "/compact",
+			description: "Compact context to free up token space",
+			category: "session",
+			action: options.onCompact || (() => {}),
 		},
 		{
 			id: "/save",
@@ -355,6 +369,27 @@ export function createCommands(options: {
 			action: options.onModels,
 		},
 		{
+			id: "/thinking",
+			label: "/thinking",
+			description: "Toggle extended thinking mode for complex reasoning",
+			category: "model",
+			action: options.onThinking || (() => {}),
+		},
+		{
+			id: "/plan",
+			label: "/plan",
+			description: "Enter plan mode (read-only exploration)",
+			category: "session",
+			action: options.onPlan || (() => {}),
+		},
+		{
+			id: "/skills",
+			label: "/skills",
+			description: "List all available skills",
+			category: "session",
+			action: options.onSkills || (() => {}),
+		},
+		{
 			id: "/help",
 			label: "/help",
 			description: "Show all commands and keyboard shortcuts",
@@ -382,14 +417,18 @@ export function formatHelpOutput(): string {
 │    /clear              Clear conversation                         │
 │    /cost               Show tokens and cost                       │
 │    /stats              Show performance metrics                   │
+│    /compact            Compact context to free up token space     │
 │    /save [name]        Save session                               │
 │    /load <id>          Load session                               │
 │    /sessions           List saved sessions                        │
+│    /plan               Enter plan mode (read-only exploration)    │
+│    /skills             List all available skills                   │
 │    /exit               Exit Tehuti                                 │
 ├──────────────────────────────────────────────────────────────────┤
 │  MODEL                                                            │
 │    /model <name>       Switch AI model                            │
 │    /models             List free models                           │
+│    /thinking           Toggle extended thinking mode              │
 ├──────────────────────────────────────────────────────────────────┤
 │  SHORTCUTS                                                        │
 │    Ctrl+K    Command palette    Ctrl+L    Clear screen            │

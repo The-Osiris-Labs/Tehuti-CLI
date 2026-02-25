@@ -56,6 +56,7 @@ import { webTools } from "./tools/web.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 import type { AgentContext } from "./context.js";
+import { skillsTools } from "./skills/tools.js";
 
 registerTools([
 	...allFsTools,
@@ -67,6 +68,7 @@ registerTools([
 	...backgroundTools,
 	...planTools,
 	...gitTools,
+	...skillsTools,
 ]);
 
 loadCacheFromDisk();
@@ -141,7 +143,7 @@ export async function runAgentLoop(
 	if (ctx.messages.length === 0) {
 		ctx.messages.push({
 			role: "system",
-			content: buildSystemPrompt(ctx),
+			content: buildSystemPrompt(ctx, userMessage),
 		});
 	}
 

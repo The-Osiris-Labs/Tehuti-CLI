@@ -8,6 +8,7 @@ import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
+import { getSkillsManager } from "./skills/manager.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -162,10 +163,20 @@ export async function createAgentContext(
 	};
 }
 
-export function buildSystemPrompt(ctx: AgentContext): string {
+export function buildSystemPrompt(ctx: AgentContext, userQuery?: string): string {
 	const projectInstructionsSection = ctx.projectInstructions
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
 		: "";
+
+	let skillsSection = "";
+	if (userQuery) {
+		const skillsManager = getSkillsManager();
+		const relevantSkills = skillsManager.findRelevantSkills(userQuery);
+		if (relevantSkills.length > 0) {
+			const expertise = skillsManager.getExpertiseForSkills(relevantSkills);
+			skillsSection = `\n## Relevant Expertise${expertise}\n`;
+		}
+	}
 
 	return `You are Tehuti, the Scribe of Code Transformations - an AI coding assistant.
 
@@ -173,7 +184,7 @@ export function buildSystemPrompt(ctx: AgentContext): string {
 - You are an expert software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 - Your goal is to accomplish the user's task efficiently and effectively.
 - You work iteratively, breaking down complex tasks into clear steps.
-${projectInstructionsSection}
+${projectInstructionsSection}${skillsSection}
 ## Operational Rules
 - Always explain what you're doing before doing it.
 - Use tools safely - never run destructive commands without confirmation.

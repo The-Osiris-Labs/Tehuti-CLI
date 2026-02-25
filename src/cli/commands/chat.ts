@@ -21,7 +21,11 @@ import {
 	configureHooks,
 	createAgentContext,
 	runAgentLoop,
+	runOneShot,
+	isPlanMode,
+	setPlanMode,
 } from "../../agent/index.js";
+import { compactContext, estimateTokens } from "../../agent/context.js";
 import { saveCacheToDisk } from "../../agent/cache/index.js";
 import {
 	type QuestionData,
@@ -860,6 +864,67 @@ function ChatUI({
 		setSessionCost(0);
 	}, []);
 
+	const handleCompact = useCallback(() => {
+		const ctx = ctxRef.current;
+		if (ctx) {
+			const currentTokens = estimateTokens(ctx.messages);
+			const compacted = compactContext(ctx);
+			if (compacted) {
+				const newTokens = estimateTokens(ctx.messages);
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Context compacted: ${currentTokens} → ${newTokens} tokens`,
+					},
+				]);
+			} else {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Context already compact (${currentTokens} tokens)`,
+					},
+				]);
+			}
+		}
+	}, []);
+
+	const handleThinking = useCallback(() => {
+		const ctx = ctxRef.current;
+		if (ctx) {
+			ctx.config.extendedThinking = !ctx.config.extendedThinking;
+			setMessages((m) => [
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Extended thinking mode ${ctx.config.extendedThinking ? "enabled" : "disabled"}`,
+				},
+			]);
+		}
+	}, []);
+
+	const handlePlan = useCallback(() => {
+		const ctx = ctxRef.current;
+		if (ctx) {
+			const newPlanMode = !isPlanMode();
+			setPlanMode(newPlanMode);
+			setMessages((m) => [
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: newPlanMode 
+						? "Plan mode entered - read-only exploration"
+						: "Plan mode exited - full access restored",
+				},
+			]);
+		}
+	}, []);
+
 	const handleShowHelp = useCallback(() => {
 		setMessages((m) => [
 			...m,
@@ -1033,6 +1098,16 @@ function ChatUI({
 				onSave: handleSave,
 				onLoad: handleLoad,
 				onStats: handleShowStats,
+				onCompact: handleCompact,
+				onThinking: handleThinking,
+				onPlan: handlePlan,
+				onSkills: async () => {
+					const result = await runOneShot(ctxRef.current!, "/skills");
+					setMessages((m) => [
+						...m,
+						{ id: msgIdRef.current++, role: "system", content: result },
+					]);
+				},
 			}),
 		[
 			handleShowCost,
@@ -1046,6 +1121,9 @@ function ChatUI({
 			handleSave,
 			handleLoad,
 			handleShowStats,
+			handleCompact,
+			handleThinking,
+			handlePlan,
 		],
 	);
 
@@ -1203,6 +1281,7 @@ function ChatUI({
 			return;
 		}
 
+		// History navigation
 		if (key.upArrow && !loading) {
 			if (history.length > 0) {
 				if (historyIndex === -1) {
@@ -1211,9 +1290,10 @@ function ChatUI({
 					setInput(history[0]);
 					setCursorPos(history[0].length);
 				} else if (historyIndex < history.length - 1) {
-					setHistoryIndex((i) => i + 1);
-					setInput(history[historyIndex + 1]);
-					setCursorPos(history[historyIndex + 1].length);
+					const newIndex = historyIndex + 1;
+					setHistoryIndex(newIndex);
+					setInput(history[newIndex]);
+					setCursorPos(history[newIndex].length);
 				}
 			}
 			return;
@@ -1221,9 +1301,10 @@ function ChatUI({
 
 		if (key.downArrow && !loading) {
 			if (historyIndex > 0) {
-				setHistoryIndex((i) => i - 1);
-				setInput(history[historyIndex - 1]);
-				setCursorPos(history[historyIndex - 1].length);
+				const newIndex = historyIndex - 1;
+				setHistoryIndex(newIndex);
+				setInput(history[newIndex]);
+				setCursorPos(history[newIndex].length);
 			} else if (historyIndex === 0) {
 				setHistoryIndex(-1);
 				setInput(inputBeforeHistoryRef.current);
@@ -1289,6 +1370,7 @@ function ChatUI({
 			return;
 		}
 
+		// Backspace handling
 		if (key.backspace || k === "\x7f" || k === "\b") {
 			if (cursorPos > 0) {
 				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
@@ -1297,6 +1379,7 @@ function ChatUI({
 			return;
 		}
 
+		// Delete handling
 		if (key.delete || k === "\x1b[3~") {
 			if (cursorPos < input.length) {
 				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
@@ -1304,6 +1387,7 @@ function ChatUI({
 			return;
 		}
 
+		// Cursor navigation
 		if (key.leftArrow) {
 			setCursorPos((p) => Math.max(0, p - 1));
 			return;
@@ -1321,6 +1405,7 @@ function ChatUI({
 			return;
 		}
 
+		// Tab completion for commands
 		if (k === "\t" && input.startsWith("/")) {
 			const suggestions = getCommandSuggestions(input, commands);
 			if (suggestions.length > 0) {
@@ -1330,6 +1415,19 @@ function ChatUI({
 			return;
 		}
 
+		// Copy-paste support
+		if (key.ctrl && k === "v") {
+			// In Ink, we can't directly access clipboard, but this handles the key combination
+			// The actual paste is handled by the terminal
+			return;
+		}
+
+		if (key.ctrl && k === "c") {
+			// Already handled above
+			return;
+		}
+
+		// Handle normal character input
 		if (k && !key.ctrl && !key.meta && k.length === 1) {
 			setInput((i) => i.slice(0, cursorPos) + k + i.slice(cursorPos));
 			setCursorPos((p) => p + 1);

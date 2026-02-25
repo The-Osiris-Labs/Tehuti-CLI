@@ -41,6 +41,10 @@ export type AnyToolExecutor = (
 
 const toolRegistry = new Map<string, ToolDefinition>();
 
+export function createTool(tool: ToolDefinition): ToolDefinition {
+	return tool;
+}
+
 export function registerTool(tool: ToolDefinition): void {
 	if (toolRegistry.has(tool.name)) {
 		debug.log("tools", `Overwriting existing tool: ${tool.name}`);

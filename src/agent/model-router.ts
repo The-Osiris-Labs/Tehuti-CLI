@@ -184,7 +184,16 @@ export function selectModelForClassification(
 		modelSelection?: ModelSelectionMode;
 	},
 ): string {
-	if (config?.modelSelection === "manual" && config?.manualModel) {
+	// Always respect manual model selection first
+	if (config?.manualModel) {
+		// If manual model is specified, use it regardless of other settings
+		// unless explicitly in cost-optimized or speed-optimized mode
+		if (config.modelSelection === "cost-optimized") {
+			return MODEL_TIERS.fast.modelId;
+		}
+		if (config.modelSelection === "speed-optimized") {
+			return MODEL_TIERS.fast.modelId;
+		}
 		return config.manualModel;
 	}
 
@@ -194,10 +203,6 @@ export function selectModelForClassification(
 
 	if (config?.modelSelection === "speed-optimized") {
 		return MODEL_TIERS.fast.modelId;
-	}
-
-	if (config?.manualModel) {
-		return config.manualModel;
 	}
 
 	if (config?.preferredTier) {

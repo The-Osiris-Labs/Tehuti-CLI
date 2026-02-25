@@ -64,6 +64,7 @@ Tehuti isn't just another AI coding assistant. It's a **complete reimagining** o
 - **🖼️ Image & PDF Reading** - Native support for vision models
 - **🔄 Background Processes** - Run and manage long-running commands
 - **🔒 Safe Execution** - Permission prompts for dangerous operations
+- **🎯 Skills System** - Auto-apply expertise based on task type (JavaScript/TypeScript, Python, Git)
 
 ### Performance Magic
 
@@ -164,6 +165,10 @@ tehuti --model z-ai/glm-4.5-air:free "explain this React component"
 | `/help` | Show all commands |
 | `/model <name>` | Change model |
 | `/models` | List available free models |
+| `/thinking` | Toggle extended thinking mode for complex reasoning |
+| `/plan` | Enter plan mode (read-only exploration) |
+| `/compact` | Compact context to free up token space |
+| `/skills` | List all available skills |
 | `/save [name]` | Save session with name |
 | `/load <id>` | Load session by ID |
 | `/sessions` | List recent sessions |
@@ -171,6 +176,34 @@ tehuti --model z-ai/glm-4.5-air:free "explain this React component"
 | `/stats` | Show performance metrics |
 | `/clear` | Clear history |
 | `/exit` | Exit CLI |
+
+## 🎯 Skills System
+
+Tehuti features an intelligent skills system that automatically detects and applies relevant expertise based on your task type. This ensures that the AI has the right context and knowledge to handle your specific coding challenge.
+
+### Built-in Skills
+
+| Skill ID | Name | Description |
+|----------|------|-------------|
+| `javascript-expert` | JavaScript/TypeScript Expert | Deep knowledge of JavaScript and TypeScript programming languages |
+| `python-expert` | Python Expert | Expert knowledge of Python programming language and its ecosystems |
+| `git-expert` | Git Expert | Advanced knowledge of Git version control system |
+
+### Using Skills
+
+```bash
+# List all available skills
+/skills
+
+# Toggle extended thinking mode (for complex reasoning)
+/thinking
+
+# Enter plan mode (read-only exploration)
+/plan
+
+# Compact context to free up token space
+/compact
+```
 
 ## 🛠️ Available Tools
 
