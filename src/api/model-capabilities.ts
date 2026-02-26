@@ -7,6 +7,8 @@ export interface ModelCapabilityInfo {
 }
 
 export const REASONING_MODELS: ReadonlySet<string> = new Set([
+	"giga-potato",
+	"giga-potato-thinking",
 	"z-ai/glm-4.5-air:free",
 	"z-ai/glm-4.5-air",
 	"z-ai/glm-5:free",
@@ -41,6 +43,7 @@ export const REASONING_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 export const REASONING_MODEL_PATTERNS: ReadonlyArray<RegExp> = [
+	/^giga-potato/i,
 	/^z-ai\/glm/i,
 	/^deepseek\/.*r1/i,
 	/^deepseek\/.*reasoner/i,
@@ -77,6 +80,46 @@ export function getReasoningField(modelId: string): "reasoning" | "thinking" | "
 }
 
 export const MODEL_CAPABILITIES: ReadonlyMap<string, ModelCapabilityInfo> = new Map([
+	[
+		"giga-potato",
+		{
+			id: "giga-potato",
+			name: "Giga Potato",
+			provider: "Kilo",
+			isReasoning: false,
+			reasoningField: "none",
+		},
+	],
+	[
+		"giga-potato-thinking",
+		{
+			id: "giga-potato-thinking",
+			name: "Giga Potato Thinking",
+			provider: "Kilo",
+			isReasoning: true,
+			reasoningField: "reasoning",
+		},
+	],
+	[
+		"minimax/minimax-m2.5:free",
+		{
+			id: "minimax/minimax-m2.5:free",
+			name: "MiniMax M2.5",
+			provider: "MiniMax",
+			isReasoning: true,
+			reasoningField: "reasoning",
+		},
+	],
+	[
+		"arcee-ai/trinity-large-preview:free",
+		{
+			id: "arcee-ai/trinity-large-preview:free",
+			name: "Arcee AI Trinity Large",
+			provider: "Arcee AI",
+			isReasoning: false,
+			reasoningField: "none",
+		},
+	],
 	[
 		"z-ai/glm-4.5-air:free",
 		{

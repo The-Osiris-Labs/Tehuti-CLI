@@ -11,7 +11,7 @@ import { useState } from "react";
 
 const config = new Conf<{ apiKey?: string; model?: string }>({
 	projectName: "tehuti",
-	defaults: { model: "z-ai/glm-4.5-air:free" },
+	defaults: { model: "giga-potato" },
 });
 
 const ORANGE = "#E67D22";
@@ -38,7 +38,7 @@ function App({
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [model, setModel] = useState(
-		config.get("model") || "z-ai/glm-4.5-air:free",
+		config.get("model") || "giga-potato",
 	);
 	const renderer = useRenderer();
 
@@ -274,7 +274,7 @@ async function main() {
 				}
 				const openrouter = createOpenRouter({ apiKey: key });
 				const result = await generateText({
-					model: openrouter(config.get("model") || "z-ai/glm-4.5-air:free"),
+					model: openrouter(config.get("model") || "giga-potato"),
 					messages: [{ role: "user", content: prompt }],
 				});
 				console.log(result.text);

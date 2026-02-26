@@ -91,7 +91,7 @@ Configuration is loaded from:
 2. `TEHUTI_MODEL` environment variable
 3. Command-line options (`--model`)
 4. `~/.tehuti.json` config file
-5. Default model: `z-ai/glm-4.5-air:free`
+5. Default model: `giga-potato`
 
 ### Model Selection Modes
 
@@ -124,7 +124,7 @@ Tehuti employs several divine optimization techniques:
 ### 4. LLM Tier Routing
 - Automatic model selection based on task complexity
 - Three tiers defined in `MODEL_TIERS`:
-  - `fast` - Simple reads, listings (`z-ai/glm-4.5-air:free`)
+  - `fast` - Simple reads, listings (`giga-potato`)
   - `balanced` - Most tasks (`z-ai/glm-5:free`)
   - `deep` - Complex tasks (`anthropic/claude-sonnet-4`)
 - Keyword-based task classification

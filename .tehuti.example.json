@@ -1,7 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/tehuti.json",
-  "model": "anthropic/claude-sonnet-4",
-  "fallbackModel": "anthropic/claude-haiku-4",
+  "provider": "kilocode",
+  "model": "giga-potato",
+  "fallbackModel": "minimax/minimax-m2.5:free",
   "maxTokens": 32000,
   "maxIterations": 50,
   "temperature": 0.7,
@@ -16,5 +17,38 @@
     "servers": {}
   },
   "debug": false,
-  "telemetry": false
+  "telemetry": false,
+  "kilocode": {
+    "memoryBank": {
+      "enabled": false,
+      "sessionId": "default",
+      "persistence": "memory"
+    },
+    "streamingOptions": {
+      "thinking": true,
+      "codeReviews": false
+    },
+    "contextManagement": {
+      "autoSummarize": true,
+      "maxContextLength": 200000
+    }
+  },
+  "grepai": {
+    "memoryBank": {
+      "enabled": false,
+      "path": ".grepai",
+      "compression": true
+    },
+    "indexing": {
+      "parallel": false,
+      "maxWorkers": 4
+    }
+  },
+  "collaboration": {
+    "enabled": false,
+    "sessionId": "default",
+    "peers": [],
+    "realTime": true
+  },
+  "customProvider": null
 }

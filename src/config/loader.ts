@@ -118,19 +118,33 @@ export async function loadConfig(
 	}
 
 	const envApiKey =
-		process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+		process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY || process.env.KILO_API_KEY;
 	const envModel = process.env.TEHUTI_MODEL;
 	const envDebug = process.env.TEHUTI_DEBUG === "true";
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
 		...resolveConfigEnvVars(fileConfig),
-		...(globalConfig.get("apiKey") && { apiKey: globalConfig.get("apiKey") }),
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
-		...(envApiKey && { apiKey: envApiKey }),
 		...(envModel && { model: envModel }),
 		...(envDebug && { debug: true }),
 	};
+	
+ 	// Handle API key with provider-specific logic
+ 	const provider = mergedConfig.provider as string;
+ 	if (provider === "kilocode") {
+ 		const kiloApiKey = process.env.KILO_API_KEY || process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+ 		if (kiloApiKey) {
+ 			mergedConfig.apiKey = kiloApiKey;
+ 		} else if (fileConfig.apiKey) {
+ 			mergedConfig.apiKey = fileConfig.apiKey;
+ 		} else {
+ 			mergedConfig.apiKey = globalConfig.get("apiKey");
+ 		}
+ 	} else {
+ 		// For other providers, use standard API key logic
+ 		mergedConfig.apiKey = envApiKey ?? fileConfig.apiKey ?? globalConfig.get("apiKey");
+ 	}
 
 	try {
 		const parsed = TEHUTI_CONFIG_SCHEMA.parse(mergedConfig);

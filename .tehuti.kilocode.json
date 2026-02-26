@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/tehuti.json",
+  "provider": "kilocode",
+  "model": "giga-potato",
+  "fallbackModel": "minimax/minimax-m2.5:free",
+  "maxTokens": 32000,
+  "maxIterations": 50,
+  "temperature": 0.7,
+  "permissions": {
+    "defaultMode": "interactive",
+    "alwaysAllow": ["read", "glob", "grep", "web_fetch", "web_search"],
+    "alwaysDeny": [],
+    "trustedMode": false
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": {}
+  },
+  "debug": false,
+  "telemetry": false
+}

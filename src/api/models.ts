@@ -1,4 +1,36 @@
 export const AVAILABLE_MODELS = {
+	"giga-potato": {
+		name: "Giga Potato (free)",
+		provider: "Kilo",
+		contextLength: 256000,
+		pricing: { input: 0, output: 0 },
+		capabilities: ["chat", "tools", "vision"] as string[],
+		recommended: true,
+	},
+	"giga-potato-thinking": {
+		name: "Giga Potato Thinking (free)",
+		provider: "Kilo",
+		contextLength: 256000,
+		pricing: { input: 0, output: 0 },
+		capabilities: ["chat", "tools", "vision"] as string[],
+		recommended: false,
+	},
+	"minimax/minimax-m2.5:free": {
+		name: "MiniMax M2.5 (free)",
+		provider: "MiniMax",
+		contextLength: 204800,
+		pricing: { input: 0, output: 0 },
+		capabilities: ["chat", "tools"] as string[],
+		recommended: false,
+	},
+	"arcee-ai/trinity-large-preview:free": {
+		name: "Arcee AI Trinity Large Preview (free)",
+		provider: "Arcee",
+		contextLength: 131000,
+		pricing: { input: 0, output: 0 },
+		capabilities: ["chat", "tools"] as string[],
+		recommended: false,
+	},
 	"anthropic/claude-opus-4": {
 		name: "Claude Opus 4",
 		provider: "Anthropic",
@@ -13,7 +45,7 @@ export const AVAILABLE_MODELS = {
 		contextLength: 200000,
 		pricing: { input: 3, output: 15 },
 		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: true,
+		recommended: false,
 	},
 	"anthropic/claude-haiku-4": {
 		name: "Claude Haiku 4",

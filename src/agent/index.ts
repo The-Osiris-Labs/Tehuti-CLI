@@ -3,6 +3,8 @@ import {
 	createStreamingState,
 	getToolCallsFromState,
 	OpenRouterClient,
+	KiloCodeClient,
+	CustomProviderClient,
 	processStreamChunk,
 } from "../api/index.js";
 import { isReasoningModel } from "../api/model-capabilities.js";
@@ -57,6 +59,12 @@ import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 import type { AgentContext } from "./context.js";
 import { skillsTools } from "./skills/tools.js";
+import { grepaiTools } from "./tools/grepai.js";
+import { kiloCodeTools } from "./tools/kilocode.js";
+import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
+import { grepaiAdvancedTools } from "./tools/grepai-advanced.js";
+import { collaborationTools } from "./tools/collaboration.js";
+import { customProviderTools } from "./tools/custom-provider.js";
 
 registerTools([
 	...allFsTools,
@@ -69,6 +77,12 @@ registerTools([
 	...planTools,
 	...gitTools,
 	...skillsTools,
+	...grepaiTools,
+	...grepaiAdvancedTools,
+	...kiloCodeTools,
+	...kilocodeAdvancedTools,
+	...collaborationTools,
+	...customProviderTools,
 ]);
 
 loadCacheFromDisk();
@@ -132,12 +146,24 @@ export async function runAgentLoop(
 	const telemetry = getTelemetry();
 	const prefetcher = getPrefetcher();
 
-	let client: OpenRouterClient;
-	try {
-		client = OpenRouterClient.getInstance(ctx.config);
-	} catch {
-		client = new OpenRouterClient(ctx.config);
-	}
+	let client: OpenRouterClient | KiloCodeClient | CustomProviderClient;
+		try {
+			if (ctx.config.provider === "kilocode") {
+				client = KiloCodeClient.getInstance(ctx.config);
+			} else if (ctx.config.provider === "custom") {
+				client = CustomProviderClient.getInstance(ctx.config);
+			} else {
+				client = OpenRouterClient.getInstance(ctx.config);
+			}
+		} catch {
+			if (ctx.config.provider === "kilocode") {
+				client = new KiloCodeClient(ctx.config);
+			} else if (ctx.config.provider === "custom") {
+				client = new CustomProviderClient(ctx.config);
+			} else {
+				client = new OpenRouterClient(ctx.config);
+			}
+		}
 	const tools = getToolDefinitions() as OpenRouterTool[];
 
 	if (ctx.messages.length === 0) {
@@ -470,7 +496,7 @@ export async function runAgentLoop(
 
 					try {
 						const startTime = Date.now();
-						let result;
+						let result: any;
 
 						if (shouldCacheTool(tc.function.name, args)) {
 							const cached = cache.get(tc.function.name, args);

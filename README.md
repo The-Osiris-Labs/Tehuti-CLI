@@ -153,7 +153,7 @@ tehuti "write a Python function to calculate fibonacci numbers"
 tehuti --model anthropic/claude-sonnet-4 "refactor this TypeScript codebase"
 
 # Use a fast free model
-tehuti --model z-ai/glm-4.5-air:free "explain this React component"
+tehuti --model giga-potato "explain this React component"
 ```
 
 ---
@@ -259,7 +259,7 @@ Config is stored in `~/.tehuti.json`:
 ```json
 {
   "apiKey": "sk-or-v1-...",
-  "model": "z-ai/glm-4.5-air:free",
+  "model": "giga-potato",
   "modelSelection": "auto",
   "permissions": { "mode": "interactive" },
   "maxIterations": 5
@@ -277,7 +277,7 @@ Config is stored in `~/.tehuti.json`:
 
 | Model | Use Case |
 |-------|----------|
-| `z-ai/glm-4.5-air:free` | Default free model |
+| `giga-potato` | Default free model (KiloCode) |
 | `meta-llama/llama-3.3-70b-instruct:free` | Large context |
 | `deepseek/deepseek-r1:free` | Reasoning |
 | `google/gemini-2.0-flash-exp:free` | Fast |

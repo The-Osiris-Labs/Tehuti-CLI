@@ -536,12 +536,12 @@ async function promptForKey(): Promise<{
 
 				saveTehutiConfig({
 					apiKey: trimmed,
-					model: "z-ai/glm-4.5-air:free",
+					model: "giga-potato",
 					initialized: true,
 				});
 				consola.success("Key saved!");
 				console.log();
-				resolve({ apiKey: trimmed, model: "z-ai/glm-4.5-air:free" });
+				resolve({ apiKey: trimmed, model: "giga-potato" });
 			} catch (e) {
 				const message = e instanceof Error ? e.message : String(e);
 				consola.fail(message);
@@ -838,7 +838,7 @@ function ChatUI({
 				id: msgIdRef.current++,
 				role: "system",
 				content:
-					"Use: /model <model-name> to switch models.\nExample: /model z-ai/glm-4.5-air:free\n\nUse /models to see available free models.",
+					"Use: /model <model-name> to switch models.\nExample: /model giga-potato\n\nUse /models to see available free models.",
 			},
 		]);
 	}, []);
@@ -2082,6 +2082,7 @@ export function createProgram(): Command {
 		.description("Tehuti CLI - Coding assistant powered by OpenRouter")
 		.version("0.1.0", "-v, --version")
 		.option("-m, --model <model>", "Override model")
+		.option("-p, --provider <provider>", "Override provider (openrouter, kilocode, custom)")
 		.option("-d, --debug", "Debug mode", false)
 		.option("-j, --json", "Output in JSON format (for one-shot prompts)", false)
 		.option(
@@ -2101,6 +2102,8 @@ export function createProgram(): Command {
 			}
 			setupErrorHandlers(opts.debug);
 
+			let provider = opts.provider || process.env.TEHUTI_PROVIDER;
+			
 			const cfg = await loadConfig();
 			const tehuti = loadTehutiConfig();
 
@@ -2109,13 +2112,26 @@ export function createProgram(): Command {
 				console.log("\x1b[38;5;214m  Config reset\x1b[0m\n");
 			}
 
-			const envApiKey = process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+			let envApiKey: string | undefined;
+			if (provider === "kilocode") {
+				envApiKey = process.env.KILO_API_KEY;
+			} else {
+				envApiKey = process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+			}
+
 			const envModel = process.env.TEHUTI_MODEL;
 
-			let apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
-			let model = opts.model || envModel || cfg.model || tehuti.model || "z-ai/glm-4.5-air:free";
+			let apiKey: string | undefined;
+			if (provider === "kilocode") {
+				apiKey = envApiKey;
+			} else {
+				apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
+			}
 
-			if (!tehuti.initialized || !apiKey) {
+			let model = opts.model || envModel || cfg.model || tehuti.model || "giga-potato";
+			provider = provider || cfg.provider || "openrouter";
+
+			if (!tehuti.initialized && provider !== "kilocode" && !apiKey) {
 				const result = await promptForKey();
 				if (!result) {
 					process.exit(1);
@@ -2126,6 +2142,7 @@ export function createProgram(): Command {
 
 			cfg.apiKey = apiKey;
 			cfg.model = model;
+			cfg.provider = provider as any;
 			configureHooks(cfg);
 
 			const diffPreview = opts.diff
@@ -2233,7 +2250,7 @@ export function createProgram(): Command {
 			} else {
 				render(
 					React.createElement(App, {
-						apiKey,
+						apiKey: apiKey || "",
 						model,
 						diffPreview,
 						cfg,

@@ -6,6 +6,30 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+	"giga-potato": {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
+	"giga-potato-thinking": {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
+	"minimax/minimax-m2.5:free": {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
+	"arcee-ai/trinity-large-preview:free": {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
 	"anthropic/claude-opus-4": {
 		input: 15,
 		output: 75,
