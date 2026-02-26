@@ -86,12 +86,68 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 	"speed-optimized",
 ]);
 
+export const PROVIDER_SCHEMA = z.enum(["openrouter", "kilocode", "custom"]).default("kilocode");
+
+export const CUSTOM_PROVIDER_SCHEMA = z.object({
+	name: z.string().describe("Name of custom provider"),
+	baseUrl: z.string().describe("API endpoint base URL"),
+	apiKey: z.string().optional().describe("API key for custom provider"),
+	headers: z.record(z.string()).optional().describe("Additional headers to send with requests"),
+});
+
+export const KILOCODE_ADVANCED_SCHEMA = z.object({
+	memoryBank: z
+		.object({
+			enabled: z.boolean().default(false),
+			sessionId: z.string().optional(),
+			persistence: z.enum(["memory", "disk"]).default("memory"),
+		})
+		.optional(),
+	streamingOptions: z
+		.object({
+			thinking: z.boolean().default(true),
+			codeReviews: z.boolean().default(false),
+		})
+		.optional(),
+	contextManagement: z
+		.object({
+			autoSummarize: z.boolean().default(true),
+			maxContextLength: z.number().int().positive().default(32000),
+		})
+		.optional(),
+});
+
+export const GREPAI_ADVANCED_SCHEMA = z.object({
+	memoryBank: z
+		.object({
+			enabled: z.boolean().default(false),
+			path: z.string().optional(),
+			compression: z.boolean().default(true),
+		})
+		.optional(),
+	indexing: z
+		.object({
+			parallel: z.boolean().default(false),
+			maxWorkers: z.number().int().positive().default(4),
+		})
+		.optional(),
+});
+
+export const COLLABORATION_SCHEMA = z.object({
+	enabled: z.boolean().default(false),
+	sessionId: z.string().optional(),
+	peers: z.array(z.string()).optional(),
+	realTime: z.boolean().default(true),
+});
+
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
-	model: z.string().default("z-ai/glm-4.5-air:free"),
-	fallbackModel: z.string().default("z-ai/glm-4.5-air:free"),
+	model: z.string().default("giga-potato"),
+	fallbackModel: z.string().default("minimax/minimax-m2.5:free"),
 	apiKey: z.string().optional(),
-	baseUrl: z.string().default("https://openrouter.ai/api/v1"),
+	baseUrl: z.string().optional(),
+	provider: PROVIDER_SCHEMA,
+	customProvider: CUSTOM_PROVIDER_SCHEMA.optional(),
 	maxTokens: z.number().int().positive().default(32000),
 	maxIterations: z.number().int().positive().default(50),
 	temperature: z.number().min(0).max(2).default(0.7),
@@ -111,6 +167,10 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	branding: BRANDING_CONFIG_SCHEMA.optional(),
 	debug: z.boolean().default(false),
 	telemetry: z.boolean().default(false),
+	// Advanced features
+	kilocode: KILOCODE_ADVANCED_SCHEMA.optional(),
+	grepai: GREPAI_ADVANCED_SCHEMA.optional(),
+	collaboration: COLLABORATION_SCHEMA.optional(),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -121,9 +181,11 @@ export type BrandingConfig = z.infer<typeof BRANDING_CONFIG_SCHEMA>;
 export type ModelSelectionMode = z.infer<typeof MODEL_SELECTION_SCHEMA>;
 
 export const DEFAULT_CONFIG: TehutiConfig = {
-	model: "z-ai/glm-4.5-air:free",
-	fallbackModel: "z-ai/glm-4.5-air:free",
-	baseUrl: "https://openrouter.ai/api/v1",
+	model: "giga-potato",
+	fallbackModel: "minimax/minimax-m2.5:free",
+	apiKey: undefined,
+	baseUrl: "https://api.kilo.ai/api/gateway",
+	provider: "kilocode",
 	maxTokens: 32000,
 	maxIterations: 50,
 	temperature: 0.7,
@@ -141,6 +203,40 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		enabled: true,
 		servers: {},
 	},
+	branding: undefined,
 	debug: false,
 	telemetry: false,
+	kilocode: {
+		memoryBank: {
+			enabled: false,
+			sessionId: "default",
+			persistence: "memory"
+		},
+		streamingOptions: {
+			thinking: true,
+			codeReviews: false
+		},
+		contextManagement: {
+			autoSummarize: true,
+			maxContextLength: 200000
+		}
+	},
+	grepai: {
+		memoryBank: {
+			enabled: false,
+			path: ".grepai",
+			compression: true
+		},
+		indexing: {
+			parallel: false,
+			maxWorkers: 4
+		}
+	},
+	collaboration: {
+		enabled: false,
+		sessionId: "default",
+		peers: [],
+		realTime: true
+	},
+	customProvider: undefined,
 };

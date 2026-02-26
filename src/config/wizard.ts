@@ -23,11 +23,26 @@ const c = {
 	green: (text: string) => `${GREEN}${text}${RESET}`,
 };
 
-const AVAILABLE_MODELS = [
+	const AVAILABLE_MODELS = [
 	{
-		name: "GLM 4.5 Air (Free, Reasoning)",
-		value: "z-ai/glm-4.5-air:free",
-		description: "Free reasoning model - default",
+		name: "Giga Potato (Free, Highly Capable)",
+		value: "giga-potato",
+		description: "Free model optimized for agentic programming with visual understanding",
+	},
+	{
+		name: "Giga Potato Thinking (Free, Reasoning)",
+		value: "giga-potato-thinking",
+		description: "Free model with enhanced reasoning capabilities",
+	},
+	{
+		name: "MiniMax M2.5 (Free, Productivity)",
+		value: "minimax/minimax-m2.5:free",
+		description: "Free model specialized for real-world productivity tasks",
+	},
+	{
+		name: "Trinity Large (Free, Research)",
+		value: "arcee-ai/trinity-large-preview:free",
+		description: "Free large-scale model with advanced capabilities",
 	},
 	{
 		name: "Claude Sonnet 4",
@@ -77,7 +92,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	const model = await select({
 		message: `${EYE} Choose your default model:`,
 		choices: AVAILABLE_MODELS,
-		default: "z-ai/glm-4.5-air:free",
+		default: "giga-potato",
 	});
 
 	const enableMCP = await confirm({

@@ -18,7 +18,7 @@ export interface ModelConfig {
 export const MODEL_TIERS: Record<ModelTier, ModelConfig> = {
 	fast: {
 		tier: "fast",
-		modelId: "z-ai/glm-4.5-air:free",
+		modelId: "giga-potato",
 		description: "Fast and free - best for simple reads and listings",
 		maxTokens: 4096,
 		supportsTools: true,
@@ -28,8 +28,8 @@ export const MODEL_TIERS: Record<ModelTier, ModelConfig> = {
 	},
 	balanced: {
 		tier: "balanced",
-		modelId: "z-ai/glm-5:free",
-		description: "Balanced performance - good for most tasks",
+		modelId: "giga-potato-thinking",
+		description: "Balanced performance with reasoning - good for most tasks",
 		maxTokens: 8192,
 		supportsTools: true,
 		supportsVision: false,
