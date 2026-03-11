@@ -266,6 +266,63 @@ npm import string-width    # Proper string width (Unicode aware)
 
 ---
 
+## Local LLM Integration (Recent Improvements)
+
+### Dynamic Custom Provider Support
+**Files Modified:** `src/api/custom-provider.ts`, `src/config/loader.ts`
+
+**Key Enhancements:**
+
+1. **HTTP Support for Local Connections**
+   - Updated `validateBaseUrl` to allow HTTP for localhost, 127.0.0.1, and private IP ranges (10.x.x.x, 172.16.x.x-172.31.x.x, 192.168.x.x)
+   - Provides meaningful error messages with detailed information about invalid baseUrl formats
+
+2. **Environment Variable Configuration**
+   - Added support for `TEHUTI_CUSTOM_PROVIDER` environment variable
+   - Accepts JSON string with complete custom provider configuration
+   - Example:
+     ```bash
+     export TEHUTI_CUSTOM_PROVIDER='{"name":"Ollama","baseUrl":"http://localhost:11434/v1","apiKey":"ollama","headers":{}}'
+     ```
+
+3. **Variable Name Clash Fix**
+   - Fixed "Cannot access 'body2' before initialization" error in custom provider
+   - Renamed `body` variable to `responseBody` to avoid conflict with function parameter
+
+**Supported Local LLM Servers:**
+- Ollama (http://localhost:11434/v1)
+- LM Studio (http://localhost:1234/v1)
+- Jan (http://localhost:1337/v1)
+- LocalAI (http://localhost:8080/v1)
+- Text Generation WebUI (http://localhost:5000/v1)
+
+**Usage Methods:**
+
+**Method 1: Environment Variables (Dynamic)**
+```bash
+export TEHUTI_PROVIDER="custom"
+export TEHUTI_MODEL="llama3.2:latest"
+export TEHUTI_CUSTOM_PROVIDER='{"name":"Ollama","baseUrl":"http://localhost:11434/v1","apiKey":"ollama","headers":{}}'
+tehuti --json "Your prompt here"
+```
+
+**Method 2: Config File (Persistent)**
+```json
+// ~/.tehuti.json or project .tehuti.json
+{
+  "provider": "custom",
+  "customProvider": {
+    "name": "Ollama",
+    "baseUrl": "http://localhost:11434/v1",
+    "apiKey": "ollama",
+    "headers": {}
+  },
+  "model": "llama3.2:latest"
+}
+```
+
+---
+
 ## Migration Commands
 
 ```bash

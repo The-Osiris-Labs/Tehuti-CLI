@@ -127,12 +127,18 @@ export async function loadConfig(
 		process.env.KILO_API_KEY;
 	const envModel = process.env.TEHUTI_MODEL;
 	const envDebug = process.env.TEHUTI_DEBUG === "true";
+	const envProvider = process.env.TEHUTI_PROVIDER;
+	const envCustomProvider = process.env.TEHUTI_CUSTOM_PROVIDER;
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
 		...resolveConfigEnvVars(fileConfig),
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
 		...(envModel && { model: envModel }),
+		...(envProvider && { provider: envProvider }),
+		...(envCustomProvider && { 
+			customProvider: JSON.parse(envCustomProvider) 
+		}),
 		...(envDebug && { debug: true }),
 	};
 

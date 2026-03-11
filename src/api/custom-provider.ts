@@ -91,11 +91,16 @@ export class CustomProviderClient {
 	private validateBaseUrl(url: string): void {
 		try {
 			const parsed = new URL(url);
-			if (parsed.protocol !== "https:") {
-				throw new APIError("baseUrl must use HTTPS protocol");
+			const isLocal = 
+				parsed.hostname === "localhost" || 
+				parsed.hostname === "127.0.0.1" || 
+				parsed.hostname.match(/^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\./);
+			
+			if (parsed.protocol !== "https:" && !isLocal) {
+				throw new APIError("baseUrl must use HTTPS protocol for remote connections");
 			}
 		} catch (e) {
-			throw new APIError("Invalid baseUrl format");
+			throw new APIError(`Invalid baseUrl format: ${(e as Error).message}`);
 		}
 	}
 
@@ -344,12 +349,12 @@ export class CustomProviderClient {
 				);
 			}
 
-			const body = response.body;
-			if (!body) {
+			const responseBody = response.body;
+			if (!responseBody) {
 				throw new APIError("No response body to stream");
 			}
 			reader =
-				body.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
+				responseBody.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
 			const decoder = new TextDecoder();
 			let buffer = "";
