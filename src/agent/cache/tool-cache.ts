@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ToolResult } from "../tools/registry.js";
-import { LRUCache, type CacheEntry, type CacheStats } from "./lru-cache.js";
+import { type CacheEntry, type CacheStats, LRUCache } from "./lru-cache.js";
 
 export class ToolCache {
 	private cache: LRUCache<ToolResult>;
@@ -49,7 +49,12 @@ export class ToolCache {
 		return result;
 	}
 
-	set(toolName: string, args: unknown, result: ToolResult, options?: { mtime?: number; ttl?: number }): void {
+	set(
+		toolName: string,
+		args: unknown,
+		result: ToolResult,
+		options?: { mtime?: number; ttl?: number },
+	): void {
 		if (!result.success) return;
 
 		const opts = options || {};

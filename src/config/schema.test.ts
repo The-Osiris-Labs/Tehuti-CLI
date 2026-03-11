@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { TEHUTI_CONFIG_SCHEMA, DEFAULT_CONFIG } from "../config/schema.js";
+import { describe, expect, it } from "vitest";
 import type { TehutiConfig } from "../config/schema.js";
+import { DEFAULT_CONFIG, TEHUTI_CONFIG_SCHEMA } from "../config/schema.js";
 
 describe("Config Schema", () => {
 	describe("Validation", () => {
@@ -48,7 +48,9 @@ describe("Config Schema", () => {
 			expect(result.success).toBe(true);
 			expect((result as any).data.provider).toBe("custom");
 			expect((result as any).data.customProvider?.name).toBe("Test Provider");
-			expect((result as any).data.customProvider?.baseUrl).toBe("https://api.test.com/v1");
+			expect((result as any).data.customProvider?.baseUrl).toBe(
+				"https://api.test.com/v1",
+			);
 			expect((result as any).data.customProvider?.apiKey).toBe("test-key");
 		});
 

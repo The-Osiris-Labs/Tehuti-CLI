@@ -1,5 +1,5 @@
-import { marked } from "marked";
 import type { Token } from "marked";
+import { marked } from "marked";
 import { shouldUseColors } from "./capabilities.js";
 
 const ANSI = {
@@ -12,7 +12,7 @@ const ANSI = {
 	inverse: "\x1b[7m",
 	hidden: "\x1b[8m",
 	strikethrough: "\x1b[9m",
-	
+
 	black: "\x1b[30m",
 	red: "\x1b[31m",
 	green: "\x1b[32m",
@@ -21,7 +21,7 @@ const ANSI = {
 	magenta: "\x1b[35m",
 	cyan: "\x1b[36m",
 	white: "\x1b[37m",
-	
+
 	brightBlack: "\x1b[90m",
 	brightRed: "\x1b[91m",
 	brightGreen: "\x1b[92m",
@@ -30,7 +30,7 @@ const ANSI = {
 	brightMagenta: "\x1b[95m",
 	brightCyan: "\x1b[96m",
 	brightWhite: "\x1b[97m",
-	
+
 	gold: "\x1b[38;5;178m",
 	coral: "\x1b[38;5;174m",
 	sand: "\x1b[38;5;137m",
@@ -94,20 +94,20 @@ function code(text: string): string {
 function codeBlock(code: string, _language?: string): string {
 	const lines = code.split("\n");
 	const lineNumWidth = Math.max(2, String(lines.length).length);
-	
+
 	const formatted = lines
 		.map((line, i) => {
 			const lineNum = String(i + 1).padStart(lineNumWidth);
 			return `${dim(lineNum)} │ ${line}`;
 		})
 		.join("\n");
-	
+
 	return `\n${formatted}\n`;
 }
 
 function renderInlineTokens(tokens: Token[]): string {
 	let result = "";
-	
+
 	for (const token of tokens) {
 		switch (token.type) {
 			case "text":
@@ -126,7 +126,9 @@ function renderInlineTokens(tokens: Token[]): string {
 				result += strikethrough(renderInlineTokens(token.tokens || []));
 				break;
 			case "link":
-				result += blue(ANSI.underline + renderInlineTokens(token.tokens || []) + ANSI.reset);
+				result += blue(
+					ANSI.underline + renderInlineTokens(token.tokens || []) + ANSI.reset,
+				);
 				break;
 			case "br":
 				result += "\n";
@@ -142,7 +144,7 @@ function renderInlineTokens(tokens: Token[]): string {
 				}
 		}
 	}
-	
+
 	return result;
 }
 
@@ -150,12 +152,12 @@ function renderToken(token: Token, indent: string = ""): string {
 	switch (token.type) {
 		case "paragraph":
 			return `\n${indent}${renderInlineTokens(token.tokens || [])}\n`;
-		
+
 		case "heading": {
 			const level = token.depth;
 			const text = renderInlineTokens(token.tokens || []);
 			const prefix = "=".repeat(Math.max(1, 7 - level));
-			
+
 			if (level === 1) {
 				return `\n${gold(bold(text))}\n${dim(prefix.repeat(text.length))}\n`;
 			} else if (level === 2) {
@@ -164,14 +166,14 @@ function renderToken(token: Token, indent: string = ""): string {
 				return `\n${bold(text)}\n`;
 			}
 		}
-		
+
 		case "code":
 			return `\n${dim("┌─ " + (token.lang || "code"))}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
-		
+
 		case "list": {
 			const items = token.items || [];
-			const bullet = token.ordered ? ((i: number) => `${i + 1}.`) : (() => "•");
-			
+			const bullet = token.ordered ? (i: number) => `${i + 1}.` : () => "•";
+
 			let result = "\n";
 			for (let i = 0; i < items.length; i++) {
 				const item = items[i];
@@ -181,59 +183,65 @@ function renderToken(token: Token, indent: string = ""): string {
 			}
 			return result;
 		}
-		
+
 		case "blockquote":
 			return `\n${dim("│")} ${italic(renderInlineTokens(token.tokens || []))}\n`;
-		
+
 		case "hr":
 			return `\n${dim("─".repeat(50))}\n`;
-		
+
 		case "space":
 			return "\n";
-		
+
 		case "html":
 			return `\n${token.text}\n`;
-		
+
 		case "table": {
 			const header = token.header || [];
 			const rows = token.rows || [];
-			
+
 			const widths: number[] = header.map((h: Token, i: number) => {
-				const headerLen = "text" in h && typeof h.text === "string" ? h.text.length : 0;
+				const headerLen =
+					"text" in h && typeof h.text === "string" ? h.text.length : 0;
 				const rowLens = rows.map((r: Token[]) => {
 					const cell = r[i];
-					return cell && "text" in cell && typeof cell.text === "string" ? cell.text.length : 0;
+					return cell && "text" in cell && typeof cell.text === "string"
+						? cell.text.length
+						: 0;
 				});
 				return Math.max(headerLen, ...rowLens);
 			});
-			
+
 			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
-			
+
 			let result = "\n";
 			result += `┌${border.join("┬")}┐\n`;
-			
+
 			const headerCells: string[] = header.map((h: Token, i: number) => {
 				const text = "text" in h && typeof h.text === "string" ? h.text : "";
 				const width = widths[i];
 				return `│ ${bold(text.padEnd(width))} `;
 			});
 			result += headerCells.join("") + "│\n";
-			
+
 			result += `├${border.join("┼")}┤\n`;
-			
+
 			for (const row of rows) {
 				const cells: string[] = row.map((cell: Token, i: number) => {
-					const text = cell && "text" in cell && typeof cell.text === "string" ? cell.text : "";
+					const text =
+						cell && "text" in cell && typeof cell.text === "string"
+							? cell.text
+							: "";
 					const width = widths[i];
 					return `│ ${text.padEnd(width)} `;
 				});
 				result += cells.join("") + "│\n";
 			}
-			
+
 			result += `└${border.join("┴")}┘\n`;
 			return result;
 		}
-		
+
 		default:
 			if ("text" in token && typeof token.text === "string") {
 				return token.text;
@@ -249,11 +257,11 @@ export function renderMarkdownToAnsi(markdown: string): string {
 	try {
 		const tokens = marked.lexer(markdown);
 		let result = "";
-		
+
 		for (const token of tokens) {
 			result += renderToken(token);
 		}
-		
+
 		return result.trim();
 	} catch {
 		return markdown;
@@ -264,13 +272,13 @@ export function renderInlineMarkdownToAnsi(markdown: string): string {
 	try {
 		const tokens = marked.lexer(markdown);
 		const inlineTokens: Token[] = [];
-		
+
 		for (const token of tokens) {
 			if (token.type === "paragraph" && token.tokens) {
 				inlineTokens.push(...token.tokens);
 			}
 		}
-		
+
 		return renderInlineTokens(inlineTokens);
 	} catch {
 		return markdown;
@@ -279,22 +287,45 @@ export function renderInlineMarkdownToAnsi(markdown: string): string {
 
 export function formatDiff(diffOutput: string, _filename?: string): string {
 	const lines = diffOutput.split("\n");
-	const formatted = lines.map((line) => {
-		if (line.startsWith("+") && !line.startsWith("+++") && !line.startsWith("+@@")) {
-			return green(line);
-		} else if (line.startsWith("-") && !line.startsWith("---") && !line.startsWith("-@@")) {
-			return `\x1b[31m${line}\x1b[0m`;
-		} else if (line.startsWith("@@")) {
-			return cyan(line);
-		} else if (line.startsWith("diff --git") || line.startsWith("index ")) {
-			return dim(line);
-		} else if (line.startsWith("+++") || line.startsWith("---")) {
-			return bold(line);
-		}
-		return line;
-	}).join("\n");
-	
+	const formatted = lines
+		.map((line) => {
+			if (
+				line.startsWith("+") &&
+				!line.startsWith("+++") &&
+				!line.startsWith("+@@")
+			) {
+				return green(line);
+			} else if (
+				line.startsWith("-") &&
+				!line.startsWith("---") &&
+				!line.startsWith("-@@")
+			) {
+				return `\x1b[31m${line}\x1b[0m`;
+			} else if (line.startsWith("@@")) {
+				return cyan(line);
+			} else if (line.startsWith("diff --git") || line.startsWith("index ")) {
+				return dim(line);
+			} else if (line.startsWith("+++") || line.startsWith("---")) {
+				return bold(line);
+			}
+			return line;
+		})
+		.join("\n");
+
 	return formatted;
 }
 
-export { bold, italic, dim, cyan, green, gold, coral, blue, code, strikethrough, ANSI, COLORS };
+export {
+	bold,
+	italic,
+	dim,
+	cyan,
+	green,
+	gold,
+	coral,
+	blue,
+	code,
+	strikethrough,
+	ANSI,
+	COLORS,
+};

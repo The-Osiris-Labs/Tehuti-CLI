@@ -1,7 +1,7 @@
 import * as path from "node:path";
+import { getToolCache } from "./cache/index.js";
 import type { ToolContext } from "./tools/registry.js";
 import { executeTool } from "./tools/registry.js";
-import { getToolCache } from "./cache/index.js";
 
 export interface PrefetchRule {
 	currentTool: string;
@@ -46,7 +46,11 @@ const PREFETCH_RULES: PrefetchRule[] = [
 					if (typeof filePath !== "string") return null;
 					const ext = path.extname(filePath).slice(1);
 					if (!ext) return null;
-					return { pattern: "import|require|from", path: path.dirname(filePath), include: `*.${ext}` };
+					return {
+						pattern: "import|require|from",
+						path: path.dirname(filePath),
+						include: `*.${ext}`,
+					};
 				},
 				condition: (args: unknown) => {
 					if (!args || typeof args !== "object") return false;
@@ -188,7 +192,11 @@ export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
 	private rules: PrefetchRule[];
 	private enabled: boolean = true;
-	private recentPatterns: Array<{ tool: string; args: unknown; timestamp: number }> = [];
+	private recentPatterns: Array<{
+		tool: string;
+		args: unknown;
+		timestamp: number;
+	}> = [];
 	private readonly maxRecentPatterns = 50;
 
 	constructor(rules: PrefetchRule[] = PREFETCH_RULES) {
@@ -219,7 +227,8 @@ export class Prefetcher {
 	}
 
 	predictFromHistory(): Array<{ tool: string; args: unknown }> {
-		const predictions: Array<{ tool: string; args: unknown; score: number }> = [];
+		const predictions: Array<{ tool: string; args: unknown; score: number }> =
+			[];
 		const now = Date.now();
 		const windowMs = 5 * 60 * 1000;
 

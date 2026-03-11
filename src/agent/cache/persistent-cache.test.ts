@@ -48,10 +48,14 @@ describe("Persistent Cache", () => {
 
 		it("should save cache entries to disk", () => {
 			const cache = getToolCache();
-			cache.set("read", { file_path: "/test/file.ts" }, {
-				success: true,
-				output: "file content",
-			});
+			cache.set(
+				"read",
+				{ file_path: "/test/file.ts" },
+				{
+					success: true,
+					output: "file content",
+				},
+			);
 
 			saveCacheToDisk();
 
@@ -70,10 +74,14 @@ describe("Persistent Cache", () => {
 
 		it("should handle write errors gracefully", () => {
 			const cache = getToolCache();
-			cache.set("read", { file_path: "/test/file.ts" }, {
-				success: true,
-				output: "content",
-			});
+			cache.set(
+				"read",
+				{ file_path: "/test/file.ts" },
+				{
+					success: true,
+					output: "content",
+				},
+			);
 
 			vi.mocked(fs.writeFileSync).mockImplementation(() => {
 				throw new Error("Write failed");
@@ -226,8 +234,16 @@ describe("Persistent Cache", () => {
 			const mockCache = {
 				version: 1,
 				entries: [
-					{ key: "read:{}", result: { success: true, output: "a" }, timestamp: 1 },
-					{ key: "glob:{}", result: { success: true, output: "b" }, timestamp: 2 },
+					{
+						key: "read:{}",
+						result: { success: true, output: "a" },
+						timestamp: 1,
+					},
+					{
+						key: "glob:{}",
+						result: { success: true, output: "b" },
+						timestamp: 2,
+					},
 				],
 				savedAt: Date.now(),
 			};

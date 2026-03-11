@@ -30,8 +30,9 @@ export async function promiseAllWithConcurrency<T>(
 		}
 	};
 
-	const workers = Array.from({ length: Math.min(maxConcurrency, tasks.length) }, (_, i) =>
-		executeTask(i),
+	const workers = Array.from(
+		{ length: Math.min(maxConcurrency, tasks.length) },
+		(_, i) => executeTask(i),
 	);
 
 	await Promise.all(workers);
@@ -69,8 +70,9 @@ export async function promiseAllSettledWithConcurrency<T>(
 		}
 	};
 
-	const workers = Array.from({ length: Math.min(maxConcurrency, tasks.length) }, () =>
-		executeTask(),
+	const workers = Array.from(
+		{ length: Math.min(maxConcurrency, tasks.length) },
+		() => executeTask(),
 	);
 
 	await Promise.all(workers);

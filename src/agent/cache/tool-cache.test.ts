@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ToolCache, getToolCache, resetToolCache } from "./tool-cache.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolResult } from "../tools/registry.js";
+import { getToolCache, resetToolCache, ToolCache } from "./tool-cache.js";
 
 const FIXED_MTIME = 1700000000000;
 
@@ -61,7 +61,11 @@ describe("ToolCache", () => {
 
 	describe("invalidateFile", () => {
 		it("should invalidate cache entries for a specific file", () => {
-			cache.set("read", { file_path: "/test/file.ts" }, createResult("content"));
+			cache.set(
+				"read",
+				{ file_path: "/test/file.ts" },
+				createResult("content"),
+			);
 			cache.set("read", { file_path: "/test/other.ts" }, createResult("other"));
 
 			const deleted = cache.invalidateFile("/test/file.ts");
@@ -73,7 +77,11 @@ describe("ToolCache", () => {
 
 	describe("invalidateDirectory", () => {
 		it("should invalidate cache entries for a directory", () => {
-			cache.set("glob", { pattern: "*.ts", path: "/test" }, createResult("files"));
+			cache.set(
+				"glob",
+				{ pattern: "*.ts", path: "/test" },
+				createResult("files"),
+			);
 			cache.set("list_dir", { dir_path: "/test" }, createResult("dirs"));
 
 			const deleted = cache.invalidateDirectory("/test");
@@ -98,7 +106,11 @@ describe("ToolCache", () => {
 
 	describe("getHitRate", () => {
 		it("should return cache hit rate", () => {
-			cache.set("read", { file_path: "/test/file.ts" }, createResult("content"));
+			cache.set(
+				"read",
+				{ file_path: "/test/file.ts" },
+				createResult("content"),
+			);
 
 			cache.get("read", { file_path: "/test/file.ts" });
 			cache.get("read", { file_path: "/test/file.ts" });
@@ -132,7 +144,11 @@ describe("getToolCache", () => {
 describe("resetToolCache", () => {
 	it("should reset the global cache instance", () => {
 		const c1 = getToolCache();
-		c1.set("read", { file_path: "/test.ts" }, { output: "content", success: true });
+		c1.set(
+			"read",
+			{ file_path: "/test.ts" },
+			{ output: "content", success: true },
+		);
 
 		resetToolCache();
 

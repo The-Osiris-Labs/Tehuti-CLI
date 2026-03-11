@@ -67,7 +67,8 @@ export class LRUCache<T = unknown> {
 
 	private evictLRU(): void {
 		while (
-			(this.currentSize > this.config.maxSize || this.cache.size >= this.config.maxEntries) &&
+			(this.currentSize > this.config.maxSize ||
+				this.cache.size >= this.config.maxEntries) &&
 			this.accessOrder.length > 0
 		) {
 			const oldestKey = this.accessOrder.shift();
@@ -116,7 +117,12 @@ export class LRUCache<T = unknown> {
 		return entry.result;
 	}
 
-	set(tool: string, args: unknown, result: T, options?: { mtime?: number; ttl?: number }): void {
+	set(
+		tool: string,
+		args: unknown,
+		result: T,
+		options?: { mtime?: number; ttl?: number },
+	): void {
 		const key = this.buildKey(tool, args);
 		const size = this.estimateSize(result);
 
@@ -126,7 +132,8 @@ export class LRUCache<T = unknown> {
 		}
 
 		while (
-			(this.currentSize + size > this.config.maxSize || this.cache.size >= this.config.maxEntries) &&
+			(this.currentSize + size > this.config.maxSize ||
+				this.cache.size >= this.config.maxEntries) &&
 			this.accessOrder.length > 0
 		) {
 			this.evictLRU();

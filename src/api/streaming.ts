@@ -1,5 +1,5 @@
-import { isReasoningModel } from "./model-capabilities.js";
 import { debug } from "../utils/debug.js";
+import { isReasoningModel } from "./model-capabilities.js";
 
 export interface StreamingState {
 	content: string;

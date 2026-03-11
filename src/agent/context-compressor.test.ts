@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { OpenRouterMessage } from "../api/openrouter.js";
 import {
 	compressContext,
 	compressContextWithMetrics,
@@ -8,7 +9,6 @@ import {
 	identifyCriticalMessages,
 	progressiveCompress,
 } from "./context-compressor.js";
-import type { OpenRouterMessage } from "../api/openrouter.js";
 
 describe("Context Compressor", () => {
 	describe("estimateTokens", () => {
@@ -52,7 +52,11 @@ describe("Context Compressor", () => {
 		it("should identify messages with multiple critical patterns as critical", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "user", content: "Do something" },
-				{ role: "assistant", content: "I encountered an error and the operation failed. This is important." },
+				{
+					role: "assistant",
+					content:
+						"I encountered an error and the operation failed. This is important.",
+				},
 			];
 
 			const critical = identifyCriticalMessages(messages);
@@ -63,7 +67,10 @@ describe("Context Compressor", () => {
 		it("should identify messages with error and decision patterns as critical", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "user", content: "Do something" },
-				{ role: "assistant", content: "Error occurred. Decision: we will fix it." },
+				{
+					role: "assistant",
+					content: "Error occurred. Decision: we will fix it.",
+				},
 			];
 
 			const critical = identifyCriticalMessages(messages);
@@ -84,7 +91,10 @@ describe("Context Compressor", () => {
 
 		it("should identify messages with TODO and important patterns as critical", () => {
 			const messages: OpenRouterMessage[] = [
-				{ role: "assistant", content: "TODO: fix this. Important: check this later." },
+				{
+					role: "assistant",
+					content: "TODO: fix this. Important: check this later.",
+				},
 			];
 
 			const critical = identifyCriticalMessages(messages);
@@ -94,7 +104,11 @@ describe("Context Compressor", () => {
 
 		it("should identify messages with 4+ code blocks as critical", () => {
 			const messagesWithCode: OpenRouterMessage[] = [
-				{ role: "assistant", content: "Code:\n```ts\n1\n```\n```ts\n2\n```\n```ts\n3\n```\n```ts\n4\n```" },
+				{
+					role: "assistant",
+					content:
+						"Code:\n```ts\n1\n```\n```ts\n2\n```\n```ts\n3\n```\n```ts\n4\n```",
+				},
 			];
 
 			const critical = identifyCriticalMessages(messagesWithCode);
@@ -104,7 +118,10 @@ describe("Context Compressor", () => {
 
 		it("should score code blocks higher than no code", () => {
 			const messagesWithCode: OpenRouterMessage[] = [
-				{ role: "assistant", content: "Here's code:\n```typescript\nconst x = 1;\n```" },
+				{
+					role: "assistant",
+					content: "Here's code:\n```typescript\nconst x = 1;\n```",
+				},
 			];
 			const messagesWithoutCode: OpenRouterMessage[] = [
 				{ role: "assistant", content: "Just text, no code" },
@@ -113,7 +130,9 @@ describe("Context Compressor", () => {
 			const criticalWithCode = identifyCriticalMessages(messagesWithCode);
 			const criticalWithoutCode = identifyCriticalMessages(messagesWithoutCode);
 
-			expect(criticalWithCode.length).toBeGreaterThanOrEqual(criticalWithoutCode.length);
+			expect(criticalWithCode.length).toBeGreaterThanOrEqual(
+				criticalWithoutCode.length,
+			);
 		});
 	});
 
@@ -151,14 +170,16 @@ describe("Context Compressor", () => {
 				{ role: "system", content: "System prompt" },
 				...Array.from({ length: 20 }, (_, i) => ({
 					role: "user" as const,
-					content: `Message ${i} with lots of content to make it long enough to trigger compression`.repeat(
-						10,
-					),
+					content:
+						`Message ${i} with lots of content to make it long enough to trigger compression`.repeat(
+							10,
+						),
 				})),
 				{ role: "user", content: "Final message" },
 			];
 
-			const summarizer = async (text: string) => `Summary of: ${text.slice(0, 50)}`;
+			const summarizer = async (text: string) =>
+				`Summary of: ${text.slice(0, 50)}`;
 			const result = await compressContext(messages, summarizer, {
 				targetTokens: 1000,
 				keepFirstN: 1,
@@ -268,7 +289,8 @@ describe("Context Compressor", () => {
 
 	describe("createContextSummarizer", () => {
 		it("should create a summarizer function", () => {
-			const modelCall = async (prompt: string) => `Summary: ${prompt.slice(0, 20)}`;
+			const modelCall = async (prompt: string) =>
+				`Summary: ${prompt.slice(0, 20)}`;
 			const summarizer = createContextSummarizer(modelCall);
 
 			expect(typeof summarizer).toBe("function");
@@ -282,7 +304,9 @@ describe("Context Compressor", () => {
 
 			const result = await summarizer("Some text");
 
-			expect(result).toBe("Context was summarized but details are no longer available.");
+			expect(result).toBe(
+				"Context was summarized but details are no longer available.",
+			);
 		});
 	});
 

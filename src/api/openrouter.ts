@@ -108,7 +108,10 @@ export class OpenRouterClient {
 
 	static getInstance(config: TehutiConfig): OpenRouterClient {
 		const configKey = `${config.apiKey}:${config.model}`;
-		if (!OpenRouterClient.instance || OpenRouterClient.lastConfigKey !== configKey) {
+		if (
+			!OpenRouterClient.instance ||
+			OpenRouterClient.lastConfigKey !== configKey
+		) {
 			OpenRouterClient.instance = new OpenRouterClient(config);
 			OpenRouterClient.lastConfigKey = configKey;
 		}
@@ -417,7 +420,10 @@ export class OpenRouterClient {
 		throw lastError ?? new Error("Max retries exceeded");
 	}
 
-	private defaultIsRetryable(error: Error, isUserAbort: boolean = false): boolean {
+	private defaultIsRetryable(
+		error: Error,
+		isUserAbort: boolean = false,
+	): boolean {
 		if (isUserAbort) {
 			return false;
 		}
@@ -437,7 +443,11 @@ export class OpenRouterClient {
 			return false;
 		}
 		const msg = error.message.toLowerCase();
-		if (msg.includes("econnrefused") || msg.includes("enotfound") || msg.includes("econnreset")) {
+		if (
+			msg.includes("econnrefused") ||
+			msg.includes("enotfound") ||
+			msg.includes("econnreset")
+		) {
 			return true;
 		}
 		return false;
@@ -533,10 +543,10 @@ export class OpenRouterClient {
 				if (response.status === 401) {
 					throw new APIError(
 						`API key appears to be invalid or expired.\n\n` +
-						`Suggestions:\n` +
-						`  • Check OPENROUTER_API_KEY environment variable\n` +
-						`  • Check ~/.tehuti.json config file\n` +
-						`  • Run 'tehuti init' to reconfigure`,
+							`Suggestions:\n` +
+							`  • Check OPENROUTER_API_KEY environment variable\n` +
+							`  • Check ~/.tehuti.json config file\n` +
+							`  • Run 'tehuti init' to reconfigure`,
 						response.status,
 					);
 				}
@@ -602,10 +612,13 @@ export class OpenRouterClient {
 					debug.log("api", "Stream aborted by user");
 					return;
 				}
-				if (error.name === "TimeoutError" || error.message?.includes("timeout")) {
+				if (
+					error.name === "TimeoutError" ||
+					error.message?.includes("timeout")
+				) {
 					throw new APIError(
 						`Request timed out after ${this.requestTimeout / 1000}s. ` +
-						`Try increasing --timeout or using a faster model.`
+							`Try increasing --timeout or using a faster model.`,
 					);
 				}
 			}
@@ -674,10 +687,10 @@ export class OpenRouterClient {
 			if (response.status === 401) {
 				throw new APIError(
 					`API key appears to be invalid or expired.\n\n` +
-					`Suggestions:\n` +
-					`  • Check OPENROUTER_API_KEY environment variable\n` +
-					`  • Check ~/.tehuti.json config file\n` +
-					`  • Run 'tehuti init' to reconfigure`,
+						`Suggestions:\n` +
+						`  • Check OPENROUTER_API_KEY environment variable\n` +
+						`  • Check ~/.tehuti.json config file\n` +
+						`  • Run 'tehuti init' to reconfigure`,
 					response.status,
 				);
 			}

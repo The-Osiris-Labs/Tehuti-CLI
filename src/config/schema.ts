@@ -86,13 +86,18 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 	"speed-optimized",
 ]);
 
-export const PROVIDER_SCHEMA = z.enum(["openrouter", "kilocode", "custom"]).default("kilocode");
+export const PROVIDER_SCHEMA = z
+	.enum(["openrouter", "kilocode", "custom"])
+	.default("kilocode");
 
 export const CUSTOM_PROVIDER_SCHEMA = z.object({
 	name: z.string().describe("Name of custom provider"),
 	baseUrl: z.string().describe("API endpoint base URL"),
 	apiKey: z.string().optional().describe("API key for custom provider"),
-	headers: z.record(z.string()).optional().describe("Additional headers to send with requests"),
+	headers: z
+		.record(z.string())
+		.optional()
+		.describe("Additional headers to send with requests"),
 });
 
 export const KILOCODE_ADVANCED_SCHEMA = z.object({
@@ -210,33 +215,33 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		memoryBank: {
 			enabled: false,
 			sessionId: "default",
-			persistence: "memory"
+			persistence: "memory",
 		},
 		streamingOptions: {
 			thinking: true,
-			codeReviews: false
+			codeReviews: false,
 		},
 		contextManagement: {
 			autoSummarize: true,
-			maxContextLength: 200000
-		}
+			maxContextLength: 200000,
+		},
 	},
 	grepai: {
 		memoryBank: {
 			enabled: false,
 			path: ".grepai",
-			compression: true
+			compression: true,
 		},
 		indexing: {
 			parallel: false,
-			maxWorkers: 4
-		}
+			maxWorkers: 4,
+		},
 	},
 	collaboration: {
 		enabled: false,
 		sessionId: "default",
 		peers: [],
-		realTime: true
+		realTime: true,
 	},
 	customProvider: undefined,
 };

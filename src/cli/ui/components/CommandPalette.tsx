@@ -25,7 +25,10 @@ interface CommandPaletteProps {
 	visible: boolean;
 }
 
-const CATEGORY_LABELS: Record<CommandItem["category"], { label: string; color: string }> = {
+const CATEGORY_LABELS: Record<
+	CommandItem["category"],
+	{ label: string; color: string }
+> = {
 	session: { label: "Session", color: GREEN },
 	model: { label: "Model", color: CYAN },
 	help: { label: "Help", color: GRAY },
@@ -438,14 +441,21 @@ export function formatHelpOutput(): string {
 `.trim();
 }
 
-export function getCommandSuggestions(input: string, commands: CommandItem[]): CommandItem[] {
+export function getCommandSuggestions(
+	input: string,
+	commands: CommandItem[],
+): CommandItem[] {
 	if (!input.startsWith("/")) return [];
 	const query = input.slice(1).toLowerCase();
-	
-	return commands.filter(cmd => {
-		if (query === "") return true;
-		return cmd.label.toLowerCase().includes(query) ||
-		       cmd.id.toLowerCase().includes(query) ||
-		       cmd.description.toLowerCase().includes(query);
-	}).slice(0, 5);
+
+	return commands
+		.filter((cmd) => {
+			if (query === "") return true;
+			return (
+				cmd.label.toLowerCase().includes(query) ||
+				cmd.id.toLowerCase().includes(query) ||
+				cmd.description.toLowerCase().includes(query)
+			);
+		})
+		.slice(0, 5);
 }

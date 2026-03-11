@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { SkillsManager, getSkillsManager, type Skill } from "./manager.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { getSkillsManager, type Skill, type SkillsManager } from "./manager.js";
 
 describe("Skills Manager", () => {
 	let skillsManager: SkillsManager;
@@ -109,25 +109,34 @@ describe("Skills Manager", () => {
 			const results = skillsManager.findRelevantSkills("javascript");
 			expect(results.length).toBeGreaterThan(0);
 			expect(results.every((skill) => skill.active)).toBe(true);
-			expect(results.some((skill) => skill.id === "javascript-expert")).toBe(true);
+			expect(results.some((skill) => skill.id === "javascript-expert")).toBe(
+				true,
+			);
 		});
 
 		it("should find skills by keywords", () => {
 			const results = skillsManager.findRelevantSkills("nodejs");
 			expect(results.length).toBeGreaterThan(0);
-			expect(results.some((skill) => skill.id === "javascript-expert")).toBe(true);
+			expect(results.some((skill) => skill.id === "javascript-expert")).toBe(
+				true,
+			);
 		});
 
 		it("should find skills by category", () => {
 			const results = skillsManager.findRelevantSkills("programming");
 			expect(results.length).toBeGreaterThan(0);
 			expect(
-				results.some((skill) => skill.id === "javascript-expert" || skill.id === "python-expert"),
+				results.some(
+					(skill) =>
+						skill.id === "javascript-expert" || skill.id === "python-expert",
+				),
 			).toBe(true);
 		});
 
 		it("should return empty array for irrelevant query", () => {
-			const results = skillsManager.findRelevantSkills("irrelevant-query-that-wont-match-any-skill");
+			const results = skillsManager.findRelevantSkills(
+				"irrelevant-query-that-wont-match-any-skill",
+			);
 			expect(results.length).toBe(0);
 		});
 	});
@@ -139,7 +148,10 @@ describe("Skills Manager", () => {
 			expect(jsSkill).toBeDefined();
 			expect(pythonSkill).toBeDefined();
 
-			const expertise = skillsManager.getExpertiseForSkills([jsSkill!, pythonSkill!]);
+			const expertise = skillsManager.getExpertiseForSkills([
+				jsSkill!,
+				pythonSkill!,
+			]);
 			expect(expertise).toContain("JavaScript/TypeScript Expert");
 			expect(expertise).toContain("Python Expert");
 		});

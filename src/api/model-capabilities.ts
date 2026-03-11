@@ -72,137 +72,142 @@ export function isReasoningModel(modelId: string): boolean {
 	return false;
 }
 
-export function getReasoningField(modelId: string): "reasoning" | "thinking" | "none" {
+export function getReasoningField(
+	modelId: string,
+): "reasoning" | "thinking" | "none" {
 	if (!isReasoningModel(modelId)) {
 		return "none";
 	}
 	return "reasoning";
 }
 
-export const MODEL_CAPABILITIES: ReadonlyMap<string, ModelCapabilityInfo> = new Map([
-	[
-		"giga-potato",
-		{
-			id: "giga-potato",
-			name: "Giga Potato",
-			provider: "Kilo",
-			isReasoning: false,
-			reasoningField: "none",
-		},
-	],
-	[
-		"giga-potato-thinking",
-		{
-			id: "giga-potato-thinking",
-			name: "Giga Potato Thinking",
-			provider: "Kilo",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"minimax/minimax-m2.5:free",
-		{
-			id: "minimax/minimax-m2.5:free",
-			name: "MiniMax M2.5",
-			provider: "MiniMax",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"arcee-ai/trinity-large-preview:free",
-		{
-			id: "arcee-ai/trinity-large-preview:free",
-			name: "Arcee AI Trinity Large",
-			provider: "Arcee AI",
-			isReasoning: false,
-			reasoningField: "none",
-		},
-	],
-	[
-		"z-ai/glm-4.5-air:free",
-		{
-			id: "z-ai/glm-4.5-air:free",
-			name: "GLM 4.5 Air",
-			provider: "Z.ai",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"z-ai/glm-5:free",
-		{
-			id: "z-ai/glm-5:free",
-			name: "GLM 5",
-			provider: "Z.ai",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"deepseek/deepseek-reasoner",
-		{
-			id: "deepseek/deepseek-reasoner",
-			name: "DeepSeek Reasoner",
-			provider: "DeepSeek",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"deepseek/deepseek-r1",
-		{
-			id: "deepseek/deepseek-r1",
-			name: "DeepSeek R1",
-			provider: "DeepSeek",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"openai/o1",
-		{
-			id: "openai/o1",
-			name: "O1",
-			provider: "OpenAI",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"openai/o3-mini",
-		{
-			id: "openai/o3-mini",
-			name: "O3 Mini",
-			provider: "OpenAI",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"anthropic/claude-3.7-sonnet",
-		{
-			id: "anthropic/claude-3.7-sonnet",
-			name: "Claude 3.7 Sonnet",
-			provider: "Anthropic",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-	[
-		"anthropic/claude-sonnet-4.5",
-		{
-			id: "anthropic/claude-sonnet-4.5",
-			name: "Claude Sonnet 4.5",
-			provider: "Anthropic",
-			isReasoning: true,
-			reasoningField: "reasoning",
-		},
-	],
-]);
+export const MODEL_CAPABILITIES: ReadonlyMap<string, ModelCapabilityInfo> =
+	new Map([
+		[
+			"giga-potato",
+			{
+				id: "giga-potato",
+				name: "Giga Potato",
+				provider: "Kilo",
+				isReasoning: false,
+				reasoningField: "none",
+			},
+		],
+		[
+			"giga-potato-thinking",
+			{
+				id: "giga-potato-thinking",
+				name: "Giga Potato Thinking",
+				provider: "Kilo",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"minimax/minimax-m2.5:free",
+			{
+				id: "minimax/minimax-m2.5:free",
+				name: "MiniMax M2.5",
+				provider: "MiniMax",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"arcee-ai/trinity-large-preview:free",
+			{
+				id: "arcee-ai/trinity-large-preview:free",
+				name: "Arcee AI Trinity Large",
+				provider: "Arcee AI",
+				isReasoning: false,
+				reasoningField: "none",
+			},
+		],
+		[
+			"z-ai/glm-4.5-air:free",
+			{
+				id: "z-ai/glm-4.5-air:free",
+				name: "GLM 4.5 Air",
+				provider: "Z.ai",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"z-ai/glm-5:free",
+			{
+				id: "z-ai/glm-5:free",
+				name: "GLM 5",
+				provider: "Z.ai",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"deepseek/deepseek-reasoner",
+			{
+				id: "deepseek/deepseek-reasoner",
+				name: "DeepSeek Reasoner",
+				provider: "DeepSeek",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"deepseek/deepseek-r1",
+			{
+				id: "deepseek/deepseek-r1",
+				name: "DeepSeek R1",
+				provider: "DeepSeek",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"openai/o1",
+			{
+				id: "openai/o1",
+				name: "O1",
+				provider: "OpenAI",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"openai/o3-mini",
+			{
+				id: "openai/o3-mini",
+				name: "O3 Mini",
+				provider: "OpenAI",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"anthropic/claude-3.7-sonnet",
+			{
+				id: "anthropic/claude-3.7-sonnet",
+				name: "Claude 3.7 Sonnet",
+				provider: "Anthropic",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+		[
+			"anthropic/claude-sonnet-4.5",
+			{
+				id: "anthropic/claude-sonnet-4.5",
+				name: "Claude Sonnet 4.5",
+				provider: "Anthropic",
+				isReasoning: true,
+				reasoningField: "reasoning",
+			},
+		],
+	]);
 
-export function getModelCapabilities(modelId: string): ModelCapabilityInfo | undefined {
+export function getModelCapabilities(
+	modelId: string,
+): ModelCapabilityInfo | undefined {
 	if (MODEL_CAPABILITIES.has(modelId)) {
 		return MODEL_CAPABILITIES.get(modelId);
 	}

@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import { getSkillsManager } from "./manager.js";
 import {
-	listSkillsTool,
 	activateSkillTool,
 	deactivateSkillTool,
 	findSkillsTool,
 	getSkillTool,
+	listSkillsTool,
 } from "./tools.js";
-import { getSkillsManager } from "./manager.js";
 
 describe("Skills Tools", () => {
 	describe("list_skills", () => {
@@ -32,7 +32,10 @@ describe("Skills Tools", () => {
 
 	describe("get_skill", () => {
 		it("should retrieve existing skill", async () => {
-			const result = await getSkillTool.execute({ skillId: "javascript-expert" }, {} as any);
+			const result = await getSkillTool.execute(
+				{ skillId: "javascript-expert" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(true);
 			expect(typeof result.output).toBe("string");
@@ -42,7 +45,10 @@ describe("Skills Tools", () => {
 		});
 
 		it("should handle non-existent skill", async () => {
-			const result = await getSkillTool.execute({ skillId: "non-existent-skill" }, {} as any);
+			const result = await getSkillTool.execute(
+				{ skillId: "non-existent-skill" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(false);
 			expect(result.error).toBeDefined();
@@ -54,7 +60,10 @@ describe("Skills Tools", () => {
 			const manager = getSkillsManager();
 			manager.deactivateSkill("javascript-expert");
 
-			const result = await activateSkillTool.execute({ skillId: "javascript-expert" }, {} as any);
+			const result = await activateSkillTool.execute(
+				{ skillId: "javascript-expert" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(true);
 
@@ -63,7 +72,10 @@ describe("Skills Tools", () => {
 		});
 
 		it("should handle activating non-existent skill", async () => {
-			const result = await activateSkillTool.execute({ skillId: "non-existent-skill" }, {} as any);
+			const result = await activateSkillTool.execute(
+				{ skillId: "non-existent-skill" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(false);
 			expect(result.error).toBeDefined();
@@ -75,7 +87,10 @@ describe("Skills Tools", () => {
 			const manager = getSkillsManager();
 			manager.activateSkill("javascript-expert");
 
-			const result = await deactivateSkillTool.execute({ skillId: "javascript-expert" }, {} as any);
+			const result = await deactivateSkillTool.execute(
+				{ skillId: "javascript-expert" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(true);
 
@@ -84,7 +99,10 @@ describe("Skills Tools", () => {
 		});
 
 		it("should handle deactivating non-existent skill", async () => {
-			const result = await deactivateSkillTool.execute({ skillId: "non-existent-skill" }, {} as any);
+			const result = await deactivateSkillTool.execute(
+				{ skillId: "non-existent-skill" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(false);
 			expect(result.error).toBeDefined();
@@ -96,7 +114,10 @@ describe("Skills Tools", () => {
 			const manager = getSkillsManager();
 			manager.activateSkill("javascript-expert");
 
-			const result = await findSkillsTool.execute({ query: "javascript" }, {} as any);
+			const result = await findSkillsTool.execute(
+				{ query: "javascript" },
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(true);
 			expect(typeof result.output).toBe("string");
@@ -105,14 +126,19 @@ describe("Skills Tools", () => {
 			expect(Array.isArray(data.skills)).toBe(true);
 			expect(data.skills.length).toBeGreaterThan(0);
 
-			const hasJavaScriptSkill = data.skills.some((skill: any) => skill.id === "javascript-expert");
+			const hasJavaScriptSkill = data.skills.some(
+				(skill: any) => skill.id === "javascript-expert",
+			);
 			expect(hasJavaScriptSkill).toBe(true);
 		});
 
 		it("should return empty array for no matches", async () => {
-			const result = await findSkillsTool.execute({
-				query: "non-existent-query-that-wont-match-any-skill",
-			}, {} as any);
+			const result = await findSkillsTool.execute(
+				{
+					query: "non-existent-query-that-wont-match-any-skill",
+				},
+				{} as any,
+			);
 			expect(result).toBeDefined();
 			expect(result.success).toBe(true);
 

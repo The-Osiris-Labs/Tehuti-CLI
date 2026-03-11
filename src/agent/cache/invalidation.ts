@@ -58,7 +58,10 @@ export function invalidateOnWrite(toolName: string, args: unknown): void {
 	}
 }
 
-export function invalidateOnBash(command: string, affectedPaths: string[] = []): void {
+export function invalidateOnBash(
+	command: string,
+	affectedPaths: string[] = [],
+): void {
 	const cache = getToolCache();
 
 	for (const p of affectedPaths) {
@@ -76,7 +79,7 @@ export function invalidateOnBash(command: string, affectedPaths: string[] = []):
 	const isWriteCommand = writePatterns.some((p) => p.test(command));
 
 	if (isWriteCommand && affectedPaths.length === 0) {
-		const pathPattern = /['"]([\/.][^'"]+)['"]/g;
+		const pathPattern = /['"]([/.][^'"]+)['"]/g;
 		let match;
 		while ((match = pathPattern.exec(command)) !== null) {
 			cache.invalidateFile(match[1]);

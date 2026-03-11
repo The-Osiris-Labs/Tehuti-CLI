@@ -2,12 +2,17 @@
 import * as readline from "node:readline";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createCliRenderer, SyntaxStyle } from "@opentui/core";
-import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
+import {
+	createRoot,
+	useKeyboard,
+	useRenderer,
+	useTimeline,
+} from "@opentui/react";
 import { generateText, streamText } from "ai";
 import { Command } from "commander";
 import Conf from "conf";
 /** @jsxImportSource @opentui/react */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const config = new Conf<{ apiKey?: string; model?: string }>({
 	projectName: "tehuti",
@@ -18,13 +23,77 @@ const ORANGE = "#E67D22";
 const CORAL = "#D97757";
 const GREEN = "#10B981";
 const GRAY = "#6B7280";
-const _RED = "#EF4444";
+const RED = "#EF4444";
+const YELLOW = "#F59E0B";
 const BG = "#1A1A2E";
 
 interface Message {
 	id: string;
 	role: "user" | "assistant" | "system";
 	content: string;
+	status?: "success" | "error" | "loading";
+}
+
+function Spinner() {
+	const [frame, setFrame] = useState(0);
+	const timeline = useTimeline({
+		duration: 400,
+		loop: true,
+		autoplay: true,
+	});
+
+	useEffect(() => {
+		timeline.add(
+			{ frame: 0 },
+			{
+				frame: 4,
+				duration: 400,
+				ease: "linear",
+				onUpdate: (animation) => {
+					setFrame(Math.floor(animation.targets[0].frame) % 4);
+				},
+			},
+		);
+	}, [timeline]);
+
+	const frames = ["|", "/", "-", "\\"];
+	return <text content={frames[frame]} fg={ORANGE} />;
+}
+
+function ProgressBar({ value, label }: { value: number; label?: string }) {
+	return (
+		<box flexDirection="column" marginY={0.5}>
+			{label && (
+				<box
+					flexDirection="row"
+					justifyContent="space-between"
+					marginBottom={0.25}
+				>
+					<text content={label} fg={GRAY} />
+					<text content={`${Math.round(value)}%`} fg={ORANGE} />
+				</box>
+			)}
+			<box style={{ backgroundColor: "#333333", height: 1 }}>
+				<box
+					style={{ width: `${value}%`, height: 1, backgroundColor: ORANGE }}
+				/>
+			</box>
+		</box>
+	);
+}
+
+function StatusIndicator({
+	status,
+}: {
+	status: "success" | "error" | "loading";
+}) {
+	if (status === "success") {
+		return <text content="✅" fg={GREEN} />;
+	}
+	if (status === "error") {
+		return <text content="❌" fg={RED} />;
+	}
+	return <Spinner />;
 }
 
 function App({
@@ -37,9 +106,9 @@ function App({
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
-	const [model, setModel] = useState(
-		config.get("model") || "giga-potato",
-	);
+	const [model, setModel] = useState(config.get("model") || "giga-potato");
+	const [progress, setProgress] = useState(0);
+	const [operationLabel, setOperationLabel] = useState("");
 	const renderer = useRenderer();
 
 	useKeyboard((e) => {
@@ -71,6 +140,16 @@ function App({
 			{ id: Date.now().toString(), role: "user", content: text },
 		]);
 		setLoading(true);
+		setOperationLabel("Tehuti is thinking...");
+		setProgress(0);
+
+		// Simulate progress for better UX
+		const progressInterval = setInterval(() => {
+			setProgress((prev) => {
+				if (prev >= 90) return prev;
+				return prev + Math.random() * 10;
+			});
+		}, 200);
 
 		try {
 			const openrouter = createOpenRouter({ apiKey });
@@ -86,14 +165,25 @@ function App({
 
 			let response = "";
 			const id = (Date.now() + 1).toString();
-			setMessages((m) => [...m, { id, role: "assistant", content: "" }]);
+			setMessages((m) => [
+				...m,
+				{ id, role: "assistant", content: "", status: "loading" },
+			]);
 
 			for await (const chunk of textStream) {
 				response += chunk;
 				setMessages((m) =>
-					m.map((msg) => (msg.id === id ? { ...msg, content: response } : msg)),
+					m.map((msg) =>
+						msg.id === id
+							? { ...msg, content: response, status: "loading" }
+							: msg,
+					),
 				);
 			}
+
+			setMessages((m) =>
+				m.map((msg) => (msg.id === id ? { ...msg, status: "success" } : msg)),
+			);
 		} catch (e: any) {
 			setMessages((m) => [
 				...m,
@@ -101,10 +191,15 @@ function App({
 					id: Date.now().toString(),
 					role: "system",
 					content: `Error: ${e.message}`,
+					status: "error",
 				},
 			]);
 		}
+
+		clearInterval(progressInterval);
+		setProgress(100);
 		setLoading(false);
+		setOperationLabel("");
 	}
 
 	async function handleCommand(cmd: string) {
@@ -137,7 +232,12 @@ function App({
 			case "/models":
 				setMessages((m) => [
 					...m,
-					{ id: Date.now().toString(), role: "system", content: "Fetching..." },
+					{
+						id: Date.now().toString(),
+						role: "system",
+						content: "Fetching...",
+						status: "loading",
+					},
 				]);
 				try {
 					const res = await fetch("https://openrouter.ai/api/v1/models", {
@@ -161,6 +261,7 @@ function App({
 							id: Date.now().toString(),
 							role: "system",
 							content: `Free models:\n${list}`,
+							status: "success",
 						},
 					]);
 				} catch {
@@ -170,6 +271,7 @@ function App({
 							id: Date.now().toString(),
 							role: "system",
 							content: "Failed to fetch models",
+							status: "error",
 						},
 					]);
 				}
@@ -186,6 +288,7 @@ function App({
 							id: Date.now().toString(),
 							role: "system",
 							content: `Model: ${newModel}`,
+							status: "success",
 						},
 					]);
 				}
@@ -199,6 +302,7 @@ function App({
 						id: Date.now().toString(),
 						role: "system",
 						content: `Unknown: ${cmd}`,
+						status: "error",
 					},
 				]);
 		}
@@ -218,7 +322,10 @@ function App({
 
 	const messageElements = messages.map((m) => (
 		<box key={m.id} flexDirection="column" marginBottom={1}>
-			<text content={roleLabel(m.role)} fg={roleColor(m.role)} />
+			<box flexDirection="row" alignItems="center" gap={1} marginBottom={0.5}>
+				<text content={roleLabel(m.role)} fg={roleColor(m.role)} />
+				{m.status && <StatusIndicator status={m.status} />}
+			</box>
 			<text content={m.content} />
 		</box>
 	));
@@ -244,7 +351,20 @@ function App({
 				) : (
 					messageElements
 				)}
-				{loading && <text content="Thinking..." fg={GRAY} />}
+				{loading && (
+					<box flexDirection="column" marginY={1}>
+						<box
+							flexDirection="row"
+							alignItems="center"
+							gap={1}
+							marginBottom={0.5}
+						>
+							<Spinner />
+							<text content={operationLabel} fg={GRAY} />
+						</box>
+						<ProgressBar value={progress} />
+					</box>
+				)}
 			</scrollbox>
 
 			<box paddingX={1} borderStyle="single" borderColor={GRAY}>

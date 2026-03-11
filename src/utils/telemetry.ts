@@ -93,7 +93,10 @@ class TelemetryCollector {
 
 		this.metrics.cacheMetrics.hitRate =
 			this.metrics.cacheMetrics.hits /
-			(Math.max(1, this.metrics.cacheMetrics.hits + this.metrics.cacheMetrics.misses));
+			Math.max(
+				1,
+				this.metrics.cacheMetrics.hits + this.metrics.cacheMetrics.misses,
+			);
 	}
 
 	recordParallelExecution(
@@ -140,7 +143,10 @@ class TelemetryCollector {
 		});
 	}
 
-	getToolStats(): Map<string, { count: number; avgMs: number; totalMs: number; successRate: number }> {
+	getToolStats(): Map<
+		string,
+		{ count: number; avgMs: number; totalMs: number; successRate: number }
+	> {
 		const stats = new Map<
 			string,
 			{ count: number; avgMs: number; totalMs: number; successRate: number }

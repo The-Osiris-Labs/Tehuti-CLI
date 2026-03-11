@@ -7,8 +7,8 @@ import { Command } from "commander";
 import { consola } from "consola";
 import { Box, render, Text, useApp, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
-import { marked } from "marked";
 import type { Token } from "marked";
+import { marked } from "marked";
 import React, {
 	useCallback,
 	useEffect,
@@ -16,17 +16,67 @@ import React, {
 	useRef,
 	useState,
 } from "react";
+
+// Progress Bar Component
+const ProgressBar = ({ value, label }: { value: number; label?: string }) => {
+	const width = 40;
+	const filledWidth = Math.round((value / 100) * width);
+	const filled = "█".repeat(filledWidth);
+	const empty = "░".repeat(width - filledWidth);
+
+	return React.createElement(
+		Box,
+		{ flexDirection: "column", marginY: 0.5 },
+		label &&
+			React.createElement(
+				Box,
+				{
+					flexDirection: "row",
+					justifyContent: "space-between",
+					marginBottom: 0.25,
+				},
+				React.createElement(Text, { color: SAND, dimColor: true }, label),
+				React.createElement(Text, { color: GOLD }, `${Math.round(value)}%`),
+			),
+		React.createElement(
+			Box,
+			{ flexDirection: "row" },
+			React.createElement(Text, { color: GOLD }, filled),
+			React.createElement(Text, { dimColor: true }, empty),
+		),
+	);
+};
+
+// Status Indicator Component
+const StatusIndicator = ({
+	status,
+}: {
+	status: "success" | "error" | "loading";
+}) => {
+	if (status === "success") {
+		return React.createElement(Text, { color: GREEN }, "✅");
+	}
+	if (status === "error") {
+		return React.createElement(Text, { color: RED }, "❌");
+	}
+	return React.createElement(
+		Text,
+		{ color: GOLD },
+		React.createElement(Spinner, { type: "dots" }),
+	);
+};
+
+import { saveCacheToDisk } from "../../agent/cache/index.js";
+import { compactContext, estimateTokens } from "../../agent/context.js";
 import {
 	type AgentContext,
 	configureHooks,
 	createAgentContext,
+	isPlanMode,
 	runAgentLoop,
 	runOneShot,
-	isPlanMode,
 	setPlanMode,
 } from "../../agent/index.js";
-import { compactContext, estimateTokens } from "../../agent/context.js";
-import { saveCacheToDisk } from "../../agent/cache/index.js";
 import {
 	type QuestionData,
 	setQuestionResolver,
@@ -38,17 +88,17 @@ import {
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
 } from "../../branding/index.js";
-import { DEFAULT_CONFIG, loadConfig } from "../../config/index.js";
+import { type DEFAULT_CONFIG, loadConfig } from "../../config/index.js";
 import { mcpManager } from "../../mcp/index.js";
 import { sessionManager } from "../../session/manager.js";
-import {
-	highlightToAnsi,
-	isHighlighterReady,
-} from "../../terminal/highlighter.js";
 import {
 	createStreamingOutputManager,
 	type StreamingOutputManager,
 } from "../../terminal/buffered-writer.js";
+import {
+	highlightToAnsi,
+	isHighlighterReady,
+} from "../../terminal/highlighter.js";
 import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
 import { debug } from "../../utils/debug.js";
 import { setupErrorHandlers } from "../../utils/errors.js";
@@ -94,61 +144,70 @@ const TOOL_ICONS: Record<string, string> = {
 
 function formatToolCall(toolName: string, args: unknown): string {
 	const icon = TOOL_ICONS[toolName] || "🔧";
-	
+
 	switch (toolName) {
 		case "read":
 		case "read_file": {
-			const filePath = typeof args === "object" && args !== null && "file_path" in args 
-				? (args as Record<string, unknown>).file_path 
-				: "";
+			const filePath =
+				typeof args === "object" && args !== null && "file_path" in args
+					? (args as Record<string, unknown>).file_path
+					: "";
 			return `${icon} Reading: ${filePath}`;
 		}
 		case "write":
 		case "write_file": {
-			const filePath = typeof args === "object" && args !== null && "file_path" in args 
-				? (args as Record<string, unknown>).file_path 
-				: "";
+			const filePath =
+				typeof args === "object" && args !== null && "file_path" in args
+					? (args as Record<string, unknown>).file_path
+					: "";
 			return `${icon} Writing: ${filePath}`;
 		}
 		case "edit":
 		case "edit_file": {
-			const filePath = typeof args === "object" && args !== null && "file_path" in args 
-				? (args as Record<string, unknown>).file_path 
-				: "";
+			const filePath =
+				typeof args === "object" && args !== null && "file_path" in args
+					? (args as Record<string, unknown>).file_path
+					: "";
 			return `${icon} Editing: ${filePath}`;
 		}
 		case "bash": {
-			const command = typeof args === "object" && args !== null && "command" in args 
-				? (args as Record<string, unknown>).command 
-				: "";
+			const command =
+				typeof args === "object" && args !== null && "command" in args
+					? (args as Record<string, unknown>).command
+					: "";
 			const cmdStr = String(command).slice(0, 50);
 			return `${icon} Running: ${cmdStr}${String(command).length > 50 ? "..." : ""}`;
 		}
 		case "glob": {
-			const pattern = typeof args === "object" && args !== null && "pattern" in args 
-				? (args as Record<string, unknown>).pattern 
-				: "";
+			const pattern =
+				typeof args === "object" && args !== null && "pattern" in args
+					? (args as Record<string, unknown>).pattern
+					: "";
 			return `${icon} Finding: ${pattern}`;
 		}
 		case "grep": {
-			const pattern = typeof args === "object" && args !== null && "pattern" in args 
-				? (args as Record<string, unknown>).pattern 
-				: "";
-			const pth = typeof args === "object" && args !== null && "path" in args 
-				? (args as Record<string, unknown>).path 
-				: "";
+			const pattern =
+				typeof args === "object" && args !== null && "pattern" in args
+					? (args as Record<string, unknown>).pattern
+					: "";
+			const pth =
+				typeof args === "object" && args !== null && "path" in args
+					? (args as Record<string, unknown>).path
+					: "";
 			return `${icon} Searching: "${pattern}" in ${pth}`;
 		}
 		case "webfetch": {
-			const url = typeof args === "object" && args !== null && "url" in args 
-				? (args as Record<string, unknown>).url 
-				: "";
+			const url =
+				typeof args === "object" && args !== null && "url" in args
+					? (args as Record<string, unknown>).url
+					: "";
 			return `${icon} Fetching: ${String(url).slice(0, 60)}`;
 		}
 		case "web_search": {
-			const query = typeof args === "object" && args !== null && "query" in args 
-				? (args as Record<string, unknown>).query 
-				: "";
+			const query =
+				typeof args === "object" && args !== null && "query" in args
+					? (args as Record<string, unknown>).query
+					: "";
 			return `${icon} Searching web: "${query}"`;
 		}
 		default:
@@ -158,30 +217,35 @@ function formatToolCall(toolName: string, args: unknown): string {
 
 function formatToolResult(result: unknown, maxWidth: number = 80): string {
 	if (!result) return "";
-	
+
 	let output: string;
 	if (typeof result === "string") {
 		output = result;
-	} else if (typeof result === "object" && result !== null && "output" in result) {
+	} else if (
+		typeof result === "object" &&
+		result !== null &&
+		"output" in result
+	) {
 		output = String((result as Record<string, unknown>).output);
 	} else {
 		output = JSON.stringify(result);
 	}
-	
+
 	const lines = output.split("\n");
 	const previewLines = lines.slice(0, 8);
-	
+
 	const formatted = previewLines
-		.map(line => {
-			const truncated = line.length > maxWidth - 4 ? line.slice(0, maxWidth - 7) + "..." : line;
+		.map((line) => {
+			const truncated =
+				line.length > maxWidth - 4 ? line.slice(0, maxWidth - 7) + "..." : line;
 			return `  │ ${truncated}`;
 		})
 		.join("\n");
-	
+
 	if (lines.length > 8) {
 		return `${formatted}\n  │ ... (${lines.length - 8} more lines)`;
 	}
-	
+
 	return formatted;
 }
 
@@ -352,7 +416,10 @@ function renderToken(
 	}
 }
 
-function renderInlineTokens(tokens: Token[], getKey: () => string): React.ReactNode[] {
+function renderInlineTokens(
+	tokens: Token[],
+	getKey: () => string,
+): React.ReactNode[] {
 	const elements: React.ReactNode[] = [];
 
 	for (const token of tokens) {
@@ -388,11 +455,7 @@ function renderInlineToken(
 
 		case "strong": {
 			const inner = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Text,
-				{ key: getKey(), bold: true },
-				...inner,
-			);
+			return React.createElement(Text, { key: getKey(), bold: true }, ...inner);
 		}
 
 		case "em": {
@@ -496,58 +559,61 @@ async function promptForKey(): Promise<{
 	});
 
 	return new Promise((resolve) => {
-		rl.question(chalk.hex(CORAL)(`  ${DECORATIVE.scroll} Key: `), async (key) => {
-			rl.close();
+		rl.question(
+			chalk.hex(CORAL)(`  ${DECORATIVE.scroll} Key: `),
+			async (key) => {
+				rl.close();
 
-			const trimmed = key.trim();
-			if (!trimmed) {
-				consola.fail("No key provided");
-				resolve(null);
-				return;
-			}
-
-			console.log(chalk.gray("  Validating..."));
-
-			try {
-				const res = await fetch(
-					"https://openrouter.ai/api/v1/chat/completions",
-					{
-						method: "POST",
-						headers: {
-							Authorization: `Bearer ${trimmed}`,
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({
-							model: "openrouter/auto",
-							messages: [{ role: "user", content: "test" }],
-							max_tokens: 1,
-						}),
-					},
-				);
-
-				const data = (await res.json()) as OpenRouterErrorResponse;
-
-				if (data.error) {
-					consola.fail(data.error.message);
-					rl.close();
+				const trimmed = key.trim();
+				if (!trimmed) {
+					consola.fail("No key provided");
 					resolve(null);
 					return;
 				}
 
-				saveTehutiConfig({
-					apiKey: trimmed,
-					model: "giga-potato",
-					initialized: true,
-				});
-				consola.success("Key saved!");
-				console.log();
-				resolve({ apiKey: trimmed, model: "giga-potato" });
-			} catch (e) {
-				const message = e instanceof Error ? e.message : String(e);
-				consola.fail(message);
-				resolve(null);
-			}
-		});
+				console.log(chalk.gray("  Validating..."));
+
+				try {
+					const res = await fetch(
+						"https://openrouter.ai/api/v1/chat/completions",
+						{
+							method: "POST",
+							headers: {
+								Authorization: `Bearer ${trimmed}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								model: "openrouter/auto",
+								messages: [{ role: "user", content: "test" }],
+								max_tokens: 1,
+							}),
+						},
+					);
+
+					const data = (await res.json()) as OpenRouterErrorResponse;
+
+					if (data.error) {
+						consola.fail(data.error.message);
+						rl.close();
+						resolve(null);
+						return;
+					}
+
+					saveTehutiConfig({
+						apiKey: trimmed,
+						model: "giga-potato",
+						initialized: true,
+					});
+					consola.success("Key saved!");
+					console.log();
+					resolve({ apiKey: trimmed, model: "giga-potato" });
+				} catch (e) {
+					const message = e instanceof Error ? e.message : String(e);
+					consola.fail(message);
+					resolve(null);
+				}
+			},
+		);
 	});
 }
 
@@ -736,7 +802,12 @@ function ChatUI({
 	onExit: () => void;
 }) {
 	const [messages, setMessages] = useState<
-		Array<{ id: number; role: string; content: string }>
+		Array<{
+			id: number;
+			role: string;
+			content: string;
+			status?: "success" | "error" | "loading";
+		}>
 	>([]);
 	const [input, setInput] = useState("");
 	const [cursorPos, setCursorPos] = useState(0);
@@ -757,6 +828,8 @@ function ChatUI({
 		resolve: (answers: string[]) => void;
 		reject: (error: Error) => void;
 	} | null>(null);
+	const [progress, setProgress] = useState(0);
+	const [operationLabel, setOperationLabel] = useState("");
 	const questionResolverRef = useRef<
 		((questions: QuestionData[]) => Promise<string[]>) | null
 	>(null);
@@ -783,44 +856,47 @@ function ChatUI({
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
 
 	messagesRef.current = messages;
-	
+
 	const flushBatchedTokens = useCallback(() => {
 		if (batchTimerRef.current) {
 			clearTimeout(batchTimerRef.current);
 			batchTimerRef.current = null;
 		}
-		
+
 		if (batchedTokensRef.current.length === 0) return;
-		
+
 		const tokens = batchedTokensRef.current;
 		batchedTokensRef.current = "";
 		streamingContentRef.current += tokens;
-		
+
 		if (streamingMsgIdRef.current !== null) {
 			setMessages((m) =>
 				m.map((msg) =>
-					msg.id === streamingMsgIdRef.current 
-						? { ...msg, content: streamingContentRef.current } 
+					msg.id === streamingMsgIdRef.current
+						? { ...msg, content: streamingContentRef.current }
 						: msg,
 				),
 			);
 		}
 	}, []);
-	
-	const batchToken = useCallback((token: string) => {
-		batchedTokensRef.current += token;
-		
-		if (token.includes("\n") || batchedTokensRef.current.length > 20) {
-			flushBatchedTokens();
-			return;
-		}
-		
-		if (!batchTimerRef.current) {
-			batchTimerRef.current = setTimeout(() => {
+
+	const batchToken = useCallback(
+		(token: string) => {
+			batchedTokensRef.current += token;
+
+			if (token.includes("\n") || batchedTokensRef.current.length > 20) {
 				flushBatchedTokens();
-			}, 50);
-		}
-	}, [flushBatchedTokens]);
+				return;
+			}
+
+			if (!batchTimerRef.current) {
+				batchTimerRef.current = setTimeout(() => {
+					flushBatchedTokens();
+				}, 50);
+			}
+		},
+		[flushBatchedTokens],
+	);
 
 	const handleCommandPaletteSelect = useCallback((cmd: CommandItem) => {
 		setShowCommandPalette(false);
@@ -917,7 +993,7 @@ function ChatUI({
 				{
 					id: msgIdRef.current++,
 					role: "system",
-					content: newPlanMode 
+					content: newPlanMode
 						? "Plan mode entered - read-only exploration"
 						: "Plan mode exited - full access restored",
 				},
@@ -1459,7 +1535,10 @@ function ChatUI({
 				costTracker.reset();
 				resetTelemetry();
 				setSessionCost(0);
-				const newId = await sessionManager.createSession(process.cwd(), ctxModel);
+				const newId = await sessionManager.createSession(
+					process.cwd(),
+					ctxModel,
+				);
 				setSessionId(newId);
 				return;
 			}
@@ -1713,7 +1792,17 @@ function ChatUI({
 		setError("");
 		setThinking("");
 		setShowThinking(false);
-		
+		setOperationLabel("Tehuti is thinking...");
+		setProgress(0);
+
+		// Simulate progress for better UX
+		const progressInterval = setInterval(() => {
+			setProgress((prev) => {
+				if (prev >= 90) return prev;
+				return prev + Math.random() * 10;
+			});
+		}, 200);
+
 		streamingContentRef.current = "";
 		streamingMsgIdRef.current = assistantMsgId;
 		batchedTokensRef.current = "";
@@ -1769,14 +1858,17 @@ function ChatUI({
 							: true;
 					const statusIcon = success ? "✓" : "✗";
 					const resultPreview = formatToolResult(result, terminalWidth - 10);
-					
+
 					if (resultPreview) {
-						const previewLines = resultPreview.split("\n").slice(0, 5).join("\n");
+						const previewLines = resultPreview
+							.split("\n")
+							.slice(0, 5)
+							.join("\n");
 						toolCallsInfo.push(`${statusIcon} ${name}:\n${previewLines}`);
 					} else {
 						toolCallsInfo.push(`${statusIcon} ${name}`);
 					}
-					
+
 					setThinking("");
 					setShowThinking(false);
 					currentToolName = "";
@@ -1788,13 +1880,13 @@ function ChatUI({
 					}
 				},
 			});
-			
+
 			flushBatchedTokens();
 
 			const finalContent = result.content || response;
 			const toolSummary =
 				toolCallsInfo.length > 0
-					? `\n\n${DECORATIVE.scroll} Tools used:\n${toolCallsInfo.map(t => `  ${t}`).join("\n")}`
+					? `\n\n${DECORATIVE.scroll} Tools used:\n${toolCallsInfo.map((t) => `  ${t}`).join("\n")}`
 					: "";
 
 			if (result.sessionStats) {
@@ -1805,7 +1897,10 @@ function ChatUI({
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === assistantMsgId
-							? { ...msg, content: `No response received. Check your API key with /reset-key or verify network connectivity.` }
+							? {
+									...msg,
+									content: `No response received. Check your API key with /reset-key or verify network connectivity.`,
+								}
 							: msg,
 					),
 				);
@@ -1813,12 +1908,15 @@ function ChatUI({
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === assistantMsgId
-							? { ...msg, content: finalContent || `Task completed.${toolSummary}` }
+							? {
+									...msg,
+									content: finalContent || `Task completed.${toolSummary}`,
+								}
 							: msg,
 					),
 				);
 			}
-			
+
 			streamingMsgIdRef.current = null;
 			streamingContentRef.current = "";
 		} catch (e) {
@@ -1828,21 +1926,24 @@ function ChatUI({
 			setMessages((m) =>
 				m.map((msg) =>
 					msg.id === assistantMsgId
-						? { ...msg, content: `Error: ${message}` }
+						? { ...msg, content: `Error: ${message}`, status: "error" }
 						: msg,
 				),
 			);
 			streamingMsgIdRef.current = null;
 		}
+		clearInterval(progressInterval);
+		setProgress(100);
 		setLoading(false);
 		setShowThinking(false);
+		setOperationLabel("");
 	}
 
 	const messageElements = useMemo(() => {
 		return visibleMessages.map((m) => {
 			let header: React.ReactNode;
 			let content: React.ReactNode[];
-			
+
 			if (m.role === "user") {
 				header = React.createElement(
 					Box,
@@ -1850,58 +1951,80 @@ function ChatUI({
 					React.createElement(
 						Text,
 						{ bold: true, color: CORAL, backgroundColor: "#3D2820" },
-						` ${DECORATIVE.feather} You `
-					)
+						` ${DECORATIVE.feather} You `,
+					),
 				);
-				content = [React.createElement(
-					Text, 
-					{ key: 0, color: CORAL, wrap: "wrap" }, 
-					m.content
-				)];
+				content = [
+					React.createElement(
+						Text,
+						{ key: 0, color: CORAL, wrap: "wrap" },
+						m.content,
+					),
+				];
 			} else if (m.role === "system") {
 				header = React.createElement(
-					Text,
-					{ bold: true, color: SAND, dimColor: true },
-					`${DECORATIVE.scroll} System`
+					Box,
+					{
+						flexDirection: "row",
+						alignItems: "center",
+						gap: 1,
+						marginBottom: 0.5,
+					},
+					React.createElement(
+						Text,
+						{ bold: true, color: SAND, dimColor: true },
+						`${DECORATIVE.scroll} System`,
+					),
+					m.status &&
+						React.createElement(StatusIndicator, { status: m.status }),
 				);
-				content = [React.createElement(
-					Text, 
-					{ key: 0, dimColor: true, wrap: "wrap" }, 
-					m.content
-				)];
+				content = [
+					React.createElement(
+						Text,
+						{ key: 0, dimColor: true, wrap: "wrap" },
+						m.content,
+					),
+				];
 			} else {
 				header = React.createElement(
 					Box,
-					{ marginBottom: 0 },
+					{
+						flexDirection: "row",
+						alignItems: "center",
+						gap: 1,
+						marginBottom: 0.5,
+					},
 					React.createElement(
 						Text,
 						{ bold: true, color: GREEN, backgroundColor: "#1A3D2E" },
-						` ${DECORATIVE.ibis} Tehuti `
-					)
+						` ${DECORATIVE.ibis} Tehuti `,
+					),
+					m.status &&
+						React.createElement(StatusIndicator, { status: m.status }),
 				);
 				content = renderMarkdown(m.content, contentMaxWidth);
 			}
 
 			return React.createElement(
 				Box,
-				{ 
-					key: m.id, 
-					flexDirection: "column", 
-					marginBottom: 1, 
+				{
+					key: m.id,
+					flexDirection: "column",
+					marginBottom: 1,
 					paddingTop: 0,
 					width: contentMaxWidth,
 					flexShrink: 0,
 				},
 				header,
 				React.createElement(
-					Box, 
-					{ 
-						paddingLeft: 1, 
+					Box,
+					{
+						paddingLeft: 1,
 						marginTop: 0,
 						flexDirection: "column",
 						flexWrap: "wrap",
-					}, 
-					...content
+					},
+					...content,
 				),
 			);
 		});
@@ -1911,7 +2034,7 @@ function ChatUI({
 		if (!input.startsWith("/") || showCommandPalette) return null;
 		const suggestions = getCommandSuggestions(input, commands);
 		if (suggestions.length === 0) return null;
-		
+
 		return React.createElement(
 			Box,
 			{ flexDirection: "column", paddingLeft: 2, marginTop: 0 },
@@ -1953,7 +2076,11 @@ function ChatUI({
 		React.createElement(
 			Box,
 			{ paddingX: 1, borderStyle: "single", borderColor: GOLD },
-			React.createElement(Text, { bold: true, color: GOLD }, `${DECORATIVE.ibis} Tehuti`),
+			React.createElement(
+				Text,
+				{ bold: true, color: GOLD },
+				`${DECORATIVE.ibis} Tehuti`,
+			),
 			React.createElement(
 				Text,
 				{ color: SAND },
@@ -1984,12 +2111,12 @@ function ChatUI({
 							justifyContent: "center",
 							alignItems: "center",
 						},
+						React.createElement(Text, { color: GOLD }, ASCII_ART.trim()),
 						React.createElement(
 							Text,
-							{ color: GOLD },
-							ASCII_ART.trim(),
+							{ color: SAND, dimColor: true },
+							WELCOME_MESSAGE.trim(),
 						),
-						React.createElement(Text, { color: SAND, dimColor: true }, WELCOME_MESSAGE.trim()),
 					)
 				: messages.length === 0
 					? React.createElement(
@@ -2024,28 +2151,56 @@ function ChatUI({
 				),
 			scrollIndicator &&
 				React.createElement(Box, { justifyContent: "center" }, scrollIndicator),
-			error && React.createElement(
-				Box,
-				{ marginTop: 1, paddingX: 1, borderStyle: "round", borderColor: RED },
-				React.createElement(Text, { color: RED }, `${DECORATIVE.eyeOfHorus} ${error}`),
-			),
+			error &&
+				React.createElement(
+					Box,
+					{ marginTop: 1, paddingX: 1, borderStyle: "round", borderColor: RED },
+					React.createElement(
+						Text,
+						{ color: RED },
+						`${DECORATIVE.eyeOfHorus} ${error}`,
+					),
+				),
 			loading &&
 				React.createElement(
 					Box,
-					{ marginTop: 1, paddingX: 1 },
+					{ marginTop: 1, paddingX: 1, flexDirection: "column" },
 					React.createElement(
-						Text,
-						{ color: GOLD },
-						`${DECORATIVE.ibis} `
+						Box,
+						{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: 1,
+							marginBottom: 0.5,
+						},
+						React.createElement(
+							Text,
+							{ color: GOLD },
+							React.createElement(Spinner, { type: "dots" }),
+						),
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							operationLabel,
+						),
 					),
-					React.createElement(Text, { color: SAND, dimColor: true }, "consulting the scrolls..."),
+					React.createElement(ProgressBar, { value: progress }),
 				),
 		),
 		React.createElement(
 			Box,
-			{ paddingX: 1, borderStyle: "single", borderColor: SAND, flexDirection: "column" },
+			{
+				paddingX: 1,
+				borderStyle: "single",
+				borderColor: SAND,
+				flexDirection: "column",
+			},
 			loading
-				? React.createElement(Text, { color: SAND, dimColor: true }, `  ${HIEROGLYPHS.loading[0]} channeling wisdom...`)
+				? React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						`  ${HIEROGLYPHS.loading[0]} channeling wisdom...`,
+					)
 				: renderInput,
 			commandSuggestions,
 		),
@@ -2071,7 +2226,13 @@ function App({
 	cfg: typeof DEFAULT_CONFIG;
 	onExit: () => void;
 }) {
-	return React.createElement(ChatUI, { apiKey, model, diffPreview, cfg, onExit });
+	return React.createElement(ChatUI, {
+		apiKey,
+		model,
+		diffPreview,
+		cfg,
+		onExit,
+	});
 }
 
 export function createProgram(): Command {
@@ -2082,7 +2243,10 @@ export function createProgram(): Command {
 		.description("Tehuti CLI - Coding assistant powered by OpenRouter")
 		.version("0.1.0", "-v, --version")
 		.option("-m, --model <model>", "Override model")
-		.option("-p, --provider <provider>", "Override provider (openrouter, kilocode, custom)")
+		.option(
+			"-p, --provider <provider>",
+			"Override provider (openrouter, kilocode, custom)",
+		)
 		.option("-d, --debug", "Debug mode", false)
 		.option("-j, --json", "Output in JSON format (for one-shot prompts)", false)
 		.option(
@@ -2103,7 +2267,7 @@ export function createProgram(): Command {
 			setupErrorHandlers(opts.debug);
 
 			let provider = opts.provider || process.env.TEHUTI_PROVIDER;
-			
+
 			const cfg = await loadConfig();
 			const tehuti = loadTehutiConfig();
 
@@ -2116,7 +2280,8 @@ export function createProgram(): Command {
 			if (provider === "kilocode") {
 				envApiKey = process.env.KILO_API_KEY;
 			} else {
-				envApiKey = process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+				envApiKey =
+					process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
 			}
 
 			const envModel = process.env.TEHUTI_MODEL;
@@ -2128,7 +2293,8 @@ export function createProgram(): Command {
 				apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
 			}
 
-			let model = opts.model || envModel || cfg.model || tehuti.model || "giga-potato";
+			let model =
+				opts.model || envModel || cfg.model || tehuti.model || "giga-potato";
 			provider = provider || cfg.provider || "openrouter";
 
 			if (!tehuti.initialized && provider !== "kilocode" && !apiKey) {
@@ -2156,15 +2322,17 @@ export function createProgram(): Command {
 			}
 
 			if (!prompt && !process.stdout.isTTY) {
-				consola.error("Interactive mode requires a TTY. Run 'tehuti --help' for usage.");
+				consola.error(
+					"Interactive mode requires a TTY. Run 'tehuti --help' for usage.",
+				);
 				process.exit(1);
 			}
 
 			if (prompt) {
 				const ctx = await createAgentContext(process.cwd(), cfg, diffPreview);
-				
+
 				let outputManager: StreamingOutputManager | undefined;
-				
+
 				if (!opts.json && !opts.quiet) {
 					outputManager = createStreamingOutputManager();
 				}
@@ -2183,31 +2351,36 @@ export function createProgram(): Command {
 								: (name, args) => {
 										const toolDesc = formatToolCall(name, args);
 										outputManager?.writeLine("");
-										outputManager?.writeLine(
-											chalk.hex(CYAN)(`  ${toolDesc}`)
-										);
+										outputManager?.writeLine(chalk.hex(CYAN)(`  ${toolDesc}`));
 									},
 						onToolResult:
 							opts.json || opts.quiet
 								? undefined
 								: (name, result) => {
 										const success =
-											result && typeof result === "object" && "success" in result
+											result &&
+											typeof result === "object" &&
+											"success" in result
 												? (result as { success: boolean }).success
 												: true;
-										const statusIcon = success ? chalk.green("✓") : chalk.red("✗");
-										
-										const resultPreview = formatToolResult(result, outputManager?.getTerminalWidth?.() || 80);
-										
+										const statusIcon = success
+											? chalk.green("✓")
+											: chalk.red("✗");
+
+										const resultPreview = formatToolResult(
+											result,
+											outputManager?.getTerminalWidth?.() || 80,
+										);
+
 										if (resultPreview) {
 											outputManager?.writeLine(
-												chalk.dim(`  ┌─ ${name} result:`)
+												chalk.dim(`  ┌─ ${name} result:`),
 											);
 											outputManager?.writeLine(chalk.dim(resultPreview));
 											outputManager?.writeLine(chalk.dim("  └─"));
 										} else {
 											outputManager?.writeLine(
-												chalk.dim(`  ${statusIcon} ${name} completed`)
+												chalk.dim(`  ${statusIcon} ${name} completed`),
 											);
 										}
 									},
@@ -2217,7 +2390,7 @@ export function createProgram(): Command {
 								: (content) => {
 										if (content.length > 0) {
 											outputManager?.writeLine(
-												chalk.hex(PURPLE)(`  💭 Thinking...`)
+												chalk.hex(PURPLE)(`  💭 Thinking...`),
 											);
 										}
 									},
@@ -2328,7 +2501,9 @@ export function createProgram(): Command {
 					const toolCount = mcpManager.getServer(serverName)?.tools.length ?? 0;
 
 					console.log(`  ${statusColor("◆")} ${chalk.bold(serverName)}`);
-					console.log(chalk.gray(`    ${transport} ◆ ${statusInfo} ◆ ${toolCount} tools`));
+					console.log(
+						chalk.gray(`    ${transport} ◆ ${statusInfo} ◆ ${toolCount} tools`),
+					);
 					if (status?.lastError) {
 						console.log(chalk.red(`    ✗ ${status.lastError}`));
 					}

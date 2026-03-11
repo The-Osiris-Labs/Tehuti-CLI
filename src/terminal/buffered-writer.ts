@@ -22,13 +22,12 @@ function getVisualWidth(str: string): number {
 	let width = 0;
 	for (const char of stripped) {
 		const code = char.codePointAt(0) || 0;
-		if (code >= 0x13000 && code <= 0x1342F) {
+		if (code >= 0x13000 && code <= 0x1342f) {
 			width += 1;
 		} else if (code >= 0x10000) {
 			width += 2;
-		} else if (code < 32 || (code >= 0x7F && code < 0xA0)) {
-			continue;
-		} else if (code > 0xFFFF) {
+		} else if (code < 32 || (code >= 0x7f && code < 0xa0)) {
+		} else if (code > 0xffff) {
 			width += 2;
 		} else {
 			width += 1;
@@ -37,7 +36,10 @@ function getVisualWidth(str: string): number {
 	return width;
 }
 
-function splitAtVisualWidth(str: string, maxWidth: number): { left: string; right: string } {
+function splitAtVisualWidth(
+	str: string,
+	maxWidth: number,
+): { left: string; right: string } {
 	let width = 0;
 	let pos = 0;
 	let inEscape = false;
@@ -66,7 +68,7 @@ function splitAtVisualWidth(str: string, maxWidth: number): { left: string; righ
 
 		const code = char.codePointAt(0) || 0;
 		let charWidth = 1;
-		if (code >= 0x13000 && code <= 0x1342F) {
+		if (code >= 0x13000 && code <= 0x1342f) {
 			charWidth = 1;
 		} else if (code >= 0x10000) {
 			charWidth = 2;
@@ -88,7 +90,7 @@ function splitAtVisualWidth(str: string, maxWidth: number): { left: string; righ
 		width += charWidth;
 		pos = i + 1;
 
-		if (code > 0xFFFF) {
+		if (code > 0xffff) {
 			i++;
 		}
 	}
@@ -139,10 +141,13 @@ export class BufferedStreamWriter {
 		if (now - this.lastFlushTime >= this.FLUSH_INTERVAL) {
 			this.flushNow();
 		} else if (!this.flushTimer) {
-			this.flushTimer = setTimeout(() => {
-				this.flushTimer = null;
-				this.flushNow();
-			}, this.FLUSH_INTERVAL - (now - this.lastFlushTime));
+			this.flushTimer = setTimeout(
+				() => {
+					this.flushTimer = null;
+					this.flushNow();
+				},
+				this.FLUSH_INTERVAL - (now - this.lastFlushTime),
+			);
 		}
 	}
 
@@ -303,9 +308,9 @@ export class StreamingOutputManager {
 
 	append(token: string): void {
 		if (this.destroyed) return;
-		
+
 		this.currentContent += token;
-		
+
 		if (this.detectsCodeBlockBoundary(token)) {
 			if (this.inCodeBlock) {
 				this.batchedTokens += this.codeBlockBuffer + token;
@@ -317,12 +322,12 @@ export class StreamingOutputManager {
 			this.scheduleBatch();
 			return;
 		}
-		
+
 		if (this.inCodeBlock) {
 			this.codeBlockBuffer += token;
 			return;
 		}
-		
+
 		this.batchedTokens += token;
 		this.scheduleBatch();
 	}
@@ -332,7 +337,10 @@ export class StreamingOutputManager {
 	}
 
 	private scheduleBatch(): void {
-		if (this.batchedTokens.includes("\n\n") || this.batchedTokens.includes("```")) {
+		if (
+			this.batchedTokens.includes("\n\n") ||
+			this.batchedTokens.includes("```")
+		) {
 			this.flushBatch();
 			return;
 		}
@@ -355,7 +363,7 @@ export class StreamingOutputManager {
 
 		const tokens = this.batchedTokens;
 		this.batchedTokens = "";
-		
+
 		const rendered = this.renderMarkdown(tokens);
 		this.writer.write(rendered);
 	}
@@ -376,27 +384,34 @@ export class StreamingOutputManager {
 		if (this.destroyed) return;
 		this.flushBatch();
 		const argsStr = args ? JSON.stringify(args) : "";
-		const argsPreview = argsStr.length > 60 ? `${argsStr.slice(0, 60)}...` : argsStr;
-		this.writer.write(`\n  ${DECORATIVE.ibisBird} ${toolName} ${argsPreview}\n`);
+		const argsPreview =
+			argsStr.length > 60 ? `${argsStr.slice(0, 60)}...` : argsStr;
+		this.writer.write(
+			`\n  ${DECORATIVE.ibisBird} ${toolName} ${argsPreview}\n`,
+		);
 	}
 
 	writeToolResult(_toolName: string, success: boolean, output?: string): void {
 		if (this.destroyed) return;
 		this.flushBatch();
 		const symbol = success ? DECORATIVE.eye : DECORATIVE.eyeOfHorus;
-		const outputPreview = output ? output.slice(0, 80).replace(/\n/g, " ").trim() : "";
-		this.writer.write(`    ${symbol} ${outputPreview}${outputPreview.length >= 80 ? "..." : ""}\n`);
+		const outputPreview = output
+			? output.slice(0, 80).replace(/\n/g, " ").trim()
+			: "";
+		this.writer.write(
+			`    ${symbol} ${outputPreview}${outputPreview.length >= 80 ? "..." : ""}\n`,
+		);
 	}
 
 	finish(): void {
 		if (this.destroyed) return;
 		this.flushBatch();
-		
+
 		if (this.currentContent.length > 0) {
 			const rendered = renderMarkdownToAnsi(this.currentContent);
 			this.writer.write("\n");
 		}
-		
+
 		this.writer.flush();
 		this.writer.showCursor();
 	}

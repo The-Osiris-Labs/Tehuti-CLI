@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { readFile } from "fs/promises";
 import { existsSync } from "fs";
+import { readFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+import { z } from "zod";
 import { consola } from "../../utils/logger.js";
 
 export interface Skill {
@@ -54,8 +54,18 @@ export class SkillsManager {
 			{
 				id: "javascript-expert",
 				name: "JavaScript/TypeScript Expert",
-				description: "Deep knowledge of JavaScript and TypeScript programming languages",
-				keywords: ["javascript", "typescript", "js", "ts", "nodejs", "react", "angular", "vue"],
+				description:
+					"Deep knowledge of JavaScript and TypeScript programming languages",
+				keywords: [
+					"javascript",
+					"typescript",
+					"js",
+					"ts",
+					"nodejs",
+					"react",
+					"angular",
+					"vue",
+				],
 				category: "programming",
 				expertise: `I am an expert in JavaScript and TypeScript with deep knowledge of:
 - Modern JavaScript (ES6+) and TypeScript syntax
@@ -84,8 +94,18 @@ When working on JavaScript/TypeScript projects:
 			{
 				id: "python-expert",
 				name: "Python Expert",
-				description: "Expert knowledge of Python programming language and its ecosystems",
-				keywords: ["python", "py", "django", "flask", "numpy", "pandas", "tensorflow", "pytorch"],
+				description:
+					"Expert knowledge of Python programming language and its ecosystems",
+				keywords: [
+					"python",
+					"py",
+					"django",
+					"flask",
+					"numpy",
+					"pandas",
+					"tensorflow",
+					"pytorch",
+				],
 				category: "programming",
 				expertise: `I am a Python expert with comprehensive knowledge of:
 - Python syntax and standard library
@@ -115,7 +135,14 @@ When working on Python projects:
 				id: "git-expert",
 				name: "Git Expert",
 				description: "Advanced knowledge of Git version control system",
-				keywords: ["git", "version-control", "branching", "merging", "rebase", "conflict-resolution"],
+				keywords: [
+					"git",
+					"version-control",
+					"branching",
+					"merging",
+					"rebase",
+					"conflict-resolution",
+				],
 				category: "devops",
 				expertise: `I am a Git expert with advanced knowledge of:
 - Git fundamentals and workflows
@@ -193,13 +220,17 @@ When working with Git:
 		return activeSkills.filter((skill) => {
 			// Check if query matches skill name, description, or keywords
 			const matchesName = skill.name.toLowerCase().includes(lowerQuery);
-			const matchesDescription = skill.description.toLowerCase().includes(lowerQuery);
+			const matchesDescription = skill.description
+				.toLowerCase()
+				.includes(lowerQuery);
 			const matchesKeywords = skill.keywords.some((keyword) =>
-				lowerQuery.includes(keyword.toLowerCase())
+				lowerQuery.includes(keyword.toLowerCase()),
 			);
 			const matchesCategory = skill.category.toLowerCase().includes(lowerQuery);
 
-			return matchesName || matchesDescription || matchesKeywords || matchesCategory;
+			return (
+				matchesName || matchesDescription || matchesKeywords || matchesCategory
+			);
 		});
 	}
 

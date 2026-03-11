@@ -1,15 +1,27 @@
 import {
+	CustomProviderClient,
 	costTracker,
 	createStreamingState,
 	getToolCallsFromState,
-	OpenRouterClient,
 	KiloCodeClient,
-	CustomProviderClient,
+	OpenRouterClient,
 	processStreamChunk,
 } from "../api/index.js";
 import { isReasoningModel } from "../api/model-capabilities.js";
 import type { OpenRouterTool } from "../api/openrouter.js";
-import { getToolCache, invalidateOnWrite, loadCacheFromDisk, saveCacheToDisk, shouldCacheTool } from "./cache/index.js";
+import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
+import { checkPermission } from "../permissions/index.js";
+import { debug } from "../utils/debug.js";
+import { consola } from "../utils/logger.js";
+import { getTelemetry } from "../utils/telemetry.js";
+import {
+	getToolCache,
+	invalidateOnWrite,
+	loadCacheFromDisk,
+	saveCacheToDisk,
+	shouldCacheTool,
+} from "./cache/index.js";
+import type { AgentContext } from "./context.js";
 import {
 	addAssistantMessageWithTools,
 	addToolResult,
@@ -20,8 +32,11 @@ import {
 	trackToolCall,
 	warnOnContextLimit,
 } from "./context.js";
-import { compressContext, createContextSummarizer, estimateTokens } from "./context-compressor.js";
-import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
+import {
+	compressContext,
+	createContextSummarizer,
+	estimateTokens,
+} from "./context-compressor.js";
 import {
 	classifyTask,
 	MODEL_TIERS,
@@ -29,22 +44,27 @@ import {
 } from "./model-router.js";
 import {
 	classifyToolCalls,
-	type ToolCall,
 	executeToolsParallel,
 	getParallelizableCount,
+	type ToolCall,
 } from "./parallel-executor.js";
-import { checkPermission } from "../permissions/index.js";
 import { getPrefetcher } from "./prefetcher.js";
-import { getTelemetry } from "../utils/telemetry.js";
+import { skillsTools } from "./skills/tools.js";
 import { backgroundTools } from "./tools/background.js";
 import { bashTool } from "./tools/bash.js";
+import { collaborationTools } from "./tools/collaboration.js";
+import { customProviderTools } from "./tools/custom-provider.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
+import { grepaiTools } from "./tools/grepai.js";
+import { grepaiAdvancedTools } from "./tools/grepai-advanced.js";
 import {
 	executeTool,
 	getToolDefinitions,
 	registerTools,
 } from "./tools/index.js";
+import { kiloCodeTools } from "./tools/kilocode.js";
+import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
 import {
 	isPlanMode,
@@ -55,16 +75,6 @@ import {
 import { searchTools } from "./tools/search.js";
 import { setParentContext, systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
-import { debug } from "../utils/debug.js";
-import { consola } from "../utils/logger.js";
-import type { AgentContext } from "./context.js";
-import { skillsTools } from "./skills/tools.js";
-import { grepaiTools } from "./tools/grepai.js";
-import { kiloCodeTools } from "./tools/kilocode.js";
-import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
-import { grepaiAdvancedTools } from "./tools/grepai-advanced.js";
-import { collaborationTools } from "./tools/collaboration.js";
-import { customProviderTools } from "./tools/custom-provider.js";
 
 registerTools([
 	...allFsTools,
@@ -147,23 +157,23 @@ export async function runAgentLoop(
 	const prefetcher = getPrefetcher();
 
 	let client: OpenRouterClient | KiloCodeClient | CustomProviderClient;
-		try {
-			if (ctx.config.provider === "kilocode") {
-				client = KiloCodeClient.getInstance(ctx.config);
-			} else if (ctx.config.provider === "custom") {
-				client = CustomProviderClient.getInstance(ctx.config);
-			} else {
-				client = OpenRouterClient.getInstance(ctx.config);
-			}
-		} catch {
-			if (ctx.config.provider === "kilocode") {
-				client = new KiloCodeClient(ctx.config);
-			} else if (ctx.config.provider === "custom") {
-				client = new CustomProviderClient(ctx.config);
-			} else {
-				client = new OpenRouterClient(ctx.config);
-			}
+	try {
+		if (ctx.config.provider === "kilocode") {
+			client = KiloCodeClient.getInstance(ctx.config);
+		} else if (ctx.config.provider === "custom") {
+			client = CustomProviderClient.getInstance(ctx.config);
+		} else {
+			client = OpenRouterClient.getInstance(ctx.config);
 		}
+	} catch {
+		if (ctx.config.provider === "kilocode") {
+			client = new KiloCodeClient(ctx.config);
+		} else if (ctx.config.provider === "custom") {
+			client = new CustomProviderClient(ctx.config);
+		} else {
+			client = new OpenRouterClient(ctx.config);
+		}
+	}
 	const tools = getToolDefinitions() as OpenRouterTool[];
 
 	if (ctx.messages.length === 0) {
@@ -207,11 +217,15 @@ export async function runAgentLoop(
 		try {
 			const currentTokens = estimateTokens(ctx.messages);
 			if (currentTokens > 85000) {
-				debug.log("agent", `Context compression triggered (${currentTokens} tokens)`);
+				debug.log(
+					"agent",
+					`Context compression triggered (${currentTokens} tokens)`,
+				);
 				const summarizer = createContextSummarizer(async (prompt: string) => {
-					const result = await client.completeChat([
-						{ role: "user", content: prompt },
-					], []);
+					const result = await client.completeChat(
+						[{ role: "user", content: prompt }],
+						[],
+					);
 					return typeof result.choices[0].message.content === "string"
 						? result.choices[0].message.content
 						: "";
@@ -390,7 +404,12 @@ export async function runAgentLoop(
 					trackToolCall(ctx, tc.function.name);
 					onToolCall?.(tc.function.name, {});
 					onToolResult?.(tc.function.name, { error: reason });
-					addToolResult(ctx, tc.id, tc.function.name, JSON.stringify({ error: reason }));
+					addToolResult(
+						ctx,
+						tc.id,
+						tc.function.name,
+						JSON.stringify({ error: reason }),
+					);
 				}
 
 				if (allowedCalls.length > 0) {
@@ -466,7 +485,9 @@ export async function runAgentLoop(
 							ctx,
 							tc.id,
 							tc.function.name,
-							JSON.stringify({ error: preHookResult.error ?? "Blocked by hook" }),
+							JSON.stringify({
+								error: preHookResult.error ?? "Blocked by hook",
+							}),
 						);
 						continue;
 					}
@@ -514,7 +535,12 @@ export async function runAgentLoop(
 								contextForTools,
 							);
 							const durationMs = Date.now() - startTime;
-							telemetry.recordToolExecution(tc.function.name, durationMs, result.success, false);
+							telemetry.recordToolExecution(
+								tc.function.name,
+								durationMs,
+								result.success,
+								false,
+							);
 
 							if (shouldCacheTool(tc.function.name, args) && result.success) {
 								cache.set(tc.function.name, args, result);

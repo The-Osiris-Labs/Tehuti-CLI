@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ToolResult, createTool, type ToolContext } from "../tools/registry.js";
+import { createTool, type ToolContext, ToolResult } from "../tools/registry.js";
 import { getSkillsManager, type Skill } from "./manager.js";
 
 const skillsManager = getSkillsManager();
@@ -41,7 +41,9 @@ export const activateSkillTool = createTool({
 		if (success) {
 			return {
 				success: true,
-				output: JSON.stringify({ message: `Skill ${skillId} activated successfully` }),
+				output: JSON.stringify({
+					message: `Skill ${skillId} activated successfully`,
+				}),
 			};
 		} else {
 			return {
@@ -67,7 +69,9 @@ export const deactivateSkillTool = createTool({
 		if (success) {
 			return {
 				success: true,
-				output: JSON.stringify({ message: `Skill ${skillId} deactivated successfully` }),
+				output: JSON.stringify({
+					message: `Skill ${skillId} deactivated successfully`,
+				}),
 			};
 		} else {
 			return {
@@ -83,7 +87,9 @@ export const findSkillsTool = createTool({
 	name: "find_skills",
 	description: "Find relevant skills for a specific query or task",
 	parameters: z.object({
-		query: z.string().describe("The search query or task description to find relevant skills"),
+		query: z
+			.string()
+			.describe("The search query or task description to find relevant skills"),
 	}),
 	category: "system",
 	execute: async (args, _ctx) => {
@@ -108,7 +114,9 @@ export const getSkillTool = createTool({
 	name: "get_skill",
 	description: "Get detailed information about a specific skill by ID",
 	parameters: z.object({
-		skillId: z.string().describe("The ID of the skill to retrieve information about"),
+		skillId: z
+			.string()
+			.describe("The ID of the skill to retrieve information about"),
 	}),
 	category: "system",
 	execute: async (args, _ctx) => {

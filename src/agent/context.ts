@@ -7,8 +7,8 @@ import type {
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
-import type { DiffPreviewOptions } from "./tools/registry.js";
 import { getSkillsManager } from "./skills/manager.js";
+import type { DiffPreviewOptions } from "./tools/registry.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -163,7 +163,10 @@ export async function createAgentContext(
 	};
 }
 
-export function buildSystemPrompt(ctx: AgentContext, userQuery?: string): string {
+export function buildSystemPrompt(
+	ctx: AgentContext,
+	userQuery?: string,
+): string {
 	const projectInstructionsSection = ctx.projectInstructions
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
 		: "";

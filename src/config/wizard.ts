@@ -23,11 +23,12 @@ const c = {
 	green: (text: string) => `${GREEN}${text}${RESET}`,
 };
 
-	const AVAILABLE_MODELS = [
+const AVAILABLE_MODELS = [
 	{
 		name: "Giga Potato (Free, Highly Capable)",
 		value: "giga-potato",
-		description: "Free model optimized for agentic programming with visual understanding",
+		description:
+			"Free model optimized for agentic programming with visual understanding",
 	},
 	{
 		name: "Giga Potato Thinking (Free, Reasoning)",

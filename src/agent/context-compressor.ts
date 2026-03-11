@@ -42,7 +42,9 @@ function estimateTokens(messages: OpenRouterMessage[]): number {
 	let total = 0;
 	for (const msg of messages) {
 		const content =
-			typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+			typeof msg.content === "string"
+				? msg.content
+				: JSON.stringify(msg.content);
 		total += Math.ceil(content.length / 4);
 		total += 10;
 	}
@@ -67,7 +69,8 @@ function extractCodeBlocks(text: string): string[] {
 }
 
 function calculateMessageImportance(msg: OpenRouterMessage): number {
-	const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+	const content =
+		typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
 	let score = 0;
 
@@ -88,7 +91,8 @@ function calculateMessageImportance(msg: OpenRouterMessage): number {
 		score += 15;
 	}
 
-	const hasFileReferences = /(?:file|path|directory|folder)[:\s]+['"`]?([\/.][^'"`\s]+)/i.test(content);
+	const hasFileReferences =
+		/(?:file|path|directory|folder)[:\s]+['"`]?([/.][^'"`\s]+)/i.test(content);
 	if (hasFileReferences) {
 		score += 5;
 	}
@@ -116,11 +120,16 @@ async function summarizeChunk(
 	};
 }
 
-function summarizeWithoutLLM(messages: OpenRouterMessage[]): OpenRouterMessage[] {
+function summarizeWithoutLLM(
+	messages: OpenRouterMessage[],
+): OpenRouterMessage[] {
 	const summaries: OpenRouterMessage[] = [];
 
 	for (const msg of messages) {
-		const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+		const content =
+			typeof msg.content === "string"
+				? msg.content
+				: JSON.stringify(msg.content);
 		const importance = calculateMessageImportance(msg);
 
 		if (importance >= 20) {
@@ -128,7 +137,8 @@ function summarizeWithoutLLM(messages: OpenRouterMessage[]): OpenRouterMessage[]
 			continue;
 		}
 
-		const truncated = content.length > 500 ? content.slice(0, 500) + "...[truncated]" : content;
+		const truncated =
+			content.length > 500 ? content.slice(0, 500) + "...[truncated]" : content;
 		summaries.push({
 			role: msg.role,
 			content: `[Condensed] ${truncated}`,
@@ -202,7 +212,9 @@ export function compressContextWithMetrics(
 	});
 }
 
-export function identifyCriticalMessages(messages: OpenRouterMessage[]): number[] {
+export function identifyCriticalMessages(
+	messages: OpenRouterMessage[],
+): number[] {
 	const criticalIndices: number[] = [];
 
 	for (let i = 0; i < messages.length; i++) {
@@ -237,14 +249,20 @@ export function progressiveCompress(
 
 	while (currentTokens > targetTokens && compressed.length > 4) {
 		const nonCritical = compressed
-			.map((m, i) => ({ msg: m, originalIndex: i, importance: calculateMessageImportance(m) }))
+			.map((m, i) => ({
+				msg: m,
+				originalIndex: i,
+				importance: calculateMessageImportance(m),
+			}))
 			.filter((_, i) => !criticalIndices.has(i))
 			.sort((a, b) => a.importance - b.importance);
 
 		if (nonCritical.length === 0) break;
 
 		const toRemove = Math.max(1, Math.floor(nonCritical.length / 4));
-		const indicesToRemove = new Set(nonCritical.slice(0, toRemove).map((x) => x.originalIndex));
+		const indicesToRemove = new Set(
+			nonCritical.slice(0, toRemove).map((x) => x.originalIndex),
+		);
 
 		compressed = compressed.filter((_, i) => !indicesToRemove.has(i));
 		currentTokens = estimateTokens(compressed);

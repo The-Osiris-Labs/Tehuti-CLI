@@ -7,14 +7,15 @@ import type { OpenRouterMessage } from "../api/openrouter.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidSessionId(id: string): boolean {
 	return UUID_REGEX.test(id);
 }
 
 function sanitizeSessionId(id: string): string {
-	const sanitized = id.replace(/[^0-9a-f\-]/gi, "");
+	const sanitized = id.replace(/[^0-9a-f-]/gi, "");
 	return sanitized.length === 36 && UUID_REGEX.test(sanitized) ? sanitized : "";
 }
 

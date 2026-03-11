@@ -1,5 +1,5 @@
-import type { AgentContext } from "./context.js";
 import type { ModelSelectionMode } from "../config/schema.js";
+import type { AgentContext } from "./context.js";
 import { SAFE_PARALLEL_TOOLS, WRITE_TOOLS } from "./parallel-executor.js";
 
 export type ModelTier = "fast" | "balanced" | "deep";
@@ -94,7 +94,9 @@ export function classifyTask(
 	const messageLower = userMessage.toLowerCase();
 
 	if (pendingTools.length > 0) {
-		const allSafeParallel = pendingTools.every((t) => SAFE_PARALLEL_TOOLS.has(t.name));
+		const allSafeParallel = pendingTools.every((t) =>
+			SAFE_PARALLEL_TOOLS.has(t.name),
+		);
 
 		if (allSafeParallel) {
 			return {
@@ -123,8 +125,12 @@ export function classifyTask(
 		}
 	}
 
-	const deepKeywordMatches = DEEP_KEYWORDS.filter((k) => messageLower.includes(k));
-	const fastKeywordMatches = FAST_KEYWORDS.filter((k) => messageLower.includes(k));
+	const deepKeywordMatches = DEEP_KEYWORDS.filter((k) =>
+		messageLower.includes(k),
+	);
+	const fastKeywordMatches = FAST_KEYWORDS.filter((k) =>
+		messageLower.includes(k),
+	);
 
 	if (deepKeywordMatches.length >= 2) {
 		return {
@@ -178,8 +184,8 @@ export function classifyTask(
 
 export function selectModelForClassification(
 	classification: TaskClassification,
-	config?: { 
-		preferredTier?: ModelTier; 
+	config?: {
+		preferredTier?: ModelTier;
 		manualModel?: string;
 		modelSelection?: ModelSelectionMode;
 	},

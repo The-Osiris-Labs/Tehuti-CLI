@@ -1,7 +1,13 @@
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
-import type { OpenRouterMessage, OpenRouterResponse, OpenRouterStreamChunk, OpenRouterTool, OpenRouterToolCall } from "./openrouter.js";
+import type {
+	OpenRouterMessage,
+	OpenRouterResponse,
+	OpenRouterStreamChunk,
+	OpenRouterTool,
+	OpenRouterToolCall,
+} from "./openrouter.js";
 
 // KiloCode specific features
 export interface KiloCodeOptions {
@@ -45,7 +51,10 @@ export class KiloCodeClient {
 
 	static getInstance(config: TehutiConfig): KiloCodeClient {
 		const configKey = `${config.apiKey}:${config.model}`;
-		if (!KiloCodeClient.instance || KiloCodeClient.lastConfigKey !== configKey) {
+		if (
+			!KiloCodeClient.instance ||
+			KiloCodeClient.lastConfigKey !== configKey
+		) {
 			KiloCodeClient.instance = new KiloCodeClient(config);
 			KiloCodeClient.lastConfigKey = configKey;
 		}
@@ -92,7 +101,10 @@ export class KiloCodeClient {
 		this.validateMaxTokens(this.maxTokens);
 	}
 
-	private validateTimeout(timeout: number | undefined, defaultMs: number): number {
+	private validateTimeout(
+		timeout: number | undefined,
+		defaultMs: number,
+	): number {
 		if (timeout === undefined) return defaultMs;
 		if (typeof timeout !== "number" || !Number.isFinite(timeout)) {
 			throw new APIError("requestTimeout must be a valid number");
@@ -105,7 +117,7 @@ export class KiloCodeClient {
 	private validateModel(model: string): void {
 		const MAX_MODEL_NAME_LENGTH = 256;
 		const VALID_MODEL_PATTERN = /^[a-zA-Z0-9_\-./:]+$/;
-		
+
 		if (!model || typeof model !== "string") {
 			throw new APIError("Model name is required");
 		}
@@ -140,7 +152,7 @@ export class KiloCodeClient {
 	validateMessages(messages: OpenRouterMessage[]): void {
 		const MAX_MESSAGES = 1000;
 		const MAX_MESSAGE_LENGTH = 1000000;
-		
+
 		if (!Array.isArray(messages)) {
 			throw new APIError("Messages must be an array");
 		}
@@ -156,7 +168,10 @@ export class KiloCodeClient {
 			if (!["system", "user", "assistant", "tool"].includes(msg.role)) {
 				throw new APIError(`Invalid role at index ${i}`);
 			}
-			if (typeof msg.content === "string" && msg.content.length > MAX_MESSAGE_LENGTH) {
+			if (
+				typeof msg.content === "string" &&
+				msg.content.length > MAX_MESSAGE_LENGTH
+			) {
 				throw new APIError(`Message at index ${i} is too long`);
 			}
 			if (msg.tool_calls && !Array.isArray(msg.tool_calls)) {
@@ -210,7 +225,10 @@ export class KiloCodeClient {
 		throw lastError ?? new Error("Max retries exceeded");
 	}
 
-	private defaultIsRetryable(error: Error, isUserAbort: boolean = false): boolean {
+	private defaultIsRetryable(
+		error: Error,
+		isUserAbort: boolean = false,
+	): boolean {
 		if (isUserAbort) {
 			return false;
 		}
@@ -230,7 +248,11 @@ export class KiloCodeClient {
 			return false;
 		}
 		const msg = error.message.toLowerCase();
-		if (msg.includes("econnrefused") || msg.includes("enotfound") || msg.includes("econnreset")) {
+		if (
+			msg.includes("econnrefused") ||
+			msg.includes("enotfound") ||
+			msg.includes("econnreset")
+		) {
 			return true;
 		}
 		return false;
@@ -239,7 +261,7 @@ export class KiloCodeClient {
 	private calculateRetryDelay(attempt: number, error: Error): number {
 		const BASE_RETRY_DELAY_MS = 1000;
 		const MAX_RETRY_DELAY_MS = 60000;
-		
+
 		if (error instanceof APIError && error.status === 429) {
 			const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
 			return Math.min(baseDelay, MAX_RETRY_DELAY_MS);
@@ -278,7 +300,11 @@ export class KiloCodeClient {
 			body.memory = {
 				session_id: this.options.memoryBank.sessionId,
 			};
-			debug.log("api", "Memory bank enabled", this.options.memoryBank.sessionId);
+			debug.log(
+				"api",
+				"Memory bank enabled",
+				this.options.memoryBank.sessionId,
+			);
 		}
 
 		if (this.options.streamingOptions?.thinking) {
@@ -316,14 +342,17 @@ export class KiloCodeClient {
 				const sanitizedError = errorText
 					.slice(0, 500)
 					.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
-					.replace(/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi, "[REDACTED]");
+					.replace(
+						/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi,
+						"[REDACTED]",
+					);
 				if (response.status === 401) {
 					throw new APIError(
 						`API key appears to be invalid or expired.\n\n` +
-						`Suggestions:\n` +
-						`  • Check KILO_API_KEY environment variable\n` +
-						`  • Check ~/.tehuti.json config file\n` +
-						`  • Run 'tehuti init' to reconfigure`,
+							`Suggestions:\n` +
+							`  • Check KILO_API_KEY environment variable\n` +
+							`  • Check ~/.tehuti.json config file\n` +
+							`  • Run 'tehuti init' to reconfigure`,
 						response.status,
 					);
 				}
@@ -337,14 +366,15 @@ export class KiloCodeClient {
 			if (!responseBody) {
 				throw new APIError("No response body to stream");
 			}
-			reader = responseBody.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
+			reader =
+				responseBody.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
 			const decoder = new TextDecoder();
 			let buffer = "";
 
 			while (true) {
 				const { done, value } = await reader.read();
-				
+
 				if (done) {
 					break;
 				}
@@ -373,10 +403,13 @@ export class KiloCodeClient {
 					debug.log("api", "Stream aborted by user");
 					return;
 				}
-				if (error.name === "TimeoutError" || error.message?.includes("timeout")) {
+				if (
+					error.name === "TimeoutError" ||
+					error.message?.includes("timeout")
+				) {
 					throw new APIError(
 						`Request timed out after ${this.requestTimeout / 1000}s. ` +
-						`Try increasing --timeout or using a faster model.`
+							`Try increasing --timeout or using a faster model.`,
 					);
 				}
 			}
@@ -409,7 +442,7 @@ export class KiloCodeClient {
 			temperature: this.temperature,
 			maxTokens: this.maxTokens,
 		});
-		
+
 		if (cachedResponse) {
 			debug.log("api", "Using cached API response");
 			return cachedResponse;
@@ -428,7 +461,11 @@ export class KiloCodeClient {
 			body.memory = {
 				session_id: this.options.memoryBank.sessionId,
 			};
-			debug.log("api", "Memory bank enabled", this.options.memoryBank.sessionId);
+			debug.log(
+				"api",
+				"Memory bank enabled",
+				this.options.memoryBank.sessionId,
+			);
 		}
 
 		if (tools && tools.length > 0) {
@@ -463,10 +500,10 @@ export class KiloCodeClient {
 			if (response.status === 401) {
 				throw new APIError(
 					`API key appears to be invalid or expired.\n\n` +
-					`Suggestions:\n` +
-					`  • Check KILO_API_KEY environment variable\n` +
-					`  • Check ~/.tehuti.json config file\n` +
-					`  • Run 'tehuti init' to reconfigure`,
+						`Suggestions:\n` +
+						`  • Check KILO_API_KEY environment variable\n` +
+						`  • Check ~/.tehuti.json config file\n` +
+						`  • Run 'tehuti init' to reconfigure`,
 					response.status,
 				);
 			}
@@ -476,8 +513,8 @@ export class KiloCodeClient {
 			);
 		}
 
-		const apiResponse = await response.json() as OpenRouterResponse;
-		
+		const apiResponse = (await response.json()) as OpenRouterResponse;
+
 		// Cache the response
 		await this.responseCache.set(messages, apiResponse, {
 			model,
@@ -502,17 +539,27 @@ export class KiloCodeClient {
 	}
 
 	// KiloCode-specific methods
-	configureMemoryBank(options: { enabled: boolean; sessionId?: string; persistence?: "memory" | "disk" }): void {
+	configureMemoryBank(options: {
+		enabled: boolean;
+		sessionId?: string;
+		persistence?: "memory" | "disk";
+	}): void {
 		this.options.memoryBank = options;
 		debug.log("api", "Memory bank configured:", JSON.stringify(options));
 	}
 
-	configureStreaming(options: { thinking?: boolean; codeReviews?: boolean }): void {
+	configureStreaming(options: {
+		thinking?: boolean;
+		codeReviews?: boolean;
+	}): void {
 		this.options.streamingOptions = options;
 		debug.log("api", "Streaming options configured:", JSON.stringify(options));
 	}
 
-	configureContextManagement(options: { autoSummarize?: boolean; maxContextLength?: number }): void {
+	configureContextManagement(options: {
+		autoSummarize?: boolean;
+		maxContextLength?: number;
+	}): void {
 		this.options.contextManagement = options;
 		debug.log("api", "Context management configured:", JSON.stringify(options));
 	}
@@ -522,11 +569,14 @@ export class KiloCodeClient {
 		debug.log("api", "Memory cleared");
 	}
 
-	async reviewCode(code: string, options?: {
-		language?: string;
-		reviewType?: "basic" | "advanced" | "security";
-		guidelines?: string[];
-	}): Promise<{
+	async reviewCode(
+		code: string,
+		options?: {
+			language?: string;
+			reviewType?: "basic" | "advanced" | "security";
+			guidelines?: string[];
+		},
+	): Promise<{
 		summary: string;
 		issues: Array<{
 			type: "error" | "warning" | "suggestion";
@@ -541,7 +591,8 @@ export class KiloCodeClient {
 			messages: [
 				{
 					role: "system",
-					content: "You are an expert code reviewer. Analyze the provided code and provide detailed feedback on quality, security, and best practices.",
+					content:
+						"You are an expert code reviewer. Analyze the provided code and provide detailed feedback on quality, security, and best practices.",
 				},
 				{
 					role: "user",
@@ -576,10 +627,13 @@ export class KiloCodeClient {
 			throw new APIError(`Code review failed: ${response.status}`);
 		}
 
-		const apiResponse = await response.json() as OpenRouterResponse;
-		const content = typeof apiResponse.choices[0].message.content === "string" 
-			? apiResponse.choices[0].message.content 
-			: apiResponse.choices[0].message.content.map((block: any) => block.text).join("");
+		const apiResponse = (await response.json()) as OpenRouterResponse;
+		const content =
+			typeof apiResponse.choices[0].message.content === "string"
+				? apiResponse.choices[0].message.content
+				: apiResponse.choices[0].message.content
+						.map((block: any) => block.text)
+						.join("");
 		return JSON.parse(content || "{}");
 	}
 
@@ -593,7 +647,8 @@ export class KiloCodeClient {
 			messages: [
 				{
 					role: "system",
-					content: "You are a context summarization expert. Condense the conversation history into a concise summary with key points.",
+					content:
+						"You are a context summarization expert. Condense the conversation history into a concise summary with key points.",
 				},
 				{
 					role: "user",
@@ -628,10 +683,13 @@ export class KiloCodeClient {
 			throw new APIError(`Context summarization failed: ${response.status}`);
 		}
 
-		const apiResponse = await response.json() as OpenRouterResponse;
-		const content = typeof apiResponse.choices[0].message.content === "string" 
-			? apiResponse.choices[0].message.content 
-			: apiResponse.choices[0].message.content.map((block: any) => block.text).join("");
+		const apiResponse = (await response.json()) as OpenRouterResponse;
+		const content =
+			typeof apiResponse.choices[0].message.content === "string"
+				? apiResponse.choices[0].message.content
+				: apiResponse.choices[0].message.content
+						.map((block: any) => block.text)
+						.join("");
 		return JSON.parse(content || "{}");
 	}
 }

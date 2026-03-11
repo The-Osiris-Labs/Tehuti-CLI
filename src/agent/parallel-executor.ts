@@ -1,9 +1,13 @@
+import { AsyncMutex } from "../utils/mutex.js";
+import { getTelemetry } from "../utils/telemetry.js";
+import {
+	getToolCache,
+	invalidateOnWrite,
+	shouldCacheTool,
+} from "./cache/index.js";
 import type { AgentContext } from "./context.js";
 import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
-import { AsyncMutex } from "../utils/mutex.js";
-import { getToolCache, shouldCacheTool, invalidateOnWrite } from "./cache/index.js";
-import { getTelemetry } from "../utils/telemetry.js";
 
 export const SAFE_PARALLEL_TOOLS = new Set([
 	"read",
@@ -51,7 +55,12 @@ export interface ParallelExecutionOptions {
 	maxConcurrency?: number;
 	onToolCall?: (name: string, args: unknown) => void;
 	onToolResult?: (name: string, result: ToolResult) => void;
-	addToolResult: (ctx: AgentContext, toolCallId: string, toolName: string, result: string) => void;
+	addToolResult: (
+		ctx: AgentContext,
+		toolCallId: string,
+		toolName: string,
+		result: string,
+	) => void;
 	ctx: AgentContext;
 	toolContext: Parameters<typeof executeTool>[2];
 }
@@ -175,7 +184,13 @@ export async function executeToolsParallel(
 	for (const chunk of parallelChunks) {
 		const chunkResults = await Promise.all(
 			chunk.map(async (tc) => {
-				const result = await executeToolCall(tc, ctx, toolContext, cache, telemetry);
+				const result = await executeToolCall(
+					tc,
+					ctx,
+					toolContext,
+					cache,
+					telemetry,
+				);
 
 				await mutex.runExclusive(async () => {
 					const resultStr =
@@ -219,10 +234,18 @@ export async function executeToolsParallel(
 	}
 
 	for (const tc of classified.sequential) {
-		const result = await executeToolCall(tc, ctx, toolContext, cache, telemetry);
+		const result = await executeToolCall(
+			tc,
+			ctx,
+			toolContext,
+			cache,
+			telemetry,
+		);
 
 		const resultStr =
-			typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+			typeof result.output === "string"
+				? result.output
+				: JSON.stringify(result.output);
 		addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 		onToolResult?.(tc.function.name, result);
@@ -234,10 +257,18 @@ export async function executeToolsParallel(
 	}
 
 	for (const tc of classified.interactive) {
-		const result = await executeToolCall(tc, ctx, toolContext, cache, telemetry);
+		const result = await executeToolCall(
+			tc,
+			ctx,
+			toolContext,
+			cache,
+			telemetry,
+		);
 
 		const resultStr =
-			typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+			typeof result.output === "string"
+				? result.output
+				: JSON.stringify(result.output);
 		addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 		onToolResult?.(tc.function.name, result);
@@ -252,11 +283,14 @@ export async function executeToolsParallel(
 }
 
 export function getParallelizableCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name)).length;
+	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name))
+		.length;
 }
 
 export function getSequentialCount(toolCalls: ToolCall[]): number {
 	return toolCalls.filter(
-		(tc) => !SAFE_PARALLEL_TOOLS.has(tc.function.name) && !INTERACTIVE_TOOLS.has(tc.function.name),
+		(tc) =>
+			!SAFE_PARALLEL_TOOLS.has(tc.function.name) &&
+			!INTERACTIVE_TOOLS.has(tc.function.name),
 	).length;
 }

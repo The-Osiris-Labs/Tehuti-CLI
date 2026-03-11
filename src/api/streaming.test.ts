@@ -59,24 +59,24 @@ describe("Streaming", () => {
 			expect(state.thinking).toBe("Let me think...");
 		});
 
-	it("should extract reasoning from chunk into thinking", () => {
-		const state = createStreamingState();
-		const chunk = {
-			choices: [
-				{
-					delta: { reasoning: "Step 1: Analyze the problem..." },
-					finish_reason: null,
-				},
-			],
-		};
+		it("should extract reasoning from chunk into thinking", () => {
+			const state = createStreamingState();
+			const chunk = {
+				choices: [
+					{
+						delta: { reasoning: "Step 1: Analyze the problem..." },
+						finish_reason: null,
+					},
+				],
+			};
 
-		const result = processStreamChunk(state, chunk);
+			const result = processStreamChunk(state, chunk);
 
-		expect(result.hasThinking).toBe(true);
-		expect(result.newThinking).toBe("Step 1: Analyze the problem...");
-		expect(state.thinking).toBe("Step 1: Analyze the problem...");
-		expect(state.content).toBe("");
-	});
+			expect(result.hasThinking).toBe(true);
+			expect(result.newThinking).toBe("Step 1: Analyze the problem...");
+			expect(state.thinking).toBe("Step 1: Analyze the problem...");
+			expect(state.content).toBe("");
+		});
 
 		it("should handle empty choices", () => {
 			const state = createStreamingState();
@@ -241,36 +241,36 @@ describe("Streaming", () => {
 			expect(state.thinking).toBe("Let me think...");
 		});
 
-	it("should accumulate reasoning across chunks into thinking", () => {
-		const state = createStreamingState();
+		it("should accumulate reasoning across chunks into thinking", () => {
+			const state = createStreamingState();
 
-		processStreamChunk(state, {
-			choices: [{ delta: { reasoning: "Step 1: " }, finish_reason: null }],
-		});
-		processStreamChunk(state, {
-			choices: [{ delta: { reasoning: "Analyze..." }, finish_reason: null }],
-		});
+			processStreamChunk(state, {
+				choices: [{ delta: { reasoning: "Step 1: " }, finish_reason: null }],
+			});
+			processStreamChunk(state, {
+				choices: [{ delta: { reasoning: "Analyze..." }, finish_reason: null }],
+			});
 
-		expect(state.thinking).toBe("Step 1: Analyze...");
-		expect(state.content).toBe("");
-	});
-
-	it("should keep reasoning separate from content", () => {
-		const state = createStreamingState();
-
-		processStreamChunk(state, {
-			choices: [{ delta: { reasoning: "Thinking..." }, finish_reason: null }],
-		});
-		processStreamChunk(state, {
-			choices: [{ delta: { content: "Answer: " }, finish_reason: null }],
-		});
-		processStreamChunk(state, {
-			choices: [{ delta: { content: "42" }, finish_reason: null }],
+			expect(state.thinking).toBe("Step 1: Analyze...");
+			expect(state.content).toBe("");
 		});
 
-		expect(state.thinking).toBe("Thinking...");
-		expect(state.content).toBe("Answer: 42");
-	});
+		it("should keep reasoning separate from content", () => {
+			const state = createStreamingState();
+
+			processStreamChunk(state, {
+				choices: [{ delta: { reasoning: "Thinking..." }, finish_reason: null }],
+			});
+			processStreamChunk(state, {
+				choices: [{ delta: { content: "Answer: " }, finish_reason: null }],
+			});
+			processStreamChunk(state, {
+				choices: [{ delta: { content: "42" }, finish_reason: null }],
+			});
+
+			expect(state.thinking).toBe("Thinking...");
+			expect(state.content).toBe("Answer: 42");
+		});
 	});
 
 	describe("getToolCallsFromState", () => {
@@ -364,23 +364,25 @@ describe("Streaming", () => {
 			expect(tokens).toEqual(["Hello", " world"]);
 		});
 
-	it("should not yield reasoning as content from stream", async () => {
-		async function* mockStream() {
-			yield {
-				choices: [{ delta: { reasoning: "Thinking..." }, finish_reason: null }],
-			};
-			yield {
-				choices: [{ delta: { content: "Answer" }, finish_reason: null }],
-			};
-		}
+		it("should not yield reasoning as content from stream", async () => {
+			async function* mockStream() {
+				yield {
+					choices: [
+						{ delta: { reasoning: "Thinking..." }, finish_reason: null },
+					],
+				};
+				yield {
+					choices: [{ delta: { content: "Answer" }, finish_reason: null }],
+				};
+			}
 
-		const tokens: string[] = [];
-		for await (const token of processStreamAsync(mockStream())) {
-			tokens.push(token);
-		}
+			const tokens: string[] = [];
+			for await (const token of processStreamAsync(mockStream())) {
+				tokens.push(token);
+			}
 
-		expect(tokens).toEqual(["Answer"]);
-	});
+			expect(tokens).toEqual(["Answer"]);
+		});
 
 		it("should handle empty stream", async () => {
 			async function* mockStream() {

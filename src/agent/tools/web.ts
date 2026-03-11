@@ -337,7 +337,13 @@ async function webSearch(
 
 		const response = (await exa.search(query, {
 			numResults: num_results,
-			type: type as "auto" | "fast" | "keyword" | "neural" | "hybrid" | "instant",
+			type: type as
+				| "auto"
+				| "fast"
+				| "keyword"
+				| "neural"
+				| "hybrid"
+				| "instant",
 			contents: {
 				text: true,
 				livecrawl: livecrawl as "always" | "fallback" | "never",

@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ToolCache, getToolCache } from "./tool-cache.js";
-import type { CacheEntry } from "./lru-cache.js";
 import type { ToolResult } from "../tools/registry.js";
+import type { CacheEntry } from "./lru-cache.js";
+import { getToolCache, ToolCache } from "./tool-cache.js";
 
 const CACHE_DIR = path.join(os.homedir(), ".tehuti", "cache");
 const CACHE_FILE = path.join(CACHE_DIR, "tool-cache.json");
@@ -56,8 +56,7 @@ export function saveCacheToDisk(): void {
 
 	try {
 		fs.writeFileSync(CACHE_FILE, JSON.stringify(serialized), "utf-8");
-	} catch {
-	}
+	} catch {}
 }
 
 export function loadCacheFromDisk(): void {
@@ -100,20 +99,17 @@ export function loadCacheFromDisk(): void {
 						ttl: entry.ttl,
 					});
 					loaded++;
-				} catch {
-				}
+				} catch {}
 			}
 		}
-	} catch {
-	}
+	} catch {}
 }
 
 export function clearCacheFromDisk(): void {
 	if (fs.existsSync(CACHE_FILE)) {
 		try {
 			fs.rmSync(CACHE_FILE, { force: true });
-		} catch {
-		}
+		} catch {}
 	}
 }
 

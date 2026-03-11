@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { TelemetryCollector, getTelemetry, resetTelemetry } from "./telemetry.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+	getTelemetry,
+	resetTelemetry,
+	TelemetryCollector,
+} from "./telemetry.js";
 
 describe("TelemetryCollector", () => {
 	let telemetry: TelemetryCollector;

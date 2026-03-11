@@ -1,5 +1,5 @@
 import { createHighlighter, type Highlighter } from "shiki";
-import { bundledLanguages, type BundledLanguage } from "shiki/langs";
+import { type BundledLanguage, bundledLanguages } from "shiki/langs";
 import { shouldUseColors } from "./capabilities.js";
 
 let highlighterInstance: Highlighter | null = null;
@@ -49,7 +49,9 @@ export function highlightToAnsi(code: string, language?: string): string {
 		return code;
 	}
 
-	const lang = (language && language in bundledLanguages ? language : "text") as BundledLanguage;
+	const lang = (
+		language && language in bundledLanguages ? language : "text"
+	) as BundledLanguage;
 
 	try {
 		const { tokens } = highlighterInstance.codeToTokens(code, {

@@ -1,15 +1,15 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ToolCall } from "./parallel-executor.js";
 import {
-	classifyToolCalls,
 	canRunInParallel,
+	classifyToolCalls,
 	executeToolsParallel,
 	getParallelizableCount,
 	getSequentialCount,
+	INTERACTIVE_TOOLS,
 	SAFE_PARALLEL_TOOLS,
 	WRITE_TOOLS,
-	INTERACTIVE_TOOLS,
 } from "./parallel-executor.js";
-import type { ToolCall } from "./parallel-executor.js";
 
 vi.mock("./tools/registry.js", () => ({
 	executeTool: vi.fn().mockImplementation(async (name: string) => {
@@ -39,7 +39,7 @@ vi.mock("../utils/telemetry.js", () => ({
 	resetTelemetry: vi.fn(),
 }));
 
-	describe("Parallel Executor", () => {
+describe("Parallel Executor", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -74,9 +74,18 @@ vi.mock("../utils/telemetry.js", () => ({
 	describe("classifyToolCalls", () => {
 		it("should classify parallel tools correctly", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{"file_path":"/a.ts"}' } },
-				{ id: "2", function: { name: "glob", arguments: '{"pattern":"*.ts"}' } },
-				{ id: "3", function: { name: "grep", arguments: '{"pattern":"test"}' } },
+				{
+					id: "1",
+					function: { name: "read", arguments: '{"file_path":"/a.ts"}' },
+				},
+				{
+					id: "2",
+					function: { name: "glob", arguments: '{"pattern":"*.ts"}' },
+				},
+				{
+					id: "3",
+					function: { name: "grep", arguments: '{"pattern":"test"}' },
+				},
 			];
 
 			const result = classifyToolCalls(toolCalls);
@@ -88,8 +97,14 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should classify write tools as sequential", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "write", arguments: '{"file_path":"/a.ts"}' } },
-				{ id: "2", function: { name: "edit", arguments: '{"file_path":"/b.ts"}' } },
+				{
+					id: "1",
+					function: { name: "write", arguments: '{"file_path":"/a.ts"}' },
+				},
+				{
+					id: "2",
+					function: { name: "edit", arguments: '{"file_path":"/b.ts"}' },
+				},
 			];
 
 			const result = classifyToolCalls(toolCalls);
@@ -100,7 +115,10 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should classify interactive tools correctly", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "question", arguments: '{"text":"Continue?"}' } },
+				{
+					id: "1",
+					function: { name: "question", arguments: '{"text":"Continue?"}' },
+				},
 			];
 
 			const result = classifyToolCalls(toolCalls);
@@ -110,10 +128,10 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should classify mixed tool calls", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "write", arguments: '{}' } },
-				{ id: "3", function: { name: "glob", arguments: '{}' } },
-				{ id: "4", function: { name: "question", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "write", arguments: "{}" } },
+				{ id: "3", function: { name: "glob", arguments: "{}" } },
+				{ id: "4", function: { name: "question", arguments: "{}" } },
 			];
 
 			const result = classifyToolCalls(toolCalls);
@@ -127,8 +145,8 @@ vi.mock("../utils/telemetry.js", () => ({
 	describe("canRunInParallel", () => {
 		it("should return true for read-only tools", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "glob", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "glob", arguments: "{}" } },
 			];
 
 			expect(canRunInParallel(toolCalls)).toBe(true);
@@ -136,8 +154,8 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should return false when write tools present", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "write", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "write", arguments: "{}" } },
 			];
 
 			expect(canRunInParallel(toolCalls)).toBe(false);
@@ -145,8 +163,8 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should return false when interactive tools present", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "question", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "question", arguments: "{}" } },
 			];
 
 			expect(canRunInParallel(toolCalls)).toBe(false);
@@ -156,10 +174,10 @@ vi.mock("../utils/telemetry.js", () => ({
 	describe("getParallelizableCount", () => {
 		it("should count parallelizable tools", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "write", arguments: '{}' } },
-				{ id: "3", function: { name: "glob", arguments: '{}' } },
-				{ id: "4", function: { name: "grep", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "write", arguments: "{}" } },
+				{ id: "3", function: { name: "glob", arguments: "{}" } },
+				{ id: "4", function: { name: "grep", arguments: "{}" } },
 			];
 
 			expect(getParallelizableCount(toolCalls)).toBe(3);
@@ -169,10 +187,10 @@ vi.mock("../utils/telemetry.js", () => ({
 	describe("getSequentialCount", () => {
 		it("should count sequential tools", () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "write", arguments: '{}' } },
-				{ id: "3", function: { name: "edit", arguments: '{}' } },
-				{ id: "4", function: { name: "question", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "write", arguments: "{}" } },
+				{ id: "3", function: { name: "edit", arguments: "{}" } },
+				{ id: "4", function: { name: "question", arguments: "{}" } },
 			];
 
 			expect(getSequentialCount(toolCalls)).toBe(2);
@@ -193,9 +211,18 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should execute parallel tools concurrently", async () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{"file_path":"/a.ts"}' } },
-				{ id: "2", function: { name: "read", arguments: '{"file_path":"/b.ts"}' } },
-				{ id: "3", function: { name: "read", arguments: '{"file_path":"/c.ts"}' } },
+				{
+					id: "1",
+					function: { name: "read", arguments: '{"file_path":"/a.ts"}' },
+				},
+				{
+					id: "2",
+					function: { name: "read", arguments: '{"file_path":"/b.ts"}' },
+				},
+				{
+					id: "3",
+					function: { name: "read", arguments: '{"file_path":"/c.ts"}' },
+				},
 			];
 
 			const addToolResult = vi.fn();
@@ -212,8 +239,14 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should execute sequential tools in order", async () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "write", arguments: '{"file_path":"/a.ts"}' } },
-				{ id: "2", function: { name: "write", arguments: '{"file_path":"/b.ts"}' } },
+				{
+					id: "1",
+					function: { name: "write", arguments: '{"file_path":"/a.ts"}' },
+				},
+				{
+					id: "2",
+					function: { name: "write", arguments: '{"file_path":"/b.ts"}' },
+				},
 			];
 
 			const addToolResult = vi.fn();
@@ -228,9 +261,9 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should handle mixed parallel and sequential tools", async () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
-				{ id: "2", function: { name: "glob", arguments: '{}' } },
-				{ id: "3", function: { name: "write", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "glob", arguments: "{}" } },
+				{ id: "3", function: { name: "write", arguments: "{}" } },
 			];
 
 			const addToolResult = vi.fn();
@@ -245,7 +278,10 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should call onToolCall callback", async () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{"file_path":"/a.ts"}' } },
+				{
+					id: "1",
+					function: { name: "read", arguments: '{"file_path":"/a.ts"}' },
+				},
 			];
 
 			const onToolCall = vi.fn();
@@ -261,7 +297,7 @@ vi.mock("../utils/telemetry.js", () => ({
 
 		it("should call onToolResult callback", async () => {
 			const toolCalls: ToolCall[] = [
-				{ id: "1", function: { name: "read", arguments: '{}' } },
+				{ id: "1", function: { name: "read", arguments: "{}" } },
 			];
 
 			const onToolResult = vi.fn();

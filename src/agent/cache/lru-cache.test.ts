@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LRUCache } from "./lru-cache.js";
 
 describe("LRUCache", () => {
@@ -41,11 +41,9 @@ describe("LRUCache", () => {
 	});
 
 	describe("TTL expiration", () => {
-		it.skip("should mark entries as expired after TTL", () => {
-		});
+		it.skip("should mark entries as expired after TTL", () => {});
 
-		it.skip("should use custom TTL over default", () => {
-		});
+		it.skip("should use custom TTL over default", () => {});
 	});
 
 	describe("LRU eviction", () => {

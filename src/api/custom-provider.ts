@@ -1,7 +1,13 @@
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
-import type { OpenRouterMessage, OpenRouterResponse, OpenRouterStreamChunk, OpenRouterTool, OpenRouterToolCall } from "./openrouter.js";
+import type {
+	OpenRouterMessage,
+	OpenRouterResponse,
+	OpenRouterStreamChunk,
+	OpenRouterTool,
+	OpenRouterToolCall,
+} from "./openrouter.js";
 import { APIResponseCache } from "./response-cache.js";
 
 export class CustomProviderClient {
@@ -27,7 +33,10 @@ export class CustomProviderClient {
 
 	static getInstance(config: TehutiConfig): CustomProviderClient {
 		const configKey = `${config.customProvider?.name}:${config.apiKey}:${config.model}`;
-		if (!CustomProviderClient.instance || CustomProviderClient.lastConfigKey !== configKey) {
+		if (
+			!CustomProviderClient.instance ||
+			CustomProviderClient.lastConfigKey !== configKey
+		) {
 			CustomProviderClient.instance = new CustomProviderClient(config);
 			CustomProviderClient.lastConfigKey = configKey;
 		}
@@ -44,7 +53,11 @@ export class CustomProviderClient {
 			throw new APIError("Custom provider configuration is required");
 		}
 
-		this.apiKey = config.apiKey ?? config.customProvider.apiKey ?? process.env.CUSTOM_API_KEY ?? "";
+		this.apiKey =
+			config.apiKey ??
+			config.customProvider.apiKey ??
+			process.env.CUSTOM_API_KEY ??
+			"";
 		this.baseUrl = config.customProvider.baseUrl;
 		this.model = config.model;
 		this.fallbackModel = config.fallbackModel ?? "anthropic/claude-sonnet-4.5";
@@ -86,7 +99,10 @@ export class CustomProviderClient {
 		}
 	}
 
-	private validateTimeout(timeout: number | undefined, defaultMs: number): number {
+	private validateTimeout(
+		timeout: number | undefined,
+		defaultMs: number,
+	): number {
 		if (timeout === undefined) return defaultMs;
 		if (typeof timeout !== "number" || !Number.isFinite(timeout)) {
 			throw new APIError("requestTimeout must be a valid number");
@@ -99,7 +115,7 @@ export class CustomProviderClient {
 	private validateModel(model: string): void {
 		const MAX_MODEL_NAME_LENGTH = 256;
 		const VALID_MODEL_PATTERN = /^[a-zA-Z0-9_\-./:]+$/;
-		
+
 		if (!model || typeof model !== "string") {
 			throw new APIError("Model name is required");
 		}
@@ -134,7 +150,7 @@ export class CustomProviderClient {
 	validateMessages(messages: OpenRouterMessage[]): void {
 		const MAX_MESSAGES = 1000;
 		const MAX_MESSAGE_LENGTH = 1000000;
-		
+
 		if (!Array.isArray(messages)) {
 			throw new APIError("Messages must be an array");
 		}
@@ -150,7 +166,10 @@ export class CustomProviderClient {
 			if (!["system", "user", "assistant", "tool"].includes(msg.role)) {
 				throw new APIError(`Invalid role at index ${i}`);
 			}
-			if (typeof msg.content === "string" && msg.content.length > MAX_MESSAGE_LENGTH) {
+			if (
+				typeof msg.content === "string" &&
+				msg.content.length > MAX_MESSAGE_LENGTH
+			) {
 				throw new APIError(`Message at index ${i} is too long`);
 			}
 			if (msg.tool_calls && !Array.isArray(msg.tool_calls)) {
@@ -204,7 +223,10 @@ export class CustomProviderClient {
 		throw lastError ?? new Error("Max retries exceeded");
 	}
 
-	private defaultIsRetryable(error: Error, isUserAbort: boolean = false): boolean {
+	private defaultIsRetryable(
+		error: Error,
+		isUserAbort: boolean = false,
+	): boolean {
 		if (isUserAbort) {
 			return false;
 		}
@@ -224,7 +246,11 @@ export class CustomProviderClient {
 			return false;
 		}
 		const msg = error.message.toLowerCase();
-		if (msg.includes("econnrefused") || msg.includes("enotfound") || msg.includes("econnreset")) {
+		if (
+			msg.includes("econnrefused") ||
+			msg.includes("enotfound") ||
+			msg.includes("econnreset")
+		) {
 			return true;
 		}
 		return false;
@@ -233,7 +259,7 @@ export class CustomProviderClient {
 	private calculateRetryDelay(attempt: number, error: Error): number {
 		const BASE_RETRY_DELAY_MS = 1000;
 		const MAX_RETRY_DELAY_MS = 60000;
-		
+
 		if (error instanceof APIError && error.status === 429) {
 			const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
 			return Math.min(baseDelay, MAX_RETRY_DELAY_MS);
@@ -298,14 +324,17 @@ export class CustomProviderClient {
 				const sanitizedError = errorText
 					.slice(0, 500)
 					.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
-					.replace(/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi, "[REDACTED]");
+					.replace(
+						/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi,
+						"[REDACTED]",
+					);
 				if (response.status === 401) {
 					throw new APIError(
 						`API key appears to be invalid or expired.\n\n` +
-						`Suggestions:\n` +
-						`  • Check CUSTOM_API_KEY environment variable\n` +
-						`  • Check ~/.tehuti.json config file\n` +
-						`  • Verify custom provider settings`,
+							`Suggestions:\n` +
+							`  • Check CUSTOM_API_KEY environment variable\n` +
+							`  • Check ~/.tehuti.json config file\n` +
+							`  • Verify custom provider settings`,
 						response.status,
 					);
 				}
@@ -319,14 +348,15 @@ export class CustomProviderClient {
 			if (!body) {
 				throw new APIError("No response body to stream");
 			}
-			reader = body.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
+			reader =
+				body.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
 			const decoder = new TextDecoder();
 			let buffer = "";
 
 			while (true) {
 				const { done, value } = await reader.read();
-				
+
 				if (done) {
 					break;
 				}
@@ -355,10 +385,13 @@ export class CustomProviderClient {
 					debug.log("api", "Stream aborted by user");
 					return;
 				}
-				if (error.name === "TimeoutError" || error.message?.includes("timeout")) {
+				if (
+					error.name === "TimeoutError" ||
+					error.message?.includes("timeout")
+				) {
 					throw new APIError(
 						`Request timed out after ${this.requestTimeout / 1000}s. ` +
-						`Try increasing --timeout or using a faster model.`
+							`Try increasing --timeout or using a faster model.`,
 					);
 				}
 			}
@@ -391,7 +424,7 @@ export class CustomProviderClient {
 			temperature: this.temperature,
 			maxTokens: this.maxTokens,
 		});
-		
+
 		if (cachedResponse) {
 			debug.log("api", "Using cached API response");
 			return cachedResponse;
@@ -438,10 +471,10 @@ export class CustomProviderClient {
 			if (response.status === 401) {
 				throw new APIError(
 					`API key appears to be invalid or expired.\n\n` +
-					`Suggestions:\n` +
-					`  • Check CUSTOM_API_KEY environment variable\n` +
-					`  • Check ~/.tehuti.json config file\n` +
-					`  • Verify custom provider settings`,
+						`Suggestions:\n` +
+						`  • Check CUSTOM_API_KEY environment variable\n` +
+						`  • Check ~/.tehuti.json config file\n` +
+						`  • Verify custom provider settings`,
 					response.status,
 				);
 			}
@@ -451,8 +484,8 @@ export class CustomProviderClient {
 			);
 		}
 
-		const apiResponse = await response.json() as OpenRouterResponse;
-		
+		const apiResponse = (await response.json()) as OpenRouterResponse;
+
 		// Cache the response
 		await this.responseCache.set(messages, apiResponse, {
 			model,

@@ -1,7 +1,7 @@
-import { Agent, setGlobalDispatcher, Pool } from "undici";
+import { Agent, Pool, setGlobalDispatcher } from "undici";
 
 let globalAgent: Agent | null = null;
-let connectionPool: Map<string, Pool> = new Map();
+const connectionPool: Map<string, Pool> = new Map();
 
 export interface HttpAgentConfig {
 	keepAliveTimeout?: number;

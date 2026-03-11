@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Prefetcher, getPrefetcher, resetPrefetcher } from "./prefetcher.js";
+import { getPrefetcher, Prefetcher, resetPrefetcher } from "./prefetcher.js";
 import type { ToolContext } from "./tools/registry.js";
 
 vi.mock("./tools/registry.js", () => ({
@@ -48,14 +48,18 @@ describe("Prefetcher", () => {
 			const ctx = { cwd: "/test" } as ToolContext;
 			prefetcher.predict("read", { file_path: "/test/file.ts" }, ctx);
 
-			expect(prefetcher.hasPrefetched("file_info", { file_path: "/test/file.ts" })).toBe(true);
+			expect(
+				prefetcher.hasPrefetched("file_info", { file_path: "/test/file.ts" }),
+			).toBe(true);
 		});
 
 		it("should predict list_dir after read", () => {
 			const ctx = { cwd: "/test" } as ToolContext;
 			prefetcher.predict("read", { file_path: "/test/subdir/file.ts" }, ctx);
 
-			expect(prefetcher.hasPrefetched("list_dir", { dir_path: "/test/subdir" })).toBe(true);
+			expect(
+				prefetcher.hasPrefetched("list_dir", { dir_path: "/test/subdir" }),
+			).toBe(true);
 		});
 
 		it("should predict git_diff after git_status", () => {
@@ -101,7 +105,9 @@ describe("Prefetcher", () => {
 		});
 
 		it("should return null if not prefetched", () => {
-			const result = prefetcher.getPrefetched("read", { file_path: "/not-prefetched.ts" });
+			const result = prefetcher.getPrefetched("read", {
+				file_path: "/not-prefetched.ts",
+			});
 			expect(result).toBeNull();
 		});
 	});

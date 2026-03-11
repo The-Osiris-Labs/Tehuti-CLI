@@ -31,7 +31,15 @@ export interface ToolDefinition {
 	parameters: z.ZodType<unknown>;
 	execute: (args: unknown, ctx: ToolContext) => Promise<ToolResult>;
 	requiresPermission?: boolean;
-	category: "fs" | "bash" | "web" | "mcp" | "system" | "git" | "search" | "development";
+	category:
+		| "fs"
+		| "bash"
+		| "web"
+		| "mcp"
+		| "system"
+		| "git"
+		| "search"
+		| "development";
 }
 
 export type AnyToolExecutor = (

@@ -48,12 +48,16 @@ const explorer = cosmiconfig(MODULE_NAME, {
 		".yaml": (_path: string, content: string) => {
 			const parser = getYamlParser();
 			if (parser) return parser(content);
-			throw new Error("YAML config files require 'yaml' package. Install it or use .tehuti.json instead.");
+			throw new Error(
+				"YAML config files require 'yaml' package. Install it or use .tehuti.json instead.",
+			);
 		},
 		".yml": (_path: string, content: string) => {
 			const parser = getYamlParser();
 			if (parser) return parser(content);
-			throw new Error("YAML config files require 'yaml' package. Install it or use .tehuti.json instead.");
+			throw new Error(
+				"YAML config files require 'yaml' package. Install it or use .tehuti.json instead.",
+			);
 		},
 		".js": (_path: string, content: string) => content,
 		".mjs": (_path: string, content: string) => content,
@@ -118,7 +122,9 @@ export async function loadConfig(
 	}
 
 	const envApiKey =
-		process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY || process.env.KILO_API_KEY;
+		process.env.OPENROUTER_API_KEY ||
+		process.env.TEHUTI_API_KEY ||
+		process.env.KILO_API_KEY;
 	const envModel = process.env.TEHUTI_MODEL;
 	const envDebug = process.env.TEHUTI_DEBUG === "true";
 
@@ -129,22 +135,26 @@ export async function loadConfig(
 		...(envModel && { model: envModel }),
 		...(envDebug && { debug: true }),
 	};
-	
- 	// Handle API key with provider-specific logic
- 	const provider = mergedConfig.provider as string;
- 	if (provider === "kilocode") {
- 		const kiloApiKey = process.env.KILO_API_KEY || process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
- 		if (kiloApiKey) {
- 			mergedConfig.apiKey = kiloApiKey;
- 		} else if (fileConfig.apiKey) {
- 			mergedConfig.apiKey = fileConfig.apiKey;
- 		} else {
- 			mergedConfig.apiKey = globalConfig.get("apiKey");
- 		}
- 	} else {
- 		// For other providers, use standard API key logic
- 		mergedConfig.apiKey = envApiKey ?? fileConfig.apiKey ?? globalConfig.get("apiKey");
- 	}
+
+	// Handle API key with provider-specific logic
+	const provider = mergedConfig.provider as string;
+	if (provider === "kilocode") {
+		const kiloApiKey =
+			process.env.KILO_API_KEY ||
+			process.env.OPENROUTER_API_KEY ||
+			process.env.TEHUTI_API_KEY;
+		if (kiloApiKey) {
+			mergedConfig.apiKey = kiloApiKey;
+		} else if (fileConfig.apiKey) {
+			mergedConfig.apiKey = fileConfig.apiKey;
+		} else {
+			mergedConfig.apiKey = globalConfig.get("apiKey");
+		}
+	} else {
+		// For other providers, use standard API key logic
+		mergedConfig.apiKey =
+			envApiKey ?? fileConfig.apiKey ?? globalConfig.get("apiKey");
+	}
 
 	try {
 		const parsed = TEHUTI_CONFIG_SCHEMA.parse(mergedConfig);

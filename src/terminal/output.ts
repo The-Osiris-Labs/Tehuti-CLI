@@ -19,10 +19,8 @@ const colors = {
 	secondary: (text: string) => pc.dim(text),
 	accent: (text: string) =>
 		shouldUseColors() ? `${CORAL}${text}\x1b[0m` : text,
-	gold: (text: string) =>
-		shouldUseColors() ? `${GOLD}${text}\x1b[0m` : text,
-	sand: (text: string) =>
-		shouldUseColors() ? `${SAND}${text}\x1b[0m` : text,
+	gold: (text: string) => (shouldUseColors() ? `${GOLD}${text}\x1b[0m` : text),
+	sand: (text: string) => (shouldUseColors() ? `${SAND}${text}\x1b[0m` : text),
 };
 
 const IBIS = "\u{131A3}";
@@ -171,29 +169,29 @@ export function truncate(text: string, maxLength?: number): string {
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;
 	const lines: string[] = [];
-	
+
 	const textLines = text.split("\n");
-	
+
 	for (const textLine of textLines) {
 		const stripped = stripAnsi(textLine);
 		if (stripped.length <= w) {
 			lines.push(textLine);
 			continue;
 		}
-		
+
 		let currentLine = "";
 		let visualWidth = 0;
 		let inEscape = false;
-		
+
 		for (let i = 0; i < textLine.length; i++) {
 			const char = textLine[i];
-			
+
 			if (char === "\x1b") {
 				inEscape = true;
 				currentLine += char;
 				continue;
 			}
-			
+
 			if (inEscape) {
 				currentLine += char;
 				if (/[a-zA-Z]/.test(char)) {
@@ -201,17 +199,17 @@ export function wrap(text: string, width?: number): string {
 				}
 				continue;
 			}
-			
+
 			currentLine += char;
 			visualWidth++;
-			
+
 			if (visualWidth >= w && i < textLine.length - 1) {
 				lines.push(currentLine);
 				currentLine = "";
 				visualWidth = 0;
 			}
 		}
-		
+
 		if (currentLine.length > 0) {
 			lines.push(currentLine);
 		}
