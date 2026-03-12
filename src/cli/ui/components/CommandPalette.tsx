@@ -14,7 +14,7 @@ export interface CommandItem {
 	description: string;
 	usage?: string;
 	shortcut?: string;
-	category: "session" | "model" | "help";
+	category: "session" | "model" | "help" | "recent";
 	action: () => void;
 }
 
@@ -32,6 +32,7 @@ const CATEGORY_LABELS: Record<
 	session: { label: "Session", color: GREEN },
 	model: { label: "Model", color: CYAN },
 	help: { label: "Help", color: GRAY },
+	recent: { label: "Recent", color: SAND },
 };
 
 function fuzzyMatch(
@@ -111,7 +112,7 @@ export function CommandPalette({
 
 	const filteredCommands = useMemo(() => {
 		if (!query.trim()) {
-			return commands.map((cmd) => ({ ...cmd, matchIndices: [] as number[] }));
+			return commands.map((cmd) => ({ ...cmd, matchIndices: [] as number[], matchField: 'label' }));
 		}
 
 		const results = commands
@@ -120,15 +121,22 @@ export function CommandPalette({
 				const descMatch = fuzzyMatch(cmd.description, query);
 				const idMatch = fuzzyMatch(cmd.id, query);
 
-				const bestMatch = [labelMatch, descMatch, idMatch].reduce(
+				const matches = [
+					{ score: labelMatch.score, indices: labelMatch.indices, field: 'label' },
+					{ score: descMatch.score, indices: descMatch.indices, field: 'description' },
+					{ score: idMatch.score, indices: idMatch.indices, field: 'id' }
+				];
+
+				const bestMatch = matches.reduce(
 					(best, curr) => (curr.score > best.score ? curr : best),
-					{ score: -1, indices: [] },
+					{ score: -1, indices: [], field: 'label' }
 				);
 
 				return {
 					...cmd,
 					matchScore: bestMatch.score,
 					matchIndices: bestMatch.indices,
+					matchField: bestMatch.field,
 				};
 			})
 			.filter((cmd) => (cmd.matchScore ?? -1) >= 0);
@@ -236,10 +244,21 @@ export function CommandPalette({
 						...cmds.map((cmd) => {
 							flatIndex++;
 							const isSelected = flatIndex === selectedIndex;
-							const labelElements =
-								query.trim() && cmd.matchIndices.length > 0
-									? highlightMatch(cmd.label, cmd.matchIndices)
-									: [React.createElement(Text, { key: "label" }, cmd.label)];
+							let labelElements: React.ReactNode[];
+							let descElements: React.ReactNode[];
+
+							if (query.trim() && cmd.matchIndices.length > 0) {
+								if (cmd.matchField === 'description') {
+									labelElements = [React.createElement(Text, { key: "label" }, cmd.label)];
+									descElements = highlightMatch(cmd.description, cmd.matchIndices);
+								} else {
+									labelElements = highlightMatch(cmd.label, cmd.matchIndices);
+									descElements = [React.createElement(Text, { key: "desc" }, cmd.description)];
+								}
+							} else {
+								labelElements = [React.createElement(Text, { key: "label" }, cmd.label)];
+								descElements = [React.createElement(Text, { key: "desc" }, cmd.description)];
+							}
 
 							return React.createElement(
 								Box,
@@ -259,6 +278,16 @@ export function CommandPalette({
 											{ key: "usage", color: GRAY, dimColor: true },
 											` ${cmd.usage}`,
 										),
+									cmd.shortcut &&
+										React.createElement(
+											Box,
+											{ marginLeft: 'auto' as any, paddingLeft: 2 },
+											React.createElement(
+												Text,
+												{ key: "shortcut", color: SAND, dimColor: true },
+												formatShortcut(cmd.shortcut),
+											),
+										),
 								),
 								isSelected &&
 									React.createElement(
@@ -267,7 +296,7 @@ export function CommandPalette({
 										React.createElement(
 											Text,
 											{ dimColor: true, color: CYAN },
-											cmd.description,
+											...descElements,
 										),
 									),
 							);
@@ -282,6 +311,28 @@ export function CommandPalette({
 			React.createElement(Text, { dimColor: true }, "  Esc close"),
 		),
 	);
+}
+
+const RECENT_COMMANDS_KEY = "tehuti_recent_commands";
+
+function getRecentCommands(): string[] {
+	try {
+		const stored = localStorage.getItem(RECENT_COMMANDS_KEY);
+		return stored ? JSON.parse(stored) : [];
+	} catch {
+		return [];
+	}
+}
+
+function addRecentCommand(commandId: string): void {
+	const recent = getRecentCommands();
+	const filtered = recent.filter(id => id !== commandId);
+	const newRecent = [commandId, ...filtered].slice(0, 5);
+	try {
+		localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(newRecent));
+	} catch {
+		// Ignore errors
+	}
 }
 
 export function createCommands(options: {
@@ -303,7 +354,7 @@ export function createCommands(options: {
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
 }): CommandItem[] {
-	return [
+	const baseCommands = [
 		{
 			id: "/clear",
 			label: "/clear",
@@ -396,19 +447,59 @@ export function createCommands(options: {
 			id: "/help",
 			label: "/help",
 			description: "Show all commands and keyboard shortcuts",
-			shortcut: "Ctrl+K",
+			shortcut: "Ctrl+P",
 			category: "help",
 			action: options.onHelp,
 		},
-		{
-			id: "/exit",
-			label: "/exit",
-			description: "Exit Tehuti CLI",
-			shortcut: "Ctrl+C",
-			category: "session",
-			action: options.onExit,
-		},
+	{
+		id: "/exit",
+		label: "/exit",
+		description: "Exit Tehuti CLI",
+		shortcut: "Ctrl+C",
+		category: "session",
+		action: options.onExit,
+	},
 	];
+
+	// Add recently used commands
+	const recentIds = getRecentCommands();
+	const recentCommands: CommandItem[] = [];
+	
+	for (const id of recentIds) {
+		const command = baseCommands.find(cmd => cmd.id === id);
+		if (command) {
+			recentCommands.push({
+				...command,
+				category: "recent" as const,
+			});
+		}
+	}
+
+	// Enhanced command objects with recent tracking
+	const commandsWithTracking: CommandItem[] = baseCommands.map(cmd => ({
+		...cmd,
+		category: cmd.category as "session" | "model" | "help" | "recent",
+		action: () => {
+			addRecentCommand(cmd.id);
+			cmd.action();
+		}
+	}));
+
+	return [...recentCommands, ...commandsWithTracking.filter(cmd => 
+		!recentIds.includes(cmd.id)
+	)];
+}
+
+function formatShortcut(shortcut: string): string {
+	if (!shortcut) return '';
+	
+	// Format Ctrl+K or similar
+	return shortcut.split('+').map(key => {
+		if (key === 'Ctrl') return '⌃';
+		if (key === 'Alt') return '⌥';
+		if (key === 'Cmd') return '⌘';
+		return key.toUpperCase();
+	}).join('');
 }
 
 export function formatHelpOutput(): string {
@@ -434,9 +525,12 @@ export function formatHelpOutput(): string {
 │    /thinking           Toggle extended thinking mode              │
 ├──────────────────────────────────────────────────────────────────┤
 │  SHORTCUTS                                                        │
-│    Ctrl+K    Command palette    Ctrl+L    Clear screen            │
-│    Ctrl+U    Clear input        Ctrl+W    Delete word             │
-│    ↑/↓       History           Ctrl+↑/↓  Scroll                   │
+│    ⌃P    Command palette    ⌃L    Clear screen                    │
+│    ⌃U    Clear input        ⌃W    Delete word                     │
+│    ⌃K    Delete to end      ⌃C    Copy selected                    │
+│    ⌃X    Cut selected       ⌃V    Paste                            │
+│    ↑/↓    History           ⌃↑/⌃↓  Scroll                         │
+│    ⇧+↑/↓  Select text       ⌃T    Swap characters                  │
 ╰──────────────────────────────────────────────────────────────────╯
 `.trim();
 }

@@ -335,17 +335,71 @@ export class CustomProviderClient {
 					);
 				if (response.status === 401) {
 					throw new APIError(
-						`API key appears to be invalid or expired.\n\n` +
-							`Suggestions:\n` +
-							`  • Check CUSTOM_API_KEY environment variable\n` +
-							`  • Check ~/.tehuti.json config file\n` +
-							`  • Verify custom provider settings`,
+						`API key appears to be invalid or expired.`,
 						response.status,
+						[
+							"Check CUSTOM_API_KEY environment variable",
+							"Check ~/.tehuti.json config file",
+							"Verify custom provider settings"
+						]
+					);
+				}
+				if (response.status === 429) {
+					const retryAfter = response.headers.get("Retry-After");
+					const retryMessage = retryAfter
+						? `Retry after ${retryAfter} seconds.`
+						: "Please wait before making more requests.";
+					throw new APIError(
+						`Rate limit exceeded. ${retryMessage}`,
+						response.status,
+						[
+							"Wait a few minutes before making more requests",
+							"Check custom provider rate limits",
+							"Consider upgrading your plan"
+						]
+					);
+				}
+				if (response.status === 403) {
+					throw new APIError(
+						`Access forbidden. Your API key may not have the necessary permissions.`,
+						response.status,
+						[
+							"Check your custom provider account status",
+							"Verify your API key has correct permissions",
+							"Try generating a new API key"
+						]
+					);
+				}
+				if (response.status === 404) {
+					throw new APIError(
+						`Endpoint not found. The custom provider endpoint may be incorrect.`,
+						response.status,
+						[
+							"Check the custom provider base URL",
+							"Verify the endpoint exists",
+							"Contact your custom provider support"
+						]
+					);
+				}
+				if (response.status >= 500) {
+					throw new APIError(
+						`Custom provider server error (${response.status}): ${sanitizedError}`,
+						response.status,
+						[
+							"Check custom provider status page for outages",
+							"Try again later",
+							"Contact custom provider support"
+						]
 					);
 				}
 				throw new APIError(
 					`Custom provider API error (${response.status}): ${sanitizedError}`,
 					response.status,
+					[
+						"Check your internet connection",
+						"Try again later",
+						"Run with --debug for more details"
+					]
 				);
 			}
 
@@ -375,12 +429,17 @@ export class CustomProviderClient {
 					if (!trimmed || !trimmed.startsWith("data: ")) {
 						continue;
 					}
+					
+					const dataStr = trimmed.slice(6);
+					if (dataStr === "[DONE]") {
+						continue;
+					}
 
 					try {
-						const data = JSON.parse(trimmed.slice(6));
+						const data = JSON.parse(dataStr);
 						yield data;
 					} catch (parseError) {
-						debug.log("api", "Failed to parse SSE chunk:", parseError);
+						debug.log("api", "Failed to parse SSE chunk:", parseError, "Data:", dataStr);
 					}
 				}
 			}

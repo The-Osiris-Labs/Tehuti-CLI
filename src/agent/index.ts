@@ -13,6 +13,7 @@ import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
 import { checkPermission } from "../permissions/index.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
+import { AgentError, APIError, formatError } from "../utils/errors.js";
 import { getTelemetry } from "../utils/telemetry.js";
 import {
 	getToolCache,
@@ -117,6 +118,7 @@ export interface AgentLoopOptions {
 	onToolCall?: (name: string, args: unknown) => void;
 	onToolResult?: (name: string, result: unknown) => void;
 	onThinking?: (content: string) => void;
+	onProgress?: (progress: number, label: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -148,7 +150,11 @@ export async function runAgentLoop(
 	userMessage: string,
 	options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
-	const { onToken, onToolCall, onToolResult, onThinking, signal } = options;
+	const { onToken, onToolCall, onToolResult, onThinking, onProgress, signal } = options;
+
+	// Token progress tracking
+	let totalTokensGenerated = 0;
+	const maxTokens = ctx.config.maxTokens ?? 4096;
 
 	setParentContext(ctx);
 
@@ -185,14 +191,18 @@ export async function runAgentLoop(
 
 	addUserMessage(ctx, userMessage);
 
-	const pendingTools = classifyTask(userMessage, ctx);
-	const selectedModel = selectModelForClassification(pendingTools, {
-		modelSelection: ctx.config.modelSelection,
-		manualModel: ctx.config.model,
-	});
-	if (selectedModel !== ctx.config.model) {
-		debug.log("agent", `Model routing: ${ctx.config.model} → ${selectedModel}`);
-		ctx.config.model = selectedModel;
+	// Skip model routing for custom provider (use configured model directly)
+	let selectedModel = ctx.config.model;
+	if (ctx.config.provider !== "custom") {
+		const pendingTools = classifyTask(userMessage, ctx);
+		selectedModel = selectModelForClassification(pendingTools, {
+			modelSelection: ctx.config.modelSelection,
+			manualModel: ctx.config.model,
+		});
+		if (selectedModel !== ctx.config.model) {
+			debug.log("agent", `Model routing: ${ctx.config.model} → ${selectedModel}`);
+			ctx.config.model = selectedModel;
+		}
 	}
 
 	let iteration = 0;
@@ -235,8 +245,10 @@ export async function runAgentLoop(
 				});
 			}
 
-			const modelId = ctx.config.model;
-			const stream = client.streamChat(ctx.messages, tools, undefined, signal);
+	const modelId = ctx.config.model;
+		debug.log("agent", `Available tools: ${tools.map(t => t.function.name).join(", ")}`);
+		debug.log("agent", `Tools JSON: ${JSON.stringify(tools, null, 2)}`);
+		const stream = client.streamChat(ctx.messages, tools, undefined, signal);
 			const state = createStreamingState(modelId);
 
 			if (isReasoningModel(modelId)) {
@@ -258,6 +270,9 @@ export async function runAgentLoop(
 
 				if (hasContent && newContent) {
 					onToken?.(newContent);
+					totalTokensGenerated++;
+					const progress = Math.min(Math.round((totalTokensGenerated / maxTokens) * 90), 90);
+					onProgress?.(progress, "Generating response...");
 					totalContent += newContent;
 				}
 
@@ -413,7 +428,7 @@ export async function runAgentLoop(
 				}
 
 				if (allowedCalls.length > 0) {
-					for (const tc of allowedCalls) {
+ 				for (const tc of allowedCalls) {
 						totalToolCalls++;
 						trackToolCall(ctx, tc.function.name);
 						let args: unknown;
@@ -423,13 +438,17 @@ export async function runAgentLoop(
 							args = {};
 						}
 						onToolCall?.(tc.function.name, args);
+						onProgress?.(50, `Executing ${tc.function.name}...`);
 					}
 
+					const toolStartTime = Date.now();
 					await executeToolsParallel(allowedCalls, {
 						ctx,
 						toolContext: contextForTools,
 						onToolResult: (name, result) => {
 							onToolResult?.(name, result);
+							const duration = Date.now() - toolStartTime;
+							onProgress?.(70, `Executed ${name} in ${(duration / 1000).toFixed(2)}s`);
 						},
 						addToolResult: (c, id, name, resultStr) => {
 							addToolResult(c, id, name, resultStr);
@@ -448,7 +467,8 @@ export async function runAgentLoop(
 						args = {};
 					}
 
-					onToolCall?.(tc.function.name, args);
+ 					onToolCall?.(tc.function.name, args);
+					onProgress?.(50, `Executing ${tc.function.name}...`);
 					debug.log("agent", `Tool call: ${tc.function.name}`, args);
 
 					if (isPlanMode() && !isToolAllowedInPlanMode(tc.function.name)) {
@@ -515,7 +535,7 @@ export async function runAgentLoop(
 						continue;
 					}
 
-					try {
+ 					try {
 						const startTime = Date.now();
 						let result: any;
 
@@ -562,6 +582,8 @@ export async function runAgentLoop(
 
 						invalidateOnWrite(tc.function.name, args);
 
+						const duration = Date.now() - startTime;
+						onProgress?.(70, `Executed ${tc.function.name} in ${(duration / 1000).toFixed(2)}s`);
 						onToolResult?.(tc.function.name, result);
 						addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
@@ -584,9 +606,50 @@ export async function runAgentLoop(
 				}
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			consola.error(`Agent loop error: ${message}`);
-
+			let agentError: any;
+			
+			if (error instanceof APIError) {
+				agentError = error;
+			} else if (error instanceof Error) {
+				const suggestions: string[] = [];
+				if (error.message.includes("API") || error.message.includes("key")) {
+					suggestions.push("Check your API key in ~/.tehuti.json or OPENROUTER_API_KEY environment variable");
+					suggestions.push("Run 'tehuti init' to reconfigure your API key");
+				} else if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+					suggestions.push("Try increasing --timeout to a larger value");
+					suggestions.push("Use a faster model with --model <model-id>");
+					suggestions.push("Check your internet connection");
+				} else if (error.message.includes("rate limit") || error.message.includes("429")) {
+					suggestions.push("Wait a few minutes before making more requests");
+					suggestions.push("Try a different model with --model <model-id>");
+				} else if (error.message.includes("context")) {
+					suggestions.push("Try a model with larger context window");
+					suggestions.push("Simplify your prompt to reduce context length");
+					suggestions.push("Use /compact command to compress context");
+				} else {
+					suggestions.push("Check your internet connection");
+					suggestions.push("Try again later");
+					suggestions.push("Run with --debug for more details");
+				}
+				
+				agentError = new AgentError(
+					error.message,
+					iteration === 0 ? "initialization" : "execution",
+					suggestions
+				);
+			} else {
+				agentError = new AgentError(
+					String(error),
+					iteration === 0 ? "initialization" : "execution",
+					["Run with --debug for more details", "Try again later"]
+				);
+			}
+			
+			debug.log("agent", `Agent loop error (phase: ${agentError.phase}):`, agentError);
+			debug.log("agent", "Error stack:", agentError.stack);
+			
+			consola.error(formatError(agentError));
+			
 			return {
 				content: totalContent,
 				toolCalls: totalToolCalls,

@@ -140,6 +140,7 @@ const MOVE_FILE_SCHEMA = z.object({
 
 const LIST_DIR_SCHEMA = z.object({
 	dir_path: z.string().describe("The absolute path to the directory to list"),
+	json: z.boolean().optional().describe("Return output in JSON format"),
 });
 
 const GET_FILE_INFO_SCHEMA = z.object({
@@ -896,10 +897,23 @@ async function moveFile(
 }
 
 async function listDir(
-	args: z.infer<typeof LIST_DIR_SCHEMA>,
+	args: z.infer<typeof LIST_DIR_SCHEMA> & Record<string, unknown>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
-	const resolvedPath = resolvePath(args.dir_path, ctx.cwd);
+	// Handle cases where model uses 'directory' instead of 'dir_path'
+	let dirPath = args.dir_path;
+	if (!dirPath && "directory" in args) {
+		dirPath = args.directory as string;
+	}
+	if (!dirPath) {
+		return {
+			success: false,
+			output: "",
+			error: "Missing required parameter: dir_path (or directory)",
+		};
+	}
+	
+	const resolvedPath = resolvePath(dirPath, ctx.cwd);
 
 	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
 	if (!securityCheck.safe) {
@@ -938,22 +952,43 @@ async function listDir(
 		}
 
 		const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-		const lines = entries
-			.sort((a, b) => {
-				if (a.isDirectory() && !b.isDirectory()) return -1;
-				if (!a.isDirectory() && b.isDirectory()) return 1;
-				return a.name.localeCompare(b.name);
-			})
-			.map((entry) => {
-				const suffix = entry.isDirectory() ? "/" : "";
-				return `${entry.name}${suffix}`;
-			});
+		
+		if (args.json) {
+			const jsonEntries = entries
+				.sort((a, b) => {
+					if (a.isDirectory() && !b.isDirectory()) return -1;
+					if (!a.isDirectory() && b.isDirectory()) return 1;
+					return a.name.localeCompare(b.name);
+				})
+				.map((entry) => ({
+					name: entry.name,
+					type: entry.isDirectory() ? "directory" : "file",
+					path: path.join(resolvedPath, entry.name),
+				}));
+				
+			return {
+				success: true,
+				output: JSON.stringify(jsonEntries, null, 2),
+				metadata: { path: resolvedPath, count: entries.length },
+			};
+		} else {
+			const lines = entries
+				.sort((a, b) => {
+					if (a.isDirectory() && !b.isDirectory()) return -1;
+					if (!a.isDirectory() && b.isDirectory()) return 1;
+					return a.name.localeCompare(b.name);
+				})
+				.map((entry) => {
+					const suffix = entry.isDirectory() ? "/" : "";
+					return `${entry.name}${suffix}`;
+				});
 
-		return {
-			success: true,
-			output: lines.join("\n") || "(empty directory)",
-			metadata: { path: resolvedPath, count: entries.length },
-		};
+			return {
+				success: true,
+				output: lines.join("\n") || "(empty directory)",
+				metadata: { path: resolvedPath, count: entries.length },
+			};
+		}
 	} catch (error) {
 		return {
 			success: false,

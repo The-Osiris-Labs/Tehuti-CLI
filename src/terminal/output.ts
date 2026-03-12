@@ -166,6 +166,8 @@ export function truncate(text: string, maxLength?: number): string {
 	return `${text.slice(0, limit - 3)}...`;
 }
 
+import stringWidth from "string-width";
+
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;
 	const lines: string[] = [];
@@ -180,42 +182,126 @@ export function wrap(text: string, width?: number): string {
 		}
 
 		let currentLine = "";
-		let visualWidth = 0;
+		let currentStripped = "";
 		let inEscape = false;
 
-		for (let i = 0; i < textLine.length; i++) {
-			const char = textLine[i];
+		const words = splitIntoWords(textLine);
 
-			if (char === "\x1b") {
-				inEscape = true;
-				currentLine += char;
-				continue;
-			}
+		for (const word of words) {
+			const wordStripped = stripAnsi(word);
+			const wordWidth = stringWidth(wordStripped);
+			const currentWidth = stringWidth(currentStripped);
 
-			if (inEscape) {
-				currentLine += char;
-				if (/[a-zA-Z]/.test(char)) {
-					inEscape = false;
+			if (currentWidth + wordWidth <= w) {
+				currentLine += word;
+				currentStripped += wordStripped;
+			} else {
+				if (currentLine) {
+					lines.push(currentLine.trimEnd());
 				}
-				continue;
-			}
-
-			currentLine += char;
-			visualWidth++;
-
-			if (visualWidth >= w && i < textLine.length - 1) {
-				lines.push(currentLine);
-				currentLine = "";
-				visualWidth = 0;
+				if (wordWidth > w) {
+					const wrappedWord = wrapLongWord(word, wordStripped, w);
+					lines.push(...wrappedWord.slice(0, -1));
+					const lastPart = wrappedWord[wrappedWord.length - 1];
+					currentLine = lastPart;
+					currentStripped = stripAnsi(lastPart);
+				} else {
+					currentLine = word;
+					currentStripped = wordStripped;
+				}
 			}
 		}
 
-		if (currentLine.length > 0) {
-			lines.push(currentLine);
+		if (currentLine) {
+			lines.push(currentLine.trimEnd());
 		}
 	}
 
 	return lines.join("\n");
+}
+
+function splitIntoWords(text: string): string[] {
+	const words: string[] = [];
+	let current = "";
+	let inEscape = false;
+	let inWord = false;
+
+	for (let i = 0; i < text.length; i++) {
+		const char = text[i];
+
+		if (char === "\x1b") {
+			inEscape = true;
+			current += char;
+			continue;
+		}
+
+		if (inEscape) {
+			current += char;
+			if (/[a-zA-Z]/.test(char)) {
+				inEscape = false;
+			}
+			continue;
+		}
+
+		if (char.trim() === "") {
+			if (inWord) {
+				words.push(current);
+				inWord = false;
+				current = "";
+			}
+			words.push(char);
+		} else {
+			current += char;
+			inWord = true;
+		}
+	}
+
+	if (current) {
+		words.push(current);
+	}
+
+	return words;
+}
+
+function wrapLongWord(word: string, stripped: string, width: number): string[] {
+	const lines: string[] = [];
+	let current = "";
+	let currentStripped = "";
+	let inEscape = false;
+
+	for (let i = 0; i < word.length; i++) {
+		const char = word[i];
+
+		if (char === "\x1b") {
+			inEscape = true;
+			current += char;
+			continue;
+		}
+
+		if (inEscape) {
+			current += char;
+			if (/[a-zA-Z]/.test(char)) {
+				inEscape = false;
+			}
+			continue;
+		}
+
+		const charWidth = stringWidth(char);
+		if (stringWidth(currentStripped) + charWidth <= width) {
+			current += char;
+			currentStripped += char;
+		} else {
+			lines.push(current);
+			current = char;
+			currentStripped = char;
+		}
+	}
+
+	if (current) {
+		lines.push(current);
+	}
+
+	return lines;
 }
 
 const ANSI_REGEX_GLOBAL = /\x1b\[[0-9;]*[a-zA-Z]/g;

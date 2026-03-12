@@ -98,10 +98,11 @@ import {
 import {
 	highlightToAnsi,
 	isHighlighterReady,
+	initHighlighter,
 } from "../../terminal/highlighter.js";
 import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
 import { debug } from "../../utils/debug.js";
-import { setupErrorHandlers } from "../../utils/errors.js";
+import { setupErrorHandlers, APIError, AgentError, ConfigError } from "../../utils/errors.js";
 import { setDebugMode } from "../../utils/logger.js";
 import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
 import {
@@ -293,6 +294,13 @@ function highlightSyntax(code: string, language?: string): string {
 	return code;
 }
 
+// Initialize highlighter early
+initHighlighter().catch((err) => {
+	console.error("Failed to initialize syntax highlighter:", err);
+});
+
+import { wrap } from "../../terminal/output.js";
+
 function renderMarkdown(text: string, maxWidth?: number): React.ReactNode[] {
 	const elements: React.ReactNode[] = [];
 	const tokens = marked.lexer(text);
@@ -324,6 +332,17 @@ function renderToken(
 			const code = token.text.trim();
 			const highlighted = highlightSyntax(code, lang);
 			const codeWidth = maxWidth ? Math.min(maxWidth - 4, 100) : 100;
+			
+			// Render code with line numbers for consistency
+			const lines = highlighted.split("\n");
+			const lineNumWidth = Math.max(2, String(lines.length).length);
+			const formattedCode = lines
+				.map((line, i) => {
+					const lineNum = String(i + 1).padStart(lineNumWidth);
+					return `${lineNum} │ ${line}`;
+				})
+				.join("\n");
+
 			return React.createElement(
 				Box,
 				{
@@ -338,7 +357,7 @@ function renderToken(
 					width: codeWidth,
 				},
 				React.createElement(Text, { dimColor: true }, lang),
-				React.createElement(Text, { wrap: "wrap" }, highlighted),
+				React.createElement(Text, { wrap: "wrap", dimColor: true }, formattedCode),
 			);
 		}
 
@@ -346,11 +365,24 @@ function renderToken(
 			const level = token.depth;
 			const color = level === 1 ? GOLD : level === 2 ? CORAL : GREEN;
 			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
+			const prefix = "=".repeat(Math.max(1, 7 - level));
+			
+			const heading = React.createElement(
 				Text,
 				{ key: getKey(), bold: true, color, wrap: "wrap" },
 				...inlineElements,
 			);
+			
+			if (level <= 2) {
+				const underline = React.createElement(
+					Text,
+					{ key: getKey(), dimColor: true },
+					prefix.repeat(50),
+				);
+				return [heading, React.createElement(Text, { key: getKey() }, "\n"), underline];
+			}
+			
+			return heading;
 		}
 
 		case "paragraph": {
@@ -399,12 +431,59 @@ function renderToken(
 		}
 
 		case "hr": {
-			const lineLen = maxWidth ? Math.min(maxWidth - 4, 40) : 40;
+			const lineLen = maxWidth ? Math.min(maxWidth - 4, 50) : 50;
 			return React.createElement(
 				Text,
 				{ key: getKey(), dimColor: true, color: GRAY },
 				"─".repeat(lineLen),
 			);
+		}
+
+		case "table": {
+			const header = token.header || [];
+			const rows = token.rows || [];
+
+			const widths: number[] = header.map((h: Token, i: number) => {
+				const headerLen =
+					"text" in h && typeof h.text === "string" ? h.text.length : 0;
+				const rowLens = rows.map((r: Token[]) => {
+					const cell = r[i];
+					return cell && "text" in cell && typeof cell.text === "string"
+						? cell.text.length
+						: 0;
+				});
+				return Math.max(headerLen, ...rowLens);
+			});
+
+			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
+
+			let result = "\n";
+			result += `┌${border.join("┬")}┐\n`;
+
+			const headerCells: string[] = header.map((h: Token, i: number) => {
+				const text = "text" in h && typeof h.text === "string" ? h.text : "";
+				const width = widths[i];
+				return `│ ${text.padEnd(width)} `;
+			});
+			result += headerCells.join("") + "│\n";
+
+			result += `├${border.join("┼")}┤\n`;
+
+			for (const row of rows) {
+				const cells: string[] = row.map((cell: Token, i: number) => {
+					const text =
+						cell && "text" in cell && typeof cell.text === "string"
+							? cell.text
+							: "";
+					const width = widths[i];
+					return `│ ${text.padEnd(width)} `;
+				});
+				result += cells.join("") + "│\n";
+			}
+
+			result += `└${border.join("┴")}┘\n`;
+
+			return React.createElement(Text, { key: getKey(), wrap: "wrap" }, result);
 		}
 
 		case "space": {
@@ -811,6 +890,8 @@ function ChatUI({
 	>([]);
 	const [input, setInput] = useState("");
 	const [cursorPos, setCursorPos] = useState(0);
+	const [selectionStart, setSelectionStart] = useState<number | null>(null);
+	const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const [ctxModel, setCtxModel] = useState(model);
@@ -822,6 +903,7 @@ function ChatUI({
 	const [sessionCost, setSessionCost] = useState(0);
 	const [thinking, setThinking] = useState("");
 	const [showThinking, setShowThinking] = useState(false);
+	const [thinkingDots, setThinkingDots] = useState("");
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [pendingQuestion, setPendingQuestion] = useState<{
 		questions: QuestionData[];
@@ -845,8 +927,29 @@ function ChatUI({
 	const streamingContentRef = useRef<string>("");
 	const streamingMsgIdRef = useRef<number | null>(null);
 
-	const terminalHeight = stdout?.rows || 24;
-	const terminalWidth = stdout?.columns || 80;
+	const [terminalSize, setTerminalSize] = useState({
+		rows: stdout?.rows || 24,
+		columns: stdout?.columns || 80,
+	});
+
+	useEffect(() => {
+		const handleResize = () => {
+			setTerminalSize({
+				rows: stdout?.rows || 24,
+				columns: stdout?.columns || 80,
+			});
+		};
+
+		const resizeListener = () => handleResize();
+		process.stdout.on("resize", resizeListener);
+		
+		return () => {
+			process.stdout.off("resize", resizeListener);
+		};
+	}, [stdout]);
+
+	const terminalHeight = terminalSize.rows;
+	const terminalWidth = terminalSize.columns;
 	const headerHeight = 3;
 	const inputHeight = 3;
 	const maxVisibleMessages = Math.max(
@@ -1249,13 +1352,25 @@ function ChatUI({
 	}, []);
 
 	useEffect(() => {
+		let thinkingTimer: NodeJS.Timeout;
+		if (showThinking) {
+			let dotCount = 0;
+			thinkingTimer = setInterval(() => {
+				dotCount = (dotCount + 1) % 4;
+				setThinkingDots(".".repeat(dotCount));
+			}, 400);
+		}
+
 		return () => {
 			if (batchTimerRef.current) {
 				clearTimeout(batchTimerRef.current);
 				batchTimerRef.current = null;
 			}
+			if (thinkingTimer) {
+				clearInterval(thinkingTimer);
+			}
 		};
-	}, []);
+	}, [showThinking]);
 
 	useEffect(() => {
 		questionResolverRef.current = async (
@@ -1318,6 +1433,45 @@ function ChatUI({
 		setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
 	}, [messages.length, maxVisibleMessages]);
 
+	const scrollToTop = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset(0);
+	}, []);
+
+	const scrollPageUp = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset((off) => Math.max(0, off - maxVisibleMessages));
+	}, [maxVisibleMessages]);
+
+	const scrollPageDown = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset((off) => {
+			const maxOff = Math.max(0, messages.length - maxVisibleMessages);
+			const newOff = Math.min(maxOff, off + maxVisibleMessages);
+			if (newOff >= maxOff) {
+				messagesEndRef.current = true;
+			}
+			return newOff;
+		});
+	}, [messages.length, maxVisibleMessages]);
+
+	const scrollLineUp = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset((off) => Math.max(0, off - 1));
+	}, []);
+
+	const scrollLineDown = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset((off) => {
+			const maxOff = Math.max(0, messages.length - maxVisibleMessages);
+			const newOff = Math.min(maxOff, off + 1);
+			if (newOff >= maxOff) {
+				messagesEndRef.current = true;
+			}
+			return newOff;
+		});
+	}, [messages.length, maxVisibleMessages]);
+
 	useEffect(() => {
 		if (messagesEndRef.current) {
 			scrollToBottom();
@@ -1329,7 +1483,7 @@ function ChatUI({
 			return;
 		}
 
-		if (key.ctrl && k === "k") {
+		if (key.ctrl && k === "p") {
 			setShowCommandPalette(true);
 			return;
 		}
@@ -1389,21 +1543,33 @@ function ChatUI({
 			return;
 		}
 
+		if (key.pageUp) {
+			scrollPageUp();
+			return;
+		}
+
+		if (key.pageDown) {
+			scrollPageDown();
+			return;
+		}
+
 		if (key.ctrl && key.upArrow) {
-			messagesEndRef.current = false;
-			setScrollOffset((off) => Math.max(0, off - 1));
+			scrollLineUp();
 			return;
 		}
 
 		if (key.ctrl && key.downArrow) {
-			setScrollOffset((off) => {
-				const maxOff = Math.max(0, messages.length - maxVisibleMessages);
-				const newOff = Math.min(maxOff, off + 1);
-				if (newOff >= maxOff) {
-					messagesEndRef.current = true;
-				}
-				return newOff;
-			});
+			scrollLineDown();
+			return;
+		}
+
+		if (key.home) {
+			scrollToTop();
+			return;
+		}
+
+		if (key.end) {
+			scrollToBottom();
 			return;
 		}
 
@@ -1446,6 +1612,75 @@ function ChatUI({
 			return;
 		}
 
+		if (key.ctrl && k === "k") {
+			setInput(input.slice(0, cursorPos));
+			setCursorPos(cursorPos);
+			return;
+		}
+
+		if (key.ctrl && k === "c") {
+			if (input.length === 0) {
+				onExit();
+			} else {
+				setInput("");
+				setCursorPos(0);
+			}
+			return;
+		}
+
+		if (key.ctrl && k === "d") {
+			if (input.length === 0) {
+				onExit();
+			} else {
+				setInput(input.slice(0, cursorPos) + input.slice(cursorPos + 1));
+			}
+			return;
+		}
+
+		if (key.ctrl && k === "c") {
+			if (input.length === 0) {
+				onExit();
+			} else if (selectionStart !== null && selectionEnd !== null) {
+				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
+				const selectedText = input.slice(start, end);
+				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
+				setSelectionStart(null);
+				setSelectionEnd(null);
+			} else {
+				setInput("");
+				setCursorPos(0);
+			}
+			return;
+		}
+
+		if (key.ctrl && k === "x") {
+			if (selectionStart !== null && selectionEnd !== null) {
+				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
+				const selectedText = input.slice(start, end);
+				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
+				setInput(input.slice(0, start) + input.slice(end));
+				setCursorPos(start);
+				setSelectionStart(null);
+				setSelectionEnd(null);
+			}
+			return;
+		}
+
+		if (key.ctrl && k === "v") {
+			return;
+		}
+
+		if (key.ctrl && k === "t") {
+			const before = input.slice(0, cursorPos);
+			const after = input.slice(cursorPos);
+			if (before.length > 0) {
+				const lastChar = before.slice(-1);
+				setInput(before.slice(0, -1) + after.slice(0, 1) + lastChar + after.slice(1));
+				setCursorPos(cursorPos + 1);
+			}
+			return;
+		}
+
 		// Backspace handling
 		if (key.backspace || k === "\x7f" || k === "\b") {
 			if (cursorPos > 0) {
@@ -1463,13 +1698,39 @@ function ChatUI({
 			return;
 		}
 
+		// Text selection
+		if (key.shift && key.leftArrow) {
+			const newPos = Math.max(0, cursorPos - 1);
+			if (selectionStart === null) {
+				setSelectionStart(cursorPos);
+			}
+			setSelectionEnd(newPos);
+			setCursorPos(newPos);
+			return;
+		}
+
+		if (key.shift && key.rightArrow) {
+			const newPos = Math.min(input.length, cursorPos + 1);
+			if (selectionStart === null) {
+				setSelectionStart(cursorPos);
+			}
+			setSelectionEnd(newPos);
+			setCursorPos(newPos);
+			return;
+		}
+
+		if (!key.shift && selectionStart !== null) {
+			setSelectionStart(null);
+			setSelectionEnd(null);
+		}
+
 		// Cursor navigation
-		if (key.leftArrow) {
+		if (key.leftArrow && !key.shift) {
 			setCursorPos((p) => Math.max(0, p - 1));
 			return;
 		}
 
-		if (key.rightArrow) {
+		if (key.rightArrow && !key.shift) {
 			setCursorPos((p) => Math.min(input.length, p + 1));
 			return;
 		}
@@ -1792,16 +2053,8 @@ function ChatUI({
 		setError("");
 		setThinking("");
 		setShowThinking(false);
-		setOperationLabel("Tehuti is thinking...");
+ 		setOperationLabel("Tehuti is thinking...");
 		setProgress(0);
-
-		// Simulate progress for better UX
-		const progressInterval = setInterval(() => {
-			setProgress((prev) => {
-				if (prev >= 90) return prev;
-				return prev + Math.random() * 10;
-			});
-		}, 200);
 
 		streamingContentRef.current = "";
 		streamingMsgIdRef.current = assistantMsgId;
@@ -1837,7 +2090,7 @@ function ChatUI({
 				{ id: assistantMsgId, role: "assistant", content: "" },
 			]);
 
-			const result = await runAgentLoop(ctxRef.current, text, {
+ 			const result = await runAgentLoop(ctxRef.current, text, {
 				onToken: (t) => {
 					response += t;
 					batchToken(t);
@@ -1878,6 +2131,10 @@ function ChatUI({
 						setThinking(`  💭 Thinking...`);
 						setShowThinking(true);
 					}
+				},
+				onProgress: (progress, label) => {
+					setProgress(progress);
+					setOperationLabel(label);
 				},
 			});
 
@@ -1920,20 +2177,57 @@ function ChatUI({
 			streamingMsgIdRef.current = null;
 			streamingContentRef.current = "";
 		} catch (e) {
-			const message = e instanceof Error ? e.message : String(e);
-			debug.log("chat", "Agent error:", e);
+			const error = e instanceof Error ? e : new Error(String(e));
+			debug.log("chat", "Agent error:", error);
+			debug.log("chat", "Error stack:", error.stack);
+			
 			flushBatchedTokens();
+			
+			let errorContent = "An unexpected error occurred";
+			let suggestions: string[] = [];
+			
+			if (error instanceof APIError) {
+				errorContent = error.message;
+				if (error.suggestions) {
+					suggestions = error.suggestions;
+				}
+			} else if (error instanceof AgentError) {
+				errorContent = error.message;
+				if (error.suggestions) {
+					suggestions = error.suggestions;
+				}
+			} else if (error instanceof ConfigError) {
+				errorContent = error.message;
+				if (error.suggestions) {
+					suggestions = error.suggestions;
+				}
+			} else {
+				errorContent = error.message;
+				suggestions = [
+					"Check your internet connection",
+					"Try again later",
+					"Run with --debug for more details"
+				];
+			}
+			
+			let fullContent = `Error: ${errorContent}`;
+			if (suggestions.length > 0) {
+				fullContent += "\n\nSuggestions:";
+				suggestions.forEach((suggestion, index) => {
+					fullContent += `\n  ${index + 1}. ${suggestion}`;
+				});
+			}
+			
 			setMessages((m) =>
 				m.map((msg) =>
 					msg.id === assistantMsgId
-						? { ...msg, content: `Error: ${message}`, status: "error" }
+						? { ...msg, content: fullContent, status: "error" }
 						: msg,
 				),
 			);
 			streamingMsgIdRef.current = null;
 		}
-		clearInterval(progressInterval);
-		setProgress(100);
+ 		setProgress(100);
 		setLoading(false);
 		setShowThinking(false);
 		setOperationLabel("");
@@ -2051,22 +2345,53 @@ function ChatUI({
 	const renderInput = useMemo(() => {
 		const before = input.slice(0, cursorPos);
 		const after = input.slice(cursorPos);
+		const historyIndicator = historyIndex >= 0 
+			? React.createElement(Text, { color: SAND, dimColor: true }, ` [${historyIndex + 1}/${history.length}] `)
+			: '';
 		return React.createElement(
 			Text,
 			{ color: CORAL },
-			`${DECORATIVE.scroll} ${before}\u2588${after}`,
+			`${DECORATIVE.scroll}${historyIndicator} ${before}\u2588${after}`,
 		);
-	}, [input, cursorPos]);
+	}, [input, cursorPos, historyIndex, history.length]);
 
 	const scrollIndicator = useMemo(() => {
 		if (messages.length <= maxVisibleMessages) return null;
-		const position = messagesEndRef.current
+		
+		const totalHeight = messages.length;
+		const visibleHeight = maxVisibleMessages;
+		const currentPosition = messagesEndRef.current 
+			? totalHeight - visibleHeight 
+			: scrollOffset;
+		
+		const scrollPercent = Math.round((currentPosition / Math.max(1, totalHeight - visibleHeight)) * 100);
+		const barWidth = 10;
+		const filledWidth = Math.round((scrollPercent / 100) * barWidth);
+		const filled = "█".repeat(filledWidth);
+		const empty = "░".repeat(barWidth - filledWidth);
+		
+		const positionText = messagesEndRef.current
 			? "end"
 			: `${scrollOffset + 1}-${Math.min(scrollOffset + maxVisibleMessages, messages.length)}/${messages.length}`;
+		
 		return React.createElement(
-			Text,
-			{ dimColor: true },
-			`[${DECORATIVE.eye} ${position} ${DECORATIVE.arrow}scroll]`,
+			Box,
+			{ flexDirection: "row", alignItems: "center", gap: 1 },
+			React.createElement(
+				Text,
+				{ dimColor: true },
+				`${DECORATIVE.eye} ${positionText}`,
+			),
+			React.createElement(
+				Text,
+				{ color: GOLD },
+				`[${filled}${empty}]`,
+			),
+			React.createElement(
+				Text,
+				{ dimColor: true },
+				`${scrollPercent}%`,
+			),
 		);
 	}, [messages.length, maxVisibleMessages, scrollOffset]);
 
@@ -2096,7 +2421,7 @@ function ChatUI({
 			React.createElement(
 				Text,
 				{ color: GRAY, dimColor: true },
-				`${DECORATIVE.eye} Ctrl+K ${DECORATIVE.separator} Ctrl+C`,
+				`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
 			),
 		),
 		React.createElement(
@@ -2134,7 +2459,6 @@ function ChatUI({
 							...messageElements,
 						),
 			showThinking &&
-				thinking &&
 				React.createElement(
 					Box,
 					{
@@ -2146,7 +2470,7 @@ function ChatUI({
 					React.createElement(
 						Text,
 						{ color: SAND, dimColor: true },
-						`  ${DECORATIVE.eye} ${thinking.length > 150 ? "..." + thinking.slice(-150) : thinking}`,
+						`  ${DECORATIVE.eye} ${thinking.length > 150 ? "..." + thinking.slice(-150) : thinking}${thinkingDots}`,
 					),
 				),
 			scrollIndicator &&

@@ -13,6 +13,7 @@ export class TehutiError extends Error {
 		public code: string = "TEHUTI_ERROR",
 		public exitCode: number = 1,
 		public showStack: boolean = false,
+		public suggestions?: string[],
 	) {
 		super(message);
 		this.name = "TehutiError";
@@ -20,8 +21,8 @@ export class TehutiError extends Error {
 }
 
 export class ConfigError extends TehutiError {
-	constructor(message: string) {
-		super(message, "CONFIG_ERROR", 2, false);
+	constructor(message: string, suggestions?: string[]) {
+		super(message, "CONFIG_ERROR", 2, false, suggestions);
 		this.name = "ConfigError";
 	}
 }
@@ -30,8 +31,9 @@ export class APIError extends TehutiError {
 	constructor(
 		message: string,
 		public statusCode?: number,
+		public suggestions?: string[],
 	) {
-		super(message, "API_ERROR", 3, false);
+		super(message, "API_ERROR", 3, false, suggestions);
 		this.name = "APIError";
 	}
 
@@ -41,8 +43,8 @@ export class APIError extends TehutiError {
 }
 
 export class PermissionError extends TehutiError {
-	constructor(message: string) {
-		super(message, "PERMISSION_ERROR", 4, false);
+	constructor(message: string, suggestions?: string[]) {
+		super(message, "PERMISSION_ERROR", 4, false, suggestions);
 		this.name = "PermissionError";
 	}
 }
@@ -51,9 +53,21 @@ export class ToolError extends TehutiError {
 	constructor(
 		message: string,
 		public toolName?: string,
+		public suggestions?: string[],
 	) {
-		super(message, "TOOL_ERROR", 5, false);
+		super(message, "TOOL_ERROR", 5, false, suggestions);
 		this.name = "ToolError";
+	}
+}
+
+export class AgentError extends TehutiError {
+	constructor(
+		message: string,
+		public phase?: string,
+		public suggestions?: string[],
+	) {
+		super(message, "AGENT_ERROR", 7, false, suggestions);
+		this.name = "AgentError";
 	}
 }
 
@@ -77,8 +91,9 @@ export class MCPError extends TehutiError {
 		message: string,
 		public code: MCPErrorCode = MCPErrorCode.CONNECTION_FAILED,
 		public serverName?: string,
+		public suggestions?: string[],
 	) {
-		super(message, code, 6, false);
+		super(message, code, 6, false, suggestions);
 		this.name = "MCPError";
 	}
 }
@@ -87,8 +102,9 @@ export function createMCPError(
 	message: string,
 	code: MCPErrorCode,
 	serverName?: string,
+	suggestions?: string[],
 ): MCPError {
-	return new MCPError(message, code, serverName);
+	return new MCPError(message, code, serverName, suggestions);
 }
 
 export function formatError(error: unknown, showStack = false): string {
@@ -96,6 +112,12 @@ export function formatError(error: unknown, showStack = false): string {
 
 	if (error instanceof TehutiError) {
 		const parts = [`${prefix} ${error.name}: ${error.message}`];
+		if (error.suggestions && error.suggestions.length > 0) {
+			parts.push(`\n\nSuggestions:`);
+			error.suggestions.forEach((suggestion, index) => {
+				parts.push(`  ${index + 1}. ${suggestion}`);
+			});
+		}
 		if (showStack && error.stack) {
 			const cleaned = cleanStack(error.stack, { pretty: true });
 			parts.push(`\n${cleaned}`);

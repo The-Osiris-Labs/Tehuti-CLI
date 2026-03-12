@@ -542,12 +542,13 @@ export class OpenRouterClient {
 					);
 				if (response.status === 401) {
 					throw new APIError(
-						`API key appears to be invalid or expired.\n\n` +
-							`Suggestions:\n` +
-							`  • Check OPENROUTER_API_KEY environment variable\n` +
-							`  • Check ~/.tehuti.json config file\n` +
-							`  • Run 'tehuti init' to reconfigure`,
+						`API key appears to be invalid or expired.`,
 						response.status,
+						[
+							"Check OPENROUTER_API_KEY environment variable",
+							"Check ~/.tehuti.json config file",
+							"Run 'tehuti init' to reconfigure"
+						]
 					);
 				}
 				if (response.status === 429) {
@@ -558,11 +559,54 @@ export class OpenRouterClient {
 					throw new APIError(
 						`Rate limit exceeded. ${retryMessage}`,
 						response.status,
+						[
+							"Wait a few minutes before making more requests",
+							"Try a different model with --model <model-id>",
+							"Consider upgrading to a paid plan for higher rate limits"
+						]
+					);
+				}
+				if (response.status === 403) {
+					throw new APIError(
+						`Access forbidden. Your API key may not have the necessary permissions.`,
+						response.status,
+						[
+							"Check your OpenRouter account status",
+							"Verify your API key has correct permissions",
+							"Try generating a new API key"
+						]
+					);
+				}
+				if (response.status === 404) {
+					throw new APIError(
+						`Model not found. The specified model may not exist or be available.`,
+						response.status,
+						[
+							"Check the model ID is correct",
+							"Use /models command to see available models",
+							"Try a different model"
+						]
+					);
+				}
+				if (response.status >= 500) {
+					throw new APIError(
+						`OpenRouter server error (${response.status}): ${sanitizedError}`,
+						response.status,
+						[
+							"Check OpenRouter status page for outages",
+							"Try again later",
+							"Use a different model"
+						]
 					);
 				}
 				throw new APIError(
 					`OpenRouter API error (${response.status}): ${sanitizedError}`,
 					response.status,
+					[
+						"Check your internet connection",
+						"Try again later",
+						"Run with --debug for more details"
+					]
 				);
 			}
 
