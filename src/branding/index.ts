@@ -3,16 +3,26 @@ export const BRANDING = {
 	tagline: "Scribe of Code Transformations",
 	version: "0.1.0",
 	colors: {
-		primary: "#D4AF37",
-		secondary: "#C9A227",
-		accent: "#E6BE8A",
+		// High contrast palette for accessibility
+		primary: "#F5C518", // Bright gold (WCAG AA compliant on dark backgrounds)
+		secondary: "#D4AF37", // Classic gold
+		accent: "#FF6B35", // Vibrant coral (high contrast)
 		orange: "#E67D22",
-		coral: "#D97757",
-		gold: "#D4AF37",
+		coral: "#FF6B35", // Updated coral for better contrast
+		gold: "#F5C518", // Bright gold
 		papyrus: "#F5E6C8",
 		obsidian: "#1A1A2E",
-		nile: "#2E5A6B",
-		sand: "#C2B280",
+		nile: "#165DFF", // High contrast blue
+		sand: "#8B7355", // Darker sand for better contrast with gold
+		// High contrast mode colors
+		highContrast: {
+			primary: "#FFD700", // Bright yellow/gold (WCAG AAA compliant)
+			secondary: "#FFA500", // Orange (high contrast)
+			accent: "#FF4500", // Red-orange (high contrast)
+			background: "#000000",
+			foreground: "#FFFFFF",
+			border: "#FFFFFF",
+		},
 	},
 } as const;
 

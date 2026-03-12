@@ -2,6 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "fs-extra";
 import { v4 as uuidv4 } from "uuid";
+import Fuse from "fuse.js";
 import type { AgentContext } from "../agent/context.js";
 import type { OpenRouterMessage } from "../api/openrouter.js";
 import { debug } from "../utils/debug.js";
@@ -54,7 +55,23 @@ class SessionManager {
 		await fs.ensureDir(this.sessionsDir);
 	}
 
-	generateAutoName(cwd: string, _model: string): string {
+  generateAutoName(cwd: string, _model: string, messages?: OpenRouterMessage[]): string {
+		// Try to get name from first user message
+		if (messages && messages.length > 0) {
+			const firstUserMsg = messages.find(m => m.role === "user");
+			if (firstUserMsg && typeof firstUserMsg.content === "string") {
+				let name = firstUserMsg.content.trim().split(/\s+/).slice(0, 5).join(" ");
+				// Truncate and add ellipsis if too long
+				if (name.length > 30) {
+					name = name.slice(0, 27) + "...";
+				}
+				if (name) {
+					return name;
+				}
+			}
+		}
+
+		// Fallback to date/time format
 		const date = new Date();
 		const dateStr = date.toLocaleDateString("en-US", {
 			month: "short",
@@ -115,7 +132,7 @@ class SessionManager {
 		const sessionName =
 			name ??
 			existingMetadata?.name ??
-			this.generateAutoName(ctx.cwd, ctx.config.model);
+			this.generateAutoName(ctx.cwd, ctx.config.model, ctx.messages);
 
 		const metadata: SessionMetadata = {
 			id,
@@ -231,6 +248,23 @@ class SessionManager {
 			(a, b) =>
 				new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
 		);
+	}
+
+	async searchSessions(query: string): Promise<SessionMetadata[]> {
+		const allSessions = await this.listSessions();
+		
+		if (!query.trim()) {
+			return allSessions;
+		}
+
+		const fuse = new Fuse(allSessions, {
+			keys: ["name", "id", "model"],
+			threshold: 0.4, // Fuzzy matching threshold (lower = stricter)
+			includeScore: false,
+		});
+
+		const results = fuse.search(query.trim());
+		return results.map(result => result.item);
 	}
 
 	async deleteSession(id: string): Promise<void> {

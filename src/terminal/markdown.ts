@@ -1,6 +1,6 @@
 import type { Token } from "marked";
 import { marked } from "marked";
-import { shouldUseColors } from "./capabilities.js";
+import { shouldUseColors, shouldUseHighContrast } from "./capabilities.js";
 import { highlightToAnsi, isHighlighterReady, initHighlighter } from "./highlighter.js";
 
 const ANSI = {
@@ -32,20 +32,53 @@ const ANSI = {
 	brightCyan: "\x1b[96m",
 	brightWhite: "\x1b[97m",
 
-	gold: "\x1b[38;5;178m",
-	coral: "\x1b[38;5;174m",
-	sand: "\x1b[38;5;137m",
+	// High contrast colors (WCAG AA/AAA compliant)
+	highContrastGold: "\x1b[38;5;220m", // Bright yellow/gold (WCAG AAA)
+	highContrastCoral: "\x1b[38;5;202m", // Vibrant orange (high contrast)
+	highContrastSand: "\x1b[38;5;130m", // Dark brown (high contrast)
+	highContrastBlue: "\x1b[38;5;33m", // Bright blue (high contrast)
+	highContrastGreen: "\x1b[38;5;34m", // Bright green (high contrast)
+	highContrastRed: "\x1b[38;5;196m", // Bright red (high contrast)
+	
+	// Default colors (improved contrast)
+	defaultGold: "\x1b[38;5;220m", // Bright gold (WCAG AA)
+	defaultCoral: "\x1b[38;5;202m", // Vibrant coral (high contrast)
+	defaultSand: "\x1b[38;5;130m", // Darker sand (better contrast)
+	defaultNile: "\x1b[38;5;33m", // Bright blue (high contrast)
+	defaultGreen: "\x1b[38;5;34m",
+	defaultCyan: "\x1b[38;5;39m",
+	defaultPurple: "\x1b[38;5;141m",
+	defaultBlue: "\x1b[38;5;33m",
+	defaultRed: "\x1b[38;5;196m",
 };
 
-const COLORS = {
-	gold: "\x1b[38;5;178m",
-	coral: "\x1b[38;5;174m",
-	sand: "\x1b[38;5;137m",
-	green: "\x1b[38;5;34m",
-	cyan: "\x1b[38;5;39m",
-	purple: "\x1b[38;5;141m",
-	blue: "\x1b[38;5;33m",
-};
+function getColors() {
+	if (shouldUseHighContrast()) {
+		return {
+			gold: ANSI.highContrastGold,
+			coral: ANSI.highContrastCoral,
+			sand: ANSI.highContrastSand,
+			green: ANSI.highContrastGreen,
+			cyan: ANSI.cyan,
+			purple: ANSI.magenta,
+			blue: ANSI.highContrastBlue,
+			red: ANSI.highContrastRed,
+		};
+	}
+	
+	return {
+		gold: ANSI.defaultGold,
+		coral: ANSI.defaultCoral,
+		sand: ANSI.defaultSand,
+		green: ANSI.defaultGreen,
+		cyan: ANSI.defaultCyan,
+		purple: ANSI.defaultPurple,
+		blue: ANSI.defaultBlue,
+		red: ANSI.defaultRed,
+	};
+}
+
+const COLORS = getColors();
 
 function purple(text: string): string {
 	return applyStyle(text, COLORS.purple);

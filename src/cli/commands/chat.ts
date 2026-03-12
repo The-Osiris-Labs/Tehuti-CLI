@@ -88,7 +88,7 @@ import {
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
 } from "../../branding/index.js";
-import { type DEFAULT_CONFIG, loadConfig } from "../../config/index.js";
+import { type DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig } from "../../config/index.js";
 import { mcpManager } from "../../mcp/index.js";
 import { sessionManager } from "../../session/manager.js";
 import {
@@ -112,16 +112,18 @@ import {
 	formatHelpOutput,
 	getCommandSuggestions,
 } from "../ui/components/CommandPalette.js";
+import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 
-const GOLD = "#D4AF37";
-const CORAL = "#D97757";
-const GREEN = "#10B981";
-const GRAY = "#6B7280";
-const RED = "#EF4444";
+// High contrast color palette (WCAG AA/AAA compliant)
+const GOLD = "#F5C518"; // Bright gold (WCAG AA)
+const CORAL = "#FF6B35"; // Vibrant coral (high contrast)
+const GREEN = "#22C55E"; // Bright green (WCAG AA)
+const GRAY = "#9CA3AF"; // Lighter gray for better contrast
+const RED = "#EF4444"; // Bright red (high contrast)
 const OBSIDIAN = "#1A1A2E";
 const CYAN = "#06B6D4";
-const SAND = "#C2B280";
-const NILE = "#2E5A6B";
+const SAND = "#8B7355"; // Darker sand (better contrast)
+const NILE = "#165DFF"; // Bright blue (high contrast)
 const PAPYRUS = "#F5E6C8";
 const BLUE = "#3B82F6";
 const PURPLE = "#A855F7";
@@ -216,8 +218,24 @@ function formatToolCall(toolName: string, args: unknown): string {
 	}
 }
 
-function formatToolResult(result: unknown, maxWidth: number = 80): string {
-	if (!result) return "";
+interface FormattedToolResult {
+	preview: string;
+	full: string;
+	isTruncated: boolean;
+	linesCount: number;
+	truncatedLinesCount: number;
+}
+
+function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCount: number = 5): FormattedToolResult {
+	if (!result) {
+		return {
+			preview: "",
+			full: "",
+			isTruncated: false,
+			linesCount: 0,
+			truncatedLinesCount: 0,
+		};
+	}
 
 	let output: string;
 	if (typeof result === "string") {
@@ -233,21 +251,30 @@ function formatToolResult(result: unknown, maxWidth: number = 80): string {
 	}
 
 	const lines = output.split("\n");
-	const previewLines = lines.slice(0, 8);
+	const isTruncated = lines.length > previewLinesCount;
+	const displayLines = isTruncated ? lines.slice(0, previewLinesCount) : lines;
 
-	const formatted = previewLines
-		.map((line) => {
-			const truncated =
-				line.length > maxWidth - 4 ? line.slice(0, maxWidth - 7) + "..." : line;
-			return `  │ ${truncated}`;
-		})
-		.join("\n");
+	const formatLines = (lineArray: string[]): string => {
+		return lineArray
+			.map((line) => {
+				const truncated =
+					line.length > maxWidth - 4 ? line.slice(0, maxWidth - 7) + "..." : line;
+				return `  │ ${truncated}`;
+			})
+			.join("\n");
+	};
 
-	if (lines.length > 8) {
-		return `${formatted}\n  │ ... (${lines.length - 8} more lines)`;
-	}
+	const preview = isTruncated 
+		? `${formatLines(displayLines)}\n  │ ... (${lines.length - previewLinesCount} more lines)`
+		: formatLines(displayLines);
 
-	return formatted;
+	return {
+		preview,
+		full: formatLines(lines),
+		isTruncated,
+		linesCount: lines.length,
+		truncatedLinesCount: isTruncated ? lines.length - previewLinesCount : 0,
+	};
 }
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
@@ -912,6 +939,7 @@ function ChatUI({
 	} | null>(null);
 	const [progress, setProgress] = useState(0);
 	const [operationLabel, setOperationLabel] = useState("");
+	const [showConfigEditor, setShowConfigEditor] = useState(false);
 	const questionResolverRef = useRef<
 		((questions: QuestionData[]) => Promise<string[]>) | null
 	>(null);
@@ -1128,15 +1156,21 @@ function ChatUI({
 		]);
 	}, []);
 
-	const handleShowSessions = useCallback(async () => {
+  const handleConfig = useCallback(() => {
+		setShowConfigEditor(true);
+	}, []);
+
+  const handleShowSessions = useCallback(async () => {
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
 		const list = sessions
-			.slice(0, 10)
 			.map((s, i) => {
 				const date = new Date(s.updatedAt).toLocaleDateString();
+				const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 				const msgs = `${s.messageCount} msgs`;
-				return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${date})`;
+				const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
+				const model = s.model.split('/').pop()?.split(':')[0] || s.model;
+				return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
 			})
 			.join("\n");
 		setMessages((m) => [
@@ -1146,7 +1180,7 @@ function ChatUI({
 				role: "system",
 				content:
 					sessions.length > 0
-						? `Recent sessions:\n${list}\n\nUse: /load <id>`
+						? `Saved sessions (${sessions.length} total):\n${list}\n\nUse: /load <id> | /search <query>`
 						: "No saved sessions",
 			},
 		]);
@@ -1228,7 +1262,7 @@ function ChatUI({
 		}
 	}, [sessionId]);
 
-	const handleLoad = useCallback(async () => {
+  const handleLoad = useCallback(async () => {
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
 		if (sessions.length === 0) {
@@ -1242,18 +1276,44 @@ function ChatUI({
 			]);
 		} else {
 			const list = sessions
-				.slice(0, 5)
-				.map((s, i) => `${i + 1}. ${s.name || s.id.slice(0, 8)}`)
+				.map((s, i) => `${i + 1}. ${s.name || s.id.slice(0, 8)} (${s.messageCount} msgs)`)
 				.join("\n");
 			setMessages((m) => [
 				...m,
 				{
 					id: msgIdRef.current++,
 					role: "system",
-					content: `Recent sessions:\n${list}\n\nUse: /load <id>`,
+					content: `Saved sessions:\n${list}\n\nUse: /load <id>`,
 				},
 			]);
 		}
+		setLoading(false);
+	}, []);
+
+  const handleSearchSessions = useCallback(async (query: string) => {
+		setLoading(true);
+		const results = await sessionManager.searchSessions(query);
+		const list = results
+			.map((s, i) => {
+				const date = new Date(s.updatedAt).toLocaleDateString();
+				const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+				const msgs = `${s.messageCount} msgs`;
+				const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
+				const model = s.model.split('/').pop()?.split(':')[0] || s.model;
+				return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
+			})
+			.join("\n");
+		setMessages((m) => [
+			...m,
+			{
+				id: msgIdRef.current++,
+				role: "system",
+				content:
+					results.length > 0
+						? `Search results for "${query}" (${results.length}):\n${list}\n\nUse: /load <id>`
+						: `No sessions found for "${query}"`,
+			},
+		]);
 		setLoading(false);
 	}, []);
 
@@ -1287,6 +1347,7 @@ function ChatUI({
 						{ id: msgIdRef.current++, role: "system", content: result },
 					]);
 				},
+				onConfig: handleConfig,
 			}),
 		[
 			handleShowCost,
@@ -1843,15 +1904,17 @@ function ChatUI({
 				return;
 			}
 
-			if (cmd === "/sessions") {
+ 			if (cmd === "/sessions") {
 				setLoading(true);
 				const sessions = await sessionManager.listSessions();
 				const list = sessions
-					.slice(0, 10)
 					.map((s, i) => {
 						const date = new Date(s.updatedAt).toLocaleDateString();
+						const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 						const msgs = `${s.messageCount} msgs`;
-						return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${date})`;
+						const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
+						const model = s.model.split('/').pop()?.split(':')[0] || s.model;
+						return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
 					})
 					.join("\n");
 				setMessages((m) => [
@@ -1861,7 +1924,7 @@ function ChatUI({
 						role: "system",
 						content:
 							sessions.length > 0
-								? `Recent sessions:\n${list}\n\nUse: /load <id>`
+								? `Saved sessions (${sessions.length} total):\n${list}\n\nUse: /load <id> | /search <query>`
 								: "No saved sessions",
 					},
 				]);
@@ -1869,7 +1932,13 @@ function ChatUI({
 				return;
 			}
 
-			if (cmd === "/reset-key") {
+			if (text.toLowerCase().startsWith("/search ")) {
+				const query = text.slice(8).trim();
+				await handleSearchSessions(query);
+				return;
+			}
+
+ 			if (cmd === "/reset-key") {
 				fs.rmSync(CONFIG_PATH, { force: true });
 				setMessages((m) => [
 					...m,
@@ -1879,6 +1948,11 @@ function ChatUI({
 						content: "Config reset. Restart tehuti to enter a new API key.",
 					},
 				]);
+				return;
+			}
+
+			if (cmd === "/config") {
+				setShowConfigEditor(true);
 				return;
 			}
 
@@ -2082,7 +2156,13 @@ function ChatUI({
 			}
 
 			let response = "";
-			const toolCallsInfo: string[] = [];
+			const toolCallsInfo: Array<{
+				id: string;
+				name: string;
+				description: string;
+				result: FormattedToolResult;
+				isExpanded: boolean;
+			}> = [];
 			let currentToolName = "";
 
 			setMessages((m) => [
@@ -2099,7 +2179,13 @@ function ChatUI({
 					flushBatchedTokens();
 					currentToolName = name;
 					const toolDesc = formatToolCall(name, args);
-					toolCallsInfo.push(toolDesc);
+					toolCallsInfo.push({
+						id: `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+						name,
+						description: toolDesc,
+						result: formatToolResult(null),
+						isExpanded: false,
+					});
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
@@ -2109,17 +2195,11 @@ function ChatUI({
 						result && typeof result === "object" && "success" in result
 							? result.success
 							: true;
-					const statusIcon = success ? "✓" : "✗";
-					const resultPreview = formatToolResult(result, terminalWidth - 10);
+					const formattedResult = formatToolResult(result, terminalWidth - 10);
 
-					if (resultPreview) {
-						const previewLines = resultPreview
-							.split("\n")
-							.slice(0, 5)
-							.join("\n");
-						toolCallsInfo.push(`${statusIcon} ${name}:\n${previewLines}`);
-					} else {
-						toolCallsInfo.push(`${statusIcon} ${name}`);
+					// Update the last tool call with result
+					if (toolCallsInfo.length > 0) {
+						toolCallsInfo[toolCallsInfo.length - 1].result = formattedResult;
 					}
 
 					setThinking("");
@@ -2143,7 +2223,10 @@ function ChatUI({
 			const finalContent = result.content || response;
 			const toolSummary =
 				toolCallsInfo.length > 0
-					? `\n\n${DECORATIVE.scroll} Tools used:\n${toolCallsInfo.map((t) => `  ${t}`).join("\n")}`
+					? `\n\n${DECORATIVE.scroll} Tools used:\n${toolCallsInfo.map((t) => {
+							const statusIcon = t.result.preview?.includes("Error") ? "✗" : "✓";
+							return `  ${statusIcon} ${t.description}${t.result.preview ? `:\n${t.result.preview}` : ""}`;
+						}).join("\n")}`
 					: "";
 
 			if (result.sessionStats) {
@@ -2395,146 +2478,175 @@ function ChatUI({
 		);
 	}, [messages.length, maxVisibleMessages, scrollOffset]);
 
-	return React.createElement(
-		Box,
-		{ flexDirection: "column", width: "100%", height: "100%" },
-		React.createElement(
-			Box,
-			{ paddingX: 1, borderStyle: "single", borderColor: GOLD },
+		return showConfigEditor ? (
 			React.createElement(
-				Text,
-				{ bold: true, color: GOLD },
-				`${DECORATIVE.ibis} Tehuti`,
-			),
+				ConfigEditor,
+				{
+					config: {
+						apiKey: getGlobalConfig().apiKey,
+						model: getGlobalConfig().model,
+						temperature: getGlobalConfig().temperature,
+						maxTokens: getGlobalConfig().maxTokens,
+					},
+					onSave: (updates) => {
+						saveGlobalConfig(updates);
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: "Configuration saved successfully",
+							},
+						]);
+						setShowConfigEditor(false);
+					},
+					onCancel: () => {
+						setShowConfigEditor(false);
+					},
+				},
+			)
+		) : (
 			React.createElement(
-				Text,
-				{ color: SAND },
-				` ${DECORATIVE.separator} ${ctxModel}`,
-			),
-			sessionCost > 0 &&
+				Box,
+				{ flexDirection: "column", width: "100%", height: "100%" },
 				React.createElement(
-					Text,
-					{ color: SAND, dimColor: true },
-					` ${DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
-				),
-			React.createElement(Box, { flexGrow: 1 }),
-			React.createElement(
-				Text,
-				{ color: GRAY, dimColor: true },
-				`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
-			),
-		),
-		React.createElement(
-			Box,
-			{ flexDirection: "column", flexGrow: 1, paddingX: 1, overflow: "hidden" },
-			messages.length === 0 && showWelcome
-				? React.createElement(
-						Box,
-						{
-							flexGrow: 1,
-							flexDirection: "column",
-							justifyContent: "center",
-							alignItems: "center",
-						},
-						React.createElement(Text, { color: GOLD }, ASCII_ART.trim()),
+					Box,
+					{ paddingX: 1, borderStyle: "single", borderColor: GOLD },
+					React.createElement(
+						Text,
+						{ bold: true, color: GOLD },
+						`${DECORATIVE.ibis} Tehuti`,
+					),
+					React.createElement(
+						Text,
+						{ color: SAND },
+						` ${DECORATIVE.separator} ${ctxModel}`,
+					),
+					sessionCost > 0 &&
 						React.createElement(
 							Text,
 							{ color: SAND, dimColor: true },
-							WELCOME_MESSAGE.trim(),
+							` ${DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
 						),
-					)
-				: messages.length === 0
-					? React.createElement(
+					React.createElement(Box, { flexGrow: 1 }),
+					React.createElement(
+						Text,
+						{ color: GRAY, dimColor: true },
+						`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
+					),
+				),
+				React.createElement(
+					Box,
+					{ flexDirection: "column", flexGrow: 1, paddingX: 1, overflow: "hidden" },
+					messages.length === 0 && showWelcome
+						? React.createElement(
+								Box,
+								{
+									flexGrow: 1,
+									flexDirection: "column",
+									justifyContent: "center",
+									alignItems: "center",
+								},
+								React.createElement(Text, { color: GOLD }, ASCII_ART.trim()),
+								React.createElement(
+									Text,
+									{ color: SAND, dimColor: true },
+									WELCOME_MESSAGE.trim(),
+								),
+							)
+						: messages.length === 0
+							? React.createElement(
+									Box,
+									{ flexGrow: 1, justifyContent: "center", alignItems: "center" },
+									React.createElement(
+										Text,
+										{ color: SAND, dimColor: true },
+										"Type a message to begin",
+									),
+								)
+							: React.createElement(
+									Box,
+									{ flexDirection: "column", flexGrow: 1 },
+									...messageElements,
+								),
+					showThinking &&
+						React.createElement(
 							Box,
-							{ flexGrow: 1, justifyContent: "center", alignItems: "center" },
+							{
+								marginBottom: 1,
+								paddingLeft: 2,
+								borderStyle: "round",
+								borderColor: NILE,
+							},
 							React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
-								"Type a message to begin",
+								`  ${DECORATIVE.eye} ${thinking.length > 150 ? "..." + thinking.slice(-150) : thinking}${thinkingDots}`,
 							),
-						)
-					: React.createElement(
-							Box,
-							{ flexDirection: "column", flexGrow: 1 },
-							...messageElements,
 						),
-			showThinking &&
+					scrollIndicator &&
+						React.createElement(Box, { justifyContent: "center" }, scrollIndicator),
+					error &&
+						React.createElement(
+							Box,
+							{ marginTop: 1, paddingX: 1, borderStyle: "round", borderColor: RED },
+							React.createElement(
+								Text,
+								{ color: RED },
+								`${DECORATIVE.eyeOfHorus} ${error}`,
+							),
+						),
+					loading &&
+						React.createElement(
+							Box,
+							{ marginTop: 1, paddingX: 1, flexDirection: "column" },
+							React.createElement(
+								Box,
+								{
+									flexDirection: "row",
+									alignItems: "center",
+									gap: 1,
+									marginBottom: 0.5,
+								},
+								React.createElement(
+									Text,
+									{ color: GOLD },
+									React.createElement(Spinner, { type: "dots" }),
+								),
+								React.createElement(
+									Text,
+									{ color: SAND, dimColor: true },
+									operationLabel,
+								),
+							),
+							React.createElement(ProgressBar, { value: progress }),
+						),
+				),
 				React.createElement(
 					Box,
 					{
-						marginBottom: 1,
-						paddingLeft: 2,
-						borderStyle: "round",
-						borderColor: NILE,
+						paddingX: 1,
+						borderStyle: "single",
+						borderColor: SAND,
+						flexDirection: "column",
 					},
-					React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						`  ${DECORATIVE.eye} ${thinking.length > 150 ? "..." + thinking.slice(-150) : thinking}${thinkingDots}`,
-					),
+					loading
+						? React.createElement(
+								Text,
+								{ color: SAND, dimColor: true },
+								`  ${HIEROGLYPHS.loading[0]} channeling wisdom...`,
+							)
+						: renderInput,
+					commandSuggestions,
 				),
-			scrollIndicator &&
-				React.createElement(Box, { justifyContent: "center" }, scrollIndicator),
-			error &&
-				React.createElement(
-					Box,
-					{ marginTop: 1, paddingX: 1, borderStyle: "round", borderColor: RED },
-					React.createElement(
-						Text,
-						{ color: RED },
-						`${DECORATIVE.eyeOfHorus} ${error}`,
-					),
-				),
-			loading &&
-				React.createElement(
-					Box,
-					{ marginTop: 1, paddingX: 1, flexDirection: "column" },
-					React.createElement(
-						Box,
-						{
-							flexDirection: "row",
-							alignItems: "center",
-							gap: 1,
-							marginBottom: 0.5,
-						},
-						React.createElement(
-							Text,
-							{ color: GOLD },
-							React.createElement(Spinner, { type: "dots" }),
-						),
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							operationLabel,
-						),
-					),
-					React.createElement(ProgressBar, { value: progress }),
-				),
-		),
-		React.createElement(
-			Box,
-			{
-				paddingX: 1,
-				borderStyle: "single",
-				borderColor: SAND,
-				flexDirection: "column",
-			},
-			loading
-				? React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						`  ${HIEROGLYPHS.loading[0]} channeling wisdom...`,
-					)
-				: renderInput,
-			commandSuggestions,
-		),
-		React.createElement(CommandPalette, {
-			commands,
-			onSelect: handleCommandPaletteSelect,
-			onClose: handleCommandPaletteClose,
-			visible: showCommandPalette,
-		}),
-	);
+				React.createElement(CommandPalette, {
+					commands,
+					onSelect: handleCommandPaletteSelect,
+					onClose: handleCommandPaletteClose,
+					visible: showCommandPalette,
+				}),
+			),
+		);
 }
 
 function App({
@@ -2691,16 +2803,16 @@ export function createProgram(): Command {
 											? chalk.green("✓")
 											: chalk.red("✗");
 
-										const resultPreview = formatToolResult(
+										const formattedResult = formatToolResult(
 											result,
 											outputManager?.getTerminalWidth?.() || 80,
 										);
 
-										if (resultPreview) {
+										if (formattedResult.preview) {
 											outputManager?.writeLine(
 												chalk.dim(`  ┌─ ${name} result:`),
 											);
-											outputManager?.writeLine(chalk.dim(resultPreview));
+											outputManager?.writeLine(chalk.dim(formattedResult.preview));
 											outputManager?.writeLine(chalk.dim("  └─"));
 										} else {
 											outputManager?.writeLine(

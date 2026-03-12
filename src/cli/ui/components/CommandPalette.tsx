@@ -353,8 +353,16 @@ export function createCommands(options: {
 	onActivateSkill?: (skillId: string) => void;
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
+	onConfig?: () => void;
 }): CommandItem[] {
-	const baseCommands = [
+  const baseCommands = [
+		{
+			id: "/config",
+			label: "/config",
+			description: "Open interactive configuration editor",
+			category: "session",
+			action: options.onConfig || (() => {}),
+		},
 		{
 			id: "/clear",
 			label: "/clear",
@@ -406,6 +414,14 @@ export function createCommands(options: {
 			description: "List all saved sessions",
 			category: "session",
 			action: options.onSessions,
+		},
+		{
+			id: "/search",
+			label: "/search",
+			description: "Search saved sessions by name, ID, or model",
+			usage: "<query>",
+			category: "session",
+			action: () => {}, // Placeholder - will be handled in chat.ts
 		},
 		{
 			id: "/model",
@@ -515,7 +531,9 @@ export function formatHelpOutput(): string {
 │    /save [name]        Save session                               │
 │    /load <id>          Load session                               │
 │    /sessions           List saved sessions                        │
+│    /search <query>     Search sessions by name, ID, or model       │
 │    /plan               Enter plan mode (read-only exploration)    │
+│    /config             Open interactive configuration editor      │
 │    /skills             List all available skills                   │
 │    /exit               Exit Tehuti                                 │
 ├──────────────────────────────────────────────────────────────────┤

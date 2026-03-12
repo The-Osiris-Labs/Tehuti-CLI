@@ -13,6 +13,8 @@ const MODULE_NAME = "tehuti";
 const globalConfig = new Conf<{
 	apiKey?: string;
 	model?: string;
+	temperature?: number;
+	maxTokens?: number;
 	initialized?: boolean;
 }>({
 	projectName: MODULE_NAME,
@@ -134,6 +136,8 @@ export async function loadConfig(
 		...DEFAULT_CONFIG,
 		...resolveConfigEnvVars(fileConfig),
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
+		...(globalConfig.get("temperature") !== undefined && { temperature: globalConfig.get("temperature") }),
+		...(globalConfig.get("maxTokens") !== undefined && { maxTokens: globalConfig.get("maxTokens") }),
 		...(envModel && { model: envModel }),
 		...(envProvider && { provider: envProvider }),
 		...(envCustomProvider && { 
@@ -179,12 +183,36 @@ export async function loadConfig(
 export function saveGlobalConfig(updates: {
 	apiKey?: string;
 	model?: string;
+	temperature?: number;
+	maxTokens?: number;
 }): void {
-	if (updates.apiKey) {
-		globalConfig.set("apiKey", updates.apiKey);
+	if (updates.apiKey !== undefined) {
+		if (updates.apiKey) {
+			globalConfig.set("apiKey", updates.apiKey);
+		} else {
+			globalConfig.delete("apiKey");
+		}
 	}
-	if (updates.model) {
-		globalConfig.set("model", updates.model);
+	if (updates.model !== undefined) {
+		if (updates.model) {
+			globalConfig.set("model", updates.model);
+		} else {
+			globalConfig.delete("model");
+		}
+	}
+	if (updates.temperature !== undefined) {
+		if (typeof updates.temperature === "number" && updates.temperature >= 0 && updates.temperature <= 2) {
+			globalConfig.set("temperature", updates.temperature);
+		} else {
+			globalConfig.delete("temperature");
+		}
+	}
+	if (updates.maxTokens !== undefined) {
+		if (typeof updates.maxTokens === "number" && updates.maxTokens > 0) {
+			globalConfig.set("maxTokens", updates.maxTokens);
+		} else {
+			globalConfig.delete("maxTokens");
+		}
 	}
 	globalConfig.set("initialized", true);
 }
@@ -192,11 +220,15 @@ export function saveGlobalConfig(updates: {
 export function getGlobalConfig(): {
 	apiKey?: string;
 	model?: string;
+	temperature?: number;
+	maxTokens?: number;
 	initialized?: boolean;
 } {
 	return {
 		apiKey: globalConfig.get("apiKey"),
 		model: globalConfig.get("model"),
+		temperature: globalConfig.get("temperature"),
+		maxTokens: globalConfig.get("maxTokens"),
 		initialized: globalConfig.get("initialized"),
 	};
 }

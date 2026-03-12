@@ -90,6 +90,15 @@ export function shouldUseInteractive(): boolean {
 	return getCapabilities().interactive && !getCapabilities().ci;
 }
 
+export function shouldUseHighContrast(): boolean {
+	// Check for accessibility settings in environment variables
+	return !!process.env.FORCE_HIGH_CONTRAST || 
+		!!process.env.HIGH_CONTRAST ||
+		process.env.COLORTERM === "highcontrast" ||
+		process.env.TERM === "linux" || // Linux console has limited colors
+		(!getCapabilities().colors.has256 && !getCapabilities().colors.has16m);
+}
+
 export function getTerminalWidth(): number {
 	return getCapabilities().size.columns || 80;
 }

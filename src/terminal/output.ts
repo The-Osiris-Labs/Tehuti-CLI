@@ -3,24 +3,38 @@ import {
 	getTerminalWidth,
 	shouldUseColors,
 	shouldUseUnicode,
+	shouldUseHighContrast,
 } from "./capabilities.js";
 
-const GOLD = "\x1b[38;5;178m";
-const CORAL = "\x1b[38;5;174m";
-const SAND = "\x1b[38;5;137m";
+// High contrast colors (WCAG AA/AAA compliant)
+const HIGH_CONTRAST_GOLD = "\x1b[38;5;220m"; // Bright yellow/gold (WCAG AAA)
+const HIGH_CONTRAST_CORAL = "\x1b[38;5;202m"; // Vibrant orange (high contrast)
+const HIGH_CONTRAST_SAND = "\x1b[38;5;130m"; // Dark brown (high contrast)
+const HIGH_CONTRAST_BLUE = "\x1b[38;5;33m"; // Bright blue (high contrast)
+const HIGH_CONTRAST_GREEN = "\x1b[38;5;34m"; // Bright green (high contrast)
+const HIGH_CONTRAST_RED = "\x1b[38;5;196m"; // Bright red (high contrast)
+
+// Default colors (improved contrast)
+const GOLD = "\x1b[38;5;220m"; // Bright gold (WCAG AA)
+const CORAL = "\x1b[38;5;202m"; // Vibrant coral (high contrast)
+const SAND = "\x1b[38;5;130m"; // Darker sand (better contrast)
+const NILE = "\x1b[38;5;33m"; // Bright blue (high contrast)
 
 const colors = {
 	orange: (text: string) =>
-		shouldUseColors() ? `${GOLD}${text}\x1b[0m` : text,
+		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text,
 	coral: (text: string) =>
-		shouldUseColors() ? `${CORAL}${text}\x1b[0m` : text,
+		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m` : text,
 	primary: (text: string) =>
-		shouldUseColors() ? `${GOLD}${text}\x1b[0m` : text,
+		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text,
 	secondary: (text: string) => pc.dim(text),
 	accent: (text: string) =>
-		shouldUseColors() ? `${CORAL}${text}\x1b[0m` : text,
-	gold: (text: string) => (shouldUseColors() ? `${GOLD}${text}\x1b[0m` : text),
-	sand: (text: string) => (shouldUseColors() ? `${SAND}${text}\x1b[0m` : text),
+		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m` : text,
+	gold: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text),
+	sand: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_SAND : SAND}${text}\x1b[0m` : text),
+	nile: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_BLUE : NILE}${text}\x1b[0m` : text),
+	green: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GREEN : pc.green(text)}` : text),
+	red: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_RED : pc.red(text)}` : text),
 };
 
 const IBIS = "\u{131A3}";
@@ -55,6 +69,17 @@ export function formatOutput(
 	}
 
 	const icon = symbols[type];
+	
+	if (shouldUseHighContrast()) {
+		const colorFn = {
+			success: colors.green,
+			error: colors.red,
+			warning: colors.orange,
+			info: colors.nile,
+		}[type];
+		return colorFn(`${icon} ${text}`);
+	}
+
 	const colorFn = {
 		success: pc.green,
 		error: pc.red,
