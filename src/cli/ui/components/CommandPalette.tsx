@@ -1,5 +1,6 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import React, { useEffect, useMemo, useState } from "react";
+import { globalConfig } from "../../../config/index.js";
 
 const GOLD = "#D4AF37";
 const GRAY = "#6B7280";
@@ -313,25 +314,21 @@ export function CommandPalette({
 	);
 }
 
-const RECENT_COMMANDS_KEY = "tehuti_recent_commands";
-
 function getRecentCommands(): string[] {
 	try {
-		const stored = localStorage.getItem(RECENT_COMMANDS_KEY);
-		return stored ? JSON.parse(stored) : [];
+		return globalConfig.get("recentCommands") || [];
 	} catch {
 		return [];
 	}
 }
 
 function addRecentCommand(commandId: string): void {
-	const recent = getRecentCommands();
-	const filtered = recent.filter(id => id !== commandId);
-	const newRecent = [commandId, ...filtered].slice(0, 5);
 	try {
-		localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(newRecent));
+		const recent = getRecentCommands();
+		const filtered = recent.filter(id => id !== commandId);
+		const updated = [commandId, ...filtered].slice(0, 5);
+		globalConfig.set("recentCommands", updated);
 	} catch {
-		// Ignore errors
 	}
 }
 

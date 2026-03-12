@@ -3,7 +3,7 @@ import { renderMarkdownToAnsi } from "./markdown.js";
 
 const CSI = "\x1b[";
 const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
-const UNICODE_ESCAPE_REGEX = /\x1b[()([0-9A-Za-z]/g;
+const UNICODE_ESCAPE_REGEX = /\x1b\([0-9A-Za-z]/g;
 const DECORATIVE = {
 	ibisBird: "\u{135E}",
 	eye: "\u{13075}",
@@ -75,7 +75,7 @@ function splitAtVisualWidth(
 		}
 
 		if (width + charWidth > maxWidth) {
-			if (lastSpacePos > 0 && lastSpaceWidth > maxWidth * 0.3) {
+			if (lastSpacePos > 0 && lastSpaceWidth <= maxWidth) {
 				return {
 					left: str.substring(0, lastSpacePos),
 					right: str.substring(lastSpacePos),
@@ -333,7 +333,8 @@ export class StreamingOutputManager {
 	}
 
 	private detectsCodeBlockBoundary(token: string): boolean {
-		return token.includes("```");
+		// Improved code block detection that handles language specifications and partial tokens
+		return /```[a-zA-Z]*/.test(token);
 	}
 
 	private scheduleBatch(): void {

@@ -16,10 +16,12 @@ const globalConfig = new Conf<{
 	temperature?: number;
 	maxTokens?: number;
 	initialized?: boolean;
+	recentCommands?: string[];
 }>({
 	projectName: MODULE_NAME,
 	defaults: {
 		initialized: false,
+		recentCommands: [],
 	},
 });
 
@@ -129,8 +131,14 @@ export async function loadConfig(
 		process.env.KILO_API_KEY;
 	const envModel = process.env.TEHUTI_MODEL;
 	const envDebug = process.env.TEHUTI_DEBUG === "true";
-	const envProvider = process.env.TEHUTI_PROVIDER;
-	const envCustomProvider = process.env.TEHUTI_CUSTOM_PROVIDER;
+ 	const envProvider = process.env.TEHUTI_PROVIDER;
+ 	const envCustomProvider = process.env.TEHUTI_CUSTOM_PROVIDER;
+
+	// Validate provider value
+	const validProviders = ["openrouter", "kilocode", "custom"];
+	const validatedProvider = validProviders.includes(envProvider?.trim() || "") 
+		? envProvider.trim() 
+		: undefined;
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
@@ -139,7 +147,7 @@ export async function loadConfig(
 		...(globalConfig.get("temperature") !== undefined && { temperature: globalConfig.get("temperature") }),
 		...(globalConfig.get("maxTokens") !== undefined && { maxTokens: globalConfig.get("maxTokens") }),
 		...(envModel && { model: envModel }),
-		...(envProvider && { provider: envProvider }),
+		...(validatedProvider ? { provider: validatedProvider } : {}),
 		...(envCustomProvider && { 
 			customProvider: JSON.parse(envCustomProvider) 
 		}),

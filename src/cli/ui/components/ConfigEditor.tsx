@@ -75,6 +75,8 @@ export function ConfigEditor({
 		},
 	];
 
+	const [validationError, setValidationError] = useState<string | null>(null);
+
 	useInput((char, key) => {
 		if (editingField) {
 			if (key.return) {
@@ -86,10 +88,13 @@ export function ConfigEditor({
 					const num = parseFloat(editValue);
 					if (isNaN(num)) {
 						isValid = false;
+						setValidationError("Must be a valid number");
 					} else if (field.min !== undefined && num < field.min) {
 						isValid = false;
+						setValidationError(`Must be at least ${field.min}`);
 					} else if (field.max !== undefined && num > field.max) {
 						isValid = false;
+						setValidationError(`Must be at most ${field.max}`);
 					} else {
 						parsedValue = num;
 					}
@@ -99,6 +104,7 @@ export function ConfigEditor({
 					const updates: any = {};
 					updates[editingField] = parsedValue;
 					onSave(updates);
+					setValidationError(null);
 				}
 
 				setEditingField(null);
@@ -122,6 +128,10 @@ export function ConfigEditor({
 				const currentIndex = fields.findIndex((f) => f.key === selectedField);
 				const newIndex = (currentIndex + 1) % fields.length;
 				setSelectedField(fields[newIndex].key);
+			} else if (key.home) {
+				setSelectedField(fields[0].key);
+			} else if (key.end) {
+				setSelectedField(fields[fields.length - 1].key);
 			} else if (key.return || char === " ") {
 				setEditingField(selectedField);
 				setEditValue(String(config[selectedField] || ""));
@@ -154,6 +164,17 @@ export function ConfigEditor({
 			Box,
 			{ marginBottom: 1 },
 			React.createElement(Text, { bold: true, color: GOLD }, "𓆣 Configuration Editor"),
+		),
+		validationError && React.createElement(
+			Box,
+			{ 
+				marginBottom: 1, 
+				padding: 1, 
+				borderStyle: "single", 
+				borderColor: RED,
+				backgroundColor: "#1f2937"
+			},
+			React.createElement(Text, { color: RED }, `✖ ${validationError}`),
 		),
 		React.createElement(
 			Box,

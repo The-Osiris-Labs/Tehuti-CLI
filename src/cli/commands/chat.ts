@@ -18,8 +18,7 @@ import React, {
 } from "react";
 
 // Progress Bar Component
-const ProgressBar = ({ value, label }: { value: number; label?: string }) => {
-	const width = 40;
+const ProgressBar = ({ value, label, width = 40 }: { value: number; label?: string; width?: number }) => {
 	const filledWidth = Math.round((value / 100) * width);
 	const filled = "█".repeat(filledWidth);
 	const empty = "░".repeat(width - filledWidth);
@@ -88,7 +87,7 @@ import {
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
 } from "../../branding/index.js";
-import { type DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig } from "../../config/index.js";
+import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig } from "../../config/index.js";
 import { mcpManager } from "../../mcp/index.js";
 import { sessionManager } from "../../session/manager.js";
 import {
@@ -401,10 +400,11 @@ function renderToken(
 			);
 			
 			if (level <= 2) {
+				const underlineLength = maxWidth ? Math.min(maxWidth - 4, 80) : 80;
 				const underline = React.createElement(
 					Text,
 					{ key: getKey(), dimColor: true },
-					prefix.repeat(50),
+					prefix.repeat(Math.floor(underlineLength / prefix.length)),
 				);
 				return [heading, React.createElement(Text, { key: getKey() }, "\n"), underline];
 			}
@@ -634,7 +634,7 @@ function loadTehutiConfig(): TehutiConfig {
 			return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as TehutiConfig;
 		}
 	} catch {}
-	return {};
+	return DEFAULT_CONFIG;
 }
 
 function saveTehutiConfig(data: Record<string, unknown>) {
@@ -962,17 +962,20 @@ function ChatUI({
 
 	useEffect(() => {
 		const handleResize = () => {
-			setTerminalSize({
-				rows: stdout?.rows || 24,
-				columns: stdout?.columns || 80,
-			});
+			const timer = setTimeout(() => {
+				setTerminalSize({
+					rows: stdout?.rows || 24,
+					columns: stdout?.columns || 80,
+				});
+			}, 100);
+			
+			return () => clearTimeout(timer);
 		};
 
-		const resizeListener = () => handleResize();
-		process.stdout.on("resize", resizeListener);
+		stdout?.on("resize", handleResize);
 		
 		return () => {
-			process.stdout.off("resize", resizeListener);
+			stdout?.off("resize", handleResize);
 		};
 	}, [stdout]);
 
@@ -987,6 +990,16 @@ function ChatUI({
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
 
 	messagesRef.current = messages;
+
+	// Cleanup batch timer on unmount
+	useEffect(() => {
+		return () => {
+			if (batchTimerRef.current) {
+				clearTimeout(batchTimerRef.current);
+				batchTimerRef.current = null;
+			}
+		};
+	}, []);
 
 	const flushBatchedTokens = useCallback(() => {
 		if (batchTimerRef.current) {
@@ -1371,44 +1384,52 @@ function ChatUI({
 		setHistory(loadHistory());
 
 		let mounted = true;
+		let controller = new AbortController();
 
 		async function initSession() {
-			const recentId = await sessionManager.getRecentSession(process.cwd());
-			if (recentId && mounted) {
-				const data = await sessionManager.loadSession(recentId);
-				if (data && data.messages.length > 0 && mounted) {
-					const loadedMsgs = data.messages
-						.filter((m) => m.role === "user" || m.role === "assistant")
-						.map((m, i) => ({
-							id: i,
-							role: m.role,
-							content:
-								typeof m.content === "string"
-									? m.content
-									: JSON.stringify(m.content),
-						}));
-					if (loadedMsgs.length > 0) {
-						setMessages(loadedMsgs);
-						msgIdRef.current = loadedMsgs.length;
-						setShowWelcome(false);
-						setSessionId(recentId);
-						if (data.metadata.model) {
-							setCtxModel(data.metadata.model);
+			try {
+				const recentId = await sessionManager.getRecentSession(process.cwd());
+				if (recentId && mounted && !controller.signal.aborted) {
+					const data = await sessionManager.loadSession(recentId);
+					if (data && data.messages.length > 0 && mounted && !controller.signal.aborted) {
+						const loadedMsgs = data.messages
+							.filter((m) => m.role === "user" || m.role === "assistant")
+							.map((m, i) => ({
+								id: i,
+								role: m.role,
+								content:
+									typeof m.content === "string"
+										? m.content
+										: JSON.stringify(m.content),
+							}));
+						if (loadedMsgs.length > 0) {
+							setMessages(loadedMsgs);
+							msgIdRef.current = loadedMsgs.length;
+							setShowWelcome(false);
+							setSessionId(recentId);
+							if (data.metadata.model) {
+								setCtxModel(data.metadata.model);
+							}
+							return;
 						}
-						return;
 					}
 				}
-			}
 
-			if (mounted) {
-				const id = await sessionManager.createSession(process.cwd(), ctxModel);
-				setSessionId(id);
+				if (mounted && !controller.signal.aborted) {
+					const id = await sessionManager.createSession(process.cwd(), ctxModel);
+					setSessionId(id);
+				}
+			} catch (error) {
+				if (error.name !== "AbortError") {
+					console.error("Session initialization failed:", error);
+				}
 			}
 		}
 		initSession();
 
 		return () => {
 			mounted = false;
+			controller.abort();
 		};
 	}, []);
 
@@ -1544,19 +1565,47 @@ function ChatUI({
 			return;
 		}
 
+		// Backspace handling
+		if (key.backspace || k === "\x7f" || k === "\b") {
+			if (cursorPos > 0) {
+				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
+				setCursorPos((p) => p - 1);
+			}
+			return;
+		}
+
+		// Delete handling
+		if (key.delete || k === "\x1b[3~") {
+			if (cursorPos < input.length) {
+				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
+			}
+			return;
+		}
+
 		if (key.ctrl && k === "p") {
 			setShowCommandPalette(true);
 			return;
 		}
 
 		if (key.ctrl && k === "c") {
-			if (sessionId && ctxRef.current) {
-				sessionManager.saveSession(sessionId, ctxRef.current);
+			if (input.length === 0) {
+				if (sessionId && ctxRef.current) {
+					sessionManager.saveSession(sessionId, ctxRef.current);
+				}
+				console.log();
+				console.log(chalk.hex(GOLD)(costTracker.getSessionSummary()));
+				onExit();
+				exit();
+			} else if (selectionStart !== null && selectionEnd !== null) {
+				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
+				const selectedText = input.slice(start, end);
+				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
+				setSelectionStart(null);
+				setSelectionEnd(null);
+			} else {
+				setInput("");
+				setCursorPos(0);
 			}
-			console.log();
-			console.log(chalk.hex(GOLD)(costTracker.getSessionSummary()));
-			onExit();
-			exit();
 			return;
 		}
 
@@ -1679,37 +1728,11 @@ function ChatUI({
 			return;
 		}
 
-		if (key.ctrl && k === "c") {
-			if (input.length === 0) {
-				onExit();
-			} else {
-				setInput("");
-				setCursorPos(0);
-			}
-			return;
-		}
-
 		if (key.ctrl && k === "d") {
 			if (input.length === 0) {
 				onExit();
 			} else {
 				setInput(input.slice(0, cursorPos) + input.slice(cursorPos + 1));
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "c") {
-			if (input.length === 0) {
-				onExit();
-			} else if (selectionStart !== null && selectionEnd !== null) {
-				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
-				const selectedText = input.slice(start, end);
-				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
-				setSelectionStart(null);
-				setSelectionEnd(null);
-			} else {
-				setInput("");
-				setCursorPos(0);
 			}
 			return;
 		}
@@ -1742,8 +1765,8 @@ function ChatUI({
 			return;
 		}
 
-		// Backspace handling
-		if (key.backspace || k === "\x7f" || k === "\b") {
+			// Backspace handling - prioritize key.backspace over character codes
+		if (key.backspace) {
 			if (cursorPos > 0) {
 				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
 				setCursorPos((p) => p - 1);
@@ -1752,7 +1775,7 @@ function ChatUI({
 		}
 
 		// Delete handling
-		if (key.delete || k === "\x1b[3~") {
+		if (key.delete) {
 			if (cursorPos < input.length) {
 				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
 			}
@@ -2619,7 +2642,10 @@ function ChatUI({
 									operationLabel,
 								),
 							),
-							React.createElement(ProgressBar, { value: progress }),
+							React.createElement(ProgressBar, { 
+								value: progress, 
+								width: Math.min(contentMaxWidth - 10, 40) 
+							}),
 						),
 				),
 				React.createElement(
