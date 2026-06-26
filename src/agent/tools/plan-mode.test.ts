@@ -68,6 +68,7 @@ describe("Plan Mode", () => {
 				"create_dir",
 				"copy",
 				"move",
+				"mcp_filesystem__write_file__abc1234",
 			];
 
 			for (const tool of blockedTools) {

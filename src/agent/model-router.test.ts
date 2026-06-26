@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	classifyTask,
 	estimateCost,
@@ -100,6 +100,10 @@ describe("Model Router", () => {
 			originalEnv = { ...process.env };
 		});
 
+		afterEach(() => {
+			process.env = originalEnv;
+		});
+
 		it("should respect TEHUTI_MODEL environment variable", async () => {
 			process.env.TEHUTI_MODEL = "test-model";
 			const config = await loadConfig();
@@ -109,6 +113,8 @@ describe("Model Router", () => {
 		it("should respect OPENROUTER_API_KEY for model selection", async () => {
 			delete process.env.TEHUTI_API_KEY;
 			delete process.env.KILO_API_KEY;
+			delete process.env.OPENCODE_API_KEY;
+			process.env.TEHUTI_PROVIDER = "openrouter";
 			process.env.OPENROUTER_API_KEY = "test-key";
 			const config = await loadConfig();
 			expect(config.apiKey).toBe("test-key");
@@ -117,6 +123,7 @@ describe("Model Router", () => {
 		it("should respect TEHUTI_API_KEY for model selection", async () => {
 			delete process.env.OPENROUTER_API_KEY;
 			delete process.env.KILO_API_KEY;
+			delete process.env.OPENCODE_API_KEY;
 			process.env.TEHUTI_API_KEY = "test-tehuti-key";
 			const config = await loadConfig();
 			expect(config.apiKey).toBe("test-tehuti-key");

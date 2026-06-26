@@ -87,9 +87,16 @@ import {
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
 } from "../../branding/index.js";
-import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig } from "../../config/index.js";
+import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig, runSetupWizard } from "../../config/index.js";
+import {
+	getAllProviders,
+	getEnvApiKeyForProvider,
+	getProviderInfo,
+	resolveBaseUrlForProvider,
+} from "../../config/providers.js";
 import { mcpManager } from "../../mcp/index.js";
 import { sessionManager } from "../../session/manager.js";
+import { listModelsForProvider } from "../../api/models.js";
 import {
 	createStreamingOutputManager,
 	type StreamingOutputManager,
@@ -112,6 +119,7 @@ import {
 	getCommandSuggestions,
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
+import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 
 // High contrast color palette (WCAG AA/AAA compliant)
 const GOLD = "#F5C518"; // Bright gold (WCAG AA)
@@ -143,6 +151,63 @@ const TOOL_ICONS: Record<string, string> = {
 	list_directory: "📂",
 	list_files: "📂",
 };
+
+type RuntimeCustomProvider = {
+	name: string;
+	baseUrl: string;
+	apiKey?: string;
+	headers?: Record<string, string>;
+};
+
+type RuntimeProviderState = {
+	provider: string;
+	baseUrl?: string;
+	apiKey?: string;
+	customProvider?: RuntimeCustomProvider;
+};
+
+function normalizeCustomProvider(
+	value: unknown,
+): RuntimeCustomProvider | undefined {
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+
+	const record = value as Record<string, unknown>;
+	const name = typeof record.name === "string" ? record.name.trim() : "";
+	const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
+
+	if (!name || !baseUrl) {
+		return undefined;
+	}
+
+	const apiKey =
+		typeof record.apiKey === "string" && record.apiKey.trim().length > 0
+			? record.apiKey.trim()
+			: undefined;
+	const rawHeaders =
+		typeof record.headers === "object" && record.headers !== null
+			? (record.headers as Record<string, unknown>)
+			: undefined;
+
+	const headers =
+		rawHeaders &&
+		Object.entries(rawHeaders).every(([, value]) => typeof value === "string")
+			? (Object.fromEntries(
+				Object.entries(rawHeaders).map(([key, value]) => [
+					key,
+					String(value),
+				]),
+			) as Record<string, string>)
+			: undefined;
+
+	return {
+		name,
+		baseUrl,
+		...(apiKey ? { apiKey } : {}),
+		...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+	};
+}
 
 function formatToolCall(toolName: string, args: unknown): string {
 	const icon = TOOL_ICONS[toolName] || "🔧";
@@ -614,114 +679,38 @@ interface TehutiConfig {
 	apiKey?: string;
 	model?: string;
 	initialized?: boolean;
+	provider?: string;
+	baseUrl?: string;
 }
 
 interface OpenRouterErrorResponse {
 	error?: { message: string };
 }
 
-interface OpenRouterModelsResponse {
-	data: Array<{
-		id: string;
-		context_length?: number;
-		pricing?: { prompt?: string };
-	}>;
-}
-
 function loadTehutiConfig(): TehutiConfig {
-	try {
-		if (fs.existsSync(CONFIG_PATH)) {
-			return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as TehutiConfig;
-		}
-	} catch {}
-	return DEFAULT_CONFIG;
+	const persisted = getGlobalConfig();
+	return {
+		apiKey: persisted.apiKey,
+		model: persisted.model,
+		initialized: persisted.initialized,
+		provider: persisted.provider,
+		baseUrl: persisted.baseUrl,
+	};
 }
 
 function saveTehutiConfig(data: Record<string, unknown>) {
-	const existing = loadTehutiConfig();
-	fs.writeFileSync(
-		CONFIG_PATH,
-		JSON.stringify({ ...existing, ...data }, null, 2),
-	);
-}
-
-async function promptForKey(): Promise<{
-	apiKey: string;
-	model: string;
-} | null> {
-	console.log();
-	console.log(chalk.hex(GOLD)(`  ${DECORATIVE.ibis} Tehuti`));
-	console.log(chalk.hex(SAND)("  Scribe of Code Transformations"));
-	console.log();
-	console.log(chalk.gray("  Enter your OpenRouter API key"));
-	console.log(
-		chalk.gray("  Get a key: ") + chalk.cyan("https://openrouter.ai/keys"),
-	);
-	console.log();
-
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-
-	return new Promise((resolve) => {
-		rl.question(
-			chalk.hex(CORAL)(`  ${DECORATIVE.scroll} Key: `),
-			async (key) => {
-				rl.close();
-
-				const trimmed = key.trim();
-				if (!trimmed) {
-					consola.fail("No key provided");
-					resolve(null);
-					return;
-				}
-
-				console.log(chalk.gray("  Validating..."));
-
-				try {
-					const res = await fetch(
-						"https://openrouter.ai/api/v1/chat/completions",
-						{
-							method: "POST",
-							headers: {
-								Authorization: `Bearer ${trimmed}`,
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({
-								model: "openrouter/auto",
-								messages: [{ role: "user", content: "test" }],
-								max_tokens: 1,
-							}),
-						},
-					);
-
-					const data = (await res.json()) as OpenRouterErrorResponse;
-
-					if (data.error) {
-						consola.fail(data.error.message);
-						rl.close();
-						resolve(null);
-						return;
-					}
-
-					saveTehutiConfig({
-						apiKey: trimmed,
-						model: "giga-potato",
-						initialized: true,
-					});
-					consola.success("Key saved!");
-					console.log();
-					resolve({ apiKey: trimmed, model: "giga-potato" });
-				} catch (e) {
-					const message = e instanceof Error ? e.message : String(e);
-					consola.fail(message);
-					resolve(null);
-				}
-			},
-		);
+	saveGlobalConfig({
+		apiKey: typeof data.apiKey === "string" ? data.apiKey : undefined,
+		model: typeof data.model === "string" ? data.model : undefined,
+		provider: typeof data.provider === "string" ? data.provider : undefined,
+		baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : undefined,
+		temperature:
+			typeof data.temperature === "number" ? data.temperature : undefined,
+		maxTokens: typeof data.maxTokens === "number" ? data.maxTokens : undefined,
 	});
 }
+
+
 
 function _QuestionPrompt({
 	question,
@@ -913,6 +902,13 @@ function ChatUI({
 			role: string;
 			content: string;
 			status?: "success" | "error" | "loading";
+			toolCalls?: Array<{
+				id: string;
+				name: string;
+				description: string;
+				result: unknown;
+				isExpanded: boolean;
+			}>;
 		}>
 	>([]);
 	const [input, setInput] = useState("");
@@ -921,14 +917,24 @@ function ChatUI({
 	const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
-	const [ctxModel, setCtxModel] = useState(model);
-	const [scrollOffset, setScrollOffset] = useState(0);
+		const [ctxModel, setCtxModel] = useState(model);
+	const [runtimeProvider, setRuntimeProvider] = useState(
+		cfg.provider || "openrouter",
+	);
+	const [runtimeBaseUrl, setRuntimeBaseUrl] = useState(cfg.baseUrl);
+	const [runtimeApiKey, setRuntimeApiKey] = useState(
+		apiKey || cfg.apiKey || "",
+	);
+	const [runtimeCustomProvider, setRuntimeCustomProvider] = useState<
+		RuntimeCustomProvider | undefined
+	>(() => normalizeCustomProvider(cfg.customProvider));
+		const [scrollOffset, setScrollOffset] = useState(0);
 	const [history, setHistory] = useState<string[]>([]);
 	const [historyIndex, setHistoryIndex] = useState(-1);
 	const [sessionId, setSessionId] = useState<string | null>(null);
 	const [showWelcome, setShowWelcome] = useState(true);
-	const [sessionCost, setSessionCost] = useState(0);
-	const [thinking, setThinking] = useState("");
+		const [sessionCost, setSessionCost] = useState(0);
+		const [thinking, setThinking] = useState("");
 	const [showThinking, setShowThinking] = useState(false);
 	const [thinkingDots, setThinkingDots] = useState("");
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -943,6 +949,241 @@ function ChatUI({
 	const questionResolverRef = useRef<
 		((questions: QuestionData[]) => Promise<string[]>) | null
 	>(null);
+	const normalizedProvider = useMemo(
+		() => runtimeProvider.trim().toLowerCase() || "openrouter",
+		[runtimeProvider],
+	);
+	const resolveRuntimeApiKey = useCallback(
+		(
+			targetProvider: string,
+			explicitKey?: string,
+			overrideCustomProvider?: RuntimeCustomProvider,
+		) => {
+			const provider = targetProvider.trim().toLowerCase() || normalizedProvider;
+			const trimmedExplicit = explicitKey?.trim();
+			if (trimmedExplicit) {
+				return trimmedExplicit;
+			}
+
+			const envApiKey = getEnvApiKeyForProvider(provider);
+			if (envApiKey) {
+				return envApiKey;
+			}
+
+			if (provider === normalizedProvider) {
+				return runtimeApiKey;
+			}
+
+			if (provider === "custom") {
+				return (
+					overrideCustomProvider?.apiKey ||
+					runtimeCustomProvider?.apiKey
+				);
+			}
+
+			if (provider === (cfg.provider || "openrouter")) {
+				return cfg.apiKey;
+			}
+
+			return undefined;
+		},
+		[cfg.provider, cfg.apiKey, normalizedProvider, runtimeApiKey, runtimeCustomProvider],
+	);
+
+	const resolveRuntimeProviderState = useCallback(
+		(
+			provider?: string,
+			options?: {
+				baseUrl?: string;
+				apiKey?: string;
+				customProvider?: RuntimeCustomProvider;
+			},
+		): RuntimeProviderState => {
+			const targetProvider =
+				provider?.trim().toLowerCase() || normalizedProvider;
+			const explicitBaseUrl =
+				options?.baseUrl !== undefined ? options.baseUrl?.trim() : undefined;
+
+			const requestedCustomProvider =
+				targetProvider === "custom"
+					? options?.customProvider ||
+						runtimeCustomProvider ||
+						normalizeCustomProvider(cfg.customProvider)
+					: undefined;
+
+			const resolvedBaseUrl = resolveBaseUrlForProvider(
+				targetProvider,
+				targetProvider === "custom"
+					? explicitBaseUrl || requestedCustomProvider?.baseUrl
+					: explicitBaseUrl ?? runtimeBaseUrl,
+			);
+
+			const resolvedCustomProvider =
+				targetProvider === "custom" && requestedCustomProvider
+					? {
+							...requestedCustomProvider,
+							name: requestedCustomProvider.name || "custom",
+							...(resolvedBaseUrl ? { baseUrl: resolvedBaseUrl } : {}),
+					  }
+					: undefined;
+
+			return {
+				provider: targetProvider,
+				baseUrl: resolvedBaseUrl,
+				apiKey: resolveRuntimeApiKey(
+					targetProvider,
+					options?.apiKey,
+					resolvedCustomProvider,
+				),
+				customProvider: resolvedCustomProvider,
+			};
+		},
+		[
+			cfg.customProvider,
+			runtimeBaseUrl,
+			runtimeCustomProvider,
+			normalizedProvider,
+			resolveRuntimeApiKey,
+		],
+	);
+
+	const applyRuntimeProviderState = useCallback((next: RuntimeProviderState) => {
+		setRuntimeProvider(next.provider);
+		setRuntimeBaseUrl(next.baseUrl);
+		setRuntimeApiKey(next.apiKey || "");
+		setRuntimeCustomProvider(
+			next.provider === "custom" ? next.customProvider : undefined,
+		);
+
+		if (ctxRef.current) {
+			ctxRef.current.config.provider = next.provider;
+			if (next.baseUrl) {
+				ctxRef.current.config.baseUrl = next.baseUrl;
+			} else {
+				delete ctxRef.current.config.baseUrl;
+			}
+			if (next.apiKey) {
+				ctxRef.current.config.apiKey = next.apiKey;
+			} else {
+				delete ctxRef.current.config.apiKey;
+			}
+			if (next.provider === "custom" && next.customProvider?.baseUrl) {
+				ctxRef.current.config.customProvider = next.customProvider;
+			} else {
+				delete ctxRef.current.config.customProvider;
+			}
+		}
+	}, []);
+
+	const persistRuntimeProviderState = useCallback((
+		next: RuntimeProviderState,
+		overrides?: {
+			model?: string;
+		},
+	) => {
+		saveGlobalConfig({
+			provider: next.provider,
+			baseUrl: next.baseUrl,
+			apiKey: next.apiKey,
+			customProvider:
+				next.provider === "custom" ? next.customProvider : undefined,
+			model: overrides?.model ?? ctxModel,
+		});
+	}, [ctxModel]);
+
+	const getActiveConfig = useCallback(() => {
+		const resolved = resolveRuntimeProviderState();
+		return {
+			...cfg,
+			provider: resolved.provider,
+			model: ctxModel,
+			baseUrl: resolved.baseUrl,
+			customProvider: resolved.customProvider,
+			apiKey: resolved.apiKey,
+		};
+	}, [
+		cfg,
+		ctxModel,
+		resolveRuntimeProviderState,
+	]);
+
+	const ensureContext = useCallback(async () => {
+		if (ctxRef.current) {
+			return ctxRef.current;
+		}
+
+		const ctx = await createAgentContext(process.cwd(), getActiveConfig(), diffPreview);
+		ctxRef.current = ctx;
+		return ctx;
+	}, [diffPreview, getActiveConfig]);
+
+	const requestGenerationRef = useRef(0);
+	const requestControllerRef = useRef<AbortController | null>(null);
+
+	const abortActiveRequest = useCallback(() => {
+		requestGenerationRef.current += 1;
+		if (requestControllerRef.current) {
+			requestControllerRef.current.abort();
+			requestControllerRef.current = null;
+		}
+	}, []);
+
+	const beginRequest = useCallback(() => {
+		abortActiveRequest();
+		const controller = new AbortController();
+		requestControllerRef.current = controller;
+		return {
+			requestId: requestGenerationRef.current,
+			controller,
+		};
+	}, [abortActiveRequest]);
+
+	const isCurrentRequest = useCallback(
+		(requestId: number, signal?: AbortSignal) =>
+			requestGenerationRef.current === requestId && !signal?.aborted,
+		[],
+	);
+
+	const resetConversation = useCallback(async (createNewSession = true) => {
+		abortActiveRequest();
+		if (pendingQuestion) {
+			pendingQuestion.reject(new Error("Question cancelled by reset"));
+			setPendingQuestion(null);
+		}
+
+		setMessages([]);
+		setThinking("");
+		setShowThinking(false);
+		setSessionCost(0);
+		setShowWelcome(true);
+		setHistoryIndex(-1);
+		setInput("");
+		setCursorPos(0);
+		setScrollOffset(0);
+		setLoading(false);
+		setError("");
+		setProgress(0);
+		setOperationLabel("");
+		costTracker.reset();
+		resetTelemetry();
+		ctxRef.current = null;
+		if (createNewSession) {
+			const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
+				provider: normalizedProvider,
+				baseUrl: runtimeBaseUrl,
+				customProvider:
+					normalizedProvider === "custom" ? runtimeCustomProvider : undefined,
+			});
+			setSessionId(id);
+		}
+	}, [
+		ctxModel,
+		pendingQuestion,
+		normalizedProvider,
+		runtimeBaseUrl,
+		runtimeCustomProvider,
+		abortActiveRequest,
+	]);
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 	const ctxRef = useRef<AgentContext | null>(null);
@@ -1076,13 +1317,8 @@ function ChatUI({
 	}, []);
 
 	const handleClear = useCallback(() => {
-		setMessages([]);
-		ctxRef.current = null;
-		setThinking("");
-		setShowThinking(false);
-		costTracker.reset();
-		setSessionCost(0);
-	}, []);
+		void resetConversation();
+	}, [resetConversation]);
 
 	const handleCompact = useCallback(() => {
 		const ctx = ctxRef.current;
@@ -1200,57 +1436,190 @@ function ChatUI({
 		setLoading(false);
 	}, []);
 
-	const handleShowModels = useCallback(async () => {
+
+	const handleShowModels = useCallback(
+		async (opts?: {
+			provider?: string;
+			apiKey?: string;
+			baseUrl?: string;
+		}) => {
 		setLoading(true);
+			const provider = opts?.provider?.trim().toLowerCase() || normalizedProvider;
+			const resolved = resolveRuntimeProviderState(provider, {
+				baseUrl: opts?.baseUrl,
+				apiKey: opts?.apiKey,
+			});
+			const base = resolveBaseUrlForProvider(
+				provider,
+				resolved.baseUrl,
+			);
 		setMessages((m) => [
 			...m,
-			{ id: msgIdRef.current++, role: "system", content: "Fetching models..." },
+			{
+				id: msgIdRef.current++,
+				role: "system",
+				content: `Fetching live models + accurate specs for ${provider || "current"}...`,
+			},
 		]);
 
 		try {
-			const res = await fetch("https://openrouter.ai/api/v1/models", {
-				headers: { Authorization: `Bearer ${apiKey}` },
-			});
-			const data = (await res.json()) as OpenRouterModelsResponse;
+			const rich = await listModelsForProvider(
+				provider || "openrouter",
+				{
+					apiKey: resolved.apiKey,
+					baseUrl: base,
+					headers: resolved.customProvider?.headers,
+				},
+			);
 
-			const models = data.data
-				.filter((m) => m.id.includes(":free") || m.pricing?.prompt === "0")
-				.sort((a, b) => {
-					const ctxA = a.context_length || 0;
-					const ctxB = b.context_length || 0;
-					return ctxB - ctxA;
-				})
-				.slice(0, 15);
+			const models = [...rich].sort(
+				(a, b) => (b.contextLength ?? 0) - (a.contextLength ?? 0),
+			);
 
-			const list = models
-				.map((m) => {
-					const ctx = m.context_length
-						? `${Math.round(m.context_length / 1000)}k ctx`
-						: "";
-					return `  ${m.id.split("/")[1]?.slice(0, 25) || m.id} ${ctx}`;
-				})
-				.join("\n");
+			const list = models.length
+				? models
+						.slice(0, 40)
+						.map((m) => {
+							const ctx = m.contextLength
+								? ` ctx:${Math.round(m.contextLength / 1000)}k`
+								: "";
+							const pr =
+								m.pricing && (m.pricing.input || m.pricing.output)
+									? ` in:$${((m.pricing.input || 0) / 1e6).toFixed(4)}/M`
+									: "";
+							return `  ${m.id}${ctx}${pr}`;
+						})
+						.join("\n")
+				: "  (no data from endpoint; verify key/base via /config)";
 
+			setMessages((msgs) => [
+					...msgs.slice(0, -1),
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Live models for ${
+						provider || "provider"
+					} (fetched accurate context/pricing when provided):\n${list}\n\nUse: /model <full-id>\nContext shown is from provider endpoint.`,
+				},
+			]);
+		} catch (e) {
 			setMessages((msgs) => [
 				...msgs.slice(0, -1),
 				{
 					id: msgIdRef.current++,
 					role: "system",
-					content: `Free models (by context):\n${list}\n\nUse: /model <full-id>`,
+					content: `Failed to fetch models: ${
+						e instanceof Error ? e.message : String(e)
+					} \nCheck /config for key/base for ${provider || "provider"}.`,
 				},
 			]);
-		} catch {
-			setMessages((msgs) => [
-				...msgs.slice(0, -1),
-				{
-					id: msgIdRef.current++,
-					role: "system",
-					content: "Failed to fetch models",
-				},
-			]);
+		} finally {
+			setLoading(false);
 		}
-		setLoading(false);
-	}, [apiKey]);
+		}, [normalizedProvider, resolveRuntimeProviderState]);
+
+	const describeProvider = useCallback((providerId: string) => {
+		const info = getProviderInfo(providerId.toLowerCase());
+		if (!info) {
+			return `- ${providerId} (unknown)`;
+		}
+		const defaultBase = info.defaultBaseUrl || "custom";
+		return `- ${info.id}: ${info.name} | base: ${defaultBase} | list endpoint: ${info.modelListEndpoint}`;
+	}, []);
+
+	const handleProviderSwitch = useCallback(
+		async (requestedProvider?: string) => {
+			if (!requestedProvider) {
+				const providers = getAllProviders();
+				const list = providers
+					.map((provider) => describeProvider(provider.id))
+					.join("\n");
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content:
+							`Supported providers:\n${list}\n\nUse: /provider <id>   Then /models for current provider's catalog.`,
+					},
+				]);
+				return;
+			}
+
+			const normalized = requestedProvider.trim().toLowerCase();
+			const info = getProviderInfo(normalized);
+			if (!info) {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Unknown provider "${requestedProvider}". Use /providers for a full list.`,
+					},
+				]);
+				return;
+			}
+
+			if (!info.isOpenAICompatible && info.id !== "kilocode") {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `${info.name} is not OpenAI-compatible in the current runtime and can't be used directly yet.`,
+					},
+				]);
+				return;
+			}
+
+			const nextState = resolveRuntimeProviderState(normalized, {
+				customProvider:
+					normalized === "custom"
+						? runtimeCustomProvider || normalizeCustomProvider(cfg.customProvider)
+						: undefined,
+			});
+
+			if (normalized === "custom" && !nextState.customProvider) {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content:
+							"Custom provider requires customProvider settings. Use /config and set provider + baseUrl first.",
+					},
+				]);
+				return;
+			}
+
+			applyRuntimeProviderState(nextState);
+			persistRuntimeProviderState(nextState);
+
+			setMessages((m) => [
+						...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Provider switched to ${normalized}. Base URL: ${nextState.baseUrl || "auto"}. Use /models for live catalog.`,
+					},
+				]);
+			await handleShowModels({
+				provider: normalized,
+				apiKey: nextState.apiKey,
+				baseUrl: nextState.baseUrl,
+			});
+		},
+		[
+			ctxModel,
+			describeProvider,
+			handleShowModels,
+			cfg.customProvider,
+			runtimeCustomProvider,
+			applyRuntimeProviderState,
+			persistRuntimeProviderState,
+			resolveRuntimeProviderState,
+		],
+		);
 
 	const handleSave = useCallback(async () => {
 		if (sessionId && ctxRef.current) {
@@ -1274,8 +1643,7 @@ function ChatUI({
 			]);
 		}
 	}, [sessionId]);
-
-  const handleLoad = useCallback(async () => {
+	  const handleLoad = useCallback(async () => {
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
 		if (sessions.length === 0) {
@@ -1349,12 +1717,15 @@ function ChatUI({
 				onModels: handleShowModels,
 				onSave: handleSave,
 				onLoad: handleLoad,
+				onProvider: handleProviderSwitch,
+				onProviders: () => handleProviderSwitch(),
 				onStats: handleShowStats,
 				onCompact: handleCompact,
 				onThinking: handleThinking,
 				onPlan: handlePlan,
 				onSkills: async () => {
-					const result = await runOneShot(ctxRef.current!, "/skills");
+					const ctx = await ensureContext();
+					const result = await runOneShot(ctx, "/skills");
 					setMessages((m) => [
 						...m,
 						{ id: msgIdRef.current++, role: "system", content: result },
@@ -1371,12 +1742,15 @@ function ChatUI({
 			handleShowHelp,
 			handleShowSessions,
 			handleShowModels,
+			handleProviderSwitch,
 			handleSave,
 			handleLoad,
 			handleShowStats,
 			handleCompact,
 			handleThinking,
 			handlePlan,
+			ensureContext,
+			resetConversation,
 		],
 	);
 
@@ -1392,6 +1766,19 @@ function ChatUI({
 				if (recentId && mounted && !controller.signal.aborted) {
 					const data = await sessionManager.loadSession(recentId);
 					if (data && data.messages.length > 0 && mounted && !controller.signal.aborted) {
+						const loadedProvider = data.metadata.provider?.trim().toLowerCase();
+						const loadedBaseUrl = data.metadata.baseUrl?.trim();
+						const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
+						const nextProvider = loadedProvider || runtimeProvider;
+						const nextState = resolveRuntimeProviderState(nextProvider, {
+							baseUrl: loadedBaseUrl || "",
+							customProvider:
+								loadedCustomProvider ||
+								runtimeCustomProvider ||
+								normalizeCustomProvider(cfg.customProvider),
+						});
+						applyRuntimeProviderState(nextState);
+
 						const loadedMsgs = data.messages
 							.filter((m) => m.role === "user" || m.role === "assistant")
 							.map((m, i) => ({
@@ -1416,11 +1803,19 @@ function ChatUI({
 				}
 
 				if (mounted && !controller.signal.aborted) {
-					const id = await sessionManager.createSession(process.cwd(), ctxModel);
+					const bootstrap = resolveRuntimeProviderState();
+					const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
+						provider: bootstrap.provider,
+						baseUrl: bootstrap.baseUrl,
+						customProvider:
+							bootstrap.provider === "custom"
+								? bootstrap.customProvider
+								: undefined,
+					});
 					setSessionId(id);
 				}
 			} catch (error) {
-				if (error.name !== "AbortError") {
+				if (error instanceof Error && error.name !== "AbortError") {
 					console.error("Session initialization failed:", error);
 				}
 			}
@@ -1430,6 +1825,7 @@ function ChatUI({
 		return () => {
 			mounted = false;
 			controller.abort();
+			abortActiveRequest();
 		};
 	}, []);
 
@@ -1684,9 +2080,7 @@ function ChatUI({
 		}
 
 		if (key.ctrl && k === "l") {
-			setMessages([]);
-			ctxRef.current = null;
-			setShowWelcome(true);
+			void resetConversation();
 			return;
 		}
 
@@ -1765,23 +2159,6 @@ function ChatUI({
 			return;
 		}
 
-			// Backspace handling - prioritize key.backspace over character codes
-		if (key.backspace) {
-			if (cursorPos > 0) {
-				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
-				setCursorPos((p) => p - 1);
-			}
-			return;
-		}
-
-		// Delete handling
-		if (key.delete) {
-			if (cursorPos < input.length) {
-				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
-			}
-			return;
-		}
-
 		// Text selection
 		if (key.shift && key.leftArrow) {
 			const newPos = Math.max(0, cursorPos - 1);
@@ -1856,13 +2233,6 @@ function ChatUI({
 			return;
 		}
 
-		// Copy-paste support
-		if (key.ctrl && k === "v") {
-			// In Ink, we can't directly access clipboard, but this handles the key combination
-			// The actual paste is handled by the terminal
-			return;
-		}
-
 		if (key.ctrl && k === "c") {
 			// Already handled above
 			return;
@@ -1893,18 +2263,7 @@ function ChatUI({
 			}
 
 			if (cmd === "/clear") {
-				setMessages([]);
-				ctxRef.current = null;
-				setThinking("");
-				setShowThinking(false);
-				costTracker.reset();
-				resetTelemetry();
-				setSessionCost(0);
-				const newId = await sessionManager.createSession(
-					process.cwd(),
-					ctxModel,
-				);
-				setSessionId(newId);
+				await resetConversation();
 				return;
 			}
 
@@ -1944,6 +2303,22 @@ function ChatUI({
 						content: formatHelpOutput(),
 					},
 				]);
+				return;
+			}
+
+			if (cmd === "/providers") {
+				await handleProviderSwitch();
+				return;
+			}
+
+			if (text.toLowerCase().startsWith("/provider ")) {
+				const requestedProvider = text.slice(10).trim();
+				await handleProviderSwitch(requestedProvider);
+				return;
+			}
+
+			if (cmd === "/provider") {
+				await handleProviderSwitch();
 				return;
 			}
 
@@ -2018,7 +2393,24 @@ function ChatUI({
 			if (text.toLowerCase().startsWith("/load ")) {
 				const id = text.slice(6).trim();
 				const data = await sessionManager.loadSession(id);
-				if (data && data.messages.length > 0) {
+			if (data && data.messages.length > 0) {
+					const loadedProvider = data.metadata.provider?.trim().toLowerCase();
+					const loadedBaseUrl = data.metadata.baseUrl?.trim();
+					const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
+					const resolvedProvider = loadedProvider || runtimeProvider;
+					const sourceCustomProvider =
+						loadedCustomProvider ||
+						runtimeCustomProvider ||
+						normalizeCustomProvider(cfg.customProvider);
+					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+						baseUrl: loadedBaseUrl || "",
+						customProvider: sourceCustomProvider,
+					});
+					const resolvedModel = data.metadata.model || ctxModel;
+
+					applyRuntimeProviderState(resolvedState);
+					persistRuntimeProviderState(resolvedState, { model: resolvedModel });
+
 					const loadedMsgs = data.messages
 						.filter((m) => m.role === "user" || m.role === "assistant")
 						.map((m, i) => ({
@@ -2040,9 +2432,16 @@ function ChatUI({
 					ctxRef.current = await createAgentContext(
 						process.cwd(),
 						{
-							...cfg,
-							model: data.metadata.model || ctxModel,
-							apiKey,
+							...getActiveConfig(),
+							provider: resolvedState.provider,
+							baseUrl: resolvedState.baseUrl,
+							apiKey: resolvedState.apiKey,
+							customProvider:
+								resolvedState.provider === "custom" &&
+								resolvedState.customProvider?.baseUrl
+									? resolvedState.customProvider
+									: undefined,
+							model: resolvedModel,
 							maxIterations: 50,
 							maxTokens: 4096,
 							permissions: {
@@ -2054,9 +2453,28 @@ function ChatUI({
 						},
 						diffPreview,
 					);
+					ctxRef.current.config.provider = resolvedState.provider;
+					if (resolvedState.baseUrl) {
+						ctxRef.current.config.baseUrl = resolvedState.baseUrl;
+					} else {
+						delete ctxRef.current.config.baseUrl;
+					}
+					if (resolvedState.apiKey) {
+						ctxRef.current.config.apiKey = resolvedState.apiKey;
+					} else {
+						delete ctxRef.current.config.apiKey;
+					}
+					if (
+						resolvedState.provider === "custom" &&
+						resolvedState.customProvider?.baseUrl
+					) {
+						ctxRef.current.config.customProvider = resolvedState.customProvider;
+					} else {
+						delete ctxRef.current.config.customProvider;
+					}
 					ctxRef.current.messages = data.messages;
 					if (data.metadata.model) {
-						setCtxModel(data.metadata.model);
+						setCtxModel(resolvedModel);
 					}
 					setMessages((m) => [
 						...m,
@@ -2079,70 +2497,34 @@ function ChatUI({
 				return;
 			}
 
-			if (cmd === "/models") {
-				setLoading(true);
+			if (cmd === "/model") {
 				setMessages((m) => [
 					...m,
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: "Fetching models...",
+						content:
+							"Use: /model <model-name> to switch models.\nExample: /model giga-potato\n\nUse /models to see available options.",
 					},
 				]);
+				return;
+			}
 
-				try {
-					const res = await fetch("https://openrouter.ai/api/v1/models", {
-						headers: { Authorization: `Bearer ${apiKey}` },
-					});
-					const data = (await res.json()) as OpenRouterModelsResponse;
-
-					const models = data.data
-						.filter((m) => m.id.includes(":free") || m.pricing?.prompt === "0")
-						.sort((a, b) => {
-							const ctxA = a.context_length || 0;
-							const ctxB = b.context_length || 0;
-							return ctxB - ctxA;
-						})
-						.slice(0, 15);
-
-					const list = models
-						.map((m) => {
-							const ctx = m.context_length
-								? `${Math.round(m.context_length / 1000)}k ctx`
-								: "";
-							return `  ${m.id.split("/")[1]?.slice(0, 25) || m.id} ${ctx}`;
-						})
-						.join("\n");
-
-					setMessages((msgs) => [
-						...msgs.slice(0, -1),
-						{
-							id: msgIdRef.current++,
-							role: "system",
-							content: `Free models (by context):\n${list}\n\nUse: /model <full-id>`,
-						},
-					]);
-				} catch {
-					setMessages((msgs) => [
-						...msgs.slice(0, -1),
-						{
-							id: msgIdRef.current++,
-							role: "system",
-							content: "Failed to fetch models",
-						},
-					]);
-				}
-				setLoading(false);
+			if (cmd === "/models") {
+				await handleShowModels();
 				return;
 			}
 
 			if (text.toLowerCase().startsWith("/model ")) {
 				const m = text.slice(7).trim();
 				if (m) {
+					const resolvedState = resolveRuntimeProviderState();
 					setCtxModel(m);
+					persistRuntimeProviderState(resolvedState, { model: m });
 					if (ctxRef.current) {
 						ctxRef.current.config.model = m;
 					}
+					saveGlobalConfig({ model: m });
 					setMessages((msgs) => [
 						...msgs,
 						{ id: msgIdRef.current++, role: "system", content: `Model: ${m}` },
@@ -2164,6 +2546,9 @@ function ChatUI({
 
 		const userMsgId = msgIdRef.current++;
 		const assistantMsgId = msgIdRef.current++;
+		const request = beginRequest();
+		const requestId = request.requestId;
+		const requestController = request.controller;
 
 		setMessages((m) => [...m, { id: userMsgId, role: "user", content: text }]);
 		setLoading(true);
@@ -2182,9 +2567,7 @@ function ChatUI({
 				ctxRef.current = await createAgentContext(
 					process.cwd(),
 					{
-						...cfg,
-						model: ctxModel,
-						apiKey,
+						...getActiveConfig(),
 						maxIterations: 50,
 						maxTokens: 4096,
 						permissions: {
@@ -2203,22 +2586,34 @@ function ChatUI({
 				id: string;
 				name: string;
 				description: string;
-				result: FormattedToolResult;
+				result: unknown;
 				isExpanded: boolean;
 			}> = [];
 			let currentToolName = "";
 
 			setMessages((m) => [
 				...m.filter((msg) => msg.id !== assistantMsgId),
-				{ id: assistantMsgId, role: "assistant", content: "" },
+				{ id: assistantMsgId, role: "assistant", content: "", toolCalls: [] },
 			]);
 
  			const result = await runAgentLoop(ctxRef.current, text, {
 				onToken: (t) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted
+					) {
+						return;
+					}
 					response += t;
 					batchToken(t);
 				},
 				onToolCall: (name, args) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted
+					) {
+						return;
+					}
 					flushBatchedTokens();
 					currentToolName = name;
 					const toolDesc = formatToolCall(name, args);
@@ -2226,13 +2621,26 @@ function ChatUI({
 						id: `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 						name,
 						description: toolDesc,
-						result: formatToolResult(null),
+						result: null,
 						isExpanded: false,
 					});
+					setMessages((m) =>
+						m.map((msg) =>
+							msg.id === assistantMsgId
+								? { ...msg, toolCalls: [...toolCallsInfo] }
+								: msg
+						)
+					);
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
 				onToolResult: (name, result) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted
+					) {
+						return;
+					}
 					flushBatchedTokens();
 					const success =
 						result && typeof result === "object" && "success" in result
@@ -2242,7 +2650,14 @@ function ChatUI({
 
 					// Update the last tool call with result
 					if (toolCallsInfo.length > 0) {
-						toolCallsInfo[toolCallsInfo.length - 1].result = formattedResult;
+						toolCallsInfo[toolCallsInfo.length - 1].result = result;
+						setMessages((m) =>
+							m.map((msg) =>
+								msg.id === assistantMsgId
+									? { ...msg, toolCalls: [...toolCallsInfo] }
+									: msg
+							)
+						);
 					}
 
 					setThinking("");
@@ -2250,32 +2665,38 @@ function ChatUI({
 					currentToolName = "";
 				},
 				onThinking: (content) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted
+					) {
+						return;
+					}
 					if (content.length > 0) {
 						setThinking(`  💭 Thinking...`);
 						setShowThinking(true);
 					}
 				},
 				onProgress: (progress, label) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted
+					) {
+						return;
+					}
 					setProgress(progress);
 					setOperationLabel(label);
 				},
+				signal: requestController.signal,
 			});
 
+			if (!isCurrentRequest(requestId, requestController.signal)) {
+				streamingMsgIdRef.current = null;
+				streamingContentRef.current = "";
+				return;
+			}
 			flushBatchedTokens();
 
 			const finalContent = result.content || response;
-			const toolSummary =
-				toolCallsInfo.length > 0
-					? `\n\n${DECORATIVE.scroll} Tools used:\n${toolCallsInfo.map((t) => {
-							const statusIcon = t.result.preview?.includes("Error") ? "✗" : "✓";
-							return `  ${statusIcon} ${t.description}${t.result.preview ? `:\n${t.result.preview}` : ""}`;
-						}).join("\n")}`
-					: "";
-
-			if (result.sessionStats) {
-				setSessionCost(result.sessionStats.totalCost);
-			}
-
 			if (!finalContent && !response) {
 				setMessages((m) =>
 					m.map((msg) =>
@@ -2293,7 +2714,8 @@ function ChatUI({
 						msg.id === assistantMsgId
 							? {
 									...msg,
-									content: finalContent || `Task completed.${toolSummary}`,
+									content: finalContent || `Task completed.`,
+									toolCalls: [...toolCallsInfo],
 								}
 							: msg,
 					),
@@ -2304,6 +2726,14 @@ function ChatUI({
 			streamingContentRef.current = "";
 		} catch (e) {
 			const error = e instanceof Error ? e : new Error(String(e));
+			if (!isCurrentRequest(requestId, requestController.signal)) {
+				return;
+			}
+			if (error.name === "AbortError") {
+				streamingMsgIdRef.current = null;
+				streamingContentRef.current = "";
+				return;
+			}
 			debug.log("chat", "Agent error:", error);
 			debug.log("chat", "Error stack:", error.stack);
 			
@@ -2353,10 +2783,18 @@ function ChatUI({
 			);
 			streamingMsgIdRef.current = null;
 		}
- 		setProgress(100);
-		setLoading(false);
-		setShowThinking(false);
-		setOperationLabel("");
+
+		const shouldFinalizeRequest =
+			isCurrentRequest(requestId, requestController.signal) ||
+			requestControllerRef.current === requestController ||
+			(requestController.signal.aborted && requestControllerRef.current === null);
+		if (shouldFinalizeRequest) {
+			setProgress(100);
+			setLoading(false);
+			setShowThinking(false);
+			setOperationLabel("");
+			requestControllerRef.current = null;
+		}
 	}
 
 	const messageElements = useMemo(() => {
@@ -2423,6 +2861,23 @@ function ChatUI({
 						React.createElement(StatusIndicator, { status: m.status }),
 				);
 				content = renderMarkdown(m.content, contentMaxWidth);
+			}
+
+			if (m.toolCalls && m.toolCalls.length > 0) {
+				const toolElements = React.createElement(
+					Box,
+					{ flexDirection: "column", marginTop: 1, key: `tool-calls-${m.id}` },
+					...m.toolCalls.map((tc, idx) =>
+						React.createElement(ExpandableToolOutput, {
+							key: tc.id || `tool-${idx}`,
+							toolName: tc.description || tc.name,
+							result: tc.result,
+							maxWidth: contentMaxWidth,
+							status: tc.result === null ? "pending" : tc.result && typeof tc.result === 'object' && 'success' in tc.result && !(tc.result as any).success ? "error" : "success"
+						})
+					)
+				);
+				content.push(toolElements);
 			}
 
 			return React.createElement(
@@ -2523,16 +2978,70 @@ function ChatUI({
 
 		return showConfigEditor ? (
 			React.createElement(
-				ConfigEditor,
+			ConfigEditor,
 				{
 					config: {
-						apiKey: getGlobalConfig().apiKey,
-						model: getGlobalConfig().model,
+						apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
+						model: ctxModel,
+						provider: runtimeProvider,
+						baseUrl: runtimeBaseUrl,
 						temperature: getGlobalConfig().temperature,
 						maxTokens: getGlobalConfig().maxTokens,
 					},
 					onSave: (updates) => {
-						saveGlobalConfig(updates);
+						const normalizedProvider = updates.provider
+							? updates.provider.trim().toLowerCase()
+							: runtimeProvider;
+						const resolvedProvider = normalizedProvider || runtimeProvider;
+
+						const rawBaseUrl =
+							updates.baseUrl !== undefined ? updates.baseUrl?.trim() : runtimeBaseUrl;
+						const nextApiKey =
+							updates.apiKey !== undefined
+								? updates.apiKey.trim()
+								: resolveRuntimeApiKey(resolvedProvider);
+						const resolvedCustomSource =
+							resolvedProvider === "custom"
+								? runtimeCustomProvider ||
+									normalizeCustomProvider(cfg.customProvider)
+								: undefined;
+						const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+							baseUrl: rawBaseUrl,
+							apiKey: nextApiKey,
+							customProvider: resolvedCustomSource,
+						});
+						if (
+							resolvedProvider === "custom" &&
+							!resolvedState.customProvider?.baseUrl
+						) {
+							setMessages((m) => [
+								...m,
+								{
+									id: msgIdRef.current++,
+									role: "system",
+									content:
+										"Custom provider settings are incomplete. Set provider + baseUrl first.",
+								},
+							]);
+							return;
+						}
+
+						applyRuntimeProviderState(resolvedState);
+
+						if (updates.model !== undefined && updates.model.trim()) {
+							setCtxModel(updates.model);
+							if (ctxRef.current) {
+								ctxRef.current.config.model = updates.model;
+							}
+						}
+						const nextModel =
+							updates.model && updates.model.trim()
+								? updates.model.trim()
+								: ctxModel;
+						persistRuntimeProviderState(
+							resolvedState,
+							{ model: nextModel },
+						);
 						setMessages((m) => [
 							...m,
 							{
@@ -2704,7 +3213,7 @@ function ChatUI({
 					onClose: handleCommandPaletteClose,
 					visible: showCommandPalette,
 				}),
-			),
+			)
 		);
 }
 
@@ -2771,34 +3280,39 @@ export function createProgram(): Command {
 				console.log("\x1b[38;5;214m  Config reset\x1b[0m\n");
 			}
 
-			let envApiKey: string | undefined;
-			if (provider === "kilocode") {
-				envApiKey = process.env.KILO_API_KEY;
-			} else {
-				envApiKey =
-					process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
-			}
+			provider =
+				opts.provider ||
+				process.env.TEHUTI_PROVIDER ||
+				cfg.provider ||
+				tehuti.provider ||
+				"openrouter";
 
+			const envApiKey = getEnvApiKeyForProvider(provider);
 			const envModel = process.env.TEHUTI_MODEL;
 
-			let apiKey: string | undefined;
-			if (provider === "kilocode") {
-				apiKey = envApiKey;
-			} else {
-				apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
-			}
-
+			let apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
 			let model =
 				opts.model || envModel || cfg.model || tehuti.model || "giga-potato";
-			provider = provider || cfg.provider || "openrouter";
 
-			if (!tehuti.initialized && provider !== "kilocode" && !apiKey) {
-				const result = await promptForKey();
-				if (!result) {
-					process.exit(1);
+			const info = getProviderInfo(provider);
+			const needsKey = info ? info.requiresApiKey : true;
+
+			if (!tehuti.initialized || (needsKey && !apiKey)) {
+				if (prompt || !process.stdout.isTTY) {
+					// In one-shot mode or non-interactive terminal, do not prompt for key.
+					// Let the API client throw the missing API key error.
+				} else {
+					const wizardResult = await runSetupWizard();
+					apiKey = wizardResult.apiKey;
+					model = wizardResult.model;
+					provider = wizardResult.provider;
+					if (wizardResult.permissions) {
+						cfg.permissions = wizardResult.permissions;
+					}
+					if (wizardResult.mcp) {
+						cfg.mcp = wizardResult.mcp;
+					}
 				}
-				apiKey = result.apiKey;
-				model = result.model;
 			}
 
 			cfg.apiKey = apiKey;
@@ -2932,13 +3446,9 @@ export function createProgram(): Command {
 
 	program
 		.command("init")
-		.description("Configure API key")
+		.description("Configure and initialize Tehuti CLI settings")
 		.action(async () => {
-			const result = await promptForKey();
-			if (result) {
-				consola.success("Configuration saved to ~/.tehuti.json");
-				console.log();
-			}
+			await runSetupWizard();
 		});
 
 	program

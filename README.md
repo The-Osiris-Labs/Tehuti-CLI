@@ -46,6 +46,58 @@ If you are here to build something real, something lasting, something correct—
 
 ---
 
+## 🚀 Run Tehuti Right Now
+
+You have two paths. The **Rust core binary** is ready with zero setup and gives the full 𓅞 Egyptian experience (model registry, subagents, temporal memory, Ma'at self-reflection).
+
+```bash
+# From the project directory
+cd Projects/Tehuti-CLI-Revival   # or wherever you cloned
+
+# Easiest — the mature Rust core (no keys needed to boot & see the harness)
+./rust-core/target/release/tehuti
+
+# With demo of providers / subagents
+./rust-core/target/release/tehuti --demo
+
+# Help + usage
+./rust-core/target/release/tehuti --help
+```
+
+**Full TypeScript agent harness** (Ink TUI, commander CLI, real tools + MCP loop):
+
+```bash
+# One-time
+npm install
+
+# Interactive
+npm run start
+# or
+npx tsx src/index.ts
+
+# One-shot prompt (after you have a key configured)
+npm run start -- "fix the bug in src/foo.ts"
+
+# With overrides
+npm run start -- -p kilocode -m giga-potato "explain this"
+
+# Setup wizard
+npm run start -- init     # or npx tsx src/index.ts init
+```
+
+Other UIs:
+- OpenTUI (rich): `bun src/tui-opentui.tsx` (Bun is installed on many systems)
+- After build: `npm run build && node dist/index.js`
+
+Global convenience:
+```bash
+npm link          # then just `tehuti` anywhere
+# or alias
+alias tehuti='node /path/to/Tehuti-CLI/dist/index.js'
+```
+
+---
+
 ## ✨ Why Tehuti?
 
 Tehuti isn't just another AI coding assistant. It's a **complete reimagining** of how humans and AI collaborate on code.
@@ -76,85 +128,110 @@ Tehuti isn't just another AI coding assistant. It's a **complete reimagining** o
 
 ---
 
-## 📦 Installation
+## 📦 Installation & First Run
 
-### Prerequisites
+### Fastest Path (Rust Core — Recommended to start)
 
-- **Node.js 20+** (modern runtime for the divine interface)
-- **OpenRouter API Key** (your passport to the AI pantheon)
-
-### Quick Setup
+No Node, no keys, no build. The binary already contains the self-evolving harness (ReAct, sub-agents, memory, MCP-ready, Egyptian TUI text).
 
 ```bash
-# Clone the repository
 git clone https://github.com/The-Osiris-Labs/Tehuti-CLI
 cd Tehuti-CLI
-
-# Install dependencies
-npm install
-
-# Build for production
-npm run build
-
-# Create a convenient alias
-alias tehuti='node /path/to/Tehuti-CLI/dist/index.js'
+./rust-core/target/release/tehuti
 ```
 
-### Obtain Your OpenRouter API Key
+See the banner, model registry (grok-4.3, claude-fable-5, etc.), and internal Ma'at notes immediately.
 
-1. Visit [openrouter.ai](https://openrouter.ai)
-2. Sign up or log in
-3. Navigate to [Keys](https://openrouter.ai/keys)
-4. Click "Create Key"
-5. Copy your key (starts with `sk-or-v1-`)
-
-### Set Your API Key
+### Full TypeScript Harness (extensible agent + TUI)
 
 ```bash
-# Option 1: Environment variable (recommended)
-export OPENROUTER_API_KEY="sk-or-v1-your-key-here"
+git clone https://github.com/The-Osiris-Labs/Tehuti-CLI
+cd Tehuti-CLI
+npm install
+npm run start          # dev (tsx, no build needed)
+# or build once
+npm run build && node dist/index.js
+```
 
-# Option 2: Add to ~/.zshrc or ~/.bashrc for persistence
-echo 'export OPENROUTER_API_KEY="sk-or-v1-your-key-here"' >> ~/.zshrc
-source ~/.zshrc
+### Configuration (required for real LLM calls)
 
-# Option 3: Run setup wizard
+Copy the example and edit:
+
+```bash
+cp .tehuti.example.json ~/.tehuti.json
+# or keep local .tehuti.json
+```
+
+Minimal for KiloCode (default in example):
+
+```json
+{
+  "provider": "kilocode",
+  "model": "giga-potato",
+  "apiKey": "your-kilo-or-other-key-here"
+}
+```
+
+**For GitHub MCP** (powerful repo/PR tools via natural language):
+
+Set the token:
+
+```bash
+export GITHUB_PERSONAL_ACCESS_TOKEN="ghp_..."
+```
+
+The example already includes the github MCP server. Enable/disable with `"mcp": { "enabled": true }`.
+
+Other providers supported: openrouter, custom, anthropic, openai, gemini, xai (via keys or OAuth in Rust core).
+
+Run the wizard anytime:
+
+```bash
+npm run start -- init
+# or
 tehuti init
+```
+
+### Quick one-liner after setup
+
+```bash
+npm run start -- "refactor the auth module with proper error handling"
 ```
 
 ## 🎯 Quick Start
 
-### Interactive Mode
+### Rust Core (zero friction, see the living harness)
 
 ```bash
-tehuti
+./rust-core/target/release/tehuti
+./rust-core/target/release/tehuti --demo
 ```
 
-You'll be greeted with the divine interface:
-```
-𓆣 Tehuti - Scribe of Code Transformations
-Ask me anything about your code...
+You will see the 𓅞 banner, temporal context, current model registry, and notes about sub-agents, parallel execution, and Ma'at self-reflection.
 
->
+### TS Harness
+
+```bash
+npm run start
 ```
 
-### One-Shot Queries
+### One-Shot + Flags
 
 ```bash
 tehuti "fix the bug in auth.ts"
-tehuti "optimize this SQL query"
-tehuti "write a Python function to calculate fibonacci numbers"
+tehuti -p kilocode -m giga-potato "explain the agent loop"
+tehuti --model anthropic/claude-fable-5 "plan the next feature"
+tehuti --no-mcp --quiet "quick task"
 ```
 
-### Specific Model Selection
+See everything:
 
 ```bash
-# Use Claude Sonnet for complex reasoning
-tehuti --model anthropic/claude-sonnet-4 "refactor this TypeScript codebase"
-
-# Use a fast free model
-tehuti --model giga-potato "explain this React component"
+tehuti --help
+tehuti mcp --help
 ```
+
+Inside a running session use sacred inscriptions (slash commands) such as `/plan`, `/compact`, `/recall`, `/inscribe`, `/save`. Full list in `docs/user-guide/04-sacred-inscriptions.md`.
 
 ---
 
@@ -254,106 +331,110 @@ Tehuti automatically loads project-specific instructions from these files (in or
 
 ## 🔮 Configuration
 
-Config is stored in `~/.tehuti.json`:
+The authoritative config lives at `~/.tehuti.json` (or local `.tehuti.json`). Start from the example:
+
+```bash
+cp .tehuti.example.json ~/.tehuti.json
+```
+
+Current shape (KiloCode default + GitHub MCP ready):
 
 ```json
 {
-  "apiKey": "sk-or-v1-...",
+  "provider": "kilocode",
   "model": "giga-potato",
-  "modelSelection": "auto",
-  "permissions": { "mode": "interactive" },
-  "maxIterations": 5
+  "fallbackModel": "minimax/minimax-m2.5:free",
+  "maxTokens": 32000,
+  "permissions": {
+    "defaultMode": "interactive"
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": {
+      "github": { "transport": "http", "url": "https://api.githubcopilot.com/mcp/", ... }
+    }
+  }
 }
 ```
 
-### Model Selection Modes
+Run the wizard:
 
-- `auto` - Automatically select model based on task complexity (default)
-- `manual` - Always use the configured model
-- `cost-optimized` - Prefer free/fast models
-- `speed-optimized` - Always use fastest model
+```bash
+tehuti init
+tehuti config     # inspect current
+```
 
-## 🏺 Recommended Models
+Rust core also reads similar state + supports OAuth flows for several providers.
 
-| Model | Use Case |
-|-------|----------|
-| `giga-potato` | Default free model (KiloCode) |
-| `meta-llama/llama-3.3-70b-instruct:free` | Large context |
-| `deepseek/deepseek-r1:free` | Reasoning |
-| `google/gemini-2.0-flash-exp:free` | Fast |
-| `anthropic/claude-sonnet-4` | Complex tasks |
+## 🏺 Recommended / Current Registry Models (2026-06)
+
+The harness surfaces a live registry (see Rust startup):
+
+- xai/grok-4.3
+- openai/gpt-5.5
+- anthropic/claude-fable-5
+- gemini/gemini-3.5-flash
+- Many free / OpenRouter options via KiloCode or direct
+
+Override with `-m` / `--model` or in config. The system recommends based on task.
 
 ---
 
 ## 🔧 Development
 
 ```bash
-# Install dependencies
 npm install
+npm run start                 # dev TS (tsx + Ink TUI)
+npm run build                 # produce dist/
+./rust-core/target/release/tehuti   # the Rust core any time
 
-# Build for production
-npm run build
-
-# Run directly
-npm start
-
-# Run tests
 npm test
-
-# Type check
-npx tsc --noEmit
-
-# Lint
+npm run typecheck
 npm run lint
 ```
 
-### Project Structure
+### Project Structure (Hybrid)
 
-```
-src/
-├── index.ts                          # Entry point
-├── cli/                              # CLI commands and UI
-│   ├── commands/chat.ts             # Main chat command (React/Ink UI)
-│   └── ui/components/               # React components
-├── agent/                            # AI agent and tools
-│   ├── index.ts                     # Agent loop with parallel execution
-│   ├── context-compressor.ts        # Context summarization
-│   ├── model-router.ts              # Model tier routing
-│   ├── parallel-executor.ts         # Parallel tool execution
-│   ├── prefetcher.ts                # Predictive prefetching
-│   └── tools/                       # 25+ tools
-├── api/                              # OpenRouter API client
-│   └── openrouter.ts                # OpenRouter API client (singleton)
-├── config/                          # Configuration management
-├── branding/                        # Egyptian visual theme
-├── permissions/                     # Permission system
-├── mcp/                             # MCP integration
-├── hooks/                           # Hook execution system
-├── terminal/                        # Terminal utilities
-├── session/                         # Session persistence
-└── utils/                          # Utility functions
+- `rust-core/target/{release,debug}/tehuti` — self-contained mature Rust harness (ratatui-era Egyptian TUI text, ReAct, memory, subagents, MCP, self-mod)
+- `src/` — full TypeScript agent harness (commander + Ink/OpenTUI UIs, agent loop, MCP client, tools, sessions, config)
+- `docs/user-guide/` — sacred records (getting started, inscriptions, sessions...)
+
+Key files:
+- `src/index.ts` + `src/cli/commands/chat.ts` — CLI entry + Ink TUI
+- `src/agent/` — ReAct loop, parallel, context, subagents, tools
+- `src/mcp/` — generic MCP (stdio/http)
+- `src/config/` — schema + loader (kilocode default etc.)
+- `src/branding/` — hieroglyphs, ASCII, Egyptian visuals
+- `.tehuti.example.json` — full example with MCP GitHub server
 ```
 
 ## 🔍 Troubleshooting
 
-### "API key is required"
+### API key required / invalid (TS path)
+
 ```bash
-export OPENROUTER_API_KEY="sk-or-v1-your-key"
+export KILO_API_KEY=...     # default provider in .tehuti.example
+# or
+tehuti init
+tehuti config
 ```
 
-### "Web search requires Exa API key"
+The Rust binary boots and demonstrates the full harness without keys (real provider calls need valid credentials).
+
+### GitHub MCP / tools
+
 ```bash
-export EXA_API_KEY="your-exa-key"
+export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_pat_with_repo_scope
+# Verify
+tehuti mcp list
 ```
 
-### "ripgrep is not installed"
-```bash
-# macOS
-brew install ripgrep
+### Other
 
-# Linux
-apt install ripgrep
-```
+- Ripgrep is vendored via a dep in most environments.
+- For the OpenTUI experience: have Bun (`bun --version`).
+- Use `--debug` (TS) or just run the Rust binary for rich internal logging.
+- Sessions & state live under `~/.tehuti/sessions` (TS) or /tmp (Rust handoff).
 
 ---
 

@@ -13,7 +13,7 @@ describe("OpenRouterClient", () => {
 		it("should reject missing API key", () => {
 			expect(
 				() => new OpenRouterClient({ ...validConfig, apiKey: "" }),
-			).toThrow("OpenRouter API key is required");
+			).toThrow("OPENROUTER_API_KEY");
 		});
 
 		it("should reject invalid API key format", () => {
@@ -92,6 +92,30 @@ describe("OpenRouterClient", () => {
 			).toThrow("baseUrl cannot point to internal/private addresses");
 		});
 
+		it("should allow local HTTP baseUrl for Ollama", () => {
+			expect(
+				() =>
+					new OpenRouterClient({
+						...validConfig,
+						apiKey: "",
+						provider: "ollama",
+						baseUrl: "http://localhost:11434/v1",
+					}),
+			).not.toThrow();
+		});
+
+		it("should allow local provider without API key when the provider does not require one", () => {
+			expect(
+				() =>
+					new OpenRouterClient({
+						...validConfig,
+						apiKey: "",
+						provider: "lmstudio",
+						baseUrl: "http://localhost:1234/v1",
+					}),
+			).not.toThrow();
+		});
+
 		it("should reject invalid model names", () => {
 			expect(
 				() =>
@@ -150,6 +174,25 @@ describe("OpenRouterClient", () => {
 						maxTokens: 2000000,
 					}),
 			).toThrow("maxTokens must be between 1 and 1000000");
+		});
+
+		it("should use the provider default baseUrl for opencode", () => {
+			const client = new OpenRouterClient({
+				...validConfig,
+				provider: "opencode",
+			} as any);
+
+			expect((client as any).baseUrl).toBe("https://opencode.ai/zen/go/v1");
+		});
+
+		it("should replace a stale known-provider default baseUrl when provider changes", () => {
+			const client = new OpenRouterClient({
+				...validConfig,
+				provider: "openrouter",
+				baseUrl: "https://opencode.ai/zen/go/v1",
+			} as any);
+
+			expect((client as any).baseUrl).toBe("https://openrouter.ai/api/v1");
 		});
 	});
 
@@ -245,6 +288,20 @@ describe("OpenRouterClient", () => {
 				requestTimeout: 1000000,
 			});
 			expect(client).toBeDefined();
+		});
+	});
+
+	describe("provider-specific headers", () => {
+		it("should only send OpenRouter attribution headers for OpenRouter", () => {
+			const opencodeClient = new OpenRouterClient({
+				...validConfig,
+				provider: "opencode",
+			} as any);
+
+			const headers = (opencodeClient as any).buildHeaders();
+			expect(headers["HTTP-Referer"]).toBeUndefined();
+			expect(headers["X-Title"]).toBeUndefined();
+			expect(headers.Authorization).toBe("Bearer sk-or-test123456789");
 		});
 	});
 });

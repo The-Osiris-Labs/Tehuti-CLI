@@ -2,6 +2,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import {
+	PromptListChangedNotificationSchema,
+	ResourceListChangedNotificationSchema,
+	ResourceUpdatedNotificationSchema,
+	ToolListChangedNotificationSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import type { MCPServerConfig, TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { createMCPError, MCPErrorCode } from "../utils/errors.js";
@@ -155,15 +161,18 @@ type ConnectionStatusCallback = (
 	status: ServerStatus,
 ) => void;
 
-class MCPClientManager {
+export class MCPClientManager {
 	private servers: Map<string, MCPServerInfo> = new Map();
 	private healthCheckIntervals: Map<string, ReturnType<typeof setInterval>> =
+		new Map();
+	private reconnectTimeouts: Map<string, ReturnType<typeof setTimeout>> =
 		new Map();
 	private subscriptions: Map<string, ResourceSubscription[]> = new Map();
 	private healthCheckCallback: HealthCheckCallback | null = null;
 	private toolRefreshCallback: ToolRefreshCallback | null = null;
 	private statusCallback: ConnectionStatusCallback | null = null;
 	private samplingHandler: SamplingHandler | null = null;
+	private intentionalDisconnects: Set<string> = new Set();
 
 	onHealthCheck(callback: HealthCheckCallback): void {
 		this.healthCheckCallback = callback;
@@ -257,9 +266,10 @@ class MCPClientManager {
 
 		info.transport.onclose = () => {
 			debug.log("mcp", `[${info.name}] Connection closed`);
+			this.stopHealthCheck(info.name);
 			info.connected = false;
 			this.updateStatus(info, "disconnected");
-			this.handleReconnect(info.name);
+			this.scheduleReconnect(info.name);
 		};
 
 		info.transport.onerror = (error: Error) => {
@@ -279,14 +289,59 @@ class MCPClientManager {
 
 		info.client.onclose = () => {
 			debug.log("mcp", `[${info.name}] Client closed`);
+			this.stopHealthCheck(info.name);
 			info.connected = false;
 			this.updateStatus(info, "disconnected");
+			this.scheduleReconnect(info.name);
 		};
+
+		info.client.setNotificationHandler(
+			ToolListChangedNotificationSchema,
+			async () => {
+				await this.refreshTools(info.name);
+			},
+		);
+
+		info.client.setNotificationHandler(
+			PromptListChangedNotificationSchema,
+			async () => {
+				await this.refreshPrompts(info.name);
+			},
+		);
+
+		info.client.setNotificationHandler(
+			ResourceListChangedNotificationSchema,
+			async () => {
+				await this.refreshResources(info.name);
+			},
+		);
+
+		info.client.setNotificationHandler(
+			ResourceUpdatedNotificationSchema,
+			async (notification) => {
+				await this.handleResourceUpdated(info.name, notification.params.uri);
+			},
+		);
 	}
 
-	private async handleReconnect(serverName: string): Promise<void> {
+	private clearReconnectTimeout(serverName: string): void {
+		const timeout = this.reconnectTimeouts.get(serverName);
+		if (timeout) {
+			clearTimeout(timeout);
+			this.reconnectTimeouts.delete(serverName);
+		}
+	}
+
+	private scheduleReconnect(serverName: string): void {
 		const info = this.servers.get(serverName);
-		if (!info || !info.config.reconnect?.enabled) return;
+		if (
+			!info ||
+			!info.config.reconnect?.enabled ||
+			this.intentionalDisconnects.has(serverName) ||
+			this.reconnectTimeouts.has(serverName)
+		) {
+			return;
+		}
 
 		const {
 			maxAttempts = 3,
@@ -313,15 +368,104 @@ class MCPClientManager {
 			`[${serverName}] Reconnecting in ${delay}ms (attempt ${info.reconnectAttempts}/${maxAttempts})`,
 		);
 
-		await new Promise((resolve) => setTimeout(resolve, delay));
+		const timeout = setTimeout(async () => {
+			this.reconnectTimeouts.delete(serverName);
+
+			if (this.intentionalDisconnects.has(serverName)) {
+				return;
+			}
+
+			const currentInfo = this.servers.get(serverName);
+			if (!currentInfo) {
+				return;
+			}
+
+			try {
+				await this.connectServer(serverName, currentInfo.config);
+				const refreshedInfo = this.servers.get(serverName);
+				if (refreshedInfo) {
+					refreshedInfo.reconnectAttempts = 0;
+				}
+			} catch (error) {
+				debug.log("mcp", `[${serverName}] Reconnect failed:`, error);
+				this.scheduleReconnect(serverName);
+			}
+		}, delay);
+
+		this.reconnectTimeouts.set(serverName, timeout);
+	}
+
+	private getMatchingSubscriptions(
+		serverName: string,
+		uri: string,
+	): ResourceSubscription[] {
+		const matches: ResourceSubscription[] = [];
+
+		for (const subscriptions of this.subscriptions.values()) {
+			for (const subscription of subscriptions) {
+				if (subscription.serverName !== serverName) {
+					continue;
+				}
+
+				if (subscription.uri === uri || uri.startsWith(subscription.uri)) {
+					matches.push(subscription);
+				}
+			}
+		}
+
+		return matches;
+	}
+
+	private async handleResourceUpdated(
+		serverName: string,
+		uri: string,
+	): Promise<void> {
+		const subscriptions = this.getMatchingSubscriptions(serverName, uri);
+		if (subscriptions.length === 0) {
+			return;
+		}
 
 		try {
-			await this.connectServer(serverName, info.config);
-			info.reconnectAttempts = 0;
+			const content = await this.readResource(serverName, uri);
+			for (const subscription of subscriptions) {
+				subscription.callback(content);
+			}
 		} catch (error) {
-			debug.log("mcp", `[${serverName}] Reconnect failed:`, error);
-			await this.handleReconnect(serverName);
+			debug.log(
+				"mcp",
+				`[${serverName}] Failed to refresh resource ${uri}:`,
+				error,
+			);
 		}
+	}
+
+	private async restoreSubscriptions(serverName: string): Promise<void> {
+		const info = this.servers.get(serverName);
+		if (!info?.client) return;
+		const serverPrefix = `${serverName}:`;
+		const restoredUris = new Set<string>();
+
+		for (const [key, subscriptions] of this.subscriptions.entries()) {
+			if (!key.startsWith(serverPrefix) || subscriptions.length === 0) {
+				continue;
+			}
+			for (const subscription of subscriptions) {
+				if (restoredUris.has(subscription.uri)) {
+					continue;
+				}
+				restoredUris.add(subscription.uri);
+				try {
+					await info.client.subscribeResource({ uri: subscription.uri });
+				} catch (error) {
+					debug.log(
+						"mcp",
+						`[${serverName}] Failed to restore subscription ${subscription.uri}:`,
+						error,
+					);
+				}
+			}
+		}
+
 	}
 
 	async connectServer(
@@ -334,6 +478,10 @@ class MCPClientManager {
 		if (existing?.connected) {
 			return existing;
 		}
+
+		this.intentionalDisconnects.delete(name);
+		this.clearReconnectTimeout(name);
+		this.stopHealthCheck(name);
 
 		const info: MCPServerInfo = {
 			name,
@@ -393,6 +541,7 @@ class MCPClientManager {
 			};
 
 			await this.discoverCapabilities(info);
+			await this.restoreSubscriptions(name);
 
 			if (config.healthCheck?.enabled) {
 				this.startHealthCheck(name);
@@ -403,6 +552,7 @@ class MCPClientManager {
 			const message = error instanceof Error ? error.message : String(error);
 			debug.log("mcp", `Failed to connect to ${name}: ${message}`);
 			info.lastError = message;
+			this.stopHealthCheck(name);
 			this.updateStatus(info, "error");
 			throw createMCPError(
 				`Failed to connect to MCP server "${name}": ${message}`,
@@ -488,14 +638,20 @@ class MCPClientManager {
 	private startHealthCheck(serverName: string): void {
 		const info = this.servers.get(serverName);
 		if (!info) return;
+		this.stopHealthCheck(serverName);
 
 		const { intervalMs = 30000, timeoutMs = 5000 } =
 			info.config.healthCheck ?? {};
 
 		const interval = setInterval(async () => {
 			const server = this.servers.get(serverName);
-			if (!server?.connected || !server.client) {
-				this.updateStatus(server!, "disconnected");
+			if (!server) {
+				this.stopHealthCheck(serverName);
+				return;
+			}
+
+			if (!server.connected || !server.client) {
+				this.updateStatus(server, "disconnected");
 				return;
 			}
 
@@ -600,13 +756,15 @@ class MCPClientManager {
 			);
 		}
 
-		await info.client.subscribeResource({ uri });
-
 		const key = `${serverName}:${uri}`;
-		if (!this.subscriptions.has(key)) {
-			this.subscriptions.set(key, []);
+		const subscriptions = this.subscriptions.get(key) ?? [];
+
+		if (subscriptions.length === 0) {
+			await info.client.subscribeResource({ uri });
 		}
-		this.subscriptions.get(key)?.push({ serverName, uri, callback });
+
+		subscriptions.push({ serverName, uri, callback });
+		this.subscriptions.set(key, subscriptions);
 	}
 
 	async unsubscribeFromResource(
@@ -614,7 +772,10 @@ class MCPClientManager {
 		uri: string,
 	): Promise<void> {
 		const info = this.servers.get(serverName);
-		if (!info?.client) return;
+		if (!info?.client) {
+			this.subscriptions.delete(`${serverName}:${uri}`);
+			return;
+		}
 
 		await info.client.unsubscribeResource({ uri });
 		this.subscriptions.delete(`${serverName}:${uri}`);
@@ -624,7 +785,9 @@ class MCPClientManager {
 		const info = this.servers.get(name);
 		if (!info) return;
 
+		this.intentionalDisconnects.add(name);
 		this.stopHealthCheck(name);
+		this.clearReconnectTimeout(name);
 
 		for (const key of this.subscriptions.keys()) {
 			if (key.startsWith(`${name}:`)) {
@@ -632,7 +795,7 @@ class MCPClientManager {
 			}
 		}
 
-		if (info.client && info.connected) {
+		if (info.client) {
 			try {
 				await info.client.close();
 			} catch (error) {
@@ -645,6 +808,7 @@ class MCPClientManager {
 		info.transport = null;
 		this.updateStatus(info, "disconnected");
 		this.servers.delete(name);
+		this.intentionalDisconnects.delete(name);
 		debug.log("mcp", `Disconnected from ${name}`);
 	}
 

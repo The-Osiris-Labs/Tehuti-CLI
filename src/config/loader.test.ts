@@ -12,8 +12,12 @@ describe("Config Loader", () => {
 		await fs.ensureDir(testDir);
 		process.env = { ...originalEnv };
 		delete process.env.OPENROUTER_API_KEY;
+		delete process.env.OPENCODE_API_KEY;
 		delete process.env.TEHUTI_API_KEY;
 		delete process.env.TEHUTI_MODEL;
+		delete process.env.TEHUTI_PROVIDER;
+		delete process.env.TEHUTI_BASE_URL;
+		delete process.env.TEHUTI_CUSTOM_PROVIDER;
 		resetGlobalConfig();
 	});
 
@@ -62,6 +66,36 @@ describe("Config Loader", () => {
 
 			expect(config.apiKey).toBe("env-key");
 		});
+
+		it("should switch to the env provider default baseUrl", async () => {
+			await fs.writeJson(path.join(testDir, ".tehuti.json"), {
+				provider: "openrouter",
+				baseUrl: "https://openrouter.ai/api/v1",
+			});
+			process.env.TEHUTI_PROVIDER = "opencode";
+
+			const config = await loadConfig(testDir);
+
+			expect(config.provider).toBe("opencode");
+			expect(config.baseUrl).toBe("https://opencode.ai/zen/go/v1");
+		});
+
+		it("should honor TEHUTI_BASE_URL over provider defaults", async () => {
+			process.env.TEHUTI_PROVIDER = "openrouter";
+			process.env.TEHUTI_BASE_URL = "https://example.com/v1/";
+
+			const config = await loadConfig(testDir);
+
+			expect(config.baseUrl).toBe("https://example.com/v1");
+		});
+
+		it("should ignore malformed TEHUTI_CUSTOM_PROVIDER JSON", async () => {
+			process.env.TEHUTI_CUSTOM_PROVIDER = "{oops";
+
+			const config = await loadConfig(testDir);
+
+			expect(config.customProvider).toBeUndefined();
+		});
 	});
 
 	describe("saveGlobalConfig", () => {
@@ -77,6 +111,17 @@ describe("Config Loader", () => {
 
 			const config = await loadConfig(testDir);
 			expect(config.model).toBe("saved-model");
+		});
+
+		it("should save provider and baseUrl to global config", async () => {
+			saveGlobalConfig({
+				provider: "opencode",
+				baseUrl: "https://opencode.ai/zen/go/v1/",
+			});
+
+			const config = await loadConfig(testDir);
+			expect(config.provider).toBe("opencode");
+			expect(config.baseUrl).toBe("https://opencode.ai/zen/go/v1");
 		});
 	});
 

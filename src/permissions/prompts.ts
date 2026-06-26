@@ -16,14 +16,22 @@ export interface PermissionResult {
 
 const SAFE_TOOLS = [
 	"read",
+	"read_image",
+	"read_pdf",
 	"glob",
 	"grep",
+	"grep_search",
 	"web_fetch",
 	"web_search",
+	"code_search",
 	"file_info",
 	"list_dir",
+	"git_status",
+	"git_log",
+	"git_diff",
+	"mcp_list_prompts",
+	"mcp_get_prompt",
 	"todo_write",
-	"task",
 ];
 
 const DANGEROUS_ARGS: Record<string, (args: unknown) => boolean> = {
@@ -75,15 +83,7 @@ export async function checkPermission(
 	}
 
 	if (config.defaultMode === "readonly") {
-		const writeTools = [
-			"write",
-			"edit",
-			"delete_file",
-			"delete_dir",
-			"move",
-			"bash",
-		];
-		if (writeTools.includes(toolName)) {
+		if (!SAFE_TOOLS.includes(toolName)) {
 			return { allowed: false, reason: "Read-only mode" };
 		}
 	}

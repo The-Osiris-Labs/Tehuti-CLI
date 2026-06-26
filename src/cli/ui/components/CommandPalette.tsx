@@ -1,13 +1,16 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import React, { useEffect, useMemo, useState } from "react";
+import InkTextInput from "ink-text-input";
 import { globalConfig } from "../../../config/index.js";
+import { getAllProviders } from "../../../config/providers.js";
+import { DECORATIVE } from "../../../branding/index.js";
 
-const GOLD = "#D4AF37";
-const GRAY = "#6B7280";
-const CORAL = "#D97757";
+const GOLD = "#F5C518";
+const CORAL = "#FF6B35";
+const GRAY = "#9CA3AF";
 const CYAN = "#06B6D4";
-const GREEN = "#10B981";
-const SAND = "#C2B280";
+const GREEN = "#22C55E";
+const SAND = "#8B7355";
 
 export interface CommandItem {
 	id: string;
@@ -25,16 +28,17 @@ interface CommandPaletteProps {
 	onSelect: (command: CommandItem) => void;
 	onClose: () => void;
 	visible: boolean;
+	initialQuery?: string;
 }
 
 const CATEGORY_LABELS: Record<
 	CommandItem["category"],
-	{ label: string; color: string }
+	{ label: string; color: string; glyph: string }
 > = {
-	session: { label: "Session", color: GREEN },
-	model: { label: "Model", color: CYAN },
-	help: { label: "Help", color: GRAY },
-	recent: { label: "Recent", color: SAND },
+	session: { label: "SESSION", color: GREEN, glyph: DECORATIVE.scroll },
+	model: { label: "MODEL", color: CYAN, glyph: DECORATIVE.ibis },
+	help: { label: "HELP", color: GRAY, glyph: DECORATIVE.eye },
+	recent: { label: "RECENT", color: SAND, glyph: DECORATIVE.ankh },
 };
 
 function fuzzyMatch(
@@ -106,11 +110,22 @@ export function CommandPalette({
 	onSelect,
 	onClose,
 	visible,
+	initialQuery = "",
 }: CommandPaletteProps): React.ReactElement | null {
 	const [query, setQuery] = useState("");
-	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const { stdout } = useStdout();
-	const terminalWidth = stdout?.columns || 80;
+	const [terminalWidth, setTerminalWidth] = useState(stdout?.columns || 80);
+
+	useEffect(() => {
+		const handleResize = () => {
+			setTerminalWidth(stdout?.columns || 80);
+		};
+		stdout?.on("resize", handleResize);
+		return () => {
+			stdout?.off("resize", handleResize);
+		};
+	}, [stdout]);
 
 	const filteredCommands = useMemo(() => {
 		if (!query.trim()) {
@@ -164,14 +179,23 @@ export function CommandPalette({
 
 	useEffect(() => {
 		if (visible) {
-			setQuery("");
-			setSelectedIndex(0);
+			const initQ = initialQuery || "";
+			setQuery(initQ);
+			if (filteredCommands.length > 0) {
+				setSelectedId(filteredCommands[0].id);
+			} else {
+				setSelectedId(null);
+			}
 		}
-	}, [visible]);
+	}, [visible, initialQuery]);
 
 	useEffect(() => {
-		setSelectedIndex(0);
-	}, [filteredCommands.length]);
+		if (filteredCommands.length > 0) {
+			setSelectedId(filteredCommands[0].id);
+		} else {
+			setSelectedId(null);
+		}
+	}, [filteredCommands]);
 
 	useInput(
 		(char, key) => {
@@ -183,39 +207,51 @@ export function CommandPalette({
 			}
 
 			if (key.upArrow) {
-				setSelectedIndex((i) => Math.max(0, i - 1));
+				const idx = filteredCommands.findIndex((c) => c.id === selectedId);
+				const newIdx = Math.max(0, (idx >= 0 ? idx : 0) - 1);
+				if (filteredCommands[newIdx]) {
+					setSelectedId(filteredCommands[newIdx].id);
+				}
 				return;
 			}
 
 			if (key.downArrow) {
-				setSelectedIndex((i) => Math.min(filteredCommands.length - 1, i + 1));
+				const idx = filteredCommands.findIndex((c) => c.id === selectedId);
+				const newIdx = Math.min(filteredCommands.length - 1, (idx >= 0 ? idx : 0) + 1);
+				if (filteredCommands[newIdx]) {
+					setSelectedId(filteredCommands[newIdx].id);
+				}
 				return;
 			}
 
 			if (key.return && filteredCommands.length > 0) {
-				const selected = filteredCommands[selectedIndex];
+				const selected = filteredCommands.find((c) => c.id === selectedId) || filteredCommands[0];
 				if (selected) {
 					onSelect(selected);
 				}
 				return;
 			}
 
-			if (key.backspace || key.delete) {
-				setQuery((q) => q.slice(0, -1));
-				return;
-			}
-
-			if (char && !key.ctrl && !key.meta && char.length === 1) {
-				setQuery((q) => q + char);
-			}
+			// query editing handled by InkTextInput below - no manual char/backspace here to avoid conflict
 		},
 		{ isActive: visible },
 	);
 
 	if (!visible) return null;
 
-	const paletteWidth = Math.min(70, terminalWidth - 4);
-	let flatIndex = -1;
+	// Consistent fixed sizing, never random. Clamp only for tiny terminals.
+	const paletteWidth = Math.min(62, Math.max(40, terminalWidth - 6));
+	const MAX_DISPLAY = 9; // keep palette height predictable & best-in-class
+	const displayCommands = filteredCommands.slice(0, MAX_DISPLAY);
+	const hasMore = filteredCommands.length > MAX_DISPLAY;
+
+	// Build ordered groups for deterministic categories (recent first)
+	const orderedGroups = [
+		["recent", groupedCommands["recent"] || []],
+		["session", groupedCommands["session"] || []],
+		["model", groupedCommands["model"] || []],
+		["help", groupedCommands["help"] || []],
+	].filter(([, cmds]) => (cmds as any[]).length > 0) as Array<[string, typeof filteredCommands]>;
 
 	return React.createElement(
 		Box,
@@ -225,116 +261,81 @@ export function CommandPalette({
 			borderStyle: "round",
 			borderColor: GOLD,
 			paddingX: 1,
+			paddingY: 1,
 		},
 		React.createElement(
 			Box,
 			{ marginBottom: 1 },
-			React.createElement(Text, { bold: true, color: GOLD }, "𓆣 "),
-			React.createElement(Text, { color: SAND }, "Command"),
-			React.createElement(Text, { color: CORAL }, query),
-			React.createElement(Text, { backgroundColor: CORAL }, " "),
+			React.createElement(Text, { bold: true, color: GOLD }, `${DECORATIVE.ibis} COMMAND PALETTE `),
+			React.createElement(Text, { color: GRAY }, "(type • ↑↓ • ⏎ • esc)"),
+		),
+		React.createElement(
+			Box,
+			{ borderStyle: "single", borderColor: CORAL, paddingX: 1, marginBottom: 1 },
+			React.createElement(Text, { color: CORAL }, `${DECORATIVE.arrow} `),
+			React.createElement(InkTextInput, {
+				value: query,
+				onChange: (val: string) => setQuery(val),
+				placeholder: "filter commands or providers...",
+				focus: visible,
+			}),
 		),
 		filteredCommands.length === 0
 			? React.createElement(
 					Box,
-					{ paddingY: 1 },
-					React.createElement(Text, { dimColor: true }, "No commands found"),
+					{ paddingY: 1, flexDirection: "column" },
+					React.createElement(Text, { dimColor: true, color: CORAL }, `${DECORATIVE.eye} No match found.`),
+					React.createElement(Text, { color: SAND }, "  Try: /models  /provider openrouter  /cost  /config  /compact"),
+					React.createElement(Text, { color: GRAY, dimColor: true }, "  Dynamic providers loaded from registry. Esc to close."),
 				)
 			: React.createElement(
 					Box,
 					{ flexDirection: "column" },
-					...Object.entries(groupedCommands).flatMap(([category, cmds]) => [
+					...orderedGroups.flatMap(([category, cmds]) => [
 						React.createElement(
 							Text,
-							{ key: `cat-${category}`, dimColor: true, color: SAND },
-							`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
+							{ key: `cat-${category}`, dimColor: true, color: SAND, bold: true },
+							`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
 						),
-						...cmds.map((cmd) => {
-							flatIndex++;
-							const isSelected = flatIndex === selectedIndex;
-							let labelElements: React.ReactNode[];
-							let descElements: React.ReactNode[];
-								let aliasMatchElements: React.ReactNode[] = [];
-
-							if (query.trim() && cmd.matchIndices.length > 0) {
-								if (cmd.matchField === 'description') {
-									labelElements = [React.createElement(Text, { key: "label" }, cmd.label)];
-									descElements = highlightMatch(cmd.description, cmd.matchIndices);
-									} else if (cmd.matchField === 'aliases') {
-										labelElements = [React.createElement(Text, { key: "label" }, cmd.label)];
-										descElements = [React.createElement(Text, { key: "desc" }, cmd.description)];
-
-										// Find which alias matched to highlight it
-										const matchedAlias = cmd.aliases?.find(a => fuzzyMatch(a, query).score === cmd.matchScore) || cmd.aliases?.[0] || '';
-										aliasMatchElements = [
-											React.createElement(Text, { key: "alias-prefix", color: GRAY }, " (alias: "),
-											...highlightMatch(matchedAlias, cmd.matchIndices),
-											React.createElement(Text, { key: "alias-suffix", color: GRAY }, ")")
-										];
-								} else {
-									labelElements = highlightMatch(cmd.label, cmd.matchIndices);
-									descElements = [React.createElement(Text, { key: "desc" }, cmd.description)];
-								}
-							} else {
-								labelElements = [React.createElement(Text, { key: "label" }, cmd.label)];
-								descElements = [React.createElement(Text, { key: "desc" }, cmd.description)];
-									if (cmd.aliases && cmd.aliases.length > 0) {
-										aliasMatchElements = [
-											React.createElement(Text, { key: "aliases", color: GRAY, dimColor: true }, ` (aliases: ${cmd.aliases.join(', ')})`)
-										];
-									}
-							}
+						...cmds.slice(0, MAX_DISPLAY).map((cmd) => {
+							const isSelected = cmd.id === selectedId;
+							const label = (query.trim() && cmd.matchIndices.length > 0 && cmd.matchField === 'label')
+								? highlightMatch(cmd.label, cmd.matchIndices)
+								: [cmd.label];
 
 							return React.createElement(
 								Box,
-								{ key: cmd.id, flexDirection: "column", paddingLeft: 1 },
+								{
+									key: cmd.id,
+									flexDirection: "column",
+									paddingX: 1,
+									backgroundColor: isSelected ? "#1F2937" : undefined,
+								},
 								React.createElement(
-									Box,
-									null,
-									React.createElement(
-										Text,
-										{ color: isSelected ? GOLD : GRAY },
-										isSelected ? "▶ " : "  ",
-									),
-									...labelElements,
-										...aliasMatchElements,
-									cmd.usage &&
-										React.createElement(
-											Text,
-											{ key: "usage", color: GRAY, dimColor: true },
-											` ${cmd.usage}`,
-										),
-									cmd.shortcut &&
-										React.createElement(
-											Box,
-											{ marginLeft: 'auto' as any, paddingLeft: 2 },
-											React.createElement(
-												Text,
-												{ key: "shortcut", color: SAND, dimColor: true },
-												formatShortcut(cmd.shortcut),
-											),
-										),
+									Text,
+									{ color: isSelected ? GOLD : CORAL, bold: isSelected },
+									isSelected ? `${DECORATIVE.arrow} ` : "  ",
+									...label,
+									cmd.shortcut && React.createElement(Text, { color: CYAN }, ` ${cmd.shortcut}`),
 								),
-								isSelected &&
-									React.createElement(
-										Box,
-										{ paddingLeft: 2 },
-										React.createElement(
-											Text,
-											{ dimColor: true, color: CYAN },
-											...descElements,
-										),
-									),
+								React.createElement(
+									Text,
+									{ color: GRAY, dimColor: true },
+									`    ${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ''}`,
+								),
 							);
 						}),
 					]),
+					hasMore && React.createElement(
+						Text,
+						{ color: GRAY, dimColor: true },
+						`  … +${filteredCommands.length - MAX_DISPLAY} more — refine your filter`,
+					),
 				),
 		React.createElement(
 			Box,
 			{ marginTop: 1, borderStyle: "single", borderColor: GRAY, paddingX: 1 },
-			React.createElement(Text, { dimColor: true }, "↑↓ navigate"),
-			React.createElement(Text, { dimColor: true }, "  Enter select"),
-			React.createElement(Text, { dimColor: true }, "  Esc close"),
+			React.createElement(Text, { dimColor: true, color: SAND }, `${DECORATIVE.ibis} ↑↓  ⏎ run  ⎋ close  • Egyptian TUI`),
 		),
 	);
 }
@@ -376,6 +377,8 @@ export function createCommands(options: {
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
 	onConfig?: () => void;
+	onProvider?: (provider?: string) => void;
+	onProviders?: () => void;
 }): CommandItem[] {
   const baseCommands = [
 		{
@@ -457,9 +460,24 @@ export function createCommands(options: {
 		{
 			id: "/models",
 			label: "/models",
-			description: "List available free models on OpenRouter",
+			description: "List available models from the current provider",
 			category: "model",
 			action: options.onModels,
+		},
+		{
+			id: "/provider",
+			label: "/provider",
+			description: "Switch or view AI provider (openrouter/kilocode/custom). Supports OAuth/PATs",
+			usage: "[name]",
+			category: "model",
+			action: options.onProvider || (() => {}),
+		},
+		{
+			id: "/providers",
+			label: "/providers",
+			description: "List supported providers and their capabilities (OAuth, MCP)",
+			category: "model",
+			action: options.onProviders || (() => {}),
 		},
 		{
 			id: "/thinking",
@@ -486,7 +504,6 @@ export function createCommands(options: {
 				id: "/help",
 				label: "/help",
 				description: "Show all commands and keyboard shortcuts",
-				shortcut: "Ctrl+P",
 				aliases: ["/h"],
 				category: "help",
 				action: options.onHelp,
@@ -495,8 +512,7 @@ export function createCommands(options: {
 				id: "/exit",
 				label: "/exit",
 				description: "Exit Tehuti CLI",
-				shortcut: "Ctrl+C",
-					aliases: ["/quit", "/q"],
+				aliases: ["/quit", "/q"],
 				category: "session",
 				action: options.onExit,
 			},
@@ -526,21 +542,19 @@ export function createCommands(options: {
 		}
 	}));
 
+	// Dynamic providers for best UX - no hardcode in TUI, from registry
+	const providerItems = getAllProviders().slice(0, 12).map(p => ({
+		id: `/provider ${p.id}`,
+		label: `/provider ${p.id}`,
+		description: p.name + (p.oauthSupported ? " (OAuth supported)" : ""),
+		usage: "",
+		category: "model" as const,
+		action: () => options.onProvider?.(p.id),
+	}));
+
 	return [...recentCommands, ...commandsWithTracking.filter(cmd => 
 		!recentIds.includes(cmd.id)
-	)];
-}
-
-function formatShortcut(shortcut: string): string {
-	if (!shortcut) return '';
-	
-	// Format Ctrl+K or similar
-	return shortcut.split('+').map(key => {
-		if (key === 'Ctrl') return '⌃';
-		if (key === 'Alt') return '⌥';
-		if (key === 'Cmd') return '⌘';
-		return key.toUpperCase();
-	}).join('');
+	), ...providerItems.filter(p => !recentIds.includes(p.id)) ];
 }
 
 export function formatHelpOutput(): string {
@@ -556,24 +570,27 @@ export function formatHelpOutput(): string {
 │    /save [name]        Save session                               │
 │    /load <id>          Load session                               │
 │    /sessions           List saved sessions                        │
-│    /search <query>     Search sessions by name, ID, or model       │
+│    /search <query>     Search sessions by name, ID, or model      │
 │    /plan               Enter plan mode (read-only exploration)    │
 │    /config             Open interactive configuration editor      │
-│    /skills             List all available skills                   │
-│    /exit               Exit Tehuti                                 │
+│    /skills             List all available skills                  │
+│    /help               Show this command reference                │
+│    /exit               Exit Tehuti                                │
 ├──────────────────────────────────────────────────────────────────┤
 │  MODEL                                                            │
 │    /model <name>       Switch AI model                            │
-│    /models             List free models                           │
+│    /models             List models from current provider          │
+│    /provider [name]    Switch or inspect provider                 │
+│    /providers          List supported providers                   │
 │    /thinking           Toggle extended thinking mode              │
 ├──────────────────────────────────────────────────────────────────┤
 │  SHORTCUTS                                                        │
-│    ⌃P    Command palette    ⌃L    Clear screen                    │
-│    ⌃U    Clear input        ⌃W    Delete word                     │
-│    ⌃K    Delete to end      ⌃C    Copy selected                    │
-│    ⌃X    Cut selected       ⌃V    Paste                            │
-│    ↑/↓    History           ⌃↑/⌃↓  Scroll                         │
-│    ⇧+↑/↓  Select text       ⌃T    Swap characters                  │
+│    ⌃P    Open palette       ⌃L    Clear conversation              │
+│    ⌃A    Move to start      ⌃E    Move to end                     │
+│    ⌃U    Delete to start    ⌃W    Delete previous word            │
+│    ⌃K    Delete to end      Tab   Complete slash command          │
+│    ↑/↓   Prompt history     PgUp/PgDn scroll messages            │
+│    ⌃↑/⌃↓ Scroll messages    ⌃C    Exit when input is empty        │
 ╰──────────────────────────────────────────────────────────────────╯
 `.trim();
 }

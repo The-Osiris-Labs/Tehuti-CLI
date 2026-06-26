@@ -670,6 +670,7 @@ Security:
 	execute: executeBash,
 	category: "bash",
 	requiresPermission: true,
+	isReadonly: false,
 };
 
 export {

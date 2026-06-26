@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/tehuti.json",
-  "provider": "kilocode",
-  "model": "giga-potato",
-  "fallbackModel": "minimax/minimax-m2.5:free",
+  "provider": "openrouter",
+  "model": "anthropic/claude-3-5-sonnet-20241022",
+  "fallbackModel": "openai/gpt-4o",
   "maxTokens": 32000,
   "maxIterations": 50,
   "temperature": 0.7,
@@ -14,7 +14,17 @@
   },
   "mcp": {
     "enabled": true,
-    "servers": {}
+    "servers": {
+      "github": {
+        "transport": "http",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {
+          "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+        },
+        "timeout": 60000,
+        "description": "Official GitHub MCP server (repo, issues, PRs, workflows, search). See https://github.com/mcp/github/github-mcp-server . Set GITHUB_PERSONAL_ACCESS_TOKEN with repo scope."
+      }
+    }
   },
   "debug": false,
   "telemetry": false,

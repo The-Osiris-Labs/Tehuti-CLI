@@ -19,6 +19,7 @@ import {
 	trackFileRead,
 	trackFileWritten,
 	trackToolCall,
+	normalizeToolMessageHistory,
 } from "./context.js";
 
 describe("Agent Context", () => {
@@ -180,6 +181,44 @@ describe("Agent Context", () => {
 				name: "test_tool",
 				content: "result",
 			});
+		});
+	});
+
+	describe("normalizeToolMessageHistory", () => {
+		it("should remove orphan tool messages", () => {
+			const messages: OpenRouterMessage[] = [
+				{ role: "user", content: "hello" },
+				{
+					role: "tool",
+					tool_call_id: "missing",
+					name: "read",
+					content: "orphan",
+				},
+			];
+
+			expect(normalizeToolMessageHistory(messages)).toEqual([
+				{ role: "user", content: "hello" },
+			]);
+		});
+
+		it("should strip unresolved assistant tool calls", () => {
+			const messages: OpenRouterMessage[] = [
+				{
+					role: "assistant",
+					content: "checking",
+					tool_calls: [
+						{
+							id: "call_1",
+							type: "function",
+							function: { name: "read", arguments: "{}" },
+						},
+					],
+				},
+			];
+
+			expect(normalizeToolMessageHistory(messages)).toEqual([
+				{ role: "assistant", content: "checking", tool_calls: undefined },
+			]);
 		});
 	});
 

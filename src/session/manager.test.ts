@@ -9,10 +9,12 @@ describe("SessionManager", () => {
 
 	beforeEach(async () => {
 		await fs.ensureDir(testDir);
+		await fs.emptyDir(sessionManager.getSessionsDir());
 	});
 
 	afterEach(async () => {
 		await fs.remove(testDir);
+		await fs.emptyDir(sessionManager.getSessionsDir());
 	});
 
 	describe("createSession", () => {
@@ -98,6 +100,7 @@ describe("SessionManager", () => {
 			expect(loaded).toBeDefined();
 			expect(loaded?.messages).toHaveLength(2);
 			expect(loaded?.context.metadata.tokensUsed).toBe(150);
+			expect(loaded?.context.metadata.startTime).toBeInstanceOf(Date);
 		});
 
 		it("should preserve existing name on save", async () => {
@@ -154,6 +157,52 @@ describe("SessionManager", () => {
 
 			const loaded = await sessionManager.loadSession(id);
 			expect(loaded?.metadata.name).toBe("new-name");
+		});
+
+		it("should normalize restored startTime metadata to a Date", async () => {
+			const id = await sessionManager.createSession(testDir, "test-model");
+			const sessionDir = path.join(sessionManager.getSessionsDir(), id);
+			const sessionFile = path.join(sessionDir, "session.json");
+
+			await fs.writeJson(
+				sessionFile,
+				{
+					metadata: {
+						id,
+						name: "normalized-session",
+						createdAt: new Date().toISOString(),
+						updatedAt: new Date().toISOString(),
+						cwd: testDir,
+						model: "test-model",
+						messageCount: 0,
+						toolCalls: 0,
+						tokensUsed: 0,
+					},
+					messages: [],
+					context: {
+						cwd: testDir,
+						workingDir: testDir,
+						metadata: {
+							startTime: "2024-01-02T03:04:05.000Z",
+							toolCalls: 0,
+							tokensUsed: 0,
+							cacheReadTokens: 0,
+							cacheWriteTokens: 0,
+							filesRead: [],
+							filesWritten: [],
+							commandsRun: [],
+						},
+					},
+				},
+				{ spaces: 2 },
+			);
+
+			const loaded = await sessionManager.loadSession(id);
+
+			expect(loaded?.context.metadata.startTime).toBeInstanceOf(Date);
+			expect(loaded?.context.metadata.startTime.toISOString()).toBe(
+				"2024-01-02T03:04:05.000Z",
+			);
 		});
 	});
 
@@ -320,7 +369,7 @@ describe("SessionManager", () => {
 				metadata.updatedAt = new Date(
 					Date.now() - 31 * 24 * 60 * 60 * 1000,
 				).toISOString();
-				const sessionDir = path.join(os.homedir(), ".tehuti", "sessions", id);
+				const sessionDir = path.join(sessionManager.getSessionsDir(), id);
 				await fs.writeJson(path.join(sessionDir, "metadata.json"), metadata, {
 					spaces: 2,
 				});

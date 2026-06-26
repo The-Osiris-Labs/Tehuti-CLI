@@ -89,6 +89,17 @@ describe("Prefetcher", () => {
 
 			expect(count1).toBe(count2);
 		});
+
+		it("should evict settled unused prefetches from the queue", async () => {
+			const ctx = { cwd: "/test" } as ToolContext;
+			prefetcher.predict("git_status", {}, ctx);
+
+			expect(prefetcher.getPendingCount()).toBeGreaterThan(0);
+
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(prefetcher.getPendingCount()).toBe(0);
+		});
 	});
 
 	describe("getPrefetched", () => {

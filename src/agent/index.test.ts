@@ -31,6 +31,7 @@ vi.mock("../api/openrouter.js", () => ({
 
 vi.mock("./tools/index.js", () => ({
 	registerTools: vi.fn(),
+	unregisterToolsWhere: vi.fn(),
 	getToolDefinitions: vi.fn(() => []),
 	executeTool: vi.fn(),
 	getTool: vi.fn(),
@@ -53,6 +54,7 @@ describe("Agent Loop", () => {
 	const baseConfig: TehutiConfig = {
 		apiKey: "sk-or-test123456789",
 		model: "test/model",
+		provider: "openrouter",
 		maxTokens: 4096,
 		maxIterations: 10,
 		temperature: 0.7,
@@ -134,6 +136,17 @@ describe("Agent Loop", () => {
 			});
 
 			expect(result.finishReason).toBe("aborted");
+		});
+
+		it("should reject known incompatible providers before dispatching to the OpenAI-compatible runtime", async () => {
+			const incompatibleCtx = await createAgentContext(process.cwd(), {
+				...baseConfig,
+				provider: "google",
+			});
+
+			await expect(runAgentLoop(incompatibleCtx, "Hello")).rejects.toThrow(
+				'Provider "google" is not supported by the current OpenAI-compatible runtime',
+			);
 		});
 
 		it("should return usage statistics", async () => {

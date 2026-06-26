@@ -32,7 +32,32 @@ export class CustomProviderClient {
 	private static lastConfigKey: string | null = null;
 
 	static getInstance(config: TehutiConfig): CustomProviderClient {
-		const configKey = `${config.customProvider?.name}:${config.apiKey}:${config.model}`;
+		const customProvider = config.customProvider;
+		const headers = customProvider?.headers;
+		const normalizedHeaders = headers
+			? JSON.stringify(
+				Object.keys(headers)
+					.sort()
+					.reduce(
+						(acc, key) => {
+							const val = headers[key];
+							if (val !== undefined) {
+								acc[key] = val;
+							}
+							return acc;
+						},
+						{} as Record<string, string>,
+					),
+			)
+			: "";
+		const configKey = [
+			config.customProvider?.name ?? "",
+			config.customProvider?.baseUrl ?? "",
+			config.customProvider?.apiKey ?? "",
+			normalizedHeaders,
+			config.apiKey ?? "",
+			config.model,
+		].join("|");
 		if (
 			!CustomProviderClient.instance ||
 			CustomProviderClient.lastConfigKey !== configKey
@@ -60,7 +85,7 @@ export class CustomProviderClient {
 			"";
 		this.baseUrl = config.customProvider.baseUrl;
 		this.model = config.model;
-		this.fallbackModel = config.fallbackModel ?? "anthropic/claude-sonnet-4.5";
+		this.fallbackModel = config.fallbackModel ?? config.model ?? "minimax-m3";
 		this.maxTokens = config.maxTokens ?? 4096;
 		this.temperature = config.temperature ?? 0.7;
 		this.supportsCaching = false;
@@ -70,14 +95,15 @@ export class CustomProviderClient {
 		this.maxRetries = config.maxRetries ?? 3;
 		this.customHeaders = config.customProvider.headers ?? {};
 		this.responseCache = APIResponseCache.getInstance();
+		const hasExplicitAuthHeader = this.hasExplicitAuthHeader();
 
-		if (!this.apiKey) {
+		if (!this.apiKey && !hasExplicitAuthHeader) {
 			throw new APIError(
 				"API key is required. Set CUSTOM_API_KEY environment variable or configure in custom provider settings",
 			);
 		}
 
-		if (this.apiKey.length < 10) {
+		if (this.apiKey && this.apiKey.length < 10) {
 			throw new APIError("Invalid API key format");
 		}
 
@@ -86,6 +112,37 @@ export class CustomProviderClient {
 		this.validateModel(this.fallbackModel);
 		this.validateTemperature(this.temperature);
 		this.validateMaxTokens(this.maxTokens);
+	}
+
+	private static isAuthHeaderName(name: string): boolean {
+		const normalized = name.toLowerCase();
+		return (
+			normalized === "authorization" ||
+			normalized === "api-key" ||
+			normalized === "x-api-key" ||
+			normalized === "x-goog-api-key"
+		);
+	}
+
+	private hasExplicitAuthHeader(): boolean {
+		return Object.keys(this.customHeaders).some((key) =>
+			CustomProviderClient.isAuthHeaderName(key),
+		);
+	}
+
+	private buildRequestHeaders(): Record<string, string> {
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+			...this.customHeaders,
+		};
+
+		if (!this.hasExplicitAuthHeader()) {
+			headers.Authorization = this.apiKey.startsWith("Bearer ")
+				? this.apiKey
+				: `Bearer ${this.apiKey}`;
+		}
+
+		return headers;
 	}
 
 	private validateBaseUrl(url: string): void {
@@ -313,11 +370,7 @@ export class CustomProviderClient {
 				(): Promise<Response> =>
 					fetch(`${this.baseUrl}/chat/completions`, {
 						method: "POST",
-						headers: {
-							Authorization: `Bearer ${this.apiKey}`,
-							"Content-Type": "application/json",
-							...this.customHeaders,
-						},
+						headers: this.buildRequestHeaders(),
 						body: JSON.stringify(body),
 						signal: combinedSignal,
 					}),
@@ -515,11 +568,7 @@ export class CustomProviderClient {
 			() =>
 				fetch(`${this.baseUrl}/chat/completions`, {
 					method: "POST",
-					headers: {
-						Authorization: `Bearer ${this.apiKey}`,
-						"Content-Type": "application/json",
-						...this.customHeaders,
-					},
+					headers: this.buildRequestHeaders(),
 					body: JSON.stringify(body),
 					signal: combinedSignal,
 				}),

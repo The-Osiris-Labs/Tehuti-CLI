@@ -493,6 +493,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitStatus as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "git_diff",
@@ -501,6 +502,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitDiff as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "git_log",
@@ -509,6 +511,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitLog as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "git_add",
@@ -517,6 +520,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitAdd as AnyToolExecutor,
 		category: "git",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "git_commit",
@@ -525,6 +529,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitCommit as AnyToolExecutor,
 		category: "git",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "git_branch",
@@ -533,6 +538,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitBranch as AnyToolExecutor,
 		category: "git",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "git_remote",
@@ -541,6 +547,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitRemote as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "git_pull",
@@ -550,6 +557,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitPull as AnyToolExecutor,
 		category: "git",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "git_push",
@@ -559,5 +567,6 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitPush as AnyToolExecutor,
 		category: "git",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 ];

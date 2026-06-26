@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import Fuse from "fuse.js";
 import type { AgentContext } from "../agent/context.js";
 import type { OpenRouterMessage } from "../api/openrouter.js";
+import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 
@@ -23,6 +24,9 @@ function sanitizeSessionId(id: string): string {
 export interface SessionMetadata {
 	id: string;
 	name?: string;
+	provider?: string;
+	baseUrl?: string;
+	customProvider?: TehutiConfig["customProvider"];
 	createdAt: string;
 	updatedAt: string;
 	cwd: string;
@@ -31,6 +35,8 @@ export interface SessionMetadata {
 	toolCalls: number;
 	tokensUsed: number;
 }
+
+type SessionSeed = Pick<SessionMetadata, "provider" | "baseUrl" | "customProvider">;
 
 export interface SessionData {
 	metadata: SessionMetadata;
@@ -42,13 +48,50 @@ export interface SessionData {
 	};
 }
 
+function normalizeStartTime(value: unknown): Date {
+	if (value instanceof Date && !Number.isNaN(value.getTime())) {
+		return value;
+	}
+
+	if (typeof value === "string" || typeof value === "number") {
+		const parsed = new Date(value);
+		if (!Number.isNaN(parsed.getTime())) {
+			return parsed;
+		}
+	}
+
+	return new Date();
+}
+
+function normalizeSessionData(data: SessionData): SessionData {
+	return {
+		...data,
+		context: {
+			...data.context,
+			metadata: {
+				...data.context.metadata,
+				startTime: normalizeStartTime(data.context.metadata?.startTime),
+			},
+		},
+	};
+}
+
 class SessionManager {
 	private sessionsDir: string;
 	private currentSessionId: string | null = null;
 
 	constructor() {
-		this.sessionsDir = path.join(os.homedir(), ".tehuti", "sessions");
+		const baseDir =
+			process.env.TEHUTI_HOME ||
+			(process.env.VITEST
+				? path.join(os.tmpdir(), "tehuti-vitest")
+				: path.join(os.homedir(), ".tehuti"));
+		this.sessionsDir = path.join(baseDir, "sessions");
 		this.ensureSessionsDir();
+	}
+
+	getSessionsDir(): string {
+		return this.sessionsDir;
 	}
 
 	private async ensureSessionsDir(): Promise<void> {
@@ -89,16 +132,23 @@ class SessionManager {
 		cwd: string,
 		model: string,
 		name?: string,
+		seed?: SessionSeed,
 	): Promise<string> {
 		const id = uuidv4();
 		const sessionDir = path.join(this.sessionsDir, id);
 		await fs.ensureDir(sessionDir);
 
 		const autoName = name ?? this.generateAutoName(cwd, model);
+		const resolvedProvider = seed?.provider?.trim();
+		const resolvedBaseUrl = seed?.baseUrl?.trim();
+		const resolvedCustomProvider = seed?.customProvider;
 
 		const metadata: SessionMetadata = {
 			id,
 			name: autoName,
+			provider: resolvedProvider,
+			baseUrl: resolvedBaseUrl,
+			customProvider: resolvedCustomProvider,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 			cwd,
@@ -137,6 +187,9 @@ class SessionManager {
 		const metadata: SessionMetadata = {
 			id,
 			name: sessionName,
+			provider: ctx.config.provider,
+			baseUrl: ctx.config.baseUrl,
+			customProvider: ctx.config.customProvider,
 			createdAt: existingMetadata?.createdAt ?? new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 			cwd: ctx.cwd,
@@ -182,7 +235,8 @@ class SessionManager {
 		}
 
 		try {
-			const data = (await fs.readJson(sessionFile)) as SessionData;
+			const rawData = (await fs.readJson(sessionFile)) as SessionData;
+			const data = normalizeSessionData(rawData);
 			this.currentSessionId = id;
 			debug.log("session", `Loaded session: ${id}`);
 			return data;
@@ -280,7 +334,7 @@ class SessionManager {
 	async getRecentSession(cwd: string): Promise<string | null> {
 		const sessions = await this.listSessions();
 		const cwdSession = sessions.find((s) => s.cwd === cwd);
-		return cwdSession?.id ?? (sessions.length > 0 ? sessions[0].id : null);
+		return cwdSession?.id ?? null;
 	}
 
 	getCurrentSessionId(): string | null {

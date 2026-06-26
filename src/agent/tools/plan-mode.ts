@@ -59,7 +59,7 @@ export function isToolAllowedInPlanMode(toolName: string): boolean {
 	if (!planModeActive) {
 		return true;
 	}
-	return READ_ONLY_TOOLS.includes(toolName) || toolName.startsWith("mcp_");
+	return READ_ONLY_TOOLS.includes(toolName);
 }
 
 async function writePlan(
@@ -138,6 +138,7 @@ export const planTools: ToolDefinition[] = [
 		execute: writePlan as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "exit_plan_mode",
@@ -147,6 +148,7 @@ export const planTools: ToolDefinition[] = [
 		execute: exitPlanModeTool as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];
 

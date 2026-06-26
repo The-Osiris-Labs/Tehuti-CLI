@@ -469,6 +469,7 @@ export const webTools: ToolDefinition[] = [
 		execute: webFetch as AnyToolExecutor,
 		category: "web",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "web_search",
@@ -481,6 +482,7 @@ export const webTools: ToolDefinition[] = [
 		execute: webSearch as AnyToolExecutor,
 		category: "web",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "code_search",
@@ -493,5 +495,6 @@ export const webTools: ToolDefinition[] = [
 		execute: codeSearch as AnyToolExecutor,
 		category: "web",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];

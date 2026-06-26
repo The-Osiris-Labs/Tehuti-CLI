@@ -87,8 +87,8 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 ]);
 
 export const PROVIDER_SCHEMA = z
-	.enum(["openrouter", "kilocode", "custom"])
-	.default("kilocode");
+	.string()
+	.default("openrouter");
 
 export const CUSTOM_PROVIDER_SCHEMA = z.object({
 	name: z.string().describe("Name of custom provider"),
@@ -147,7 +147,7 @@ export const COLLABORATION_SCHEMA = z.object({
 
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
-	model: z.string().default("giga-potato"),
+	model: z.string().default("minimax-m3"),
 	fallbackModel: z.string().default("minimax/minimax-m2.5:free"),
 	apiKey: z.string().optional(),
 	baseUrl: z.string().optional(),
@@ -186,11 +186,11 @@ export type BrandingConfig = z.infer<typeof BRANDING_CONFIG_SCHEMA>;
 export type ModelSelectionMode = z.infer<typeof MODEL_SELECTION_SCHEMA>;
 
 export const DEFAULT_CONFIG: TehutiConfig = {
-	model: "giga-potato",
-	fallbackModel: "minimax/minimax-m2.5:free",
+	model: "minimax-m3",
+	fallbackModel: "minimax-m3",
 	apiKey: undefined,
-	baseUrl: "https://api.kilo.ai/api/gateway",
-	provider: "kilocode",
+	baseUrl: undefined,
+	provider: "opencode",
 	maxTokens: 32000,
 	maxIterations: 50,
 	temperature: 0.7,

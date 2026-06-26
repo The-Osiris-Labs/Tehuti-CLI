@@ -214,6 +214,25 @@ export class Prefetcher {
 		return `${tool}:${JSON.stringify(args)}`;
 	}
 
+	private queuePrefetch(
+		toolName: string,
+		args: unknown,
+		ctx: ToolContext,
+		key: string,
+	): void {
+		const prefetchPromise = executeTool(toolName, args, ctx)
+			.then((result) => result)
+			.catch(() => null);
+
+		const trackedPromise = prefetchPromise.finally(() => {
+			if (this.pending.get(key) === trackedPromise) {
+				this.pending.delete(key);
+			}
+		});
+
+		this.pending.set(key, trackedPromise);
+	}
+
 	recordPattern(toolName: string, args: unknown): void {
 		this.recentPatterns.push({
 			tool: toolName,
@@ -244,7 +263,11 @@ export class Prefetcher {
 
 		for (const [key, count] of toolCounts) {
 			if (count >= 2) {
-				const [tool, argsStr] = key.split(":");
+				const colonIndex = key.indexOf(":");
+				if (colonIndex < 0) continue;
+
+				const tool = key.slice(0, colonIndex);
+				const argsStr = key.slice(colonIndex + 1);
 				try {
 					const args = JSON.parse(argsStr);
 					const score = count * 10;
@@ -272,6 +295,8 @@ export class Prefetcher {
 		if (!rule) return;
 
 		const cache = getToolCache();
+		// Key for the current call — never prefetch something we are already executing
+		const currentKey = this.buildKey(toolName, args);
 
 		for (const nextTool of rule.nextTools) {
 			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
@@ -290,11 +315,7 @@ export class Prefetcher {
 			}
 
 			if (!this.pending.has(key) && PREFETCHABLE_TOOLS.has(nextTool.tool)) {
-				const prefetchPromise = executeTool(nextTool.tool, predictedArgs, ctx)
-					.then((result) => result)
-					.catch(() => null);
-
-				this.pending.set(key, prefetchPromise);
+				this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
 			}
 		}
 
@@ -303,13 +324,11 @@ export class Prefetcher {
 			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
 
 			const key = this.buildKey(pred.tool, pred.args);
+			// Skip if already pending, already cached, or is the same call we are currently handling
+			if (key === currentKey) continue;
 			if (!this.pending.has(key) && !cache.has(pred.tool, pred.args)) {
 				if (PREFETCHABLE_TOOLS.has(pred.tool)) {
-					const prefetchPromise = executeTool(pred.tool, pred.args, ctx)
-						.then((result) => result)
-						.catch(() => null);
-
-					this.pending.set(key, prefetchPromise);
+					this.queuePrefetch(pred.tool, pred.args, ctx, key);
 				}
 			}
 		}

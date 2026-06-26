@@ -1,7 +1,7 @@
 {
   "name": "tehuti-cli",
   "version": "0.1.0",
-  "description": "Tehuti CLI - Scribe of Code Transformations. An AI-powered coding assistant connecting to OpenRouter.",
+  "description": "Tehuti CLI - Architect of Truth. Self-evolving agent harness (Rust core + TS). MCP, subagents, memory, Ma'at.",
   "type": "module",
   "bin": {
     "tehuti": "./dist/index.js"
@@ -19,8 +19,7 @@
     "AGENTS.md"
   ],
   "scripts": {
-    "start": "tsx src/index.ts",
-    "start:opentui": "echo 'OpenTUI requires Bun runtime. Run: bun src/tui-opentui.tsx' && exit 1",
+    "start": "NODE_NO_WARNINGS=1 tsx src/index.ts",
     "start:ink": "tsx src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",

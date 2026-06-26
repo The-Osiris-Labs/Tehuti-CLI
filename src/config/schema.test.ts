@@ -11,7 +11,7 @@ describe("Config Schema", () => {
 
 		it("should validate minimal valid config", () => {
 			const minimalConfig = {
-				model: "giga-potato",
+				model: "minimax-m3",
 				provider: "kilocode",
 			};
 
@@ -76,14 +76,14 @@ describe("Config Schema", () => {
 			expect(result.success).toBe(false);
 		});
 
-		it("should reject config with invalid provider", () => {
+		it("should allow arbitrary provider identifiers for registry/custom endpoints", () => {
 			const config = {
 				...DEFAULT_CONFIG,
-				provider: "invalid-provider",
+				provider: "my-internal-provider",
 			};
 
 			const result = TEHUTI_CONFIG_SCHEMA.safeParse(config);
-			expect(result.success).toBe(false);
+			expect(result.success).toBe(true);
 		});
 	});
 });

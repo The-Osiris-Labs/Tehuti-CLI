@@ -100,6 +100,81 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 	return false;
 }
 
+export function normalizeToolMessageHistory(
+	messages: OpenRouterMessage[],
+): OpenRouterMessage[] {
+	const unresolvedToolCallIds = new Set<string>();
+	const normalized: OpenRouterMessage[] = [];
+
+	for (const message of messages) {
+		if (message.role === "assistant" && message.tool_calls?.length) {
+			const validToolCalls = message.tool_calls.filter(
+				(toolCall) =>
+					toolCall.id &&
+					toolCall.type === "function" &&
+					toolCall.function?.name,
+			);
+
+			if (validToolCalls.length === 0) {
+				normalized.push({ ...message, tool_calls: undefined });
+				continue;
+			}
+
+			for (const toolCall of validToolCalls) {
+				unresolvedToolCallIds.add(toolCall.id);
+			}
+			normalized.push({ ...message, tool_calls: validToolCalls });
+			continue;
+		}
+
+		if (message.role === "tool") {
+			if (
+				message.tool_call_id &&
+				unresolvedToolCallIds.has(message.tool_call_id)
+			) {
+				unresolvedToolCallIds.delete(message.tool_call_id);
+				normalized.push(message);
+			}
+			continue;
+		}
+
+		normalized.push(message);
+	}
+
+	if (unresolvedToolCallIds.size === 0) {
+		return normalized;
+	}
+
+	return normalized
+		.map((message) => {
+			if (message.role !== "assistant" || !message.tool_calls?.length) {
+				return message;
+			}
+
+			const resolvedToolCalls = message.tool_calls.filter(
+				(toolCall) => !unresolvedToolCallIds.has(toolCall.id),
+			);
+
+			if (resolvedToolCalls.length === message.tool_calls.length) {
+				return message;
+			}
+
+			return {
+				...message,
+				tool_calls:
+					resolvedToolCalls.length > 0 ? resolvedToolCalls : undefined,
+			};
+		})
+		.filter((message) => {
+			if (message.role !== "assistant") return true;
+			const hasText =
+				typeof message.content === "string"
+					? message.content.length > 0
+					: message.content.length > 0;
+			return hasText || Boolean(message.tool_calls?.length);
+		});
+}
+
 export interface AgentContext {
 	cwd: string;
 	workingDir: string;
@@ -181,6 +256,48 @@ export function buildSystemPrompt(
 		}
 	}
 
+	// ── Temporal context (computed fresh on every buildSystemPrompt call) ──────
+	const _now = new Date();
+	const _dayNames = [
+		"Sunday",
+		"Monday",
+		"Tuesday",
+		"Wednesday",
+		"Thursday",
+		"Friday",
+		"Saturday",
+	];
+	const _monthNames = [
+		"January",
+		"February",
+		"March",
+		"April",
+		"May",
+		"June",
+		"July",
+		"August",
+		"September",
+		"October",
+		"November",
+		"December",
+	];
+	const _dayOfWeek = _dayNames[_now.getDay()];
+	const _monthName = _monthNames[_now.getMonth()];
+	const _day = _now.getDate();
+	const _year = _now.getFullYear();
+	const _hh = String(_now.getHours()).padStart(2, "0");
+	const _mm = String(_now.getMinutes()).padStart(2, "0");
+	// getTimezoneOffset() returns minutes *behind* UTC (negative = ahead of UTC)
+	const _tzOffsetMin = -_now.getTimezoneOffset();
+	const _tzSign = _tzOffsetMin >= 0 ? "+" : "-";
+	const _tzHH = String(Math.floor(Math.abs(_tzOffsetMin) / 60)).padStart(
+		2,
+		"0",
+	);
+	const _tzMM = String(Math.abs(_tzOffsetMin) % 60).padStart(2, "0");
+	const _tzLabel = `UTC${_tzSign}${_tzHH}:${_tzMM}`;
+	const _isoTimestamp = _now.toISOString().replace("Z", `${_tzSign}${_tzHH}:${_tzMM}`);
+
 	return `You are Tehuti, the Scribe of Code Transformations - an AI coding assistant.
 
 ## Identity
@@ -204,6 +321,12 @@ ${projectInstructionsSection}${skillsSection}
 - Platform: ${process.platform}
 - Node.js: ${process.version}
 - Shell: ${process.env.SHELL ?? "unknown"}
+
+## Temporal Context
+- Current date: ${_dayOfWeek}, ${_monthName} ${_day}, ${_year}
+- Current time: ${_hh}:${_mm} (${_tzLabel})
+- ISO timestamp: ${_isoTimestamp}
+- Day of week: ${_dayOfWeek}
 
 ## Tool Usage Guidelines
 - Use the \`read\` tool to understand existing code before making changes.

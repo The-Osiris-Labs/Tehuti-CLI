@@ -312,6 +312,7 @@ export const systemTools: ToolDefinition[] = [
 		execute: writeTodos as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "task",
@@ -321,6 +322,7 @@ export const systemTools: ToolDefinition[] = [
 		execute: spawnTask as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "question",
@@ -338,6 +340,7 @@ Usage notes:
 		execute: askQuestion as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];
 

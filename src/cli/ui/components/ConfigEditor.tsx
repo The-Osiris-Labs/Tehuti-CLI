@@ -1,5 +1,5 @@
 import { Box, Text, useInput, useStdout } from "ink";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const GOLD = "#D4AF37";
 const GRAY = "#6B7280";
@@ -13,49 +13,72 @@ interface ConfigEditorProps {
 	config: {
 		apiKey?: string;
 		model?: string;
+		provider?: string;
+		baseUrl?: string;
 		temperature?: number;
 		maxTokens?: number;
 	};
 	onSave: (updates: {
 		apiKey?: string;
 		model?: string;
+		provider?: string;
+		baseUrl?: string;
 		temperature?: number;
 		maxTokens?: number;
 	}) => void;
 	onCancel: () => void;
 }
 
-type ConfigField = "apiKey" | "model" | "temperature" | "maxTokens";
+type ConfigField = "apiKey" | "model" | "provider" | "baseUrl" | "temperature" | "maxTokens";
+type EditorConfig = ConfigEditorProps["config"];
 
 export function ConfigEditor({
 	config,
 	onSave,
 	onCancel,
 }: ConfigEditorProps): React.ReactElement {
+	const [draftConfig, setDraftConfig] = useState<EditorConfig>(config);
 	const [selectedField, setSelectedField] = useState<ConfigField>("apiKey");
 	const [editingField, setEditingField] = useState<ConfigField | null>(null);
 	const [editValue, setEditValue] = useState("");
 	const { stdout } = useStdout();
+	const [validationError, setValidationError] = useState<string | null>(null);
 
-	const fields: Array<{
+	useEffect(() => {
+		setDraftConfig(config);
+	}, [config]);
+
+	const fields = useMemo<Array<{
 		key: ConfigField;
 		label: string;
 		type: "string" | "number";
 		min?: number;
 		max?: number;
 		description: string;
-	}> = [
+	}>>(() => [
 		{
 			key: "apiKey",
 			label: "API Key",
 			type: "string",
-			description: "OpenRouter API key for accessing AI models",
+			description: "API key for the selected provider (or use env vars)",
+		},
+		{
+			key: "provider",
+			label: "Provider",
+			type: "string",
+			description: "AI provider e.g. openrouter, opencode, ollama, xai, anthropic, custom",
+		},
+		{
+			key: "baseUrl",
+			label: "Base URL (optional)",
+			type: "string",
+			description: "Override base URL for the provider's API endpoint (required for opencode etc)",
 		},
 		{
 			key: "model",
 			label: "Default Model",
 			type: "string",
-			description: "Default AI model to use",
+			description: "Default AI model (e.g. minimax-m3 for opencode go)",
 		},
 		{
 			key: "temperature",
@@ -73,52 +96,63 @@ export function ConfigEditor({
 			max: 128000,
 			description: "Maximum tokens per response",
 		},
-	];
+	], []);
 
-	const [validationError, setValidationError] = useState<string | null>(null);
+	const commitFieldEdit = (): void => {
+		if (!editingField) return;
+
+		const field = fields.find((f) => f.key === editingField);
+		let isValid = true;
+		let parsedValue: string | number | undefined = editValue;
+
+		if (field?.type === "number") {
+			const num = parseFloat(editValue);
+			if (isNaN(num)) {
+				isValid = false;
+				setValidationError("Must be a valid number");
+			} else if (field.min !== undefined && num < field.min) {
+				isValid = false;
+				setValidationError(`Must be at least ${field.min}`);
+			} else if (field.max !== undefined && num > field.max) {
+				isValid = false;
+				setValidationError(`Must be at most ${field.max}`);
+			} else {
+				parsedValue = num;
+			}
+		} else if (editValue.trim() === "") {
+			parsedValue = undefined;
+		}
+
+		if (!isValid) {
+			return;
+		}
+
+		setDraftConfig((current) => ({
+			...current,
+			[editingField]: parsedValue,
+		}));
+		setValidationError(null);
+		setEditingField(null);
+		setEditValue("");
+	};
 
 	useInput((char, key) => {
 		if (editingField) {
 			if (key.return) {
-				const field = fields.find((f) => f.key === editingField);
-				let isValid = true;
-				let parsedValue: string | number = editValue;
-
-				if (field?.type === "number") {
-					const num = parseFloat(editValue);
-					if (isNaN(num)) {
-						isValid = false;
-						setValidationError("Must be a valid number");
-					} else if (field.min !== undefined && num < field.min) {
-						isValid = false;
-						setValidationError(`Must be at least ${field.min}`);
-					} else if (field.max !== undefined && num > field.max) {
-						isValid = false;
-						setValidationError(`Must be at most ${field.max}`);
-					} else {
-						parsedValue = num;
-					}
-				}
-
-				if (isValid) {
-					const updates: any = {};
-					updates[editingField] = parsedValue;
-					onSave(updates);
-					setValidationError(null);
-				}
-
-				setEditingField(null);
-				setEditValue("");
+				commitFieldEdit();
 			} else if (key.escape) {
 				setEditingField(null);
 				setEditValue("");
+				setValidationError(null);
 			} else if (key.backspace || key.delete) {
 				setEditValue((v) => v.slice(0, -1));
 			} else if (char && !key.ctrl && !key.meta && char.length === 1) {
 				setEditValue((v) => v + char);
 			}
 		} else {
-			if (key.escape) {
+			if (key.ctrl && (char === "s" || char === "S")) {
+				onSave(draftConfig);
+			} else if (key.escape) {
 				onCancel();
 			} else if (key.upArrow) {
 				const currentIndex = fields.findIndex((f) => f.key === selectedField);
@@ -134,13 +168,14 @@ export function ConfigEditor({
 				setSelectedField(fields[fields.length - 1].key);
 			} else if (key.return || char === " ") {
 				setEditingField(selectedField);
-				setEditValue(String(config[selectedField] || ""));
+				setEditValue(String(draftConfig[selectedField] ?? ""));
+				setValidationError(null);
 			}
 		}
 	});
 
 	const getFieldValue = (field: ConfigField): string => {
-		const value = config[field];
+		const value = draftConfig[field];
 		if (field === "apiKey" && value) {
 			const strValue = String(value);
 			return "••••••••" + strValue.slice(-4);
@@ -239,8 +274,13 @@ export function ConfigEditor({
 				Text,
 				{ dimColor: true },
 				editingField
-					? "Enter to save | Esc to cancel"
-					: "↑↓ navigate | Enter/Space edit | Esc cancel",
+					? "Enter to apply field | Esc cancel field"
+					: "↑↓ navigate | Enter/Space edit | Ctrl+S save | Esc cancel",
+			),
+			React.createElement(
+				Text,
+				{ dimColor: true, color: CYAN },
+				"Changes stay local until Ctrl+S saves them.",
 			),
 		),
 	);

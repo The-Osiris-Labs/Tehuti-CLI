@@ -1,17 +1,5 @@
-import type { ToolResult } from "../tools/registry.js";
+import type { ToolDefinition, ToolResult } from "../tools/registry.js";
 import { getToolCache } from "./tool-cache.js";
-
-const WRITE_TOOLS = new Set([
-	"write",
-	"write_file",
-	"edit",
-	"edit_file",
-	"delete_file",
-	"delete_dir",
-	"create_dir",
-	"move",
-	"copy",
-]);
 
 const PATH_KEYS = ["file_path", "path", "source", "destination", "dir_path"];
 
@@ -31,8 +19,8 @@ function extractPaths(args: unknown): string[] {
 	return paths;
 }
 
-export function invalidateOnWrite(toolName: string, args: unknown): void {
-	if (!WRITE_TOOLS.has(toolName)) return;
+export function invalidateOnWrite(toolDef: ToolDefinition | undefined, toolName: string, args: unknown): void {
+	if (toolDef?.isReadonly || toolName === "bash" || toolName === "start_background") return;
 
 	const cache = getToolCache();
 	const paths = extractPaths(args);
@@ -87,28 +75,8 @@ export function invalidateOnBash(
 	}
 }
 
-export function shouldCacheTool(toolName: string, args: unknown): boolean {
-	const cacheableTools = new Set([
-		"read",
-		"read_file",
-		"read_image",
-		"read_pdf",
-		"glob",
-		"grep",
-		"grep_search",
-		"file_info",
-		"list_dir",
-		"list_directory",
-		"web_fetch",
-		"webfetch",
-		"web_search",
-		"code_search",
-		"git_status",
-		"git_log",
-		"git_diff",
-	]);
-
-	if (!cacheableTools.has(toolName)) return false;
+export function shouldCacheTool(toolDef: ToolDefinition | undefined, toolName: string, args: unknown): boolean {
+	if (!toolDef?.isReadonly) return false;
 
 	if (args && typeof args === "object") {
 		const record = args as Record<string, unknown>;

@@ -126,6 +126,7 @@ export const mcpPromptTools: ToolDefinition[] = [
 		execute: getPrompt as AnyToolExecutor,
 		category: "mcp",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "mcp_list_prompts",
@@ -134,5 +135,6 @@ export const mcpPromptTools: ToolDefinition[] = [
 		execute: listPrompts as AnyToolExecutor,
 		category: "mcp",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];

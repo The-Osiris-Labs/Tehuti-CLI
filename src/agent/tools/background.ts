@@ -336,6 +336,7 @@ export const backgroundTools: ToolDefinition[] = [
 		execute: startBackground as AnyToolExecutor,
 		category: "bash",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "list_processes",
@@ -344,6 +345,7 @@ export const backgroundTools: ToolDefinition[] = [
 		execute: listProcesses as AnyToolExecutor,
 		category: "bash",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "read_output",
@@ -352,6 +354,7 @@ export const backgroundTools: ToolDefinition[] = [
 		execute: readOutput as AnyToolExecutor,
 		category: "bash",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "kill_process",
@@ -360,6 +363,7 @@ export const backgroundTools: ToolDefinition[] = [
 		execute: killProcess as AnyToolExecutor,
 		category: "bash",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 ];
 

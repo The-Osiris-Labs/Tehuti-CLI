@@ -1,4 +1,11 @@
 import type { TehutiConfig } from "../config/schema.js";
+import {
+	getApiKeyEnvVarsForProvider,
+	getProviderAuthHeaders,
+	getProviderInfo,
+	getProviderModelsUrl,
+	resolveBaseUrlForProvider,
+} from "../config/providers.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
 
@@ -91,7 +98,10 @@ export class OpenRouterClient {
 	private apiKey: string;
 	private baseUrl: string;
 	private model: string;
+	private providerId: string;
+	private requiresApiKey: boolean;
 	private fallbackModel: string;
+	private providerLabel: string;
 	private maxTokens: number;
 	private temperature: number;
 	private abortController: AbortController | null = null;
@@ -107,7 +117,9 @@ export class OpenRouterClient {
 	private static lastConfigKey: string | null = null;
 
 	static getInstance(config: TehutiConfig): OpenRouterClient {
-		const configKey = `${config.apiKey}:${config.model}`;
+		const resolvedBaseUrl =
+			resolveBaseUrlForProvider(config.provider || "openrouter", config.baseUrl) || "";
+		const configKey = `${config.provider || "openrouter"}:${config.apiKey}:${resolvedBaseUrl}:${config.model}`;
 		if (
 			!OpenRouterClient.instance ||
 			OpenRouterClient.lastConfigKey !== configKey
@@ -123,14 +135,17 @@ export class OpenRouterClient {
 		OpenRouterClient.lastConfigKey = null;
 	}
 
-	private validateBaseUrl(url: string): void {
+	private validateBaseUrl(url: string, allowLocalHttp: boolean): void {
 		try {
 			const parsed = new URL(url);
-			if (parsed.protocol !== "https:") {
+			if (
+				parsed.protocol !== "https:" &&
+				!(allowLocalHttp && parsed.protocol === "http:")
+			) {
 				throw new APIError("baseUrl must use HTTPS protocol");
 			}
 			const hostname = parsed.hostname;
-			if (
+			const isPrivateHost =
 				hostname === "localhost" ||
 				hostname === "127.0.0.1" ||
 				hostname.startsWith("192.168.") ||
@@ -152,8 +167,9 @@ export class OpenRouterClient {
 				hostname.startsWith("172.30.") ||
 				hostname.startsWith("172.31.") ||
 				hostname.endsWith(".local") ||
-				hostname.endsWith(".localhost")
-			) {
+				hostname.endsWith(".localhost");
+
+			if (isPrivateHost && !allowLocalHttp) {
 				throw new APIError(
 					"baseUrl cannot point to internal/private addresses",
 				);
@@ -165,10 +181,28 @@ export class OpenRouterClient {
 	}
 
 	constructor(config: TehutiConfig) {
-		this.apiKey = config.apiKey ?? process.env.OPENROUTER_API_KEY ?? "";
-		this.baseUrl = config.baseUrl ?? "https://openrouter.ai/api/v1";
+		const providerInfo = getProviderInfo(config.provider || "openrouter");
+		this.providerId = config.provider || "openrouter";
+		this.providerLabel = providerInfo?.name || this.providerId;
+		this.requiresApiKey = providerInfo?.requiresApiKey ?? true;
+		this.apiKey = config.apiKey ?? "";
+		// Only fall back to env vars when the caller did NOT explicitly supply an apiKey.
+		// An explicit empty string means "no key provided" and should trigger the missing-key error.
+		if (config.apiKey === undefined && !this.apiKey) {
+			const providerEnvVars = getApiKeyEnvVarsForProvider(this.providerId);
+			for (const envVar of providerEnvVars) {
+				const envValue = process.env[envVar];
+				if (envValue && envValue.trim()) {
+					this.apiKey = envValue.trim();
+					break;
+				}
+			}
+		}
+		this.baseUrl =
+			resolveBaseUrlForProvider(this.providerId, config.baseUrl) ??
+			"https://openrouter.ai/api/v1";
 		this.model = config.model;
-		this.fallbackModel = config.fallbackModel ?? "anthropic/claude-3-haiku";
+		this.fallbackModel = config.fallbackModel ?? config.model ?? "minimax-m3";
 		this.maxTokens = config.maxTokens ?? 4096;
 		this.temperature = config.temperature ?? 0.7;
 		this.supportsCaching = this.checkCachingSupport(config.model);
@@ -180,21 +214,70 @@ export class OpenRouterClient {
 		);
 		this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
 
-		if (!this.apiKey) {
+		if (this.requiresApiKey && !this.apiKey) {
+			const preferredEnvVar =
+				getApiKeyEnvVarsForProvider(this.providerId)[0] || "TEHUTI_API_KEY";
+			const providerLabel = providerInfo?.name ?? this.providerId;
 			throw new APIError(
-				"OpenRouter API key is required. Set OPENROUTER_API_KEY environment variable or configure in .tehuti.json",
+				`${providerLabel} API key is required. Set ${preferredEnvVar} or configure apiKey in .tehuti.json`,
 			);
 		}
 
-		if (this.apiKey.length < 10 || !this.apiKey.startsWith("sk-or-")) {
+		const isStrictOpenRouter = !config.provider || config.provider === "openrouter";
+		if (this.apiKey && this.apiKey.length < 10) {
 			throw new APIError("Invalid API key format");
 		}
+		if (isStrictOpenRouter && !this.apiKey.startsWith("sk-or-")) {
+			// Non-OpenRouter providers (opencode go sk-..., deepseek, xai, ollama etc) use different prefixes
+			// Allow but warn at construction time is too noisy; defer real validation to first call.
+		}
 
-		this.validateBaseUrl(this.baseUrl);
+		const allowLocalHttp =
+			this.providerId === "ollama" || this.providerId === "lmstudio";
+		this.validateBaseUrl(this.baseUrl, allowLocalHttp);
 		this.validateModel(this.model);
 		this.validateModel(this.fallbackModel);
 		this.validateTemperature(this.temperature);
 		this.validateMaxTokens(this.maxTokens);
+	}
+
+	private buildHeaders(): Record<string, string> {
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+
+		if (this.providerId === "openrouter") {
+			headers["HTTP-Referer"] = "https://tehuti.dev";
+			headers["X-Title"] = "Tehuti CLI";
+		}
+
+		Object.assign(headers, getProviderAuthHeaders(this.providerId, this.apiKey));
+
+		return headers;
+	}
+
+	private getChatCompletionsUrl(): string {
+		return `${this.baseUrl}/chat/completions`;
+	}
+
+	private getModelsUrl(): string {
+		return getProviderModelsUrl(this.providerId, this.baseUrl) ||
+			`${this.baseUrl}/models`;
+	}
+
+	private getProviderErrorSubject(): string {
+		return this.providerLabel || this.providerId;
+	}
+
+	private getProviderAuthHints(): string[] {
+		const envVars = getApiKeyEnvVarsForProvider(this.providerId);
+		const envHint = envVars.length > 0 ? envVars.join(" or ") : "TEHUTI_API_KEY";
+		return [`Check ${envHint} environment variable`, "Check ~/.tehuti.json config file"];
+	}
+
+	private buildInvalidKeyMessage(): string {
+		const subject = this.getProviderErrorSubject();
+		return `API key appears to be invalid or expired for ${subject}.`;
 	}
 
 	private validateTimeout(
@@ -293,13 +376,8 @@ export class OpenRouterClient {
 
 	private checkCachingSupport(model: string): boolean {
 		const cachingModels = [
-			"anthropic/claude-sonnet-4",
-			"anthropic/claude-sonnet-4.5",
-			"anthropic/claude-haiku-4.5",
-			"anthropic/claude-haiku-3.5",
-			"anthropic/claude-opus-4",
-			"anthropic/claude-opus-4.5",
-			"claude-sonnet-4",
+			// live data preferred; these are loose hints only
+			"claude", "sonnet", "opus", "haiku", "gemini", "gpt", "minimax", "qwen", "deepseek",
 			"claude-haiku",
 			"claude-opus",
 			"deepseek/deepseek",
@@ -514,20 +592,15 @@ export class OpenRouterClient {
 		let parseErrorCount = 0;
 		const MAX_PARSE_ERRORS = 10;
 
-		try {
-			const response = await this.withRetry(
-				() =>
-					fetch(`${this.baseUrl}/chat/completions`, {
-						method: "POST",
-						headers: {
-							Authorization: `Bearer ${this.apiKey}`,
-							"Content-Type": "application/json",
-							"HTTP-Referer": "https://tehuti.dev",
-							"X-Title": "Tehuti CLI",
-						},
-						body: JSON.stringify(body),
-						signal: combinedSignal,
-					}),
+			try {
+				const response = await this.withRetry(
+					() =>
+						fetch(this.getChatCompletionsUrl(), {
+							method: "POST",
+							headers: this.buildHeaders(),
+							body: JSON.stringify(body),
+							signal: combinedSignal,
+						}),
 				{ maxRetries: this.maxRetries },
 			);
 
@@ -540,17 +613,13 @@ export class OpenRouterClient {
 						/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi,
 						"[REDACTED]",
 					);
-				if (response.status === 401) {
-					throw new APIError(
-						`API key appears to be invalid or expired.`,
-						response.status,
-						[
-							"Check OPENROUTER_API_KEY environment variable",
-							"Check ~/.tehuti.json config file",
-							"Run 'tehuti init' to reconfigure"
-						]
-					);
-				}
+					if (response.status === 401) {
+						throw new APIError(
+							this.buildInvalidKeyMessage(),
+							response.status,
+							this.getProviderAuthHints(),
+						);
+					}
 				if (response.status === 429) {
 					const retryAfter = response.headers.get("Retry-After");
 					const retryMessage = retryAfter
@@ -568,10 +637,10 @@ export class OpenRouterClient {
 				}
 				if (response.status === 403) {
 					throw new APIError(
-						`Access forbidden. Your API key may not have the necessary permissions.`,
+						`Access forbidden. Your API key may not have the necessary permissions for ${this.getProviderErrorSubject()}.`,
 						response.status,
 						[
-							"Check your OpenRouter account status",
+							"Check your provider account/subscription status",
 							"Verify your API key has correct permissions",
 							"Try generating a new API key"
 						]
@@ -590,17 +659,17 @@ export class OpenRouterClient {
 				}
 				if (response.status >= 500) {
 					throw new APIError(
-						`OpenRouter server error (${response.status}): ${sanitizedError}`,
+						`${this.getProviderErrorSubject()} server error (${response.status}): ${sanitizedError}`,
 						response.status,
 						[
-							"Check OpenRouter status page for outages",
+							`Check ${this.getProviderErrorSubject()} service status`,
 							"Try again later",
 							"Use a different model"
 						]
 					);
 				}
 				throw new APIError(
-					`OpenRouter API error (${response.status}): ${sanitizedError}`,
+					`${this.getProviderErrorSubject()} API error (${response.status}): ${sanitizedError}`,
 					response.status,
 					[
 						"Check your internet connection",
@@ -610,9 +679,9 @@ export class OpenRouterClient {
 				);
 			}
 
-			if (!response.body) {
-				throw new APIError("No response body from OpenRouter");
-			}
+				if (!response.body) {
+					throw new APIError(`No response body from ${this.getProviderErrorSubject()}`);
+				}
 
 			reader = response.body.getReader();
 			const decoder = new TextDecoder();
@@ -706,19 +775,14 @@ export class OpenRouterClient {
 			? AbortSignal.any([signal, timeoutSignal])
 			: timeoutSignal;
 
-		const response = await this.withRetry(
-			() =>
-				fetch(`${this.baseUrl}/chat/completions`, {
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${this.apiKey}`,
-						"Content-Type": "application/json",
-						"HTTP-Referer": "https://tehuti.dev",
-						"X-Title": "Tehuti CLI",
-					},
-					body: JSON.stringify(body),
-					signal: combinedSignal,
-				}),
+			const response = await this.withRetry(
+				() =>
+					fetch(this.getChatCompletionsUrl(), {
+						method: "POST",
+						headers: this.buildHeaders(),
+						body: JSON.stringify(body),
+						signal: combinedSignal,
+					}),
 			{ maxRetries: this.maxRetries },
 		);
 
@@ -728,24 +792,21 @@ export class OpenRouterClient {
 				.slice(0, 500)
 				.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
 				.replace(/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi, "[REDACTED]");
-			if (response.status === 401) {
+				if (response.status === 401) {
+					throw new APIError(
+						this.buildInvalidKeyMessage(),
+						response.status,
+						this.getProviderAuthHints(),
+					);
+				}
 				throw new APIError(
-					`API key appears to be invalid or expired.\n\n` +
-						`Suggestions:\n` +
-						`  • Check OPENROUTER_API_KEY environment variable\n` +
-						`  • Check ~/.tehuti.json config file\n` +
-						`  • Run 'tehuti init' to reconfigure`,
+					`${this.getProviderErrorSubject()} API error (${response.status}): ${sanitizedError}`,
 					response.status,
 				);
 			}
-			throw new APIError(
-				`OpenRouter API error (${response.status}): ${sanitizedError}`,
-				response.status,
-			);
-		}
 
-		return response.json() as Promise<OpenRouterResponse>;
-	}
+				return response.json() as Promise<OpenRouterResponse>;
+		}
 
 	abort(): void {
 		this.abortController?.abort();
@@ -761,18 +822,17 @@ export class OpenRouterClient {
 
 	async listModels(
 		signal?: AbortSignal,
-	): Promise<{ id: string; name: string; context_length: number }[]> {
+	): Promise<Array<{ id: string; name?: string; context_length?: number; pricing?: any; [k: string]: any }>> {
 		const timeoutSignal = AbortSignal.timeout(30000);
 		const combinedSignal = signal
 			? AbortSignal.any([signal, timeoutSignal])
 			: timeoutSignal;
+		const modelsUrl = this.getModelsUrl();
 
 		const response = await this.withRetry(
 			() =>
-				fetch(`${this.baseUrl}/models`, {
-					headers: {
-						Authorization: `Bearer ${this.apiKey}`,
-					},
+				fetch(modelsUrl, {
+					headers: this.buildHeaders(),
 					signal: combinedSignal,
 				}),
 			{ maxRetries: this.maxRetries },
@@ -782,41 +842,42 @@ export class OpenRouterClient {
 			throw new APIError(`Failed to list models: ${response.status}`);
 		}
 
-		const data = (await response.json()) as {
-			data: { id: string; name: string; context_length: number }[];
-		};
-		return data.data.sort((a, b) => a.id.localeCompare(b.id));
+		const data = (await response.json()) as any;
+		const list = (data?.data || data || []).sort((a: any, b: any) => (a.id || "").localeCompare(b.id || ""));
+		return list;
 	}
 
 	async validateApiKey(): Promise<{ valid: boolean; error?: string }> {
 		const timeoutSignal = AbortSignal.timeout(10000);
+		const validateUrl = this.getModelsUrl();
 
 		try {
-			const response = await fetch(`${this.baseUrl}/models`, {
-				headers: {
-					Authorization: `Bearer ${this.apiKey}`,
-				},
+			const response = await fetch(validateUrl, {
+				headers: this.buildHeaders(),
 				signal: timeoutSignal,
 			});
 
-			if (response.status === 401) {
-				return {
-					valid: false,
-					error:
-						`API key appears to be invalid or expired.\n\n` +
-						`Suggestions:\n` +
-						`  • Check OPENROUTER_API_KEY environment variable\n` +
-						`  • Check ~/.tehuti.json config file\n` +
-						`  • Run 'tehuti init' to reconfigure`,
-				};
-			}
+				if (response.status === 401) {
+					return {
+						valid: false,
+						error:
+							`API key appears to be invalid or expired.\n\n` +
+							`Suggestions:\n` +
+							this.getProviderAuthHints()
+								.map((hint) => `  • ${hint}`)
+								.join("\n") +
+							`\n` +
+							`  • Check ~/.tehuti.json config file\n` +
+							`  • Run 'tehuti init' to reconfigure`,
+						};
+					}
 
-			if (response.status === 403) {
-				return {
-					valid: false,
-					error: "API key is forbidden. Please check your OpenRouter account.",
-				};
-			}
+				if (response.status === 403) {
+					return {
+						valid: false,
+						error: `API key is forbidden. Please check your ${this.getProviderErrorSubject()} account status.`,
+					};
+				}
 
 			if (!response.ok) {
 				return {
@@ -826,17 +887,17 @@ export class OpenRouterClient {
 			}
 
 			return { valid: true };
-		} catch (error) {
+			} catch (error) {
 			if (error instanceof Error && error.name === "AbortError") {
 				return {
 					valid: false,
 					error: "API validation timed out. Please check your connection.",
 				};
 			}
-			return {
-				valid: false,
-				error: "Could not connect to OpenRouter. Please check your connection.",
-			};
-		}
+				return {
+					valid: false,
+					error: `Could not connect to ${this.getProviderErrorSubject()}. Please check your connection.`,
+				};
+			}
 	}
 }

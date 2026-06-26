@@ -7,8 +7,7 @@ export interface ModelCapabilityInfo {
 }
 
 export const REASONING_MODELS: ReadonlySet<string> = new Set([
-	"giga-potato",
-	"giga-potato-thinking",
+	// static list minimized; prefer live data
 	"z-ai/glm-4.5-air:free",
 	"z-ai/glm-4.5-air",
 	"z-ai/glm-5:free",
@@ -43,7 +42,7 @@ export const REASONING_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 export const REASONING_MODEL_PATTERNS: ReadonlyArray<RegExp> = [
-	/^giga-potato/i,
+	// no potato
 	/^z-ai\/glm/i,
 	/^deepseek\/.*r1/i,
 	/^deepseek\/.*reasoner/i,
@@ -83,24 +82,15 @@ export function getReasoningField(
 
 export const MODEL_CAPABILITIES: ReadonlyMap<string, ModelCapabilityInfo> =
 	new Map([
+		// giga-potato removed
 		[
-			"giga-potato",
+			"minimax-m3",
 			{
-				id: "giga-potato",
-				name: "Giga Potato",
-				provider: "Kilo",
+				id: "minimax-m3",
+				name: "MiniMax M3 (OpenCode Go)",
+				provider: "OpenCode",
 				isReasoning: false,
 				reasoningField: "none",
-			},
-		],
-		[
-			"giga-potato-thinking",
-			{
-				id: "giga-potato-thinking",
-				name: "Giga Potato Thinking",
-				provider: "Kilo",
-				isReasoning: true,
-				reasoningField: "reasoning",
 			},
 		],
 		[

@@ -25,5 +25,5 @@
     "jsxImportSource": "react"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/tui-opentui.tsx"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

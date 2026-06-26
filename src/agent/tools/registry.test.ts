@@ -162,5 +162,31 @@ describe("Tool Registry", () => {
 			expect(definitions[0].function.name).toBe("definition_test");
 			expect(definitions[0].function.parameters).toHaveProperty("properties");
 		});
+
+		it("should prefer explicit JSON schema overrides", () => {
+			const jsonSchema = {
+				type: "object",
+				properties: {
+					query: { type: "string" },
+				},
+				required: ["query"],
+				additionalProperties: false,
+			};
+
+			registerTools([
+				{
+					name: "json_schema_test",
+					description: "Uses a raw JSON schema",
+					parameters: z.object({}).passthrough(),
+					jsonSchema,
+					execute: async () => ({ success: true, output: "" }),
+					category: "mcp",
+					requiresPermission: true,
+				},
+			]);
+
+			const definitions = getToolDefinitions();
+			expect(definitions[0].function.parameters).toEqual(jsonSchema);
+		});
 	});
 });

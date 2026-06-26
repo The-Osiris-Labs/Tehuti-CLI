@@ -489,6 +489,7 @@ export const searchTools: ToolDefinition[] = [
 		execute: globFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "grep",
@@ -504,5 +505,6 @@ export const searchTools: ToolDefinition[] = [
 		execute: grepFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];

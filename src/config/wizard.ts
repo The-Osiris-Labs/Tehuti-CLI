@@ -2,6 +2,11 @@ import { confirm, input, select } from "@inquirer/prompts";
 import { isInitialized, saveGlobalConfig } from "./loader.js";
 import type { TehutiConfig } from "./schema.js";
 import { DEFAULT_CONFIG } from "./schema.js";
+import {
+	getProviderInfo,
+	getEnvApiKeyForProvider,
+	getApiKeyEnvVarsForProvider,
+} from "./providers.js";
 
 const GOLD = "\x1b[38;5;178m";
 const CORAL = "\x1b[38;5;174m";
@@ -23,78 +28,114 @@ const c = {
 	green: (text: string) => `${GREEN}${text}${RESET}`,
 };
 
-const AVAILABLE_MODELS = [
-	{
-		name: "Giga Potato (Free, Highly Capable)",
-		value: "giga-potato",
-		description:
-			"Free model optimized for agentic programming with visual understanding",
-	},
-	{
-		name: "Giga Potato Thinking (Free, Reasoning)",
-		value: "giga-potato-thinking",
-		description: "Free model with enhanced reasoning capabilities",
-	},
-	{
-		name: "MiniMax M2.5 (Free, Productivity)",
-		value: "minimax/minimax-m2.5:free",
-		description: "Free model specialized for real-world productivity tasks",
-	},
-	{
-		name: "Trinity Large (Free, Research)",
-		value: "arcee-ai/trinity-large-preview:free",
-		description: "Free large-scale model with advanced capabilities",
-	},
-	{
-		name: "Claude Sonnet 4",
-		value: "anthropic/claude-sonnet-4",
-		description: "Best balance of speed and intelligence",
-	},
-	{
-		name: "Claude Opus 4",
-		value: "anthropic/claude-opus-4",
-		description: "Most capable, higher cost",
-	},
-	{
-		name: "GPT-4o",
-		value: "openai/gpt-4o",
-		description: "GPT-4 optimized",
-	},
-	{
-		name: "Gemini 2.5 Pro",
-		value: "google/gemini-2.5-pro",
-		description: "Google's flagship model",
-	},
-	{
-		name: "DeepSeek V3",
-		value: "deepseek/deepseek-v3",
-		description: "Cost-effective alternative",
-	},
+const PROVIDER_CHOICES = [
+	{ name: "OpenRouter (Recommended - 200+ models, pay-per-use)", value: "openrouter" },
+	{ name: "OpenCode Go (Subscription model)", value: "opencode" },
+	{ name: "Ollama (Local, keyless, runs offline)", value: "ollama" },
+	{ name: "LM Studio (Local, keyless, desktop app server)", value: "lmstudio" },
+	{ name: "Google Gemini (Direct AI Studio API key)", value: "google" },
+	{ name: "Anthropic Claude (Direct API key)", value: "anthropic" },
+	{ name: "OpenAI (Direct API key)", value: "openai" },
+	{ name: "DeepSeek (Direct V3/R1 API key)", value: "deepseek" },
+	{ name: "xAI Grok (Direct API key)", value: "xai" },
+	{ name: "Custom OpenAI-compatible endpoint", value: "custom" },
 ];
+
+const SUGGESTED_MODELS: Record<string, Array<{ name: string; value: string }>> = {
+	openrouter: [
+		{ name: "google/gemini-2.5-flash (Fast, cost-efficient)", value: "google/gemini-2.5-flash" },
+		{ name: "deepseek/deepseek-chat (DeepSeek V3)", value: "deepseek/deepseek-chat" },
+		{ name: "anthropic/claude-3.5-sonnet (Highly capable coding model)", value: "anthropic/claude-3.5-sonnet" },
+	],
+	opencode: [
+		{ name: "minimax-m3 (Default)", value: "minimax-m3" },
+	],
+	ollama: [
+		{ name: "qwen2.5-coder:7b (Excellent for local coding)", value: "qwen2.5-coder:7b" },
+		{ name: "llama3 (General capability)", value: "llama3" },
+		{ name: "mistral (Balanced local model)", value: "mistral" },
+	],
+	lmstudio: [
+		{ name: "Use whatever model is loaded in LM Studio", value: "default" },
+	],
+	google: [
+		{ name: "gemini-2.5-flash", value: "gemini-2.5-flash" },
+		{ name: "gemini-2.5-pro", value: "gemini-2.5-pro" },
+	],
+	anthropic: [
+		{ name: "claude-3-5-sonnet-latest", value: "claude-3-5-sonnet-latest" },
+		{ name: "claude-3-5-haiku-latest", value: "claude-3-5-haiku-latest" },
+	],
+	openai: [
+		{ name: "gpt-4o", value: "gpt-4o" },
+		{ name: "gpt-4o-mini", value: "gpt-4o-mini" },
+		{ name: "o3-mini (Reasoning model)", value: "o3-mini" },
+	],
+	deepseek: [
+		{ name: "deepseek-chat (V3)", value: "deepseek-chat" },
+		{ name: "deepseek-reasoner (R1)", value: "deepseek-reasoner" },
+	],
+	xai: [
+		{ name: "grok-2-1212", value: "grok-2-1212" },
+	],
+};
 
 export async function runSetupWizard(): Promise<TehutiConfig> {
 	console.log();
-	console.log(c.gold(`  ${IBIS} Tehuti CLI`));
-	console.log(c.sand("  Scribe of Code Transformations"));
+	console.log(c.gold(`  ${IBIS} Tehuti CLI Setup Wizard`));
+	console.log(c.sand("  Ma'at balance of local and cloud scribes"));
 	console.log();
 
-	const hasApiKey =
-		process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY;
+	const provider = await select({
+		message: `${EYE} Select your AI provider:`,
+		choices: PROVIDER_CHOICES,
+		default: "openrouter",
+	});
 
-	if (!hasApiKey) {
-		const apiKey = await input({
-			message: `${SCROLL} Enter your OpenRouter API key:`,
-			validate: (value) => (value.length > 0 ? true : "API key is required"),
-		});
+	const info = getProviderInfo(provider);
+	const requiresKey = info ? info.requiresApiKey : true;
+	let apiKey: string | undefined;
 
-		process.env.OPENROUTER_API_KEY = apiKey;
+	if (requiresKey) {
+		const envKey = getEnvApiKeyForProvider(provider);
+		if (envKey) {
+			console.log(c.green("  ✓ Found API key in environment variables."));
+			apiKey = envKey;
+		} else {
+			const envVars = getApiKeyEnvVarsForProvider(provider);
+			const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
+			apiKey = await input({
+				message: `${SCROLL} Enter your API key for ${info?.name ?? provider}${hint}:`,
+				validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+			});
+		}
 	}
 
-	const model = await select({
-		message: `${EYE} Choose your default model:`,
-		choices: AVAILABLE_MODELS,
-		default: "giga-potato",
+	let baseUrl: string | undefined;
+	if (provider === "custom") {
+		baseUrl = await input({
+			message: `${SCROLL} Enter the custom provider base URL:`,
+			default: "https://api.example.com/v1",
+			validate: (value) => (value.startsWith("http") ? true : "Must be a valid HTTP/HTTPS URL"),
+		});
+	}
+
+	const modelChoices = SUGGESTED_MODELS[provider] || [];
+	modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
+
+	const selectedModel = await select({
+		message: `${EYE} Choose a default model:`,
+		choices: modelChoices,
+		default: modelChoices[0]?.value ?? "minimax-m3",
 	});
+
+	let model = selectedModel;
+	if (selectedModel === "__custom__") {
+		model = await input({
+			message: "Type your model ID:",
+			validate: (value) => (value.length > 0 ? true : "Model ID cannot be empty"),
+		});
+	}
 
 	const enableMCP = await confirm({
 		message: "Enable MCP (Model Context Protocol) server support?",
@@ -102,25 +143,29 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	});
 
 	const trustedMode = await confirm({
-		message:
-			"Enable trusted mode (skip permission prompts for safe operations)?",
+		message: "Enable trusted mode (skip safety permission prompts for read-only/non-destructive operations)?",
 		default: false,
 	});
 
 	saveGlobalConfig({
-		apiKey: process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY,
+		provider: provider as any,
+		apiKey: apiKey || null,
+		baseUrl: baseUrl || null,
 		model,
 	});
 
 	console.log();
-	console.log(c.green(ANKH) + c.dim(" Configuration saved"));
+	console.log(c.green(ANKH) + c.dim(" Configuration successfully written to ~/.tehuti.json"));
+	console.log(c.dim(`  Provider: ${info?.name ?? provider}`));
 	console.log(c.dim(`  Model: ${model}`));
 	console.log();
 
 	return {
 		...DEFAULT_CONFIG,
+		provider: provider as any,
+		apiKey,
+		baseUrl,
 		model,
-		apiKey: process.env.OPENROUTER_API_KEY || process.env.TEHUTI_API_KEY,
 		mcp: {
 			enabled: enableMCP,
 			servers: {},
@@ -134,7 +179,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 }
 
 export async function ensureInitialized(): Promise<TehutiConfig> {
-	const { loadConfig } = await import("./loader.js");
+	const { loadConfig, isInitialized } = await import("./loader.js");
 
 	if (!isInitialized()) {
 		return runSetupWizard();

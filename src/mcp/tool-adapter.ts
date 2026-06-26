@@ -7,18 +7,57 @@ import type {
 import type { OpenRouterTool } from "../api/openrouter.js";
 import type { MCPTool } from "./client.js";
 
+function stableHash(input: string): string {
+	let hash = 5381;
+	for (let i = 0; i < input.length; i++) {
+		hash = (hash * 33) ^ input.charCodeAt(i);
+	}
+	return (hash >>> 0).toString(36).padStart(7, "0").slice(0, 7);
+}
+
+function safeNamePart(value: string, fallback: string, maxLength: number): string {
+	const safe = value
+		.replace(/[^a-zA-Z0-9_-]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.slice(0, maxLength);
+	return safe || fallback;
+}
+
+export function createMCPToolName(serverName: string, toolName: string): string {
+	const safeServer = safeNamePart(serverName, "server", 18);
+	const safeTool = safeNamePart(toolName, "tool", 28);
+	const hash = stableHash(`${serverName}:${toolName}`);
+	return `mcp_${safeServer}__${safeTool}__${hash}`;
+}
+
+export function normalizeMCPInputSchema(
+	schema: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+	if (!schema || typeof schema !== "object") {
+		return { type: "object", properties: {} };
+	}
+
+	return {
+		...schema,
+		type: "object",
+		properties:
+			typeof schema.properties === "object" && schema.properties !== null
+				? schema.properties
+				: {},
+	};
+}
+
 export function convertMCPToolToOpenRouter(
 	serverName: string,
 	tool: MCPTool,
 ): OpenRouterTool {
-	// Use colon as delimiter to avoid underscore parsing issues
 	return {
 		type: "function",
 		function: {
-			name: `mcp_${serverName}:${tool.name}`,
+			name: createMCPToolName(serverName, tool.name),
 			description:
 				tool.description ?? `MCP tool: ${tool.name} (from ${serverName})`,
-			parameters: tool.inputSchema,
+			parameters: normalizeMCPInputSchema(tool.inputSchema),
 		},
 	};
 }
@@ -36,10 +75,13 @@ export function createMCPToolDefinition(
 	tool: MCPTool,
 	executor: (args: unknown) => Promise<unknown>,
 ): ToolDefinition {
+	const toolName = createMCPToolName(serverName, tool.name);
+
 	return {
-		name: `mcp_${serverName}:${tool.name}`,
+		name: toolName,
 		description: tool.description ?? `MCP tool from ${serverName}`,
 		parameters: z.object({}).passthrough(),
+		jsonSchema: normalizeMCPInputSchema(tool.inputSchema),
 		category: "mcp",
 		requiresPermission: true,
 		execute: async (args: unknown, _ctx: ToolContext): Promise<ToolResult> => {
@@ -101,16 +143,16 @@ export function createMCPToolDefinition(
 export function parseMCPToolName(
 	fullName: string,
 ): { serverName: string; toolName: string } | null {
-	// Use colon as delimiter: mcp_serverName:toolName
-	const match = fullName.match(/^mcp_([^:]+):(.+)$/);
-	if (!match) return null;
+	if (!isMCPTool(fullName)) return null;
 
+	const parts = fullName.slice("mcp_".length).split("__");
+	if (parts.length < 3) return null;
 	return {
-		serverName: match[1],
-		toolName: match[2],
+		serverName: parts[0],
+		toolName: parts.slice(1, -1).join("__"),
 	};
 }
 
 export function isMCPTool(name: string): boolean {
-	return name.startsWith("mcp_") && name.includes(":");
+	return name.startsWith("mcp_") && name.includes("__");
 }

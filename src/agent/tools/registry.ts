@@ -29,8 +29,10 @@ export interface ToolDefinition {
 	name: string;
 	description: string;
 	parameters: z.ZodType<unknown>;
+	jsonSchema?: Record<string, unknown>;
 	execute: (args: unknown, ctx: ToolContext) => Promise<ToolResult>;
 	requiresPermission?: boolean;
+	isReadonly?: boolean;
 	category:
 		| "fs"
 		| "bash"
@@ -67,6 +69,23 @@ export function registerTools(tools: ToolDefinition[]): void {
 	}
 }
 
+export function unregisterTool(name: string): boolean {
+	return toolRegistry.delete(name);
+}
+
+export function unregisterToolsWhere(
+	predicate: (tool: ToolDefinition) => boolean,
+): number {
+	let removed = 0;
+	for (const [name, tool] of toolRegistry.entries()) {
+		if (predicate(tool)) {
+			toolRegistry.delete(name);
+			removed++;
+		}
+	}
+	return removed;
+}
+
 export function getTool(name: string): ToolDefinition | undefined {
 	return toolRegistry.get(name);
 }
@@ -87,7 +106,7 @@ export function clearTools(): void {
 
 export function getToolDefinitions(): OpenRouterTool[] {
 	return getAllTools().map((tool) => {
-		const schema = zodToJsonSchema(tool.parameters);
+		const schema = tool.jsonSchema ?? zodToJsonSchema(tool.parameters);
 		return {
 			type: "function",
 			function: {

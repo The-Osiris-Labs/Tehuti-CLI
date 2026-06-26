@@ -1,4 +1,5 @@
 import type { TehutiConfig } from "../config/schema.js";
+import { resolveBaseUrlForProvider } from "../config/providers.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
 import type {
@@ -50,7 +51,13 @@ export class KiloCodeClient {
 	private static lastConfigKey: string | null = null;
 
 	static getInstance(config: TehutiConfig): KiloCodeClient {
-		const configKey = `${config.apiKey}:${config.model}`;
+		const configKey = [
+			config.provider || "kilocode",
+			config.apiKey || "",
+			config.model,
+			config.requestTimeout ?? "",
+			JSON.stringify(config.kilocode ?? {}),
+		].join(":");
 		if (
 			!KiloCodeClient.instance ||
 			KiloCodeClient.lastConfigKey !== configKey
@@ -68,9 +75,11 @@ export class KiloCodeClient {
 
 	constructor(config: TehutiConfig) {
 		this.apiKey = config.apiKey ?? process.env.KILO_API_KEY ?? "";
-		this.baseUrl = "https://api.kilo.ai/api/gateway";
+		this.baseUrl =
+			resolveBaseUrlForProvider("kilocode", config.baseUrl) ??
+			"https://api.kilo.ai/api/gateway";
 		this.model = config.model;
-		this.fallbackModel = config.fallbackModel ?? "anthropic/claude-sonnet-4";
+		this.fallbackModel = config.fallbackModel ?? config.model ?? "minimax-m3";
 		this.maxTokens = config.maxTokens ?? 4096;
 		this.temperature = config.temperature ?? 0.7;
 		this.supportsCaching = false; // KiloCode doesn't mention prompt caching

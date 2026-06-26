@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import Conf from "conf";
 import { cosmiconfig } from "cosmiconfig";
 import { z } from "zod";
@@ -7,18 +9,31 @@ import {
 	TEHUTI_CONFIG_SCHEMA,
 	type TehutiConfig,
 } from "./schema.js";
+import {
+	getEnvApiKeyForProvider,
+	resolveBaseUrlForProvider,
+} from "./providers.js";
 
 const MODULE_NAME = "tehuti";
+const CONFIG_CWD =
+	process.env.TEHUTI_CONFIG_DIR ||
+	(process.env.VITEST
+		? path.join(os.tmpdir(), "tehuti-vitest-config")
+		: undefined);
 
 const globalConfig = new Conf<{
 	apiKey?: string;
 	model?: string;
+	provider?: string;
+	baseUrl?: string;
+	customProvider?: Record<string, unknown>;
 	temperature?: number;
 	maxTokens?: number;
 	initialized?: boolean;
 	recentCommands?: string[];
 }>({
 	projectName: MODULE_NAME,
+	...(CONFIG_CWD ? { cwd: CONFIG_CWD } : {}),
 	defaults: {
 		initialized: false,
 		recentCommands: [],
@@ -125,54 +140,87 @@ export async function loadConfig(
 		consola.warn(`Failed to load config file: ${errorMessage}`);
 	}
 
-	const envApiKey =
-		process.env.OPENROUTER_API_KEY ||
-		process.env.TEHUTI_API_KEY ||
-		process.env.KILO_API_KEY;
 	const envModel = process.env.TEHUTI_MODEL;
+	const envBaseUrl = process.env.TEHUTI_BASE_URL?.trim();
 	const envDebug = process.env.TEHUTI_DEBUG === "true";
- 	const envProvider = process.env.TEHUTI_PROVIDER;
- 	const envCustomProvider = process.env.TEHUTI_CUSTOM_PROVIDER;
+	const envProvider = process.env.TEHUTI_PROVIDER?.trim();
+	const envCustomProvider = process.env.TEHUTI_CUSTOM_PROVIDER;
+	const resolvedFileConfig = resolveConfigEnvVars(fileConfig);
+	const fileProvider =
+		typeof resolvedFileConfig.provider === "string"
+			? resolvedFileConfig.provider.trim()
+			: undefined;
+	const persistedProvider = globalConfig.get("provider")?.trim();
+	const providerSource = envProvider
+		? "env"
+		: persistedProvider
+			? "global"
+			: fileProvider
+				? "file"
+				: "default";
 
-	// Validate provider value
-	const validProviders = ["openrouter", "kilocode", "custom"];
-	const validatedProvider = validProviders.includes(envProvider?.trim() || "") 
-		? envProvider.trim() 
-		: undefined;
+	const provider = (
+		envProvider ||
+		persistedProvider ||
+		fileProvider ||
+		DEFAULT_CONFIG.provider
+	) as string;
+
+	let parsedEnvCustomProvider: unknown;
+	if (envCustomProvider) {
+		try {
+			parsedEnvCustomProvider = JSON.parse(envCustomProvider);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			consola.warn(
+				`Ignoring invalid TEHUTI_CUSTOM_PROVIDER JSON: ${message}`,
+			);
+		}
+	}
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
-		...resolveConfigEnvVars(fileConfig),
+		...resolvedFileConfig,
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
+		...(globalConfig.get("provider") && { provider: globalConfig.get("provider") }),
+		...(globalConfig.get("baseUrl") && { baseUrl: globalConfig.get("baseUrl") }),
+		...(globalConfig.get("customProvider") && {
+			customProvider: globalConfig.get("customProvider"),
+		}),
 		...(globalConfig.get("temperature") !== undefined && { temperature: globalConfig.get("temperature") }),
 		...(globalConfig.get("maxTokens") !== undefined && { maxTokens: globalConfig.get("maxTokens") }),
 		...(envModel && { model: envModel }),
-		...(validatedProvider ? { provider: validatedProvider } : {}),
-		...(envCustomProvider && { 
-			customProvider: JSON.parse(envCustomProvider) 
+		provider,
+		...(parsedEnvCustomProvider !== undefined && {
+			customProvider: parsedEnvCustomProvider,
 		}),
 		...(envDebug && { debug: true }),
 	};
 
-	// Handle API key with provider-specific logic
-	const provider = mergedConfig.provider as string;
-	if (provider === "kilocode") {
-		const kiloApiKey =
-			process.env.KILO_API_KEY ||
-			process.env.OPENROUTER_API_KEY ||
-			process.env.TEHUTI_API_KEY;
-		if (kiloApiKey) {
-			mergedConfig.apiKey = kiloApiKey;
-		} else if (fileConfig.apiKey) {
-			mergedConfig.apiKey = fileConfig.apiKey;
-		} else {
-			mergedConfig.apiKey = globalConfig.get("apiKey");
-		}
-	} else {
-		// For other providers, use standard API key logic
-		mergedConfig.apiKey =
-			envApiKey ?? fileConfig.apiKey ?? globalConfig.get("apiKey");
-	}
+	const fileBaseUrl =
+		typeof resolvedFileConfig.baseUrl === "string"
+			? resolvedFileConfig.baseUrl
+			: undefined;
+	const persistedBaseUrl = globalConfig.get("baseUrl");
+	const pairedBaseUrl =
+		providerSource === "global"
+			? persistedBaseUrl
+			: providerSource === "file"
+				? fileBaseUrl
+				: undefined;
+	mergedConfig.baseUrl = envBaseUrl
+		? envBaseUrl.replace(/\/+$/, "")
+		: resolveBaseUrlForProvider(provider, pairedBaseUrl);
+
+	// Handle API key - provider-specific env vars take precedence over
+	// unrelated provider keys, while local config remains valid fallback.
+	const currentProvider = mergedConfig.provider as string;
+	const configuredApiKey =
+		(typeof resolvedFileConfig.apiKey === "string"
+			? resolvedFileConfig.apiKey
+			: undefined) ?? globalConfig.get("apiKey");
+	mergedConfig.apiKey =
+		getEnvApiKeyForProvider(currentProvider) ?? configuredApiKey;
 
 	try {
 		const parsed = TEHUTI_CONFIG_SCHEMA.parse(mergedConfig);
@@ -189,37 +237,61 @@ export async function loadConfig(
 }
 
 export function saveGlobalConfig(updates: {
-	apiKey?: string;
-	model?: string;
-	temperature?: number;
-	maxTokens?: number;
+	apiKey?: string | null;
+	model?: string | null;
+	provider?: string | null;
+	baseUrl?: string | null;
+	customProvider?: Record<string, unknown> | null;
+	temperature?: number | null;
+	maxTokens?: number | null;
 }): void {
-	if (updates.apiKey !== undefined) {
+	if ("apiKey" in updates) {
 		if (updates.apiKey) {
 			globalConfig.set("apiKey", updates.apiKey);
 		} else {
 			globalConfig.delete("apiKey");
 		}
 	}
-	if (updates.model !== undefined) {
+	if ("model" in updates) {
 		if (updates.model) {
 			globalConfig.set("model", updates.model);
 		} else {
 			globalConfig.delete("model");
 		}
 	}
-	if (updates.temperature !== undefined) {
+	if ("temperature" in updates) {
 		if (typeof updates.temperature === "number" && updates.temperature >= 0 && updates.temperature <= 2) {
 			globalConfig.set("temperature", updates.temperature);
 		} else {
 			globalConfig.delete("temperature");
 		}
 	}
-	if (updates.maxTokens !== undefined) {
+	if ("maxTokens" in updates) {
 		if (typeof updates.maxTokens === "number" && updates.maxTokens > 0) {
 			globalConfig.set("maxTokens", updates.maxTokens);
 		} else {
 			globalConfig.delete("maxTokens");
+		}
+	}
+	if ("provider" in updates) {
+		if (updates.provider) {
+			globalConfig.set("provider", updates.provider);
+		} else {
+			globalConfig.delete("provider");
+		}
+	}
+	if ("baseUrl" in updates) {
+		if (updates.baseUrl) {
+			globalConfig.set("baseUrl", updates.baseUrl.replace(/\/+$/, ""));
+		} else {
+			globalConfig.delete("baseUrl");
+		}
+	}
+	if ("customProvider" in updates) {
+		if (updates.customProvider) {
+			globalConfig.set("customProvider", updates.customProvider);
+		} else {
+			globalConfig.delete("customProvider");
 		}
 	}
 	globalConfig.set("initialized", true);
@@ -228,6 +300,9 @@ export function saveGlobalConfig(updates: {
 export function getGlobalConfig(): {
 	apiKey?: string;
 	model?: string;
+	provider?: string;
+	baseUrl?: string;
+	customProvider?: Record<string, unknown>;
 	temperature?: number;
 	maxTokens?: number;
 	initialized?: boolean;
@@ -235,6 +310,9 @@ export function getGlobalConfig(): {
 	return {
 		apiKey: globalConfig.get("apiKey"),
 		model: globalConfig.get("model"),
+		provider: globalConfig.get("provider"),
+		baseUrl: globalConfig.get("baseUrl"),
+		customProvider: globalConfig.get("customProvider"),
 		temperature: globalConfig.get("temperature"),
 		maxTokens: globalConfig.get("maxTokens"),
 		initialized: globalConfig.get("initialized"),

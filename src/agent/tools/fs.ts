@@ -1069,6 +1069,7 @@ Usage:
 		execute: readFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "write",
@@ -1084,6 +1085,7 @@ Usage:
 		execute: writeFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "edit",
@@ -1101,6 +1103,7 @@ Usage:
 		execute: editFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "create_dir",
@@ -1109,6 +1112,7 @@ Usage:
 		execute: createDir as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "delete_file",
@@ -1117,6 +1121,7 @@ Usage:
 		execute: deleteFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "delete_dir",
@@ -1126,6 +1131,7 @@ Usage:
 		execute: deleteDir as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "copy",
@@ -1134,6 +1140,7 @@ Usage:
 		execute: copyFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "move",
@@ -1142,6 +1149,7 @@ Usage:
 		execute: moveFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: true,
+		isReadonly: false,
 	},
 	{
 		name: "list_dir",
@@ -1151,6 +1159,7 @@ Usage:
 		execute: listDir as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 	{
 		name: "file_info",
@@ -1160,6 +1169,7 @@ Usage:
 		execute: getFileInfo as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
+		isReadonly: true,
 	},
 ];
 
@@ -1285,6 +1295,7 @@ export const imageTool: ToolDefinition = {
 	execute: readImage as AnyToolExecutor,
 	category: "fs",
 	requiresPermission: false,
+	isReadonly: true,
 };
 
 const PDF_READ_SCHEMA = z.object({
@@ -1391,6 +1402,7 @@ export const pdfTool: ToolDefinition = {
 	execute: readPDF as AnyToolExecutor,
 	category: "fs",
 	requiresPermission: false,
+	isReadonly: true,
 };
 
 export const allFsTools: ToolDefinition[] = [...fsTools, imageTool, pdfTool];

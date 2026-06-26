@@ -1,123 +1,42 @@
-export const AVAILABLE_MODELS = {
-	"giga-potato": {
-		name: "Giga Potato (free)",
-		provider: "Kilo",
-		contextLength: 256000,
-		pricing: { input: 0, output: 0 },
-		capabilities: ["chat", "tools", "vision"] as string[],
+import {
+	getProviderInfo,
+	getProviderAuthHeaders,
+	getProviderModelsUrl,
+	resolveBaseUrlForProvider,
+} from "../config/providers.js";
+
+/**
+ * Live model info fetched from provider /models (or client listModels).
+ * NO reliance on static data for primary path. Accurate numbers when the endpoint provides them.
+ */
+export interface LiveModelInfo {
+	id: string;
+	name?: string;
+	contextLength?: number;      // total conversation window (preferred live value)
+	maxOutputTokens?: number;    // max generation length if advertised
+	pricing?: {
+		input?: number;   // per million tokens, normalized number
+		output?: number;
+		[key: string]: any;
+	};
+	ownedBy?: string;
+	raw?: any; // original payload for debugging/ext
+}
+
+// Static fallbacks ONLY as last resort when provider gives zero info.
+// Prefer live data always. These are minimal and may be outdated.
+export const AVAILABLE_MODELS: Record<string, any> = {
+	// EXTREMELY MINIMAL static fallback only.
+	// Primary source of model info (context, pricing, max tokens) is ALWAYS the live fetch
+	// performed when you select/list models for the current provider.
+	// We keep almost nothing hardcoded.
+	"minimax-m3": {
+		name: "minimax-m3",
+		provider: "OpenCode Go",
+		contextLength: 1000000,
+		pricing: { input: 0, output: 0 }, // subscription model
+		capabilities: ["chat", "tools"] as string[],
 		recommended: true,
-	},
-	"giga-potato-thinking": {
-		name: "Giga Potato Thinking (free)",
-		provider: "Kilo",
-		contextLength: 256000,
-		pricing: { input: 0, output: 0 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"minimax/minimax-m2.5:free": {
-		name: "MiniMax M2.5 (free)",
-		provider: "MiniMax",
-		contextLength: 204800,
-		pricing: { input: 0, output: 0 },
-		capabilities: ["chat", "tools"] as string[],
-		recommended: false,
-	},
-	"arcee-ai/trinity-large-preview:free": {
-		name: "Arcee AI Trinity Large Preview (free)",
-		provider: "Arcee",
-		contextLength: 131000,
-		pricing: { input: 0, output: 0 },
-		capabilities: ["chat", "tools"] as string[],
-		recommended: false,
-	},
-	"anthropic/claude-opus-4": {
-		name: "Claude Opus 4",
-		provider: "Anthropic",
-		contextLength: 200000,
-		pricing: { input: 15, output: 75 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"anthropic/claude-sonnet-4": {
-		name: "Claude Sonnet 4",
-		provider: "Anthropic",
-		contextLength: 200000,
-		pricing: { input: 3, output: 15 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"anthropic/claude-haiku-4": {
-		name: "Claude Haiku 4",
-		provider: "Anthropic",
-		contextLength: 200000,
-		pricing: { input: 0.25, output: 1.25 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"openai/gpt-5": {
-		name: "GPT-5",
-		provider: "OpenAI",
-		contextLength: 128000,
-		pricing: { input: 5, output: 15 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"openai/gpt-4o": {
-		name: "GPT-4o",
-		provider: "OpenAI",
-		contextLength: 128000,
-		pricing: { input: 2.5, output: 10 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"openai/gpt-4o-mini": {
-		name: "GPT-4o Mini",
-		provider: "OpenAI",
-		contextLength: 128000,
-		pricing: { input: 0.15, output: 0.6 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"google/gemini-2.5-pro": {
-		name: "Gemini 2.5 Pro",
-		provider: "Google",
-		contextLength: 1000000,
-		pricing: { input: 1.25, output: 5 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"google/gemini-2.5-flash": {
-		name: "Gemini 2.5 Flash",
-		provider: "Google",
-		contextLength: 1000000,
-		pricing: { input: 0.075, output: 0.3 },
-		capabilities: ["chat", "tools", "vision"] as string[],
-		recommended: false,
-	},
-	"deepseek/deepseek-v3": {
-		name: "DeepSeek V3",
-		provider: "DeepSeek",
-		contextLength: 64000,
-		pricing: { input: 0.27, output: 1.1 },
-		capabilities: ["chat", "tools"] as string[],
-		recommended: false,
-	},
-	"meta-llama/llama-3.3-70b-instruct": {
-		name: "Llama 3.3 70B",
-		provider: "Meta",
-		contextLength: 128000,
-		pricing: { input: 0.6, output: 0.6 },
-		capabilities: ["chat", "tools"] as string[],
-		recommended: false,
-	},
-	"mistralai/mistral-large-2": {
-		name: "Mistral Large 2",
-		provider: "Mistral",
-		contextLength: 128000,
-		pricing: { input: 2, output: 6 },
-		capabilities: ["chat", "tools"] as string[],
-		recommended: false,
 	},
 };
 
@@ -191,3 +110,109 @@ export function getModelsWithCapability(capability: string): ModelInfo[] {
 			recommended: info.recommended,
 		}));
 }
+
+/**
+ * Live fetch rich model catalog.
+ * Returns LiveModelInfo[] with whatever the provider actually advertises (context_length, pricing, etc).
+ * Tries hard to extract from common shapes (OpenRouter rich, standard OpenAI, others).
+ * Real fetch, zero hard-coded per-model facts here.
+ */
+export async function listModelsForProvider(
+	provider: string,
+	config: {
+		apiKey?: string;
+		baseUrl?: string;
+		headers?: Record<string, string>;
+	},
+): Promise<LiveModelInfo[]> {
+	const info = getProviderInfo(provider);
+	// Provider explicitly opted out of model listing (modelListEndpoint === '')
+	if (info && info.modelListEndpoint === '') {
+		return [];
+	}
+	const resolvedBase = resolveBaseUrlForProvider(
+		provider,
+		config.baseUrl,
+	) || "https://openrouter.ai/api/v1";
+	const base = resolvedBase.replace(/\/+$/, "");
+	const url = getProviderModelsUrl(provider, base) || `${base}/models`;
+	const key = config.apiKey;
+	const customHeaders = config.headers;
+
+	try {
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+			...(getProviderAuthHeaders(provider, key, customHeaders)),
+		};
+
+		let res = await fetch(url, { headers });
+		if (!res.ok && res.status === 404 && info?.modelListEndpoint !== "/models") {
+			res = await fetch(`${base}/models`, { headers });
+		}
+		if (!res.ok) return [];
+
+		const data = await res.json() as any;
+		let rawModels: any[] = [];
+		if (data?.data && Array.isArray(data.data)) rawModels = data.data;
+		else if (Array.isArray(data)) rawModels = data;
+
+		const normalized: LiveModelInfo[] = rawModels
+			.map((m: any) => {
+				const id = m.id || m.name || m.model || m.slug || String(m);
+				if (!id || typeof id !== "string") return null;
+
+				// Extract live numbers - whatever the endpoint gives us
+				const contextLength =
+					m.context_length ?? m.contextLength ?? m.context_window ??
+					m.top_provider?.context_length ?? m.architecture?.context_length ??
+					undefined;
+
+				const maxOutput =
+					m.max_completion_tokens ?? m.top_provider?.max_completion_tokens ??
+					m.max_tokens ?? m.max_output_tokens ?? undefined;
+
+				let pricing: any = undefined;
+				if (m.pricing) {
+					pricing = {
+						input: toPerMillion(m.pricing.prompt ?? m.pricing.input ?? m.pricing?.["prompt"]),
+						output: toPerMillion(m.pricing.completion ?? m.pricing.output ?? m.pricing?.["completion"]),
+						...m.pricing,
+					};
+				}
+
+				return {
+					id,
+					name: m.name || m.id,
+					contextLength: contextLength ? Number(contextLength) : undefined,
+					maxOutputTokens: maxOutput ? Number(maxOutput) : undefined,
+					pricing,
+					ownedBy: m.owned_by || m.ownedBy,
+					raw: m,
+				} as LiveModelInfo;
+			})
+			.filter(Boolean) as LiveModelInfo[];
+
+		return normalized.slice(0, 200);
+	} catch {
+		return [];
+	}
+}
+
+function toPerMillion(val: any): number | undefined {
+	if (val == null) return undefined;
+	const n = typeof val === "string" ? parseFloat(val) : Number(val);
+	if (!isFinite(n)) return undefined;
+	// OpenRouter etc often give per-token (e.g. 0.0000005 = $0.50 / M). If < 1 treat as per-token.
+	if (n > 0 && n < 1) return n * 1_000_000;
+	return n;
+}
+
+/** Convenience: fetch and return string ids (back-compat for old callers) */
+export async function listModelIdsForProvider(provider: string, config: { apiKey?: string; baseUrl?: string }): Promise<string[]> {
+	const rich = await listModelsForProvider(provider, config);
+	return rich.map(m => m.id).slice(0, 100);
+}
+
+// Legacy re-exports point at live where possible (old static remains as fallback only)
+export const getLiveModelInfo = (models: LiveModelInfo[], id: string) =>
+	models.find(m => m.id === id || m.id.includes(id) || id.includes(m.id));
