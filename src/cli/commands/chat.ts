@@ -113,6 +113,7 @@ import { debug } from "../../utils/debug.js";
 import { setupErrorHandlers, APIError, AgentError, ConfigError } from "../../utils/errors.js";
 import { setDebugMode } from "../../utils/logger.js";
 import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
+import { isMouseSequence } from "../../utils/mouse.js";
 import {
 	type CommandItem,
 	CommandPalette,
@@ -788,6 +789,9 @@ function _QuestionPrompt({
 	const { stdout } = useStdout();
 
 	useInput((k, key) => {
+		if (isMouseSequence(k)) {
+			return;
+		}
 		if (customMode) {
 			if (key.return) {
 				onAnswer(customInput);
@@ -2047,6 +2051,10 @@ function ChatUI({
 	}, [scrollToBottom]);
 
 	useInput((k, key) => {
+		if (isMouseSequence(k)) {
+			return;
+		}
+
 		if (showCommandPalette) {
 			return;
 		}

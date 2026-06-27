@@ -1,5 +1,6 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import React, { useEffect, useMemo, useState } from "react";
+import { isMouseSequence } from "../../../utils/mouse.js";
 
 const GOLD = "#D4AF37";
 const GRAY = "#6B7280";
@@ -139,6 +140,7 @@ export function ConfigEditor({
 	};
 
 	useInput((char, key) => {
+		if (isMouseSequence(char)) return;
 		if (editingField) {
 			if (key.return) {
 				commitFieldEdit();

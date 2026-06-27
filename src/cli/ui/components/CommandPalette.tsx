@@ -4,6 +4,7 @@ import InkTextInput from "ink-text-input";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
 import { DECORATIVE } from "../../../branding/index.js";
+import { isMouseSequence } from "../../../utils/mouse.js";
 
 const GOLD = "#F5C518";
 const CORAL = "#FF6B35";
@@ -191,6 +192,7 @@ export function CommandPalette({
 
 	useInput(
 		(char, key) => {
+			if (isMouseSequence(char)) return;
 			if (!visible) return;
 
 			if (key.escape) {
