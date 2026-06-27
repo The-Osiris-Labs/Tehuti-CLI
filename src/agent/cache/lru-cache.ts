@@ -28,6 +28,17 @@ const DEFAULT_CONFIG: Required<CacheConfig> = {
 	maxEntries: 1000,
 };
 
+export function stableStringify(val: unknown): string {
+	if (val === null || typeof val !== "object") {
+		return JSON.stringify(val);
+	}
+	if (Array.isArray(val)) {
+		return "[" + val.map(stableStringify).join(",") + "]";
+	}
+	const keys = Object.keys(val).sort();
+	return "{" + keys.map(k => `${JSON.stringify(k)}:${stableStringify((val as Record<string, unknown>)[k])}`).join(",") + "}";
+}
+
 export class LRUCache<T = unknown> {
 	private cache = new Map<string, CacheEntry<T>>();
 	private accessOrder: string[] = [];
@@ -54,7 +65,7 @@ export class LRUCache<T = unknown> {
 	}
 
 	private buildKey(tool: string, args: unknown): string {
-		const argsStr = typeof args === "string" ? args : JSON.stringify(args);
+		const argsStr = typeof args === "string" ? args : stableStringify(args);
 		return `${tool}:${argsStr}`;
 	}
 
@@ -177,11 +188,10 @@ export class LRUCache<T = unknown> {
 	}
 
 	deleteByPattern(pattern: string): number {
-		const regex = new RegExp(pattern);
 		let deleted = 0;
 
 		for (const key of this.cache.keys()) {
-			if (regex.test(key)) {
+			if (key.includes(pattern)) {
 				const entry = this.cache.get(key);
 				if (entry) {
 					this.currentSize -= entry.size;

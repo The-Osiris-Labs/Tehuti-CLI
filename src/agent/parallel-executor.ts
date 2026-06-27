@@ -8,6 +8,7 @@ import {
 import type { AgentContext } from "./context.js";
 import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
+import { getPrefetcher } from "./prefetcher.js";
 
 export const SAFE_PARALLEL_TOOLS = new Set([
 	"read",
@@ -129,6 +130,14 @@ async function executeToolCall(
 		if (cached) {
 			telemetry.recordToolExecution(toolName, 0, true, true);
 			return cached;
+		}
+	}
+
+	const prefetchedPromise = getPrefetcher().getPrefetched(toolName, args);
+	if (prefetchedPromise) {
+		const prefetchedResult = await prefetchedPromise;
+		if (prefetchedResult) {
+			return prefetchedResult as ToolResult;
 		}
 	}
 

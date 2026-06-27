@@ -6,29 +6,45 @@ const connectionPool: Map<string, Pool> = new Map();
 export interface HttpAgentConfig {
 	keepAliveTimeout?: number;
 	keepAliveMaxTimeout?: number;
+	keepAliveTimeoutThreshold?: number;
 	connections?: number;
 	pipelining?: number;
+	connectTimeout?: number;
+	tcpKeepAlive?: boolean;
+	tcpKeepAliveInitialDelay?: number;
 }
 
 const DEFAULT_CONFIG: Required<HttpAgentConfig> = {
 	keepAliveTimeout: 60000,
 	keepAliveMaxTimeout: 600000,
+	keepAliveTimeoutThreshold: 1000,
 	connections: 50,
 	pipelining: 1,
+	connectTimeout: 10000,
+	tcpKeepAlive: true,
+	tcpKeepAliveInitialDelay: 30000,
 };
+
+let activeConfig = { ...DEFAULT_CONFIG };
 
 export function initializeHttpAgent(config: HttpAgentConfig = {}): void {
 	if (globalAgent) {
 		return;
 	}
 
-	const finalConfig = { ...DEFAULT_CONFIG, ...config };
+	activeConfig = { ...DEFAULT_CONFIG, ...config };
 
 	globalAgent = new Agent({
-		keepAliveTimeout: finalConfig.keepAliveTimeout,
-		keepAliveMaxTimeout: finalConfig.keepAliveMaxTimeout,
-		connections: finalConfig.connections,
-		pipelining: finalConfig.pipelining,
+		keepAliveTimeout: activeConfig.keepAliveTimeout,
+		keepAliveMaxTimeout: activeConfig.keepAliveMaxTimeout,
+		keepAliveTimeoutThreshold: activeConfig.keepAliveTimeoutThreshold,
+		connections: activeConfig.connections,
+		pipelining: activeConfig.pipelining,
+		connect: {
+			timeout: activeConfig.connectTimeout,
+			keepAlive: activeConfig.tcpKeepAlive,
+			keepAliveInitialDelay: activeConfig.tcpKeepAliveInitialDelay,
+		},
 	});
 
 	setGlobalDispatcher(globalAgent);
@@ -41,8 +57,16 @@ export function getAgent(): Agent | null {
 export function getPool(origin: string): Pool {
 	if (!connectionPool.has(origin)) {
 		const pool = new Pool(origin, {
-			connections: 10,
-			pipelining: 1,
+			connections: activeConfig.connections,
+			pipelining: activeConfig.pipelining,
+			keepAliveTimeout: activeConfig.keepAliveTimeout,
+			keepAliveMaxTimeout: activeConfig.keepAliveMaxTimeout,
+			keepAliveTimeoutThreshold: activeConfig.keepAliveTimeoutThreshold,
+			connect: {
+				timeout: activeConfig.connectTimeout,
+				keepAlive: activeConfig.tcpKeepAlive,
+				keepAliveInitialDelay: activeConfig.tcpKeepAliveInitialDelay,
+			},
 		});
 		connectionPool.set(origin, pool);
 	}
@@ -59,14 +83,40 @@ export function resetAgent(): void {
 		pool.close();
 	}
 	connectionPool.clear();
+	activeConfig = { ...DEFAULT_CONFIG };
 }
 
 export function getAgentStats(): {
 	initialized: boolean;
 	pools: number;
+	poolsCount: number;
+	poolsDetails: Record<
+		string,
+		{
+			connected: number;
+			free: number;
+			pending: number;
+			queued: number;
+			running: number;
+			size: number;
+		}
+	>;
 } {
+	const poolStats: Record<string, any> = {};
+	for (const [origin, pool] of connectionPool.entries()) {
+		poolStats[origin] = {
+			connected: pool.stats?.connected ?? 0,
+			free: pool.stats?.free ?? 0,
+			pending: pool.stats?.pending ?? 0,
+			queued: pool.stats?.queued ?? 0,
+			running: pool.stats?.running ?? 0,
+			size: pool.stats?.size ?? 0,
+		};
+	}
 	return {
 		initialized: globalAgent !== null,
 		pools: connectionPool.size,
+		poolsCount: connectionPool.size,
+		poolsDetails: poolStats,
 	};
 }

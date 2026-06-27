@@ -58,7 +58,17 @@ export function processStreamChunk(
 	hasThinking: boolean;
 	newThinking: string;
 } {
-	const choice = chunk.choices[0];
+	if (chunk.usage) {
+		state.usage = {
+			promptTokens: chunk.usage.prompt_tokens,
+			completionTokens: chunk.usage.completion_tokens,
+			totalTokens: chunk.usage.total_tokens,
+			cacheReadTokens: chunk.usage.cache_read_input_tokens,
+			cacheWriteTokens: chunk.usage.cache_creation_input_tokens,
+		};
+	}
+
+	const choice = chunk.choices?.[0];
 	if (!choice) {
 		return {
 			hasContent: false,
@@ -112,24 +122,22 @@ export function processStreamChunk(
 					name: tc.function.name,
 					arguments: tc.function.arguments ?? existing?.arguments ?? "",
 				});
-			} else if (tc.function?.arguments && existing) {
-				existing.arguments += tc.function.arguments;
+			} else if (tc.function?.arguments) {
+				if (existing) {
+					existing.arguments += tc.function.arguments;
+				} else {
+					state.toolCalls.set(index, {
+						id: "",
+						name: "",
+						arguments: tc.function.arguments,
+					});
+				}
 			}
 		}
 	}
 
 	if (choice.finish_reason) {
 		state.finishReason = choice.finish_reason;
-	}
-
-	if (chunk.usage) {
-		state.usage = {
-			promptTokens: chunk.usage.prompt_tokens,
-			completionTokens: chunk.usage.completion_tokens,
-			totalTokens: chunk.usage.total_tokens,
-			cacheReadTokens: chunk.usage.cache_read_input_tokens,
-			cacheWriteTokens: chunk.usage.cache_creation_input_tokens,
-		};
 	}
 
 	return { hasContent, newContent, hasThinking, newThinking };

@@ -33,31 +33,24 @@ export const PERMISSION_RULES = {
 type Category = keyof typeof PERMISSION_RULES;
 
 export function isToolSafe(category: string, operation: string): boolean {
+	if (!Object.prototype.hasOwnProperty.call(PERMISSION_RULES, category)) return false;
 	const cat = category as Category;
-	if (!(cat in PERMISSION_RULES)) return false;
+	const catRules = PERMISSION_RULES[cat];
+	if (!Object.prototype.hasOwnProperty.call(catRules, operation)) return false;
 
-	const catRules = PERMISSION_RULES[cat] as Record<string, { safe: boolean }>;
-	const op = operation as string;
-	if (!(op in catRules)) return false;
-
-	return catRules[op].safe;
+	return (catRules as Record<string, { safe: boolean }>)[operation].safe;
 }
 
 export function requiresPermission(
 	category: string,
 	operation: string,
 ): boolean {
+	if (!Object.prototype.hasOwnProperty.call(PERMISSION_RULES, category)) return true;
 	const cat = category as Category;
-	if (!(cat in PERMISSION_RULES)) return true;
+	const catRules = PERMISSION_RULES[cat];
+	if (!Object.prototype.hasOwnProperty.call(catRules, operation)) return true;
 
-	const catRules = PERMISSION_RULES[cat] as Record<
-		string,
-		{ requiresPermission: boolean }
-	>;
-	const op = operation as string;
-	if (!(op in catRules)) return true;
-
-	return catRules[op].requiresPermission;
+	return (catRules as Record<string, { requiresPermission: boolean }>)[operation].requiresPermission;
 }
 
 export interface PermissionRule {
@@ -104,7 +97,7 @@ function parsePermissionPattern(pattern: string): PermissionPattern {
 	return { tool, args };
 }
 
-function matchesPattern(value: string, pattern: string): boolean {
+export function matchesPattern(value: string, pattern: string): boolean {
 	if (pattern === "*") return true;
 	if (pattern.startsWith("*") && pattern.endsWith("*")) {
 		return value.includes(pattern.slice(1, -1));
@@ -116,7 +109,9 @@ function matchesPattern(value: string, pattern: string): boolean {
 		return value.startsWith(pattern.slice(0, -1));
 	}
 	if (pattern.includes("*")) {
-		const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
+		// Escape all regex special characters except '*'
+		const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+		const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
 		return regex.test(value);
 	}
 	return value === pattern;
@@ -135,7 +130,10 @@ export class PermissionManager {
 		try {
 			const stored = process.env.TEHUTI_PERMISSION_RULES;
 			if (stored) {
-				this.rules = JSON.parse(stored);
+				const parsed = JSON.parse(stored);
+				if (Array.isArray(parsed)) {
+					this.rules = parsed;
+				}
 			}
 		} catch {}
 	}

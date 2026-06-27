@@ -1214,20 +1214,21 @@ function ChatUI({
 	});
 
 	useEffect(() => {
+		let timer: NodeJS.Timeout | null = null;
 		const handleResize = () => {
-			const timer = setTimeout(() => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
 				setTerminalSize({
 					rows: stdout?.rows || 24,
 					columns: stdout?.columns || 80,
 				});
 			}, 100);
-			
-			return () => clearTimeout(timer);
 		};
 
 		stdout?.on("resize", handleResize);
 		
 		return () => {
+			if (timer) clearTimeout(timer);
 			stdout?.off("resize", handleResize);
 		};
 	}, [stdout]);
@@ -1239,11 +1240,34 @@ function ChatUI({
 	const shouldShowHeader = showWelcome && scrollOffset === 0 && messages.length > 0;
 	const headerScrollHeight = shouldShowHeader ? 14 : 0;
 	const warningsHeight = configWarnings.length * 4;
+
+	// Calculate command suggestions count to dynamically adjust layout
+	const suggestionsCount = useMemo(() => {
+		if (!input.startsWith("/") || showCommandPalette) return 0;
+		const suggestions = getCommandSuggestions(input, commands);
+		return suggestions.length;
+	}, [input, commands, showCommandPalette]);
+
+	// Account for command palette height if open
+	const paletteHeight = showCommandPalette ? 16 : 0;
+
 	const maxVisibleMessages = Math.max(
 		3,
-		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight,
+		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight - suggestionsCount - paletteHeight,
 	);
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
+
+	// Synchronize scrollOffset with message list size and terminal height changes
+	useEffect(() => {
+		if (messagesEndRef.current) {
+			setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
+		} else {
+			setScrollOffset((prev) => {
+				const maxOff = Math.max(0, messages.length - maxVisibleMessages);
+				return Math.min(prev, maxOff);
+			});
+		}
+	}, [messages.length, maxVisibleMessages]);
 
 	messagesRef.current = messages;
 
@@ -1976,6 +2000,15 @@ function ChatUI({
 			return;
 		}
 
+		// Bracketed paste handling
+		if (k && k.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
+			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
+			setInput((i) => i.slice(0, cursorPos) + pastedText + i.slice(cursorPos));
+			setCursorPos((p) => p + pastedText.length);
+			setHistoryIndex(-1);
+			return;
+		}
+
 		// Backspace handling
 		if (key.backspace || k === "\x7f" || k === "\b" || k === "\x08" || (key.delete && k !== "\x1b[3~")) {
 			if (cursorPos > 0) {
@@ -2033,38 +2066,34 @@ function ChatUI({
 		}
 
 		if (key.upArrow && !loading) {
-			if (input === "" || historyIndex !== -1) {
-				if (history.length > 0) {
-					if (historyIndex === -1) {
-						inputBeforeHistoryRef.current = input;
-						setHistoryIndex(0);
-						setInput(history[0]);
-						setCursorPos(history[0].length);
-					} else if (historyIndex < history.length - 1) {
-						const newIndex = historyIndex + 1;
-						setHistoryIndex(newIndex);
-						setInput(history[newIndex]);
-						setCursorPos(history[newIndex].length);
-					}
-				}
-				return;
-			}
-		}
-
-		if (key.downArrow && !loading) {
-			if (input === "" || historyIndex !== -1) {
-				if (historyIndex > 0) {
-					const newIndex = historyIndex - 1;
+			if (history.length > 0) {
+				if (historyIndex === -1) {
+					inputBeforeHistoryRef.current = input;
+					setHistoryIndex(0);
+					setInput(history[0]);
+					setCursorPos(history[0].length);
+				} else if (historyIndex < history.length - 1) {
+					const newIndex = historyIndex + 1;
 					setHistoryIndex(newIndex);
 					setInput(history[newIndex]);
 					setCursorPos(history[newIndex].length);
-				} else if (historyIndex === 0) {
-					setHistoryIndex(-1);
-					setInput(inputBeforeHistoryRef.current);
-					setCursorPos(inputBeforeHistoryRef.current.length);
 				}
-				return;
 			}
+			return;
+		}
+
+		if (key.downArrow && !loading) {
+			if (historyIndex > 0) {
+				const newIndex = historyIndex - 1;
+				setHistoryIndex(newIndex);
+				setInput(history[newIndex]);
+				setCursorPos(history[newIndex].length);
+			} else if (historyIndex === 0) {
+				setHistoryIndex(-1);
+				setInput(inputBeforeHistoryRef.current);
+				setCursorPos(inputBeforeHistoryRef.current.length);
+			}
+			return;
 		}
 
 		if (key.pageUp) {
@@ -2119,7 +2148,8 @@ function ChatUI({
 			return;
 		}
 
-		if (key.ctrl && k === "w") {
+		// Delete previous word: Ctrl+W or Option+Backspace (Meta+Backspace / Meta+Delete)
+		if (((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) || (key.ctrl && k === "w")) {
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
 			const match = before.match(/\S+\s*$/);
@@ -2256,11 +2286,14 @@ function ChatUI({
 			return;
 		}
 
-		// Handle normal character input
-		if (k && !key.ctrl && !key.meta && k.length === 1) {
-			setInput((i) => i.slice(0, cursorPos) + k + i.slice(cursorPos));
-			setCursorPos((p) => p + 1);
-			setHistoryIndex(-1);
+		// Handle normal character input and paste
+		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
+			const sanitized = k.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
+			if (sanitized.length > 0) {
+				setInput((i) => i.slice(0, cursorPos) + sanitized + i.slice(cursorPos));
+				setCursorPos((p) => p + sanitized.length);
+				setHistoryIndex(-1);
+			}
 		}
 	});
 
@@ -3097,6 +3130,7 @@ function ChatUI({
 						temperature: getGlobalConfig().temperature,
 						maxTokens: getGlobalConfig().maxTokens,
 					},
+					width: terminalWidth,
 					onSave: (updates) => {
 						const normalizedProvider = updates.provider
 							? updates.provider.trim().toLowerCase()

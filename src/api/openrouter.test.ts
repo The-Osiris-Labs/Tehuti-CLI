@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterClient } from "./openrouter.js";
 
 describe("OpenRouterClient", () => {
@@ -302,6 +302,61 @@ describe("OpenRouterClient", () => {
 			expect(headers["HTTP-Referer"]).toBeUndefined();
 			expect(headers["X-Title"]).toBeUndefined();
 			expect(headers.Authorization).toBe("Bearer sk-or-test123456789");
+		});
+	});
+
+	describe("withRetry and backoff logic", () => {
+		it("should retry on retryable HTTP error codes", async () => {
+			const client = new OpenRouterClient({
+				...validConfig,
+				maxRetries: 2,
+			});
+			let attempt = 0;
+			const mockFetch = vi.spyOn(global, "fetch").mockImplementation(async () => {
+				attempt++;
+				if (attempt < 3) {
+					return {
+						ok: false,
+						status: 500,
+						text: async () => "Server Error",
+						headers: new Headers(),
+					} as Response;
+				}
+				return {
+					ok: true,
+					json: async () => ({ choices: [] }),
+				} as Response;
+			});
+
+			const promise = client.completeChat([{ role: "user", content: "hello" }]);
+			await expect(promise).resolves.toBeDefined();
+			expect(attempt).toBe(3); // 1 initial + 2 retries
+			mockFetch.mockRestore();
+		});
+
+		it("should respect Retry-After header with seconds", async () => {
+			const client = new OpenRouterClient({
+				...validConfig,
+				maxRetries: 1,
+			});
+			const mockFetch = vi.spyOn(global, "fetch").mockImplementation(async () => {
+				return {
+					ok: false,
+					status: 429,
+					text: async () => "Rate Limited",
+					headers: new Headers({ "Retry-After": "2" }),
+				} as Response;
+			});
+
+			const spySleep = vi.spyOn(client as any, "sleep").mockImplementation(() => Promise.resolve());
+
+			const promise = client.completeChat([{ role: "user", content: "hello" }]);
+			await expect(promise).rejects.toThrow("Rate limit exceeded");
+
+			expect(spySleep).toHaveBeenCalledWith(2000); // 2 seconds = 2000ms
+
+			mockFetch.mockRestore();
+			spySleep.mockRestore();
 		});
 	});
 });

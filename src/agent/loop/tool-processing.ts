@@ -8,6 +8,7 @@ import { executeTool, getTool } from "../tools/registry.js";
 import { getTelemetry } from "../../utils/telemetry.js";
 import { debug } from "../../utils/debug.js";
 import type { AgentContext } from "../context.js";
+import { getPrefetcher } from "../prefetcher.js";
 
 export interface ToolProcessingOptions {
 	onToolCall?: (name: string, args: unknown) => void;
@@ -250,7 +251,18 @@ export async function processToolCalls(
 					if (cached) {
 						result = cached;
 						telemetry.recordToolExecution(tc.function.name, 0, true, true);
-						debug.log("agent", `Cache hit for \${tc.function.name}`);
+						debug.log("agent", `Cache hit for ${tc.function.name}`);
+					}
+				}
+
+				if (!result) {
+					const prefetchedPromise = getPrefetcher().getPrefetched(tc.function.name, args);
+					if (prefetchedPromise) {
+						debug.log("agent", `Awaiting active prefetch for ${tc.function.name}`);
+						const prefetchedResult = await prefetchedPromise;
+						if (prefetchedResult) {
+							result = prefetchedResult;
+						}
 					}
 				}
 

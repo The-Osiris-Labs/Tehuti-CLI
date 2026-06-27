@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import { getToolCache } from "./cache/index.js";
+import { getToolCache, shouldCacheTool, stableStringify } from "./cache/index.js";
 import type { ToolContext } from "./tools/registry.js";
-import { executeTool } from "./tools/registry.js";
+import { executeTool, getTool } from "./tools/registry.js";
 
 export interface PrefetchRule {
 	currentTool: string;
@@ -211,7 +211,7 @@ export class Prefetcher {
 	}
 
 	private buildKey(tool: string, args: unknown): string {
-		return `${tool}:${JSON.stringify(args)}`;
+		return `${tool}:${stableStringify(args)}`;
 	}
 
 	private queuePrefetch(
@@ -221,7 +221,12 @@ export class Prefetcher {
 		key: string,
 	): void {
 		const prefetchPromise = executeTool(toolName, args, ctx)
-			.then((result) => result)
+			.then((result) => {
+				if (result && result.success && shouldCacheTool(getTool(toolName), toolName, args)) {
+					getToolCache().set(toolName, args, result);
+				}
+				return result;
+			})
 			.catch(() => null);
 
 		const trackedPromise = prefetchPromise.finally(() => {

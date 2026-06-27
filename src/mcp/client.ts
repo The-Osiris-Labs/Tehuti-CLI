@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MCPServerConfig, TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
-import { createMCPError, MCPErrorCode } from "../utils/errors.js";
+import { createMCPError, MCPErrorCode, registerCleanupHandler } from "../utils/errors.js";
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -63,6 +63,7 @@ export interface MCPServerInfo {
 	resources: MCPResource[];
 	prompts: MCPPrompt[];
 	capabilities: ServerCapabilities;
+	stderrBuffer?: string[];
 }
 
 export interface ServerCapabilities {
@@ -174,6 +175,29 @@ export class MCPClientManager {
 	private samplingHandler: SamplingHandler | null = null;
 	private intentionalDisconnects: Set<string> = new Set();
 
+	constructor() {
+		// Register a global exit handler to kill child processes synchronously when process exits
+		process.on("exit", () => {
+			for (const server of this.servers.values()) {
+				if (server.transport && "pid" in server.transport) {
+					const pid = (server.transport as any).pid;
+					if (pid && typeof pid === "number") {
+						try {
+							process.kill(pid, "SIGKILL");
+						} catch {
+							// Process might already be dead
+						}
+					}
+				}
+			}
+		});
+
+		// Register an async cleanup handler to perform graceful disconnects on terminal signals/crashes
+		registerCleanupHandler(async () => {
+			await this.disconnectAll();
+		});
+	}
+
 	onHealthCheck(callback: HealthCheckCallback): void {
 		this.healthCheckCallback = callback;
 	}
@@ -210,6 +234,7 @@ export class MCPClientManager {
 					command: config.command,
 					args: config.args ?? [],
 					env: { ...process.env, ...config.env } as Record<string, string>,
+					stderr: "pipe",
 				});
 			}
 
@@ -221,6 +246,7 @@ export class MCPClientManager {
 					);
 				}
 				return new SSEClientTransport(new URL(config.url), {
+					eventSourceInit: { headers: config.headers },
 					requestInit: { headers: config.headers },
 				});
 			}
@@ -235,8 +261,18 @@ export class MCPClientManager {
 				const { StreamableHTTPClientTransport } = await import(
 					"@modelcontextprotocol/sdk/client/streamableHttp.js"
 				);
+				const reconnectOpts = config.reconnect ?? { enabled: true };
+				const initialDelay = reconnectOpts.delayMs ?? 1000;
+				const maxRetries = reconnectOpts.enabled ? (reconnectOpts.maxAttempts ?? 3) : 0;
+
 				return new StreamableHTTPClientTransport(new URL(config.url), {
 					requestInit: { headers: config.headers },
+					reconnectionOptions: {
+						initialReconnectionDelay: initialDelay,
+						maxReconnectionDelay: initialDelay * (reconnectOpts.backoff === "exponential" ? Math.pow(1.5, maxRetries) : maxRetries),
+						reconnectionDelayGrowFactor: reconnectOpts.backoff === "exponential" ? 1.5 : 1.0,
+						maxRetries: maxRetries,
+					},
 				});
 			}
 
@@ -264,12 +300,44 @@ export class MCPClientManager {
 	private setupTransportHandlers(info: MCPServerInfo): void {
 		if (!info.transport) return;
 
+		// Listen to stderr for stdio transport
+		if ("stderr" in info.transport && (info.transport as any).stderr) {
+			const stderrStream = (info.transport as any).stderr;
+			info.stderrBuffer = [];
+
+			const onData = (chunk: Buffer | string) => {
+				const data = chunk.toString();
+				debug.log("mcp", `[${info.name}] stderr: ${data.trim()}`);
+				if (!info.stderrBuffer) {
+					info.stderrBuffer = [];
+				}
+				info.stderrBuffer.push(data);
+				if (info.stderrBuffer.length > 50) {
+					info.stderrBuffer.shift();
+				}
+			};
+
+			stderrStream.on("data", onData);
+
+			// Store the listener so we can clean it up on close or disconnect
+			(info as any)._stderrListener = onData;
+			(info as any)._stderrStream = stderrStream;
+		}
+
 		info.transport.onclose = () => {
 			debug.log("mcp", `[${info.name}] Connection closed`);
 			this.stopHealthCheck(info.name);
 			info.connected = false;
 			this.updateStatus(info, "disconnected");
 			this.scheduleReconnect(info.name);
+
+			if ((info as any)._stderrStream && (info as any)._stderrListener) {
+				try {
+					(info as any)._stderrStream.off("data", (info as any)._stderrListener);
+				} catch {}
+				(info as any)._stderrListener = undefined;
+				(info as any)._stderrStream = undefined;
+			}
 		};
 
 		info.transport.onerror = (error: Error) => {
@@ -795,6 +863,22 @@ export class MCPClientManager {
 			}
 		}
 
+		if ((info as any)._stderrStream && (info as any)._stderrListener) {
+			try {
+				(info as any)._stderrStream.off("data", (info as any)._stderrListener);
+			} catch {}
+			(info as any)._stderrListener = undefined;
+			(info as any)._stderrStream = undefined;
+		}
+
+		if (info.transport && "terminateSession" in info.transport && typeof (info.transport as any).terminateSession === "function") {
+			try {
+				await (info.transport as any).terminateSession();
+			} catch (error) {
+				debug.log("mcp", `Error terminating HTTP session for ${name}: ${error}`);
+			}
+		}
+
 		if (info.client) {
 			try {
 				await info.client.close();
@@ -806,6 +890,7 @@ export class MCPClientManager {
 		info.connected = false;
 		info.client = null;
 		info.transport = null;
+		info.stderrBuffer = undefined;
 		this.updateStatus(info, "disconnected");
 		this.servers.delete(name);
 		this.intentionalDisconnects.delete(name);
@@ -947,9 +1032,21 @@ export class MCPClientManager {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			info.lastError = message;
+
+			let wrappedMessage = `MCP Tool "${toolName}" on server "${serverName}" failed: ${message}`;
+			wrappedMessage += `\nArguments: ${JSON.stringify(args, null, 2)}`;
+
+			if (info.stderrBuffer && info.stderrBuffer.length > 0) {
+				const recentStderr = info.stderrBuffer.join("").trim();
+				if (recentStderr) {
+					wrappedMessage += `\n\nRecent Server Stderr Output:\n${recentStderr}`;
+				}
+			}
+
 			throw createMCPError(
-				`Tool execution failed: ${message}`,
+				wrappedMessage,
 				MCPErrorCode.TOOL_EXECUTION_FAILED,
+				serverName,
 			);
 		}
 	}

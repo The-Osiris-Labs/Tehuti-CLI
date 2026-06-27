@@ -27,6 +27,7 @@ interface ConfigEditorProps {
 		maxTokens?: number;
 	}) => void;
 	onCancel: () => void;
+	width?: number;
 }
 
 type ConfigField = "apiKey" | "model" | "provider" | "baseUrl" | "temperature" | "maxTokens";
@@ -36,6 +37,7 @@ export function ConfigEditor({
 	config,
 	onSave,
 	onCancel,
+	width,
 }: ConfigEditorProps): React.ReactElement {
 	const [draftConfig, setDraftConfig] = useState<EditorConfig>(config);
 	const [selectedField, setSelectedField] = useState<ConfigField>("apiKey");
@@ -146,8 +148,9 @@ export function ConfigEditor({
 				setValidationError(null);
 			} else if (key.backspace || key.delete) {
 				setEditValue((v) => v.slice(0, -1));
-			} else if (char && !key.ctrl && !key.meta && char.length === 1) {
-				setEditValue((v) => v + char);
+			} else if (char && !key.ctrl && !key.meta && !char.startsWith("\x1b") && char !== "\r" && char !== "\n" && char !== "\t") {
+				const sanitized = char.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
+				setEditValue((v) => v + sanitized);
 			}
 		} else {
 			if (key.ctrl && (char === "s" || char === "S")) {
@@ -183,7 +186,7 @@ export function ConfigEditor({
 		return value !== undefined && value !== null ? String(value) : "";
 	};
 
-	const terminalWidth = stdout?.columns || 80;
+	const terminalWidth = width || stdout?.columns || 80;
 	const editorWidth = Math.min(80, terminalWidth - 4);
 
 	return React.createElement(

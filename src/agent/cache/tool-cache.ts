@@ -96,6 +96,7 @@ export class ToolCache {
 		const dirPath = path.dirname(filePath);
 		deleted += this.cache.deleteByPattern(`"dir_path":"${dirPath}"`);
 		deleted += this.cache.deleteByPattern(`"path":"${dirPath}"`);
+		deleted += this.cache.deleteByPrefix(`glob:`);
 
 		this.fileMtimes.delete(filePath);
 

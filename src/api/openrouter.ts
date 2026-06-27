@@ -476,13 +476,18 @@ export class OpenRouterClient {
 		const isRetryable =
 			options?.isRetryable ?? this.defaultIsRetryable.bind(this);
 		let lastError: Error | null = null;
+		const totalAttempts = maxRetries + 1;
 
-		for (let attempt = 0; attempt < maxRetries; attempt++) {
+		for (let attempt = 0; attempt < totalAttempts; attempt++) {
 			try {
 				await this.enforceRateLimit();
 				return await fn();
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
+
+				if (attempt === totalAttempts - 1) {
+					throw lastError;
+				}
 
 				if (!isRetryable(lastError)) {
 					throw lastError;
@@ -526,7 +531,13 @@ export class OpenRouterClient {
 		if (
 			msg.includes("econnrefused") ||
 			msg.includes("enotfound") ||
-			msg.includes("econnreset")
+			msg.includes("econnreset") ||
+			msg.includes("etimedout") ||
+			msg.includes("epipe") ||
+			msg.includes("eaddrinuse") ||
+			msg.includes("connection closed") ||
+			msg.includes("socket closed") ||
+			msg.includes("terminated")
 		) {
 			return true;
 		}
@@ -534,6 +545,9 @@ export class OpenRouterClient {
 	}
 
 	private calculateRetryDelay(attempt: number, error: Error): number {
+		if (error && typeof (error as any).retryAfter === "number") {
+			return (error as any).retryAfter;
+		}
 		if (error instanceof APIError && error.status === 429) {
 			const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
 			return Math.min(baseDelay, MAX_RETRY_DELAY_MS);
@@ -541,6 +555,91 @@ export class OpenRouterClient {
 		const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
 		const jitter = Math.random() * 0.1 * baseDelay;
 		return Math.min(baseDelay + jitter, MAX_RETRY_DELAY_MS);
+	}
+
+	private handleResponseError(response: Response, errorText: string): APIError {
+		const sanitizedError = errorText
+			.slice(0, 500)
+			.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
+			.replace(/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi, "[REDACTED]");
+
+		let apiError: APIError;
+		if (response.status === 401) {
+			apiError = new APIError(
+				this.buildInvalidKeyMessage(),
+				response.status,
+				this.getProviderAuthHints(),
+			);
+		} else if (response.status === 429) {
+			const retryAfter = response.headers.get("Retry-After");
+			const retryMessage = retryAfter
+				? `Retry after ${retryAfter} seconds.`
+				: "Please wait before making more requests.";
+			apiError = new APIError(
+				`Rate limit exceeded. ${retryMessage}`,
+				response.status,
+				[
+					"Wait a few minutes before making more requests",
+					"Try a different model with --model <model-id>",
+					"Consider upgrading to a paid plan for higher rate limits",
+				],
+			);
+		} else if (response.status === 403) {
+			apiError = new APIError(
+				`Access forbidden. Your API key may not have the necessary permissions for ${this.getProviderErrorSubject()}.`,
+				response.status,
+				[
+					"Check your provider account/subscription status",
+					"Verify your API key has correct permissions",
+					"Try generating a new API key",
+				],
+			);
+		} else if (response.status === 404) {
+			apiError = new APIError(
+				`Model not found. The specified model may not exist or be available.`,
+				response.status,
+				[
+					"Check the model ID is correct",
+					"Use /models command to see available models",
+					"Try a different model",
+				],
+			);
+		} else if (response.status >= 500) {
+			apiError = new APIError(
+				`${this.getProviderErrorSubject()} server error (${response.status}): ${sanitizedError}`,
+				response.status,
+				[
+					`Check ${this.getProviderErrorSubject()} service status`,
+					"Try again later",
+					"Use a different model",
+				],
+			);
+		} else {
+			apiError = new APIError(
+				`${this.getProviderErrorSubject()} API error (${response.status}): ${sanitizedError}`,
+				response.status,
+				[
+					"Check your internet connection",
+					"Try again later",
+					"Run with --debug for more details",
+				],
+			);
+		}
+
+		const retryAfterHeader = response.headers.get("Retry-After");
+		if (retryAfterHeader) {
+			const parsedSeconds = parseInt(retryAfterHeader, 10);
+			if (!isNaN(parsedSeconds)) {
+				(apiError as any).retryAfter = parsedSeconds * 1000;
+			} else {
+				const parsedDate = Date.parse(retryAfterHeader);
+				if (!isNaN(parsedDate)) {
+					(apiError as any).retryAfter = Math.max(0, parsedDate - Date.now());
+				}
+			}
+		}
+
+		return apiError;
 	}
 
 	async *streamChat(
@@ -594,96 +693,27 @@ export class OpenRouterClient {
 		let parseErrorCount = 0;
 		const MAX_PARSE_ERRORS = 10;
 
-			try {
-				const response = await this.withRetry(
-					() =>
-						fetch(this.getChatCompletionsUrl(), {
-							method: "POST",
-							headers: this.buildHeaders(),
-							body: JSON.stringify(body),
-							signal: combinedSignal,
-						}),
+		try {
+			const response = await this.withRetry(
+				async () => {
+					const res = await fetch(this.getChatCompletionsUrl(), {
+						method: "POST",
+						headers: this.buildHeaders(),
+						body: JSON.stringify(body),
+						signal: combinedSignal,
+					});
+					if (!res.ok) {
+						const errorText = await res.text();
+						throw this.handleResponseError(res, errorText);
+					}
+					return res;
+				},
 				{ maxRetries: this.maxRetries },
 			);
 
-			if (!response.ok) {
-				const errorText = await response.text();
-				const sanitizedError = errorText
-					.slice(0, 500)
-					.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
-					.replace(
-						/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi,
-						"[REDACTED]",
-					);
-					if (response.status === 401) {
-						throw new APIError(
-							this.buildInvalidKeyMessage(),
-							response.status,
-							this.getProviderAuthHints(),
-						);
-					}
-				if (response.status === 429) {
-					const retryAfter = response.headers.get("Retry-After");
-					const retryMessage = retryAfter
-						? `Retry after ${retryAfter} seconds.`
-						: "Please wait before making more requests.";
-					throw new APIError(
-						`Rate limit exceeded. ${retryMessage}`,
-						response.status,
-						[
-							"Wait a few minutes before making more requests",
-							"Try a different model with --model <model-id>",
-							"Consider upgrading to a paid plan for higher rate limits"
-						]
-					);
-				}
-				if (response.status === 403) {
-					throw new APIError(
-						`Access forbidden. Your API key may not have the necessary permissions for ${this.getProviderErrorSubject()}.`,
-						response.status,
-						[
-							"Check your provider account/subscription status",
-							"Verify your API key has correct permissions",
-							"Try generating a new API key"
-						]
-					);
-				}
-				if (response.status === 404) {
-					throw new APIError(
-						`Model not found. The specified model may not exist or be available.`,
-						response.status,
-						[
-							"Check the model ID is correct",
-							"Use /models command to see available models",
-							"Try a different model"
-						]
-					);
-				}
-				if (response.status >= 500) {
-					throw new APIError(
-						`${this.getProviderErrorSubject()} server error (${response.status}): ${sanitizedError}`,
-						response.status,
-						[
-							`Check ${this.getProviderErrorSubject()} service status`,
-							"Try again later",
-							"Use a different model"
-						]
-					);
-				}
-				throw new APIError(
-					`${this.getProviderErrorSubject()} API error (${response.status}): ${sanitizedError}`,
-					response.status,
-					[
-						"Check your internet connection",
-						"Try again later",
-						"Run with --debug for more details"
-					]
-				);
+			if (!response.body) {
+				throw new APIError(`No response body from ${this.getProviderErrorSubject()}`);
 			}
-
-				if (!response.body) {
-					throw new APIError(`No response body from ${this.getProviderErrorSubject()}`);
-				}
 
 			reader = response.body.getReader();
 			const decoder = new TextDecoder();
@@ -777,38 +807,25 @@ export class OpenRouterClient {
 			? AbortSignal.any([signal, timeoutSignal])
 			: timeoutSignal;
 
-			const response = await this.withRetry(
-				() =>
-					fetch(this.getChatCompletionsUrl(), {
-						method: "POST",
-						headers: this.buildHeaders(),
-						body: JSON.stringify(body),
-						signal: combinedSignal,
-					}),
+		const response = await this.withRetry(
+			async () => {
+				const res = await fetch(this.getChatCompletionsUrl(), {
+					method: "POST",
+					headers: this.buildHeaders(),
+					body: JSON.stringify(body),
+					signal: combinedSignal,
+				});
+				if (!res.ok) {
+					const errorText = await res.text();
+					throw this.handleResponseError(res, errorText);
+				}
+				return res;
+			},
 			{ maxRetries: this.maxRetries },
 		);
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			const sanitizedError = errorText
-				.slice(0, 500)
-				.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
-				.replace(/api[_-]?key['":\s]*['"]?[a-zA-Z0-9_-]{10,}/gi, "[REDACTED]");
-				if (response.status === 401) {
-					throw new APIError(
-						this.buildInvalidKeyMessage(),
-						response.status,
-						this.getProviderAuthHints(),
-					);
-				}
-				throw new APIError(
-					`${this.getProviderErrorSubject()} API error (${response.status}): ${sanitizedError}`,
-					response.status,
-				);
-			}
-
-				return response.json() as Promise<OpenRouterResponse>;
-		}
+		return response.json() as Promise<OpenRouterResponse>;
+	}
 
 	abort(): void {
 		this.abortController?.abort();
@@ -832,17 +849,19 @@ export class OpenRouterClient {
 		const modelsUrl = this.getModelsUrl();
 
 		const response = await this.withRetry(
-			() =>
-				fetch(modelsUrl, {
+			async () => {
+				const res = await fetch(modelsUrl, {
 					headers: this.buildHeaders(),
 					signal: combinedSignal,
-				}),
+				});
+				if (!res.ok) {
+					const errorText = await res.text();
+					throw this.handleResponseError(res, errorText);
+				}
+				return res;
+			},
 			{ maxRetries: this.maxRetries },
 		);
-
-		if (!response.ok) {
-			throw new APIError(`Failed to list models: ${response.status}`);
-		}
 
 		const data = (await response.json()) as any;
 		const list = (data?.data || data || []).sort((a: any, b: any) => (a.id || "").localeCompare(b.id || ""));

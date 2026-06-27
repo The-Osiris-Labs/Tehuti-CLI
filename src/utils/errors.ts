@@ -170,6 +170,35 @@ function restoreTerminal(): void {
 	}
 }
 
+type CleanupFunction = () => Promise<void> | void;
+const cleanupHandlers: CleanupFunction[] = [];
+
+export function registerCleanupHandler(handler: CleanupFunction): void {
+	cleanupHandlers.push(handler);
+}
+
+let isCleaningUp = false;
+async function runCleanupHandlers(): Promise<void> {
+	if (isCleaningUp) return;
+	isCleaningUp = true;
+
+	const cleanupPromise = (async () => {
+		for (const handler of cleanupHandlers) {
+			try {
+				await handler();
+			} catch (err) {
+				// Ignore cleanup errors to ensure other handlers run
+			}
+		}
+	})();
+
+	// Timeout after 2 seconds to prevent hanging on exit
+	await Promise.race([
+		cleanupPromise,
+		new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+	]);
+}
+
 let handlersSetup = false;
 
 export function setupErrorHandlers(debug = false): void {
@@ -178,31 +207,36 @@ export function setupErrorHandlers(debug = false): void {
 	}
 	handlersSetup = true;
 
-	process.on("uncaughtException", (error) => {
+	process.on("uncaughtException", async (error) => {
 		restoreTerminal();
+		await runCleanupHandlers();
 		consola.error(formatError(error, debug));
 		process.exit(1);
 	});
 
-	process.on("unhandledRejection", (reason) => {
+	process.on("unhandledRejection", async (reason) => {
 		restoreTerminal();
+		await runCleanupHandlers();
 		const error = reason instanceof Error ? reason : new Error(String(reason));
 		consola.error(formatError(error, debug));
 		process.exit(1);
 	});
 
-	process.on("SIGINT", () => {
+	process.on("SIGINT", async () => {
 		restoreTerminal();
+		await runCleanupHandlers();
 		process.exit(130);
 	});
 
-	process.on("SIGTERM", () => {
+	process.on("SIGTERM", async () => {
 		restoreTerminal();
+		await runCleanupHandlers();
 		process.exit(143);
 	});
 
-	process.on("SIGQUIT", () => {
+	process.on("SIGQUIT", async () => {
 		restoreTerminal();
+		await runCleanupHandlers();
 		consola.info("\nReceived SIGQUIT - exiting...");
 		process.exit(131);
 	});

@@ -9,6 +9,7 @@ export {
 	type CacheEntry,
 	type CacheStats,
 	LRUCache,
+	stableStringify,
 } from "./lru-cache.js";
 export {
 	clearCacheFromDisk,

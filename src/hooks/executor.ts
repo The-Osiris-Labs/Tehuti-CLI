@@ -82,12 +82,22 @@ function filterDangerousEnvVars(
 	for (const [key, value] of Object.entries(env)) {
 		const upperKey = key.toUpperCase();
 		let isDangerous = false;
-		for (const dangerous of DANGEROUS_ENV_VARS) {
-			if (upperKey === dangerous || upperKey.startsWith(`${dangerous}_`)) {
-				isDangerous = true;
-				break;
+
+		if (
+			upperKey.startsWith("LD_") ||
+			upperKey.startsWith("DYLD_") ||
+			upperKey.startsWith("BASH_FUNC_")
+		) {
+			isDangerous = true;
+		} else {
+			for (const dangerous of DANGEROUS_ENV_VARS) {
+				if (upperKey === dangerous || upperKey.startsWith(`${dangerous}_`)) {
+					isDangerous = true;
+					break;
+				}
 			}
 		}
+
 		if (!isDangerous) {
 			filtered[key] = value;
 		}

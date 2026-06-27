@@ -4,13 +4,19 @@ import type { ToolContext } from "./tools/registry.js";
 
 vi.mock("./tools/registry.js", () => ({
 	executeTool: vi.fn().mockResolvedValue({ success: true, output: "result" }),
+	getTool: vi.fn().mockReturnValue({ name: "mock-tool", isReadonly: true }),
 }));
 
-vi.mock("./cache/index.js", () => ({
-	getToolCache: vi.fn().mockReturnValue({
-		has: vi.fn().mockReturnValue(false),
-	}),
-}));
+vi.mock("./cache/index.js", async (importOriginal) => {
+	const actual = (await importOriginal()) as any;
+	return {
+		...actual,
+		getToolCache: vi.fn().mockReturnValue({
+			has: vi.fn().mockReturnValue(false),
+			set: vi.fn(),
+		}),
+	};
+});
 
 describe("Prefetcher", () => {
 	let prefetcher: Prefetcher;

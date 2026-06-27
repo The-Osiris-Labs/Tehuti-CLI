@@ -31,6 +31,14 @@ describe("LRUCache", () => {
 			expect(result).toBe("content");
 		});
 
+		it("should generate same keys regardless of property ordering (stableStringify)", () => {
+			const args1 = { path: "/test/file.ts", force: true };
+			const args2 = { force: true, path: "/test/file.ts" };
+			cache.set("read", args1, "content");
+			const result = cache.get("read", args2);
+			expect(result).toBe("content");
+		});
+
 		it("should differentiate keys for different args", () => {
 			cache.set("read", { path: "/file1.ts" }, "content1");
 			cache.set("read", { path: "/file2.ts" }, "content2");
@@ -100,6 +108,16 @@ describe("LRUCache", () => {
 
 			const deleted = cache.deleteByPattern("/test");
 			expect(deleted).toBeGreaterThan(0);
+		});
+
+		it("should safely match patterns containing special RegExp characters", () => {
+			cache.set("read", { path: "/test/[id]/file.ts" }, "val1");
+			cache.set("read", { path: "/test/any.ts" }, "val2");
+
+			const deleted = cache.deleteByPattern("[id]");
+			expect(deleted).toBe(1);
+			expect(cache.get("read", { path: "/test/[id]/file.ts" })).toBeNull();
+			expect(cache.get("read", { path: "/test/any.ts" })).toBe("val2");
 		});
 
 		it("should delete by prefix", () => {

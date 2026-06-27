@@ -28,6 +28,7 @@ vi.mock("./cache/index.js", () => ({
 	shouldCacheTool: vi.fn().mockReturnValue(true),
 	invalidateOnWrite: vi.fn(),
 	resetToolCache: vi.fn(),
+	stableStringify: (val: any) => JSON.stringify(val),
 }));
 
 vi.mock("../utils/telemetry.js", () => ({

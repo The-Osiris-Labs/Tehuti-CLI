@@ -37,7 +37,7 @@ export function invalidateOnWrite(toolDef: ToolDefinition | undefined, toolName:
 		}
 	}
 
-	if (toolName === "delete_dir") {
+	if (toolName === "delete_dir" || toolName === "create_dir") {
 		const record = args as Record<string, unknown>;
 		const dirPath = record.dir_path || record.path;
 		if (typeof dirPath === "string") {

@@ -48,6 +48,9 @@ const mocks = vi.hoisted(() => {
 		close = vi.fn(async () => {
 			this.onclose?.();
 		});
+		callTool = vi.fn(async (_params: unknown) => ({
+			content: "success",
+		}));
 		subscribeResource = vi.fn(async (_params: unknown) => ({}));
 		unsubscribeResource = vi.fn(async (_params: unknown) => ({}));
 		readResource = vi.fn(async ({ uri }: { uri: string }) => ({
@@ -193,5 +196,30 @@ describe("MCPClientManager", () => {
 		expect(callback).toHaveBeenCalledWith([
 			{ uri: "resource://item", text: "fresh content" },
 		]);
+	});
+
+	it("wraps execution errors and appends stderr details", async () => {
+		await manager.connectServer("alpha", reconnectingConfig as any);
+		const server = manager.getServer("alpha");
+		expect(server).toBeDefined();
+		const client = server?.client as any;
+		expect(client).toBeDefined();
+
+		client.callTool.mockRejectedValueOnce(new Error("Internal API Error"));
+
+		if (server) {
+			server.stderrBuffer = ["Process crashed\n", "Code 500\n"];
+		}
+
+		try {
+			await manager.executeTool("alpha", "test-tool", { query: "hello" });
+			expect.fail("Should have thrown");
+		} catch (err: any) {
+			expect(err.message).toContain("MCP Tool \"test-tool\" on server \"alpha\" failed:");
+			expect(err.message).toContain("Internal API Error");
+			expect(err.message).toContain("Arguments:");
+			expect(err.message).toContain("Recent Server Stderr Output:");
+			expect(err.message).toContain("Process crashed\nCode 500");
+		}
 	});
 });

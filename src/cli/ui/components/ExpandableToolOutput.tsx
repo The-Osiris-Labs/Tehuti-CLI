@@ -110,7 +110,8 @@ export function ExpandableToolOutput({
 		}
 	}, [status]);
 
-	const summary = summarizeToolOutput(result, expanded ? 1000 : maxWidth);
+	const width = Math.max(40, maxWidth);
+	const summary = summarizeToolOutput(result, expanded ? 1000 : width);
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
@@ -133,10 +134,16 @@ export function ExpandableToolOutput({
 	}
 
 	const cleanToolName = stripAnsi(toolName);
-	const width = Math.max(40, maxWidth);
 	
-	// Left part string calculation for width
-	const leftStr = `  ┌─[ ${headerIcon} ${cleanToolName} ]`;
+	// Dynamic header part calculations to prevent wrapping in small terminals
+	const staticHeaderWidth = 15 + stringWidth(headerIcon) + stringWidth(headerStatusText);
+	const maxToolNameWidth = Math.max(10, width - staticHeaderWidth);
+	const truncatedToolName = cleanToolName.length > maxToolNameWidth
+		? (cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3)) + "...")
+		: cleanToolName;
+
+	// Left part string calculation for width using truncated name
+	const leftStr = `  ┌─[ ${headerIcon} ${truncatedToolName} ]`;
 	const leftWidth = stringWidth(leftStr);
 
 	// Right part string calculation for width
@@ -147,10 +154,20 @@ export function ExpandableToolOutput({
 	const padLen = Math.max(2, width - leftWidth - rightWidth);
 	const borderLine = "─".repeat(padLen);
 
-	// Bottom border calculations
-	const footerLabel = summary.isTruncated
+	// Dynamic bottom border calculations
+	let footerLabel = summary.isTruncated
 		? ` ${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden `
 		: ` completed `;
+
+	// Ensure bottom label fits within terminal width to prevent wrapping
+	if (8 + stringWidth(footerLabel) > width) {
+		footerLabel = summary.isTruncated
+			? ` ${summary.lineCount} lines `
+			: ` done `;
+	}
+	if (8 + stringWidth(footerLabel) > width) {
+		footerLabel = summary.isTruncated ? ` ... ` : ``;
+	}
 
 	const footerLeft = `  └─[${footerLabel}]`;
 	const footerLeftWidth = stringWidth(footerLeft);
@@ -163,7 +180,7 @@ export function ExpandableToolOutput({
 			<Box flexDirection="row" alignItems="center">
 				<Text color="gray">  ┌─[ </Text>
 				<Text color={headerColor}>{headerIcon} </Text>
-				<Text bold color={headerColor}>{cleanToolName}</Text>
+				<Text bold color={headerColor}>{truncatedToolName}</Text>
 				<Text color="gray"> ]{borderLine}[ </Text>
 				<Text bold color={headerColor}>{headerStatusText}</Text>
 				<Text color="gray"> ]</Text>
