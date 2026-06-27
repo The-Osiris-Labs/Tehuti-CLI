@@ -155,16 +155,16 @@ export async function loadConfig(
 	const persistedProvider = globalConfig.get("provider")?.trim();
 	const providerSource = envProvider
 		? "env"
-		: persistedProvider
-			? "global"
-			: fileProvider
-				? "file"
+		: fileProvider
+			? "file"
+			: persistedProvider
+				? "global"
 				: "default";
 
 	const provider = (
 		envProvider ||
-		persistedProvider ||
 		fileProvider ||
+		persistedProvider ||
 		DEFAULT_CONFIG.provider
 	) as string;
 
@@ -182,7 +182,6 @@ export async function loadConfig(
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
-		...resolvedFileConfig,
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
 		...(globalConfig.get("provider") && { provider: globalConfig.get("provider") }),
 		...(globalConfig.get("baseUrl") && { baseUrl: globalConfig.get("baseUrl") }),
@@ -191,6 +190,7 @@ export async function loadConfig(
 		}),
 		...(globalConfig.get("temperature") !== undefined && { temperature: globalConfig.get("temperature") }),
 		...(globalConfig.get("maxTokens") !== undefined && { maxTokens: globalConfig.get("maxTokens") }),
+		...resolvedFileConfig,
 		...(envModel && { model: envModel }),
 		provider,
 		...(parsedEnvCustomProvider !== undefined && {
@@ -205,10 +205,10 @@ export async function loadConfig(
 			: undefined;
 	const persistedBaseUrl = globalConfig.get("baseUrl");
 	const pairedBaseUrl =
-		providerSource === "global"
-			? persistedBaseUrl
-			: providerSource === "file"
-				? fileBaseUrl
+		providerSource === "file"
+			? fileBaseUrl
+			: providerSource === "global"
+				? persistedBaseUrl
 				: undefined;
 	mergedConfig.baseUrl = envBaseUrl
 		? envBaseUrl.replace(/\/+$/, "")
@@ -242,18 +242,26 @@ export async function loadConfig(
 		configWarnings.push(msg);
 	}
 
-	try {
-		const parsed = TEHUTI_CONFIG_SCHEMA.parse(mergedConfig);
-		return parsed;
-	} catch (error) {
-		if (error instanceof z.ZodError) {
-			consola.warn(
-				"Config validation errors:",
-				error.errors.map((e) => e.message).join(", "),
-			);
-		}
-		return DEFAULT_CONFIG;
+	const result = TEHUTI_CONFIG_SCHEMA.safeParse(mergedConfig);
+	if (result.success) {
+		return result.data;
 	}
+
+	consola.warn(
+		"Config validation errors. Falling back to defaults for invalid fields:",
+		result.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
+	);
+
+	const salvagedConfig = { ...mergedConfig };
+	for (const err of result.error.errors) {
+		if (err.path.length > 0) {
+			const key = err.path[0] as keyof TehutiConfig;
+			salvagedConfig[key] = DEFAULT_CONFIG[key];
+		}
+	}
+
+	const fallbackResult = TEHUTI_CONFIG_SCHEMA.safeParse(salvagedConfig);
+	return fallbackResult.success ? fallbackResult.data : DEFAULT_CONFIG;
 }
 
 export function saveGlobalConfig(updates: {

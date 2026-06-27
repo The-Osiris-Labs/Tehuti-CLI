@@ -725,10 +725,12 @@ export class OpenRouterClient {
 				if (done) break;
 
 				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split("\n");
-				buffer = lines.pop() ?? "";
 
-				for (const line of lines) {
+				let newlineIndex: number;
+				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+					const line = buffer.slice(0, newlineIndex);
+					buffer = buffer.slice(newlineIndex + 1);
+
 					const trimmed = line.trim();
 					if (!trimmed || trimmed === "data: [DONE]") continue;
 					if (!trimmed.startsWith("data: ")) continue;

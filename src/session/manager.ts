@@ -290,11 +290,17 @@ class SessionManager {
 
 		const dirs = await fs.readdir(this.sessionsDir);
 		const sessions: SessionMetadata[] = [];
+		const concurrencyLimit = 10;
 
-		for (const dir of dirs) {
-			const metadata = await this.getSessionMetadata(dir);
-			if (metadata) {
-				sessions.push(metadata);
+		for (let i = 0; i < dirs.length; i += concurrencyLimit) {
+			const chunk = dirs.slice(i, i + concurrencyLimit);
+			const results = await Promise.all(
+				chunk.map((dir) => this.getSessionMetadata(dir))
+			);
+			for (const metadata of results) {
+				if (metadata) {
+					sessions.push(metadata);
+				}
 			}
 		}
 

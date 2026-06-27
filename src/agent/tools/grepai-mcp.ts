@@ -11,13 +11,13 @@ import {
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
 // Path to grepai executable - support local and system-wide installations
-const getGrepaiPath = (): string => {
+const getGrepaiPath = async (): Promise<string> => {
 	const localPath = path.join(process.cwd(), "tools", "grepai");
 	const systemPath = "/usr/local/bin/grepai";
 
-	if (fs.existsSync(localPath)) {
+	if (await fs.pathExists(localPath)) {
 		return localPath;
-	} else if (fs.existsSync(systemPath)) {
+	} else if (await fs.pathExists(systemPath)) {
 		return systemPath;
 	}
 
@@ -41,7 +41,7 @@ export const grepaiMcpServeTool = createTool({
 	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
 		const { workspace, port } = args as { workspace?: string; port?: number };
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["mcp-serve"];
 		if (workspace) {
@@ -111,7 +111,7 @@ export const grepaiListWorkspacesTool = createTool({
 	parameters: z.object({}),
 	category: "search",
 	execute: async (_args, ctx: ToolContext): Promise<ToolResult> => {
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		return new Promise((resolve) => {
 			const grepai = spawn(grepaiPath, ["workspace", "list"], {
@@ -168,7 +168,7 @@ export const grepaiCreateWorkspaceTool = createTool({
 			projectPaths?: string[];
 		};
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["workspace", "create", name];
 		for (const projectPath of projectPaths) {
@@ -224,7 +224,7 @@ export const grepaiWatchTool = createTool({
 	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
 		const { workspace } = args as { workspace?: string };
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["watch"];
 		if (workspace) {
@@ -286,7 +286,7 @@ export const grepaiUpdateTool = createTool({
 	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
 		const { force = false } = args as { force?: boolean };
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["update"];
 		if (force) {

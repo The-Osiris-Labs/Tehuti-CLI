@@ -72,6 +72,7 @@ import {
 import { kiloCodeTools } from "./tools/kilocode.js";
 import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
+import { memoryTools } from "./tools/memory.js";
 import {
 	isPlanMode,
 	isToolAllowedInPlanMode,
@@ -79,16 +80,21 @@ import {
 	setPlanMode,
 } from "./tools/plan-mode.js";
 import { searchTools } from "./tools/search.js";
+import { repoMapTool } from "./tools/repo-map.js";
 import { setParentContext, systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
+import { swarmTools } from "./tools/swarm.js";
+
 
 registerTools([
 	...allFsTools,
 	...searchTools,
+	repoMapTool,
 	bashTool,
 	...webTools,
 	...systemTools,
 	...mcpPromptTools,
+	...memoryTools,
 	...backgroundTools,
 	...planTools,
 	...gitTools,
@@ -99,6 +105,7 @@ registerTools([
 	...kilocodeAdvancedTools,
 	...collaborationTools,
 	...customProviderTools,
+	...swarmTools,
 ]);
 
 loadCacheFromDisk();

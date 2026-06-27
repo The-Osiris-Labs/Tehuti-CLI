@@ -19,29 +19,29 @@ export interface ModelConfig {
 export const MODEL_TIERS: Record<ModelTier, ModelConfig> = {
 	fast: {
 		tier: "fast",
-		modelId: "deepseek/deepseek-chat",
+		modelId: "google/gemini-3.1-flash",
 		description: "Fast and free - best for simple reads and listings",
-		maxTokens: 4096,
+		maxTokens: 8192,
 		supportsTools: true,
-		supportsVision: false,
+		supportsVision: true,
 		costPer1kPrompt: 0,
 		costPer1kCompletion: 0,
 	},
 	balanced: {
 		tier: "balanced",
-		modelId: "deepseek/deepseek-reasoner",
+		modelId: "google/gemini-3.1-pro",
 		description: "Balanced performance with reasoning - good for most tasks",
-		maxTokens: 8192,
+		maxTokens: 16384,
 		supportsTools: true,
-		supportsVision: false,
+		supportsVision: true,
 		costPer1kPrompt: 0,
 		costPer1kCompletion: 0,
 	},
 	deep: {
 		tier: "deep",
-		modelId: "anthropic/claude-sonnet-4",
+		modelId: "anthropic/claude-4",
 		description: "Deep reasoning - best for complex tasks",
-		maxTokens: 16384,
+		maxTokens: 32768,
 		supportsTools: true,
 		supportsVision: true,
 		costPer1kPrompt: 0.003,
@@ -127,10 +127,10 @@ export function classifyTask(
 	}
 
 	const deepKeywordMatches = DEEP_KEYWORDS.filter((k) =>
-		messageLower.includes(k),
+		new RegExp(`\\b${k}\\b`, "i").test(messageLower),
 	);
 	const fastKeywordMatches = FAST_KEYWORDS.filter((k) =>
-		messageLower.includes(k),
+		new RegExp(`\\b${k}\\b`, "i").test(messageLower),
 	);
 
 	if (deepKeywordMatches.length >= 2) {

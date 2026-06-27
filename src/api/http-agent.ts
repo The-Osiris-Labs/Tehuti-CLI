@@ -54,23 +54,40 @@ export function getAgent(): Agent | null {
 	return globalAgent;
 }
 
+const MAX_POOL_SIZE = 100;
+
 export function getPool(origin: string): Pool {
-	if (!connectionPool.has(origin)) {
-		const pool = new Pool(origin, {
-			connections: activeConfig.connections,
-			pipelining: activeConfig.pipelining,
-			keepAliveTimeout: activeConfig.keepAliveTimeout,
-			keepAliveMaxTimeout: activeConfig.keepAliveMaxTimeout,
-			keepAliveTimeoutThreshold: activeConfig.keepAliveTimeoutThreshold,
-			connect: {
-				timeout: activeConfig.connectTimeout,
-				keepAlive: activeConfig.tcpKeepAlive,
-				keepAliveInitialDelay: activeConfig.tcpKeepAliveInitialDelay,
-			},
-		});
+	if (connectionPool.has(origin)) {
+		const pool = connectionPool.get(origin)!;
+		connectionPool.delete(origin);
 		connectionPool.set(origin, pool);
+		return pool;
 	}
-	return connectionPool.get(origin)!;
+
+	const pool = new Pool(origin, {
+		connections: activeConfig.connections,
+		pipelining: activeConfig.pipelining,
+		keepAliveTimeout: activeConfig.keepAliveTimeout,
+		keepAliveMaxTimeout: activeConfig.keepAliveMaxTimeout,
+		keepAliveTimeoutThreshold: activeConfig.keepAliveTimeoutThreshold,
+		connect: {
+			timeout: activeConfig.connectTimeout,
+			keepAlive: activeConfig.tcpKeepAlive,
+			keepAliveInitialDelay: activeConfig.tcpKeepAliveInitialDelay,
+		},
+	});
+
+	if (connectionPool.size >= MAX_POOL_SIZE) {
+		const oldestKey = connectionPool.keys().next().value;
+		if (oldestKey) {
+			const oldestPool = connectionPool.get(oldestKey);
+			oldestPool?.close();
+			connectionPool.delete(oldestKey);
+		}
+	}
+
+	connectionPool.set(origin, pool);
+	return pool;
 }
 
 export function resetAgent(): void {

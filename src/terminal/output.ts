@@ -208,6 +208,31 @@ export function truncate(text: string, maxLength?: number): string {
 
 
 
+export function computeMessageLines(msg: any, contentMaxWidth: number): number {
+	let lines = 0;
+	lines += 1; // Role header
+
+	if (typeof msg.content === 'string') {
+		lines += wrap(msg.content, contentMaxWidth).split('\n').length;
+	} else if (Array.isArray(msg.content)) {
+		msg.content.forEach((sub: any) => {
+			if (sub.type === 'text') {
+				lines += wrap(sub.content, contentMaxWidth).split('\n').length;
+			} else if (sub.type === 'reasoning') {
+				lines += 2; // Borders
+				lines += wrap(sub.content, Math.max(10, contentMaxWidth - 4)).split('\n').length;
+			}
+		});
+	}
+
+	if (msg.toolCalls && msg.toolCalls.length > 0) {
+		lines += msg.toolCalls.length; // Assume 1 line per tool call when collapsed
+	}
+
+	lines += 1; // Margin bottom between messages
+	return lines;
+}
+
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;
 	const lines: string[] = [];

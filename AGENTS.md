@@ -15,6 +15,8 @@ Tehuti CLI is an AI-powered coding assistant that connects to OpenRouter. It ser
 
 ## 🏗️ Architecture Overview
 
+**⚠️ CRITICAL:** Before modifying the TUI (`src/cli/commands/chat.ts`), you **MUST** read [HANDOFF.md](./HANDOFF.md). The TUI uses a bespoke "Virtual Sliding Viewport" with negative margins that must not be broken by standard array slicing.
+
 ```
 src/
 ├── index.ts                          # Entry point (initializes API and CLI)

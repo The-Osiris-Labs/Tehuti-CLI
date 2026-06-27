@@ -1,8 +1,11 @@
 import type { Token } from "marked";
 import { marked } from "marked";
+import markedKatex from "marked-katex-extension";
 import { shouldUseColors, shouldUseHighContrast } from "./capabilities.js";
 import { highlightToAnsi, isHighlighterReady, initHighlighter } from "./highlighter.js";
 import stringWidth from "string-width";
+
+marked.use(markedKatex({ throwOnError: false }));
 
 const ANSI = {
 	reset: "\x1b[0m",
@@ -135,96 +138,6 @@ function highlightCode(code: string, language?: string): string {
 	return highlightToAnsi(code, language);
 }
 
-function highlightJavaScript(line: string): string {
-	// Keywords
-	let result = line
-		.replace(/\b(function|const|let|var|if|else|for|while|do|switch|case|break|continue|return|import|export|from|as|class|extends|super|new|this|typeof|instanceof|in|delete|void|throw|try|catch|finally|null|undefined|true|false|async|await|yield|let|const)\b/g, (match) => gold(match))
-		// Strings
-		.replace(/"([^"\\]|\\.)*"/g, (match) => green(match))
-		.replace(/'([^'\\]|\\.)*'/g, (match) => green(match))
-		// Comments
-		.replace(/\/\/.*/g, (match) => dim(match))
-		// Numbers
-		.replace(/\b\d+(\.\d+)?\b/g, (match) => cyan(match))
-		// Functions
-		.replace(/\b[a-zA-Z_][a-zA-Z0-9_]*\(/g, (match) => blue(match.slice(0, -1)) + "(")
-		// Regex
-		.replace(/\/([^\/\\]|\\.)*\/[gimuy]*/g, (match) => purple(match));
-
-	return result;
-}
-
-function highlightTypeScript(line: string): string {
-	return highlightJavaScript(line);
-}
-
-function highlightPython(line: string): string {
-	return line
-		// Keywords
-		.replace(/\b(and|as|assert|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield|async|await)\b/g, (match) => gold(match))
-		// Strings
-		.replace(/"([^"\\]|\\.)*"/g, (match) => green(match))
-		.replace(/'([^'\\]|\\.)*'/g, (match) => green(match))
-		.replace(/'''[\s\S]*?'''/g, (match) => green(match))
-		.replace(/"""[\s\S]*?"""/g, (match) => green(match))
-		// Comments
-		.replace(/#.*/g, (match) => dim(match))
-		// Numbers
-		.replace(/\b\d+(\.\d+)?\b/g, (match) => cyan(match))
-		// Functions
-		.replace(/\bdef\s+([a-zA-Z_][a-zA-Z0-9_]*)/g, (match) => gold("def") + " " + blue(match.slice(4)));
-}
-
-function highlightHTML(line: string): string {
-	return line
-		// Tags
-		.replace(/<(\/?)([a-zA-Z0-9_:]+)/g, (match, close, tag) => gold(`<${close}${tag}`))
-		// Attributes
-		.replace(/(\w+)=("([^"]*)"|'([^']*)')/g, (match, attr, value) => cyan(attr) + "=" + green(value))
-		// Comments
-		.replace(/<!--.*?-->/g, (match) => dim(match));
-}
-
-function highlightCSS(line: string): string {
-	return line
-		// Selectors
-		.replace(/([#.]?[a-zA-Z_][a-zA-Z0-9_:-]*)(?=[\s{])/g, (match) => blue(match))
-		// Properties
-		.replace(/([a-zA-Z-]+)(?=\s*:)/g, (match) => cyan(match))
-		// Values
-		.replace(/:[^;}]+/g, (match) => green(match))
-		// Comments
-		.replace(/\/\*.*?\*\//g, (match) => dim(match));
-}
-
-function highlightJSON(line: string): string {
-	return line
-		// Keys
-		.replace(/"([^"\\]|\\.)*"(?=\s*:)/g, (match) => blue(match))
-		// Strings
-		.replace(/"([^"\\]|\\.)*"(?![\s:])/g, (match) => green(match))
-		// Numbers
-		.replace(/\b\d+(\.\d+)?\b/g, (match) => cyan(match))
-		// Booleans
-		.replace(/\b(true|false)\b/g, (match) => gold(match))
-		// Null
-		.replace(/\b(null)\b/g, (match) => purple(match));
-}
-
-function highlightBash(line: string): string {
-	return line
-		// Keywords
-		.replace(/\b(if|then|else|elif|fi|for|in|do|done|while|until|case|esac|function)\b/g, (match) => gold(match))
-		// Variables
-		.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*/g, (match) => blue(match))
-		// Strings
-		.replace(/"([^"\\]|\\.)*"/g, (match) => green(match))
-		.replace(/'([^'\\]|\\.)*'/g, (match) => green(match))
-		// Comments
-		.replace(/#.*/g, (match) => dim(match))
-		// Commands
-		.replace(/\b(ls|cd|pwd|cp|mv|rm|mkdir|rmdir|cat|grep|find|xargs|awk|sed|sort|uniq|cut|tr|head|tail|less|more|ps|top|kill|echo|printf|test|expr|bc|date|time|which|whereis|whoami|id|uname|hostname|df|du|mount|umount|ping|traceroute|nslookup|dig|curl|wget|ssh|scp|ftp|telnet)\b/g, (match) => purple(match));
-}
 
 function codeBlock(code: string, language?: string): string {
 	const lang = language || "text";
@@ -278,6 +191,12 @@ function renderInlineTokens(tokens: Token[]): string {
 			case "escape":
 				result += token.text;
 				break;
+			case "inlineKatex":
+				result += cyan(token.text);
+				break;
+			case "blockKatex":
+				result += `\n${cyan(token.text)}\n`;
+				break;
 			default:
 				if ("text" in token && typeof token.text === "string") {
 					result += token.text;
@@ -317,6 +236,9 @@ function renderToken(token: Token, indent: string = ""): string {
 			}
 			return `\n${dim("┌─ " + lang)}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
 		}
+		
+		case "blockKatex":
+			return `\n${cyan(token.text)}\n`;
 
 		case "list": {
 			const items = token.items || [];

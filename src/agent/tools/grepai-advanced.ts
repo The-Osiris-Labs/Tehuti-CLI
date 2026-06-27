@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import fs from "fs-extra";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -40,14 +40,14 @@ export const configureGrepAIMemoryBankTool = createTool({
 				memoryPath = join(ctx.cwd, ".grepai", "memory");
 			}
 
-			if (!existsSync(memoryPath)) {
-				mkdirSync(memoryPath, { recursive: true });
+			if (!(await fs.pathExists(memoryPath))) {
+				await fs.ensureDir(memoryPath);
 			}
 
 			const configPath = join(ctx.cwd, ".grepai", "config.json");
 			let config: any = {};
-			if (existsSync(configPath)) {
-				config = JSON.parse(readFileSync(configPath, "utf8"));
+			if (await fs.pathExists(configPath)) {
+				config = JSON.parse(await fs.readFile(configPath, "utf8"));
 			}
 
 			config.memoryBank = {
@@ -56,7 +56,7 @@ export const configureGrepAIMemoryBankTool = createTool({
 				compression,
 			};
 
-			writeFileSync(configPath, JSON.stringify(config, null, 2));
+			await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 
 			return {
 				success: true,

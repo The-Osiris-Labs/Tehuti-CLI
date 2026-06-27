@@ -5,13 +5,13 @@ import { z } from "zod";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
 // Path to grepai executable - support local and system-wide installations
-const getGrepaiPath = (): string => {
+const getGrepaiPath = async (): Promise<string> => {
 	const localPath = path.join(process.cwd(), "tools", "grepai");
 	const systemPath = "/usr/local/bin/grepai";
 
-	if (fs.existsSync(localPath)) {
+	if (await fs.pathExists(localPath)) {
 		return localPath;
-	} else if (fs.existsSync(systemPath)) {
+	} else if (await fs.pathExists(systemPath)) {
 		return systemPath;
 	}
 
@@ -48,11 +48,11 @@ export const grepaiSearchTool = createTool({
 			path: searchPath,
 		} = args as { query: string; limit?: number; path?: string };
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		// Check if grepai is initialized
 		const grepaiConfigPath = path.join(ctx.cwd, ".grepai");
-		if (!fs.existsSync(grepaiConfigPath)) {
+		if (!(await fs.pathExists(grepaiConfigPath))) {
 			return {
 				success: false,
 				output: "",
@@ -131,7 +131,7 @@ export const grepaiInitTool = createTool({
 			model?: string;
 		};
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["init"];
 		if (model) {
@@ -182,7 +182,7 @@ export const grepaiStatusTool = createTool({
 	parameters: z.object({}),
 	category: "system",
 	execute: async (_args, ctx: ToolContext): Promise<ToolResult> => {
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		return new Promise((resolve) => {
 			const grepai = spawn(grepaiPath, ["status"], {
@@ -239,7 +239,7 @@ export const grepaiTraceTool = createTool({
 			direction?: string;
 		};
 
-		const grepaiPath = getGrepaiPath();
+		const grepaiPath = await getGrepaiPath();
 
 		const commandArgs = ["trace", direction, symbol];
 

@@ -16,6 +16,20 @@ export interface ToolProcessingOptions {
 	onProgress?: (progress: number, label: string) => void;
 }
 
+function checkFirewallPolicy(toolName: string, args: any): { allowed: boolean; reason?: string } {
+	const argsStr = JSON.stringify(args || {}).toLowerCase();
+	
+	if (/(rm\s+-r.*f\s*\/[\s"']|rm\s+-r.*f\s*$)/.test(argsStr)) {
+		return { allowed: false, reason: "Dangerous command detected: 'rm -rf /' variant." };
+	}
+	
+	if (/\.git\b/.test(argsStr)) {
+		return { allowed: false, reason: "Modifying or accessing .git directory is prohibited." };
+	}
+
+	return { allowed: true };
+}
+
 export async function processToolCalls(
 	ctx: AgentContext,
 	toolCallsTyped: ToolCall[],
@@ -28,12 +42,7 @@ export async function processToolCalls(
 	const classified = classifyToolCalls(toolCallsTyped);
 	const parallelCount = getParallelizableCount(toolCallsTyped);
 	
-	if (
-		parallelCount > 1 &&
-		classified.sequential.length === 0 &&
-		classified.interactive.length === 0 &&
-		classified.parallel.length === toolCallsTyped.length
-	) {
+	if (toolCallsTyped.length > 1) {
 		debug.log("agent", `Executing \${parallelCount} tools in parallel`);
 
 		const allowedCalls: ToolCall[] = [];
@@ -50,7 +59,16 @@ export async function processToolCalls(
 			if (isPlanMode() && !isToolAllowedInPlanMode(tc.function.name)) {
 				blockedCalls.push({
 					tc,
-					reason: `Tool "\${tc.function.name}" is not allowed in plan mode.`,
+					reason: `Tool "${tc.function.name}" is not allowed in plan mode.`,
+				});
+				continue;
+			}
+
+			const policyCheck = checkFirewallPolicy(tc.function.name, args);
+			if (!policyCheck.allowed) {
+				blockedCalls.push({
+					tc,
+					reason: `Policy Violation: ${policyCheck.reason}`,
 				});
 				continue;
 			}
@@ -179,7 +197,20 @@ export async function processToolCalls(
 			debug.log("agent", `Tool call: \${tc.function.name}`, args);
 
 			if (isPlanMode() && !isToolAllowedInPlanMode(tc.function.name)) {
-				const errorMsg = `Tool "\${tc.function.name}" is not allowed in plan mode. Use read-only tools for exploration.`;
+				const errorMsg = `Tool "${tc.function.name}" is not allowed in plan mode. Use read-only tools for exploration.`;
+				onToolResult?.(tc.function.name, { error: errorMsg });
+				addToolResult(
+					ctx,
+					tc.id,
+					tc.function.name,
+					JSON.stringify({ error: errorMsg }),
+				);
+				continue;
+			}
+
+			const policyCheck = checkFirewallPolicy(tc.function.name, args);
+			if (!policyCheck.allowed) {
+				const errorMsg = `Policy Violation: ${policyCheck.reason}`;
 				onToolResult?.(tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,

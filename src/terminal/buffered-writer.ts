@@ -88,7 +88,7 @@ function splitAtVisualWidth(
 		}
 
 		width += charWidth;
-		pos = i + 1;
+		pos = i + (code > 0xffff ? 2 : 1);
 
 		if (code > 0xffff) {
 			i++;
@@ -325,6 +325,11 @@ export class StreamingOutputManager {
 
 		if (this.inCodeBlock) {
 			this.codeBlockBuffer += token;
+			if (this.codeBlockBuffer.includes("\n")) {
+				this.batchedTokens += this.codeBlockBuffer;
+				this.codeBlockBuffer = "";
+				this.scheduleBatch();
+			}
 			return;
 		}
 

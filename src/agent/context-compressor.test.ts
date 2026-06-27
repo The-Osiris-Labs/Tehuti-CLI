@@ -86,7 +86,7 @@ describe("Context Compressor", () => {
 
 			const critical = identifyCriticalMessages(messages);
 
-			expect(critical.length).toBe(0);
+			expect(critical.length).toBe(1); // User message gets pinned
 		});
 
 		it("should identify messages with TODO and important patterns as critical", () => {
@@ -102,12 +102,12 @@ describe("Context Compressor", () => {
 			expect(critical.length).toBeGreaterThan(0);
 		});
 
-		it("should identify messages with 4+ code blocks as critical", () => {
+		it("should identify messages with 10+ code blocks as critical", () => {
 			const messagesWithCode: OpenRouterMessage[] = [
 				{
 					role: "assistant",
 					content:
-						"Code:\n```ts\n1\n```\n```ts\n2\n```\n```ts\n3\n```\n```ts\n4\n```",
+						"Code:\n```ts\n1\n```\n```ts\n2\n```\n```ts\n3\n```\n```ts\n4\n```\n```ts\n5\n```\n```ts\n6\n```\n```ts\n7\n```\n```ts\n8\n```\n```ts\n9\n```\n```ts\n10\n```",
 				},
 			];
 
@@ -258,7 +258,7 @@ describe("Context Compressor", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "system", content: "System prompt" },
 				...Array.from({ length: 50 }, (_, i) => ({
-					role: "user" as const,
+					role: "assistant" as const,
 					content: `Regular message ${i}`,
 				})),
 			];

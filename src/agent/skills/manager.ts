@@ -1,9 +1,10 @@
-import { existsSync } from "fs";
-import { readFile } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
+import { watch } from "node:fs";
+import { access, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { consola } from "../../utils/logger.js";
+import { createTool } from "../tools/registry.js";
 
 export interface Skill {
 	id: string;
@@ -44,8 +45,10 @@ export class SkillsManager {
 		// Load built-in skills (from the project)
 		this.loadBuiltInSkills();
 
-		// Load user-defined skills (from ~/.tehuti/skills)
-		this.loadUserSkills();
+		// Load user-defined skills (from ~/.tehuti/skills) asynchronously
+		this.loadUserSkills().catch((err) =>
+			consola.error("Failed to load user skills:", err),
+		);
 	}
 
 	private loadBuiltInSkills(): void {
@@ -175,11 +178,59 @@ When working with Git:
 		});
 	}
 
-	private loadUserSkills(): void {
-		// TODO: Implement user skills loading from ~/.tehuti/skills
-		if (existsSync(this.skillsDirectory)) {
-			// Read all JSON files in the skills directory
-			// For now, we'll skip this and implement later
+	private async loadUserSkills(): Promise<void> {
+		try {
+			await access(this.skillsDirectory);
+		} catch {
+			return; // directory doesn't exist
+		}
+
+		await this.readUserSkillsDirectory();
+
+		// Setup dynamic loading via fs.watch
+		try {
+			watch(this.skillsDirectory, (eventType, filename) => {
+				if (filename && filename.endsWith(".json")) {
+					this.readUserSkillsDirectory().catch((err) =>
+						consola.error("Error reloading user skills:", err),
+					);
+				}
+			});
+		} catch (error) {
+			consola.warn("Failed to watch skills directory:", error);
+		}
+	}
+
+	private async readUserSkillsDirectory(): Promise<void> {
+		try {
+			const files = await readdir(this.skillsDirectory);
+
+			// Track user skills to remove ones that were deleted
+			const currentUserSkills = new Set<string>();
+
+			for (const file of files) {
+				if (file.endsWith(".json")) {
+					try {
+						const filePath = join(this.skillsDirectory, file);
+						const content = await readFile(filePath, "utf-8");
+						const data = JSON.parse(content);
+						const skill = SKILL_SCHEMA.parse(data) as Skill;
+						this.addSkill(skill);
+						currentUserSkills.add(skill.id);
+					} catch (err) {
+						consola.error(`Failed to load skill from ${file}:`, err);
+					}
+				}
+			}
+
+			// Clean up deleted user skills (assuming built-in skills have author "Tehuti")
+			for (const [id, skill] of this.skills.entries()) {
+				if (skill.author !== "Tehuti" && !currentUserSkills.has(id)) {
+					this.removeSkill(id);
+				}
+			}
+		} catch (error) {
+			consola.error("Error reading user skills directory:", error);
 		}
 	}
 
@@ -251,6 +302,39 @@ When working with Git:
 	public removeSkill(id: string): boolean {
 		return this.skills.delete(id);
 	}
+
+	public async createReusableSkill(name: string, description: string, instructions: string): Promise<Skill> {
+		const skillId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+		const skillDir = join(this.skillsDirectory, skillId);
+		await mkdir(skillDir, { recursive: true });
+		
+		const skillContent = `---
+name: ${name}
+description: ${description}
+---
+
+${instructions}`;
+
+		await writeFile(join(skillDir, "SKILL.md"), skillContent, "utf-8");
+
+		const skill: Skill = {
+			id: skillId,
+			name,
+			description,
+			keywords: [],
+			category: "custom",
+			expertise: instructions,
+			author: "Agent",
+			version: "1.0.0",
+			active: true,
+		};
+		
+		// Save metadata so it can be picked up by the existing JSON loader
+		await writeFile(join(this.skillsDirectory, `${skillId}.json`), JSON.stringify(skill, null, 2), "utf-8");
+
+		this.addSkill(skill);
+		return skill;
+	}
 }
 
 // Create a singleton instance
@@ -262,3 +346,30 @@ export function getSkillsManager(): SkillsManager {
 	}
 	return skillsManager;
 }
+
+export const createReusableSkillTool = createTool({
+	name: "create_reusable_skill",
+	description: "Create a reusable skill by writing instructions to a SKILL.md file autonomously.",
+	parameters: z.object({
+		name: z.string().describe("The name of the skill"),
+		description: z.string().describe("A short description of what the skill does"),
+		instructions: z.string().describe("The detailed instructions for the skill in markdown format"),
+	}),
+	category: "system",
+	execute: async (args, _ctx) => {
+		const { name, description, instructions } = args as { name: string; description: string; instructions: string };
+		try {
+			const skill = await getSkillsManager().createReusableSkill(name, description, instructions);
+			return {
+				success: true,
+				output: JSON.stringify({ message: `Skill ${skill.name} created successfully`, skillId: skill.id }),
+			};
+		} catch (error) {
+			return {
+				success: false,
+				output: "",
+				error: String(error),
+			};
+		}
+	},
+});

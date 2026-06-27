@@ -12,9 +12,9 @@ export function TehutiHeader() {
 			</Gradient>
 			<Box flexDirection="column" alignItems="center">
 				<Box>
-					<Text color="#D4AF37">{HIEROGLYPHS.IBIS} </Text>
+					<Text color="#D4AF37">𓆣 </Text>
 					<Text color="#8B7355" dimColor>T H O T H, T O N G U E O F R A</Text>
-					<Text color="#D4AF37"> {HIEROGLYPHS.IBIS}</Text>
+					<Text color="#D4AF37"> 𓆣</Text>
 				</Box>
 				<Text color="#8B7355" dimColor>Halls of Records • Balance of Ma'at • Architect</Text>
 				<Text color="#8B7355" dimColor>𓁹 Write • Edit • Transform</Text>

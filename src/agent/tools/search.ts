@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import readline from "node:readline";
 import path from "node:path";
 import fs from "fs-extra";
 import { glob } from "tinyglobby";
@@ -169,6 +170,22 @@ const GREP_SCHEMA = z.object({
 		.positive()
 		.optional()
 		.describe("Timeout in milliseconds (default: 30000)"),
+});
+
+const FIND_REFERENCES_SCHEMA = z.object({
+	symbol: z.string().describe("The symbol name to find references for"),
+	path: z
+		.string()
+		.optional()
+		.describe("The directory to search in (default: current working directory)"),
+});
+
+const GO_TO_DEFINITION_SCHEMA = z.object({
+	symbol: z.string().describe("The symbol name to find the definition for"),
+	path: z
+		.string()
+		.optional()
+		.describe("The directory to search in (default: current working directory)"),
 });
 
 const GLOB_TIMEOUT_MS = 30000;
@@ -353,7 +370,8 @@ async function grepFiles(
 		rgArgs.push("--", args.pattern, searchPath);
 
 		const result = await new Promise<{
-			stdout: string;
+			output: string[];
+			matchCount: number;
 			stderr: string;
 			code: number;
 		}>((resolve, reject) => {
@@ -362,10 +380,16 @@ async function grepFiles(
 				env: { ...process.env, ...ctx.env },
 			});
 
-			let stdout = "";
+			const rl = readline.createInterface({
+				input: proc.stdout,
+				crlfDelay: Infinity,
+			});
+
 			let stderr = "";
 			let timeoutId: NodeJS.Timeout | null = null;
 			let resolved = false;
+			const output: string[] = [];
+			let matchCount = 0;
 
 			const cleanup = () => {
 				if (timeoutId) clearTimeout(timeoutId);
@@ -379,14 +403,34 @@ async function grepFiles(
 					proc.kill("SIGKILL");
 				} catch {}
 				resolve({
-					stdout: "",
+					output: [],
+					matchCount: 0,
 					stderr: `Search timed out after ${timeoutMs}ms`,
 					code: 124,
 				});
 			}, timeoutMs);
 
-			proc.stdout.on("data", (data) => {
-				stdout += data.toString();
+			rl.on("line", (line) => {
+				if (!line.trim()) return;
+
+				try {
+					const parsed = JSON.parse(line);
+
+					if (parsed.type === "match") {
+						const filePath = parsed.data?.path?.text ?? "";
+						if (isSensitivePath(filePath)) return;
+
+						matchCount += parsed.data?.lines?.matches?.length ?? 1;
+
+						const lineNum = parsed.data?.line_number ?? 0;
+						const col = parsed.data?.absolute_offset ?? 0;
+						const text = parsed.data?.lines?.text ?? "";
+
+						output.push(`${filePath}:${lineNum}:${col}: ${text.trimEnd()}`);
+					}
+				} catch {
+					output.push(line);
+				}
 			});
 
 			proc.stderr.on("data", (data) => {
@@ -397,7 +441,7 @@ async function grepFiles(
 				if (resolved) return;
 				cleanup();
 				resolved = true;
-				resolve({ stdout, stderr, code: code ?? 0 });
+				resolve({ output, matchCount, stderr, code: code ?? 0 });
 			});
 
 			proc.on("error", (error) => {
@@ -416,7 +460,7 @@ async function grepFiles(
 			};
 		}
 
-		if (result.code === 0 && !result.stdout) {
+		if (result.code === 0 && result.output.length === 0) {
 			return {
 				success: true,
 				output: `No matches found for pattern: ${args.pattern}`,
@@ -424,40 +468,14 @@ async function grepFiles(
 			};
 		}
 
-		const output: string[] = [];
-		let matchCount = 0;
-
-		for (const line of result.stdout.split("\n")) {
-			if (!line.trim()) continue;
-
-			try {
-				const parsed = JSON.parse(line);
-
-				if (parsed.type === "match") {
-					const filePath = parsed.data?.path?.text ?? "";
-					if (isSensitivePath(filePath)) continue;
-
-					matchCount += parsed.data?.lines?.matches?.length ?? 1;
-
-					const lineNum = parsed.data?.line_number ?? 0;
-					const col = parsed.data?.absolute_offset ?? 0;
-					const text = parsed.data?.lines?.text ?? "";
-
-					output.push(`${filePath}:${lineNum}:${col}: ${text.trimEnd()}`);
-				}
-			} catch {
-				output.push(line);
-			}
-		}
-
 		return {
 			success: true,
 			output:
-				output.slice(0, 100).join("\n") +
-				(output.length > 100
-					? `\n... (${output.length - 100} more results)`
+				result.output.slice(0, 100).join("\n") +
+				(result.output.length > 100
+					? `\n... (${result.output.length - 100} more results)`
 					: ""),
-			metadata: { pattern: args.pattern, path: searchPath, count: matchCount },
+			metadata: { pattern: args.pattern, path: searchPath, count: result.matchCount },
 		};
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("ENOENT")) {
@@ -474,6 +492,54 @@ async function grepFiles(
 			error: `Grep search failed: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
+}
+
+async function findReferences(
+	args: z.infer<typeof FIND_REFERENCES_SCHEMA>,
+	ctx: ToolContext,
+): Promise<ToolResult> {
+	return grepFiles(
+		{
+			pattern: `\\b${args.symbol}\\b`,
+			path: args.path,
+			ignore_case: false,
+			include: "*.{ts,tsx,js,jsx}",
+		},
+		ctx,
+	);
+}
+
+async function goToDefinition(
+	args: z.infer<typeof GO_TO_DEFINITION_SCHEMA>,
+	ctx: ToolContext,
+): Promise<ToolResult> {
+	// Advanced grep pattern for definitions
+	const pattern = `(export\\s+)?(default\\s+)?(class|interface|type|function|const|let|var)\\s+${args.symbol}\\b`;
+	const result = await grepFiles(
+		{
+			pattern,
+			path: args.path,
+			ignore_case: false,
+			include: "*.{ts,tsx,js,jsx}",
+		},
+		ctx,
+	);
+	
+	if (result.success && result.output && !result.output.startsWith("No matches found")) {
+		return result;
+	}
+	
+	// Fallback for methods or properties
+	const methodPattern = `^\\s*(async\\s+)?(get\\s+|set\\s+)?${args.symbol}\\s*[=(:]`;
+	return grepFiles(
+		{
+			pattern: methodPattern,
+			path: args.path,
+			ignore_case: false,
+			include: "*.{ts,tsx,js,jsx}",
+		},
+		ctx,
+	);
 }
 
 export const searchTools: ToolDefinition[] = [
@@ -504,6 +570,28 @@ export const searchTools: ToolDefinition[] = [
 		parameters: GREP_SCHEMA,
 		execute: grepFiles as AnyToolExecutor,
 		category: "fs",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "find_references",
+		description: `- Finds all references of a given symbol across the codebase.
+- Acts as a lightweight LSP "Find References" feature.
+- Scans .ts, .tsx, .js, .jsx files by default.`,
+		parameters: FIND_REFERENCES_SCHEMA,
+		execute: findReferences as AnyToolExecutor,
+		category: "search",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "go_to_definition",
+		description: `- Finds the definition of a given symbol across the codebase.
+- Uses advanced grep logic to simulate an LSP "Go to Definition" feature.
+- Scans .ts, .tsx, .js, .jsx files by default.`,
+		parameters: GO_TO_DEFINITION_SCHEMA,
+		execute: goToDefinition as AnyToolExecutor,
+		category: "search",
 		requiresPermission: false,
 		isReadonly: true,
 	},

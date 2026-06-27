@@ -23,6 +23,7 @@ export interface ToolContext {
 	signal?: AbortSignal;
 	diffPreview?: DiffPreviewOptions;
 	cache?: unknown;
+	readFilesThisSession?: Set<string>;
 }
 
 export interface ToolDefinition {

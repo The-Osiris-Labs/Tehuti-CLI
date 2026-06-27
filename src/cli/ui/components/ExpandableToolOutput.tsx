@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import stringWidth from "string-width";
 import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
 
@@ -9,6 +9,7 @@ interface ExpandableToolOutputProps {
 	maxWidth: number;
 	status?: "pending" | "success" | "error";
 	defaultExpanded?: boolean;
+	isParallel?: boolean;
 }
 
 export interface ToolOutputSummary {
@@ -73,12 +74,13 @@ function stripAnsi(str: string): string {
 	return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
 }
 
-export function ExpandableToolOutput({
+export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	toolName,
 	result,
 	maxWidth,
 	status,
 	defaultExpanded = false,
+	isParallel = false,
 }: ExpandableToolOutputProps): React.ReactElement {
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	const startTimeRef = useRef<number>(Date.now());
@@ -121,7 +123,9 @@ export function ExpandableToolOutput({
 	}, [status]);
 
 	const width = Math.max(40, maxWidth);
-	const summary = summarizeToolOutput(result, expanded ? 1000 : width, expanded ? 10000 : 4);
+	const summary = useMemo(() => 
+		summarizeToolOutput(result, expanded ? 1000 : width, expanded ? 10000 : 4),
+	[result, expanded, width]);
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
@@ -153,7 +157,7 @@ export function ExpandableToolOutput({
 		: cleanToolName;
 
 	// Left part string calculation for width using truncated name
-	const leftStr = `  ┌─[ ${headerIcon} ${truncatedToolName} ]`;
+	const leftStr = `  ${isParallel ? "├" : "┌"}─[ ${headerIcon} ${truncatedToolName} ]`;
 	const leftWidth = stringWidth(leftStr);
 
 	// Right part string calculation for width
@@ -199,7 +203,7 @@ export function ExpandableToolOutput({
 		<Box ref={boxRef} flexDirection="column" marginTop={0.25} marginBottom={0.25}>
 			{/* Top Border & Header */}
 			<Box flexDirection="row" alignItems="center">
-				<Text color={borderTextColor}>  ┌─[ </Text>
+				<Text color={borderTextColor}>  {isParallel ? "├" : "┌"}─[ </Text>
 				<Text color={headerColor}>{headerIcon} </Text>
 				<Text bold color={headerColor}>{truncatedToolName}</Text>
 				<Text color={borderTextColor}> ]{borderLine}[ </Text>
@@ -218,4 +222,4 @@ export function ExpandableToolOutput({
 			</Box>
 		</Box>
 	);
-}
+});

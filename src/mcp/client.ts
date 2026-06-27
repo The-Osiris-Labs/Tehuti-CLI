@@ -246,7 +246,7 @@ export class MCPClientManager {
 					);
 				}
 				return new SSEClientTransport(new URL(config.url), {
-					eventSourceInit: { headers: config.headers },
+					eventSourceInit: { headers: config.headers } as any,
 					requestInit: { headers: config.headers },
 				});
 			}

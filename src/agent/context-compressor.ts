@@ -1,4 +1,7 @@
 import type { OpenRouterMessage } from "../api/openrouter.js";
+import { getEncoding } from "js-tiktoken";
+
+const tokenizer = getEncoding("cl100k_base");
 
 export interface CompressionOptions {
 	targetTokens: number;
@@ -27,13 +30,13 @@ const CRITICAL_PATTERNS = [
 	/error/i,
 	/failed/i,
 	/exception/i,
+	/trace/i,
+	/architecture/i,
+	/decision/i,
 	/important/i,
 	/critical/i,
 	/todo/i,
 	/fixme/i,
-	/decision/i,
-	/confirmed/i,
-	/completed/i,
 ];
 
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
@@ -45,8 +48,7 @@ function estimateTokens(messages: OpenRouterMessage[]): number {
 			typeof msg.content === "string"
 				? msg.content
 				: JSON.stringify(msg.content);
-		total += Math.ceil(content.length / 4);
-		total += 10;
+		total += tokenizer.encode(content).length + 10;
 	}
 	return total;
 }
@@ -74,21 +76,39 @@ function calculateMessageImportance(msg: OpenRouterMessage): number {
 
 	let score = 0;
 
+	// PIN user prompts and system prompts
+	if (msg.role === "user" || msg.role === "system") {
+		return 10000;
+	}
+
 	for (const pattern of CRITICAL_PATTERNS) {
 		if (pattern.test(content)) {
-			score += 10;
+			score += 500;
 		}
 	}
 
 	const codeBlocks = extractCodeBlocks(content);
-	score += codeBlocks.length * 5;
-
-	if (msg.role === "system") {
-		score += 100;
-	}
+	score += codeBlocks.length * 10;
 
 	if (msg.role === "tool") {
 		score += 15;
+	}
+
+	// Eagerly drop massive CLI logs (npm install, massive file listings)
+	if (content.length > 2000) {
+		score -= Math.floor(content.length / 1000) * 50;
+	}
+
+	const isMassiveLog = 
+		/npm (install|ci|outdated)/i.test(content) ||
+		/yarn (install|add)/i.test(content) ||
+		/pnpm (install|add)/i.test(content) ||
+		/added \d+ packages/i.test(content) ||
+		/total\s+\d+/i.test(content) ||
+		/node_modules\//i.test(content);
+
+	if (isMassiveLog) {
+		score -= 2000;
 	}
 
 	const hasFileReferences =
@@ -220,13 +240,13 @@ export function identifyCriticalMessages(
 	for (let i = 0; i < messages.length; i++) {
 		const msg = messages[i];
 
-		if (msg.role === "system") {
+		if (msg.role === "system" || msg.role === "user") {
 			criticalIndices.push(i);
 			continue;
 		}
 
 		const importance = calculateMessageImportance(msg);
-		if (importance >= 20) {
+		if (importance >= 100) {
 			criticalIndices.push(i);
 		}
 	}

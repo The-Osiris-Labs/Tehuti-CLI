@@ -76,33 +76,7 @@ const PREFETCH_RULES: PrefetchRule[] = [
 			},
 		],
 	},
-	{
-		currentTool: "list_dir",
-		nextTools: [
-			{
-				tool: "glob",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					const dirPath = record.dir_path || record.path;
-					if (typeof dirPath !== "string") return null;
-					return { pattern: "**/*.ts", path: dirPath };
-				},
-				priority: "low",
-			},
-			{
-				tool: "glob",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					const dirPath = record.dir_path || record.path;
-					if (typeof dirPath !== "string") return null;
-					return { pattern: "**/*.json", path: dirPath };
-				},
-				priority: "low",
-			},
-		],
-	},
+
 	{
 		currentTool: "git_status",
 		nextTools: [
@@ -190,6 +164,7 @@ const MAX_PREFETCH_QUEUE = 10;
 
 export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
+	private abortControllers = new Map<string, AbortController>();
 	private rules: PrefetchRule[];
 	private enabled: boolean = true;
 	private recentPatterns: Array<{
@@ -220,8 +195,12 @@ export class Prefetcher {
 		ctx: ToolContext,
 		key: string,
 	): void {
-		const prefetchPromise = executeTool(toolName, args, ctx)
+		const controller = new AbortController();
+		this.abortControllers.set(key, controller);
+		
+		const prefetchPromise = executeTool(toolName, args, { ...ctx, signal: controller.signal })
 			.then((result) => {
+				if (controller.signal.aborted) return null;
 				if (result && result.success && shouldCacheTool(getTool(toolName), toolName, args)) {
 					getToolCache().set(toolName, args, result);
 				}
@@ -233,9 +212,44 @@ export class Prefetcher {
 			if (this.pending.get(key) === trackedPromise) {
 				this.pending.delete(key);
 			}
+			if (this.abortControllers.get(key) === controller) {
+				this.abortControllers.delete(key);
+			}
 		});
 
 		this.pending.set(key, trackedPromise);
+	}
+
+	private abortPrefetchIfMatches(toolName: string, args: unknown): void {
+		if (toolName === "write_file" || toolName === "edit_file" || toolName === "replace_file_content" || toolName === "multi_replace_file_content" || toolName === "bash" || toolName === "run_command") {
+			const record = args as Record<string, unknown>;
+			const filePath = record?.file_path || record?.target_file || record?.path || record?.TargetFile;
+			
+			if (typeof filePath === "string") {
+				for (const [key, controller] of this.abortControllers.entries()) {
+					if (key.startsWith("read:") || key.startsWith("read_file:")) {
+						try {
+							const colonIndex = key.indexOf(":");
+							const readArgs = JSON.parse(key.slice(colonIndex + 1));
+							const readFilePath = readArgs.file_path || readArgs.path || readArgs.AbsolutePath;
+							if (readFilePath === filePath) {
+								controller.abort();
+								this.pending.delete(key);
+								this.abortControllers.delete(key);
+							}
+						} catch {}
+					}
+				}
+			} else if (toolName === "bash" || toolName === "run_command") {
+				for (const [key, controller] of this.abortControllers.entries()) {
+					if (key.startsWith("read:") || key.startsWith("read_file:")) {
+						controller.abort();
+						this.pending.delete(key);
+						this.abortControllers.delete(key);
+					}
+				}
+			}
+		}
 	}
 
 	recordPattern(toolName: string, args: unknown): void {
@@ -289,6 +303,8 @@ export class Prefetcher {
 
 	predict(toolName: string, args: unknown, ctx: ToolContext): void {
 		if (!this.enabled) return;
+
+		this.abortPrefetchIfMatches(toolName, args);
 
 		this.recordPattern(toolName, args);
 
@@ -357,6 +373,10 @@ export class Prefetcher {
 	}
 
 	clear(): void {
+		for (const controller of this.abortControllers.values()) {
+			controller.abort();
+		}
+		this.abortControllers.clear();
 		this.pending.clear();
 		this.recentPatterns = [];
 	}

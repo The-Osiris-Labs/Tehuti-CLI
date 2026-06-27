@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import fs from "fs-extra";
 import { join } from "node:path";
 import { z } from "zod";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
@@ -8,9 +7,9 @@ import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 const GREPAI_CACHE_DIR = join(process.cwd(), ".tehuti", "grepai-cache");
 
 // Ensure cache directory exists
-function ensureCacheDirectory(): void {
-	if (!existsSync(GREPAI_CACHE_DIR)) {
-		mkdirSync(GREPAI_CACHE_DIR, { recursive: true });
+async function ensureCacheDirectory(): Promise<void> {
+	if (!(await fs.pathExists(GREPAI_CACHE_DIR))) {
+		await fs.ensureDir(GREPAI_CACHE_DIR);
 	}
 }
 
@@ -73,17 +72,17 @@ export const grepaiSearchWithCacheTool = createTool({
 		} = args as { query: string; limit?: number; path?: string; ttl?: number };
 
 		// Ensure cache directory exists
-		ensureCacheDirectory();
+		await ensureCacheDirectory();
 
 		// Generate cache key
 		const cacheKey = generateCacheKey(query, { limit, path });
 		const cachePath = join(GREPAI_CACHE_DIR, `${cacheKey}.json`);
 
 		// Check if cache entry exists and is still valid
-		if (existsSync(cachePath)) {
+		if (await fs.pathExists(cachePath)) {
 			try {
 				const cacheData = JSON.parse(
-					await readFile(cachePath, "utf8"),
+					await fs.readFile(cachePath, "utf8"),
 				) as CacheEntry;
 				const now = Date.now();
 
@@ -121,7 +120,7 @@ export const grepaiSearchWithCacheTool = createTool({
 					ttl,
 				};
 
-				await writeFile(cachePath, JSON.stringify(cacheEntry));
+				await fs.writeFile(cachePath, JSON.stringify(cacheEntry));
 			} catch (error) {
 				console.error("Cache write error:", error);
 			}
@@ -154,7 +153,7 @@ export const grepaiClearCacheTool = createTool({
 		const { olderThan } = args as { olderThan?: number };
 
 		try {
-			if (!existsSync(GREPAI_CACHE_DIR)) {
+			if (!(await fs.pathExists(GREPAI_CACHE_DIR))) {
 				return {
 					success: true,
 					output: JSON.stringify({
@@ -164,16 +163,16 @@ export const grepaiClearCacheTool = createTool({
 				};
 			}
 
-			const files = await readdir(GREPAI_CACHE_DIR);
+			const files = await fs.readdir(GREPAI_CACHE_DIR);
 			let clearedCount = 0;
 
 			for (const file of files) {
 				if (file.endsWith(".json")) {
 					const filePath = join(GREPAI_CACHE_DIR, file);
-					const fileStat = await stat(filePath);
+					const fileStat = await fs.stat(filePath);
 
 					if (!olderThan || Date.now() - fileStat.mtimeMs > olderThan) {
-						await unlink(filePath);
+						await fs.unlink(filePath);
 						clearedCount++;
 					}
 				}
@@ -203,7 +202,7 @@ export const grepaiCacheStatusTool = createTool({
 	category: "system",
 	execute: async (_args, ctx: ToolContext): Promise<ToolResult> => {
 		try {
-			if (!existsSync(GREPAI_CACHE_DIR)) {
+			if (!(await fs.pathExists(GREPAI_CACHE_DIR))) {
 				return {
 					success: true,
 					output: JSON.stringify({
@@ -215,7 +214,7 @@ export const grepaiCacheStatusTool = createTool({
 				};
 			}
 
-			const files = await readdir(GREPAI_CACHE_DIR);
+			const files = await fs.readdir(GREPAI_CACHE_DIR);
 			const cacheFiles = files.filter((file) => file.endsWith(".json"));
 
 			let totalSize = 0;
@@ -228,12 +227,12 @@ export const grepaiCacheStatusTool = createTool({
 
 			for (const file of cacheFiles) {
 				const filePath = join(GREPAI_CACHE_DIR, file);
-				const fileStat = await stat(filePath);
+				const fileStat = await fs.stat(filePath);
 				totalSize += fileStat.size;
 
 				try {
 					const content = JSON.parse(
-						await readFile(filePath, "utf8"),
+						await fs.readFile(filePath, "utf8"),
 					) as CacheEntry;
 					entries.push({
 						filename: file,

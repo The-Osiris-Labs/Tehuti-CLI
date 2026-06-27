@@ -4,6 +4,41 @@ import fs from "fs-extra";
 import { z } from "zod";
 import { debug } from "../../utils/debug.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "./registry.js";
+import { execSync } from "node:child_process";
+
+let isDockerAvailable = false;
+try {
+	execSync("docker --version", { stdio: "ignore" });
+	isDockerAvailable = true;
+} catch {
+	isDockerAvailable = false;
+}
+
+function getSpawnArgs(command: string, cwd: string): { cmd: string; args: string[] } {
+	const useDocker = isDockerAvailable && process.env.DISABLE_DOCKER_SANDBOX !== "true";
+	if (useDocker) {
+		return {
+			cmd: "docker",
+			args: [
+				"run",
+				"--rm",
+				"-i",
+				"-v",
+				`${cwd}:/workspace`,
+				"-w",
+				"/workspace",
+				"node:20",
+				"bash",
+				"-c",
+				command,
+			],
+		};
+	}
+	return {
+		cmd: "bash",
+		args: ["-c", command],
+	};
+}
 
 const BASH_SCHEMA = z.object({
 	command: z.string().describe("The bash command to execute"),
@@ -257,7 +292,8 @@ function startBackgroundProcess(
 			}
 		}
 
-		const proc: ChildProcess = spawn("bash", ["-c", command], {
+		const { cmd, args } = getSpawnArgs(command, cwd);
+		const proc: ChildProcess = spawn(cmd, args, {
 			cwd,
 			env: { ...process.env, ...ctx.env },
 			detached: true,
@@ -543,14 +579,17 @@ async function executeBash(
 	}
 
 	return new Promise((resolve) => {
-		const proc: ChildProcess = spawn("bash", ["-c", command], {
+		const { cmd, args } = getSpawnArgs(command, cwd);
+		const proc: ChildProcess = spawn(cmd, args, {
 			cwd,
 			env: { ...process.env, ...ctx.env },
 			detached: true,
 		});
 
-		let stdout = "";
-		let stderr = "";
+		let stdoutLength = 0;
+		const stdoutChunks: Buffer[] = [];
+		let stderrLength = 0;
+		const stderrChunks: Buffer[] = [];
 		let resolved = false;
 		let timeoutId: NodeJS.Timeout | null = null;
 
@@ -563,8 +602,9 @@ async function executeBash(
 
 		proc.stdout?.on("data", (data: Buffer) => {
 			if (resolved) return;
-			stdout += data.toString();
-			if (stdout.length > MAX_OUTPUT_SIZE) {
+			stdoutChunks.push(data);
+			stdoutLength += data.length;
+			if (stdoutLength > MAX_OUTPUT_SIZE) {
 				cleanup();
 				resolved = true;
 				try {
@@ -580,7 +620,8 @@ async function executeBash(
 
 		proc.stderr?.on("data", (data: Buffer) => {
 			if (resolved) return;
-			stderr += data.toString();
+			stderrChunks.push(data);
+			stderrLength += data.length;
 		});
 
 		timeoutId = setTimeout(() => {
@@ -601,6 +642,8 @@ async function executeBash(
 			if (resolved) return;
 			cleanup();
 			resolved = true;
+			const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+			const stderr = Buffer.concat(stderrChunks).toString("utf-8");
 			const output = stdout || stderr || "(no output)";
 
 			resolve({

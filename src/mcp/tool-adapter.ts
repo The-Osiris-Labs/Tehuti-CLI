@@ -6,6 +6,7 @@ import type {
 } from "../agent/tools/registry.js";
 import type { OpenRouterTool } from "../api/openrouter.js";
 import type { MCPTool } from "./client.js";
+import { getToolCache } from "../agent/cache/tool-cache.js";
 
 function stableHash(input: string): string {
 	let hash = 5381;
@@ -85,6 +86,12 @@ export function createMCPToolDefinition(
 		category: "mcp",
 		requiresPermission: true,
 		execute: async (args: unknown, _ctx: ToolContext): Promise<ToolResult> => {
+			const cache = getToolCache();
+			const cachedResult = cache.get(toolName, args);
+			if (cachedResult) {
+				return cachedResult;
+			}
+
 			try {
 				const result = await executor(args);
 
@@ -96,32 +103,34 @@ export function createMCPToolDefinition(
 				) {
 					const contentArray = (result as { content: unknown[] }).content;
 					if (Array.isArray(contentArray)) {
-						const output = contentArray
-							.map((c) => {
-								const content = c as {
-									type?: string;
-									text?: string;
-									mimeType?: string;
-									resource?: { uri?: string };
-								};
-								if (content.type === "text") return content.text ?? "";
-								if (content.type === "image")
-									return `[Image: ${content.mimeType}]`;
-								if (content.type === "resource")
-									return `[Resource: ${content.resource?.uri}]`;
-								return JSON.stringify(c);
-							})
-							.join("\n");
+						let output = "";
+						for (let i = 0; i < contentArray.length; i++) {
+							if (i > 0) output += "\n";
+							const content = contentArray[i] as {
+								type?: string;
+								text?: string;
+								mimeType?: string;
+								resource?: { uri?: string };
+							};
+							if (content.type === "text") output += content.text ?? "";
+							else if (content.type === "image")
+								output += `[Image: ${content.mimeType}]`;
+							else if (content.type === "resource")
+								output += `[Resource: ${content.resource?.uri}]`;
+							else output += JSON.stringify(contentArray[i]);
+						}
 
-						return {
+						const finalResult = {
 							success: true,
 							output,
 							metadata: { serverName, toolName: tool.name },
 						};
+						cache.set(toolName, args, finalResult);
+						return finalResult;
 					}
 				}
 
-				return {
+				const finalResult = {
 					success: true,
 					output:
 						typeof result === "string"
@@ -129,6 +138,8 @@ export function createMCPToolDefinition(
 							: JSON.stringify(result, null, 2),
 					metadata: { serverName, toolName: tool.name },
 				};
+				cache.set(toolName, args, finalResult);
+				return finalResult;
 			} catch (error) {
 				return {
 					success: false,

@@ -3,7 +3,29 @@ import { fileTypeFromBuffer } from "file-type";
 import fs from "fs-extra";
 import sharp from "sharp";
 import { z } from "zod";
+import crypto from "node:crypto";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
+
+const execAsync = promisify(exec);
+
+async function runAciLinter(filePath: string, content: string): Promise<{ success: boolean; error?: string }> {
+	if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx") && !filePath.endsWith(".js") && !filePath.endsWith(".jsx")) {
+		return { success: true };
+	}
+	const tempFilePath = path.join(path.dirname(filePath), `.tmp.aci.${path.basename(filePath)}`);
+	try {
+		await fs.writeFile(tempFilePath, content, "utf-8");
+		await execAsync(`npx tsc --noEmit --esModuleInterop --skipLibCheck --target es2022 --moduleResolution node16 --module node16 "${tempFilePath}"`);
+		return { success: true };
+	} catch (error: any) {
+		return { success: false, error: error.stdout || error.message };
+	} finally {
+		await fs.unlink(tempFilePath).catch(() => {});
+	}
+}
+
 import type {
 	AnyToolExecutor,
 	ToolContext,
@@ -11,7 +33,7 @@ import type {
 	ToolResult,
 } from "./registry.js";
 
-const readFilesThisSession = new Set<string>();
+
 
 const PROTECTED_FILES = [
 	".env",
@@ -69,12 +91,14 @@ function isSensitiveFile(filePath: string): boolean {
 	return false;
 }
 
-export function hasFileBeenRead(filePath: string): boolean {
-	return readFilesThisSession.has(filePath);
+export function hasFileBeenRead(filePath: string, ctx: ToolContext): boolean {
+	if (!ctx.readFilesThisSession) ctx.readFilesThisSession = new Set();
+	return ctx.readFilesThisSession.has(filePath);
 }
 
-export function markFileAsRead(filePath: string): void {
-	readFilesThisSession.add(filePath);
+export function markFileAsRead(filePath: string, ctx: ToolContext): void {
+	if (!ctx.readFilesThisSession) ctx.readFilesThisSession = new Set();
+	ctx.readFilesThisSession.add(filePath);
 }
 
 const READ_FILE_SCHEMA = z.object({
@@ -102,6 +126,7 @@ const EDIT_FILE_SCHEMA = z.object({
 	file_path: z.string().describe("The absolute path to the file to edit"),
 	old_string: z.string().describe("The text to find and replace"),
 	new_string: z.string().describe("The text to replace with"),
+	expected_hash: z.string().describe("The short MD5 hash of the live file to prevent drift corruption"),
 	replace_all: z
 		.boolean()
 		.optional()
@@ -310,6 +335,7 @@ async function readFile(
 		}
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
+		const fileHash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8);
 		const lines = content.split("\n");
 
 		const offset = Math.max(0, args.offset ? args.offset - 1 : 0);
@@ -326,16 +352,17 @@ async function readFile(
 			? `\n\n(Showing lines ${offset + 1}-${offset + selectedLines.length} of ${lines.length})`
 			: "";
 
-		markFileAsRead(resolvedPath);
+		markFileAsRead(resolvedPath, ctx);
 
 		return {
 			success: true,
-			output: numberedLines + summary,
+			output: numberedLines + summary + `\n\nFile Hash: ${fileHash}`,
 			metadata: {
 				path: resolvedPath,
 				totalLines: lines.length,
 				shownLines: selectedLines.length,
 				offset: offset + 1,
+				fileHash,
 			},
 		};
 	} catch (error) {
@@ -383,8 +410,18 @@ async function writeFile(
 		};
 	}
 
+	const linterResult = await runAciLinter(resolvedPath, args.content);
+	if (!linterResult.success) {
+		return {
+			success: false,
+			output: "",
+			error: `ACI Linter failed (Syntax Error):\n${linterResult.error}\n\nWrite was NOT applied. Please self-correct.`,
+		};
+	}
+
 	try {
 		const fileExists = await fs.pathExists(resolvedPath);
+
 
 		if (fileExists) {
 			const existingSymlinkCheck = await checkSymlinkSafety(
@@ -399,7 +436,7 @@ async function writeFile(
 				};
 			}
 
-			if (!hasFileBeenRead(resolvedPath)) {
+			if (!hasFileBeenRead(resolvedPath, ctx)) {
 				return {
 					success: false,
 					output: "",
@@ -489,7 +526,7 @@ async function writeFile(
 			}
 		}
 
-		markFileAsRead(resolvedPath);
+		markFileAsRead(resolvedPath, ctx);
 
 		const statsNote = ctx.diffPreview?.showPreview
 			? ` (${formatDiffStats(fileExists ? await fs.readFile(resolvedPath, "utf-8") : args.content)})`
@@ -542,7 +579,7 @@ async function editFile(
 			};
 		}
 
-		if (!hasFileBeenRead(resolvedPath)) {
+		if (!hasFileBeenRead(resolvedPath, ctx)) {
 			return {
 				success: false,
 				output: "",
@@ -551,8 +588,18 @@ async function editFile(
 		}
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
+		const currentHash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8);
+		
+		if (args.expected_hash !== currentHash) {
+			return {
+				success: false,
+				output: "",
+				error: `Drift detected: Live file hash (${currentHash}) does not match expected hash (${args.expected_hash}). Please read the file again to get the latest content and hash.`,
+			};
+		}
 
 		if (!content.includes(args.old_string)) {
+
 			const lines = content.split("\n");
 			const contextLines: string[] = [];
 
@@ -592,7 +639,17 @@ async function editFile(
 			? content.split(args.old_string).join(args.new_string)
 			: content.replace(args.old_string, args.new_string);
 
+		const linterResult = await runAciLinter(resolvedPath, newContent);
+		if (!linterResult.success) {
+			return {
+				success: false,
+				output: "",
+				error: `ACI Linter failed (Syntax Error):\n${linterResult.error}\n\nEdit was NOT applied. Please self-correct.`,
+			};
+		}
+
 		if (ctx.diffPreview?.showPreview) {
+
 			const previewResult = await showDiffPreview(
 				content,
 				newContent,
@@ -614,7 +671,7 @@ async function editFile(
 
 		await fs.writeFile(resolvedPath, newContent, "utf-8");
 
-		markFileAsRead(resolvedPath);
+		markFileAsRead(resolvedPath, ctx);
 
 		const replacedCount = args.replace_all ? occurrences : 1;
 		const statsNote = ctx.diffPreview?.showPreview
@@ -1093,12 +1150,15 @@ Usage:
 
 Usage:
 - You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- You MUST pass the expected_hash of the file which you received from the Read tool output.
 - When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: line number + colon + space (e.g., "1: "). Everything after that space is the actual file content to match. Never include any part of the line number prefix in the oldString or newString.
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+- The edit will FAIL if expected_hash does not match the live file's hash (drift corruption).
 - The edit will FAIL if oldString is not found in the file with an error "oldString not found in content".
 - The edit will FAIL if oldString is found multiple times in the file. Provide more surrounding lines in oldString to identify the correct match. 
 - Use replaceAll for replacing all occurrences of oldString across the file.`,
+
 		parameters: EDIT_FILE_SCHEMA,
 		execute: editFile as AnyToolExecutor,
 		category: "fs",

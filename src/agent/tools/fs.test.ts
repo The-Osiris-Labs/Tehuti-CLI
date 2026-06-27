@@ -1,7 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "fs-extra";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import * as crypto from "crypto";
 import { fsTools, markFileAsRead } from "./fs.js";
 import type { ToolContext } from "./registry.js";
 
@@ -157,7 +158,7 @@ describe("File System Tools", () => {
 		it("should allow writing after reading", async () => {
 			const filePath = path.join(tempDir, "existing.txt");
 			await fs.writeFile(filePath, "existing content");
-			markFileAsRead(filePath);
+			markFileAsRead(filePath, ctx);
 
 			const result = await writeTool?.execute(
 				{ file_path: filePath, content: "new content" },
@@ -205,13 +206,14 @@ describe("File System Tools", () => {
 		it("should edit file with exact match", async () => {
 			const filePath = path.join(tempDir, "edit.txt");
 			await fs.writeFile(filePath, "Hello World");
-			markFileAsRead(filePath);
+			markFileAsRead(filePath, ctx);
 
 			const result = await editTool?.execute(
 				{
 					file_path: filePath,
 					old_string: "World",
 					new_string: "Tehuti",
+					expected_hash: crypto.createHash("md5").update("Hello World").digest("hex").slice(0, 8),
 				},
 				ctx,
 			);
@@ -240,13 +242,14 @@ describe("File System Tools", () => {
 		it("should fail if old string not found", async () => {
 			const filePath = path.join(tempDir, "edit.txt");
 			await fs.writeFile(filePath, "Hello World");
-			markFileAsRead(filePath);
+			markFileAsRead(filePath, ctx);
 
 			const result = await editTool?.execute(
 				{
 					file_path: filePath,
 					old_string: "NotFound",
 					new_string: "Tehuti",
+					expected_hash: crypto.createHash("md5").update("Hello World").digest("hex").slice(0, 8),
 				},
 				ctx,
 			);
@@ -258,13 +261,14 @@ describe("File System Tools", () => {
 		it("should fail on multiple matches without replace_all", async () => {
 			const filePath = path.join(tempDir, "edit.txt");
 			await fs.writeFile(filePath, "foo bar foo");
-			markFileAsRead(filePath);
+			markFileAsRead(filePath, ctx);
 
 			const result = await editTool?.execute(
 				{
 					file_path: filePath,
 					old_string: "foo",
 					new_string: "baz",
+					expected_hash: crypto.createHash("md5").update("foo bar foo").digest("hex").slice(0, 8),
 				},
 				ctx,
 			);
@@ -276,7 +280,7 @@ describe("File System Tools", () => {
 		it("should replace all with replace_all flag", async () => {
 			const filePath = path.join(tempDir, "edit.txt");
 			await fs.writeFile(filePath, "foo bar foo baz foo");
-			markFileAsRead(filePath);
+			markFileAsRead(filePath, ctx);
 
 			const result = await editTool?.execute(
 				{
@@ -284,6 +288,7 @@ describe("File System Tools", () => {
 					old_string: "foo",
 					new_string: "qux",
 					replace_all: true,
+					expected_hash: crypto.createHash("md5").update("foo bar foo baz foo").digest("hex").slice(0, 8),
 				},
 				ctx,
 			);

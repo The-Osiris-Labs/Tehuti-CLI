@@ -9,6 +9,7 @@ import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
+import { getSystemPromptMemory } from "./memory/graph.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -181,7 +182,9 @@ export interface AgentContext {
 	messages: OpenRouterMessage[];
 	config: TehutiConfig;
 	projectInstructions?: string;
+	systemMemory?: string;
 	diffPreview?: DiffPreviewOptions;
+	readFilesThisSession: Set<string>;
 	metadata: {
 		startTime: Date;
 		toolCalls: number;
@@ -217,6 +220,7 @@ export async function createAgentContext(
 ): Promise<AgentContext> {
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
+	const systemMemory = await getSystemPromptMemory();
 
 	return {
 		cwd: resolvedCwd,
@@ -224,7 +228,9 @@ export async function createAgentContext(
 		messages: [],
 		config,
 		projectInstructions,
+		systemMemory,
 		diffPreview,
+		readFilesThisSession: new Set(),
 		metadata: {
 			startTime: new Date(),
 			toolCalls: 0,
@@ -244,6 +250,10 @@ export function buildSystemPrompt(
 ): string {
 	const projectInstructionsSection = ctx.projectInstructions
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
+		: "";
+
+	const systemMemorySection = ctx.systemMemory
+		? `${ctx.systemMemory}\n`
 		: "";
 
 	let skillsSection = "";
@@ -304,7 +314,7 @@ export function buildSystemPrompt(
 - You are an expert software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 - Your goal is to accomplish the user's task efficiently and effectively.
 - You work iteratively, breaking down complex tasks into clear steps.
-${projectInstructionsSection}${skillsSection}
+${projectInstructionsSection}${systemMemorySection}${skillsSection}
 ## Operational Rules
 - Always explain what you're doing before doing it.
 - Use tools safely - never run destructive commands without confirmation.
@@ -407,6 +417,7 @@ export function getToolContext(ctx: AgentContext) {
 		env: process.env as Record<string, string>,
 		timeout: 120000,
 		diffPreview: ctx.diffPreview,
+		readFilesThisSession: ctx.readFilesThisSession,
 	};
 }
 

@@ -109,6 +109,7 @@ import {
 	initHighlighter,
 } from "../../terminal/highlighter.js";
 import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
+import { computeMessageLines } from "../../terminal/output.js";
 import { debug } from "../../utils/debug.js";
 import { setupErrorHandlers, APIError, AgentError, ConfigError } from "../../utils/errors.js";
 import { setDebugMode } from "../../utils/logger.js";
@@ -124,6 +125,8 @@ import {
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
+import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
+import { useChatInput } from "../ui/hooks/useChatInput.js";
 
 // High contrast color palette (WCAG AA/AAA compliant)
 const GOLD = "#F5C518"; // Bright gold (WCAG AA)
@@ -962,6 +965,26 @@ function _QuestionPrompt({
 	);
 }
 
+function getEnhancedToolName(name: string, description?: string): string {
+	const base = description || name || "unknown_tool";
+	
+	if (!name) return base;
+
+	if (name === "store_insight" || name === "query_memory") {
+		return `${base} 𓂀 [Deep Memory]`;
+	}
+	
+	if (name.includes("aci_") || name.includes("sandbox") || name.includes("speculative")) {
+		return `${base} 𓋹 [Sandbox/ACI]`;
+	}
+	
+	if (name.includes("shadow_workspace")) {
+		return `${base} 𓂝 [Shadow Workspace]`;
+	}
+	
+	return base;
+}
+
 function ChatUI({
 	apiKey,
 	model,
@@ -1022,6 +1045,7 @@ function ChatUI({
 	const [showThinking, setShowThinking] = useState(false);
 	const [thinkingDots, setThinkingDots] = useState("");
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
+	const [showDashboard, setShowDashboard] = useState(false);
 	const [pendingQuestion, setPendingQuestion] = useState<{
 		questions: QuestionData[];
 		resolve: (answers: string[]) => void;
@@ -1739,7 +1763,9 @@ function ChatUI({
 				},
 			]);
 		} else {
-			const list = sessions
+			const limit = 30;
+			const displaySessions = sessions.slice(0, limit);
+			const list = displaySessions
 				.map((s, i) => `${i + 1}. ${s.name || s.id.slice(0, 8)} (${s.messageCount} msgs)`)
 				.join("\n");
 			setMessages((m) => [
@@ -1747,7 +1773,7 @@ function ChatUI({
 				{
 					id: msgIdRef.current++,
 					role: "system",
-					content: `Saved sessions:\n${list}\n\nUse: /load <id>`,
+					content: `Saved sessions (showing recent ${displaySessions.length} of ${sessions.length}):\n${list}\n\nUse: /load <id> | /search <query>`,
 				},
 			]);
 		}
@@ -1815,6 +1841,7 @@ function ChatUI({
 					]);
 				},
 				onConfig: handleConfig,
+				onDashboard: () => setShowDashboard((prev) => !prev),
 			}),
 		[
 			handleShowCost,
@@ -1847,23 +1874,31 @@ function ChatUI({
 	// Account for command palette height if open
 	const paletteHeight = showCommandPalette ? 16 : 0;
 
-	const maxVisibleMessages = Math.max(
+	const chatViewportHeight = Math.max(
 		3,
 		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight - suggestionsCount - paletteHeight,
 	);
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
 
-	// Synchronize scrollOffset with message list size and terminal height changes
+	const totalMessageLines = useMemo(() => {
+		let lines = messages.reduce((acc, msg) => acc + computeMessageLines(msg, contentMaxWidth), 0);
+		if (showWelcome) {
+			lines += 12; // Approximate height of the TehutiHeader (big text + padding)
+		}
+		return lines;
+	}, [messages, contentMaxWidth, showWelcome]);
+
+	// Keep scroll offset bound to total lines
 	useEffect(() => {
 		if (messagesEndRef.current) {
-			setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
+			setScrollOffset(0);
 		} else {
 			setScrollOffset((prev) => {
-				const maxOff = Math.max(0, messages.length - maxVisibleMessages);
+				const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
 				return Math.min(prev, maxOff);
 			});
 		}
-	}, [messages.length, maxVisibleMessages]);
+	}, [totalMessageLines, chatViewportHeight]);
 
 	useEffect(() => {
 		setHistory(loadHistory());
@@ -2007,59 +2042,62 @@ function ChatUI({
 		setPendingQuestion(null);
 	}, [pendingQuestion]);
 
+	// For performance, we only render the messages that intersect the viewport plus a buffer
+	// (we rely on Ink's overflow="hidden" + negative margin for the actual virtualization slice)
 	const visibleMessages = useMemo(() => {
-		if (messages.length <= maxVisibleMessages) {
-			return messages;
+		const linesNeeded = chatViewportHeight + scrollOffset + 20; // 20 lines buffer
+		let accumulatedLines = 0;
+		let sliceIndex = messages.length;
+		
+		for (let i = messages.length - 1; i >= 0; i--) {
+			accumulatedLines += computeMessageLines(messages[i], contentMaxWidth);
+			sliceIndex = i;
+			if (accumulatedLines >= linesNeeded) {
+				break;
+			}
 		}
-		if (messagesEndRef.current) {
-			return messages.slice(-maxVisibleMessages);
-		}
-		return messages.slice(scrollOffset, scrollOffset + maxVisibleMessages);
-	}, [messages, maxVisibleMessages, scrollOffset]);
+		
+		// Always render at least 50 messages as a baseline
+		return messages.slice(Math.min(sliceIndex, Math.max(0, messages.length - 50)));
+	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
 
 	const scrollToBottom = useCallback(() => {
 		messagesEndRef.current = true;
-		setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
-	}, [messages.length, maxVisibleMessages]);
-
-	const scrollToTop = useCallback(() => {
-		messagesEndRef.current = false;
 		setScrollOffset(0);
 	}, []);
 
+	const scrollToTop = useCallback(() => {
+		messagesEndRef.current = false;
+		setScrollOffset(Math.max(0, totalMessageLines - chatViewportHeight));
+	}, [totalMessageLines, chatViewportHeight]);
+
 	const scrollPageUp = useCallback(() => {
 		messagesEndRef.current = false;
-		setScrollOffset((off) => Math.max(0, off - maxVisibleMessages));
-	}, [maxVisibleMessages]);
+		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
+		setScrollOffset((off) => Math.min(maxOff, off + chatViewportHeight));
+	}, [totalMessageLines, chatViewportHeight]);
 
 	const scrollPageDown = useCallback(() => {
-		messagesEndRef.current = false;
 		setScrollOffset((off) => {
-			const maxOff = Math.max(0, messages.length - maxVisibleMessages);
-			const newOff = Math.min(maxOff, off + maxVisibleMessages);
-			if (newOff >= maxOff) {
-				messagesEndRef.current = true;
-			}
+			const newOff = Math.max(0, off - chatViewportHeight);
+			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
-	}, [messages.length, maxVisibleMessages]);
+	}, [chatViewportHeight]);
 
 	const scrollLineUp = useCallback(() => {
 		messagesEndRef.current = false;
-		setScrollOffset((off) => Math.max(0, off - 1));
-	}, []);
+		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
+		setScrollOffset((off) => Math.min(maxOff, off + 1));
+	}, [totalMessageLines, chatViewportHeight]);
 
 	const scrollLineDown = useCallback(() => {
-		messagesEndRef.current = false;
 		setScrollOffset((off) => {
-			const maxOff = Math.max(0, messages.length - maxVisibleMessages);
-			const newOff = Math.min(maxOff, off + 1);
-			if (newOff >= maxOff) {
-				messagesEndRef.current = true;
-			}
+			const newOff = Math.max(0, off - 1);
+			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
-	}, [messages.length, maxVisibleMessages]);
+	}, []);
 
 	useEffect(() => {
 		if (messagesEndRef.current) {
@@ -2067,310 +2105,39 @@ function ChatUI({
 		}
 	}, [scrollToBottom]);
 
-	useInput((k, key) => {
-		if (isMouseSequence(k)) {
-			return;
-		}
-
-		if (showCommandPalette) {
-			return;
-		}
-
-		// Bracketed paste handling
-		if (k && k.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
-			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
-			setInput((i) => i.slice(0, cursorPos) + pastedText + i.slice(cursorPos));
-			setCursorPos((p) => p + pastedText.length);
-			setHistoryIndex(-1);
-			return;
-		}
-
-		// Backspace handling
-		if (key.backspace || k === "\x7f" || k === "\b" || k === "\x08" || (key.delete && k !== "\x1b[3~")) {
-			if (cursorPos > 0) {
-				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
-				setCursorPos((p) => Math.max(0, p - 1));
-			}
-			return;
-		}
-
-		// Delete handling (forward delete)
-		if ((key.delete && k === "\x1b[3~") || k === "\x1b[3~") {
-			if (cursorPos < input.length) {
-				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "p") {
-			setShowCommandPalette(true);
-			return;
-		}
-
-		if (key.ctrl && k === "c") {
-			if (input.length === 0) {
-				if (sessionId && ctxRef.current) {
-					sessionManager.saveSession(sessionId, ctxRef.current);
-				}
-				console.log();
-				console.log(chalk.hex(GOLD)(costTracker.getSessionSummary()));
-				onExit();
-				exit();
-			} else if (selectionStart !== null && selectionEnd !== null) {
-				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
-				const selectedText = input.slice(start, end);
-				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
-				setSelectionStart(null);
-				setSelectionEnd(null);
-			} else {
-				setInput("");
-				setCursorPos(0);
-			}
-			return;
-		}
-
-		if (key.return && input.trim() && !loading) {
-			const newHistory = [
-				input.trim(),
-				...history.filter((h) => h !== input.trim()),
-			].slice(0, 100);
-			setHistory(newHistory);
-			saveHistory(newHistory);
-			setHistoryIndex(-1);
-			send(input.trim());
-			return;
-		}
-
-		if (key.upArrow && !loading) {
-			if (history.length > 0) {
-				if (historyIndex === -1) {
-					inputBeforeHistoryRef.current = input;
-					setHistoryIndex(0);
-					setInput(history[0]);
-					setCursorPos(history[0].length);
-				} else if (historyIndex < history.length - 1) {
-					const newIndex = historyIndex + 1;
-					setHistoryIndex(newIndex);
-					setInput(history[newIndex]);
-					setCursorPos(history[newIndex].length);
-				}
-			}
-			return;
-		}
-
-		if (key.downArrow && !loading) {
-			if (historyIndex > 0) {
-				const newIndex = historyIndex - 1;
-				setHistoryIndex(newIndex);
-				setInput(history[newIndex]);
-				setCursorPos(history[newIndex].length);
-			} else if (historyIndex === 0) {
-				setHistoryIndex(-1);
-				setInput(inputBeforeHistoryRef.current);
-				setCursorPos(inputBeforeHistoryRef.current.length);
-			}
-			return;
-		}
-
-		if (key.pageUp) {
-			scrollPageUp();
-			return;
-		}
-
-		if (key.pageDown) {
-			scrollPageDown();
-			return;
-		}
-
-		if (key.ctrl && key.upArrow) {
-			scrollLineUp();
-			return;
-		}
-
-		if (key.ctrl && key.downArrow) {
-			scrollLineDown();
-			return;
-		}
-
-		if (key.home) {
-			scrollToTop();
-			return;
-		}
-
-		if (key.end) {
-			scrollToBottom();
-			return;
-		}
-
-		if (key.ctrl && k === "l") {
-			void resetConversation();
-			return;
-		}
-
-		if (key.ctrl && k === "u") {
-			setInput(input.slice(cursorPos));
-			setCursorPos(0);
-			setHistoryIndex(-1);
-			return;
-		}
-
-		if (key.ctrl && k === "a") {
-			setCursorPos(0);
-			return;
-		}
-
-		if (key.ctrl && k === "e") {
-			setCursorPos(input.length);
-			return;
-		}
-
-		// Delete previous word: Ctrl+W or Option+Backspace (Meta+Backspace / Meta+Delete)
-		if (((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) || (key.ctrl && k === "w")) {
-			const before = input.slice(0, cursorPos);
-			const after = input.slice(cursorPos);
-			const match = before.match(/\S+\s*$/);
-			if (match) {
-				const newPos = cursorPos - match[0].length;
-				setInput(before.slice(0, newPos) + after);
-				setCursorPos(newPos);
-			} else {
-				setInput(after);
-				setCursorPos(0);
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "k") {
-			setInput(input.slice(0, cursorPos));
-			setCursorPos(cursorPos);
-			return;
-		}
-
-		if (key.ctrl && k === "d") {
-			if (input.length === 0) {
-				onExit();
-			} else {
-				setInput(input.slice(0, cursorPos) + input.slice(cursorPos + 1));
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "x") {
-			if (selectionStart !== null && selectionEnd !== null) {
-				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
-				const selectedText = input.slice(start, end);
-				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
-				setInput(input.slice(0, start) + input.slice(end));
-				setCursorPos(start);
-				setSelectionStart(null);
-				setSelectionEnd(null);
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "v") {
-			return;
-		}
-
-		if (key.ctrl && k === "t") {
-			const before = input.slice(0, cursorPos);
-			const after = input.slice(cursorPos);
-			if (before.length > 0) {
-				const lastChar = before.slice(-1);
-				setInput(before.slice(0, -1) + after.slice(0, 1) + lastChar + after.slice(1));
-				setCursorPos(cursorPos + 1);
-			}
-			return;
-		}
-
-		// Text selection
-		if (key.shift && key.leftArrow) {
-			const newPos = Math.max(0, cursorPos - 1);
-			if (selectionStart === null) {
-				setSelectionStart(cursorPos);
-			}
-			setSelectionEnd(newPos);
-			setCursorPos(newPos);
-			return;
-		}
-
-		if (key.shift && key.rightArrow) {
-			const newPos = Math.min(input.length, cursorPos + 1);
-			if (selectionStart === null) {
-				setSelectionStart(cursorPos);
-			}
-			setSelectionEnd(newPos);
-			setCursorPos(newPos);
-			return;
-		}
-
-		if (!key.shift && selectionStart !== null) {
-			setSelectionStart(null);
-			setSelectionEnd(null);
-		}
-
-		// Cursor navigation
-		if (key.leftArrow && !key.shift) {
-			if (key.ctrl || key.meta) {
-				const before = input.slice(0, cursorPos);
-				const match = before.match(/\S+\s*$/);
-				if (match) {
-					setCursorPos(cursorPos - match[0].length);
-				} else {
-					setCursorPos(0);
-				}
-			} else {
-				setCursorPos((p) => Math.max(0, p - 1));
-			}
-			return;
-		}
-
-		if (key.rightArrow && !key.shift) {
-			if (key.ctrl || key.meta) {
-				const after = input.slice(cursorPos);
-				const match = after.match(/^\s*\S+/);
-				if (match) {
-					setCursorPos(cursorPos + match[0].length);
-				} else {
-					setCursorPos(input.length);
-				}
-			} else {
-				setCursorPos((p) => Math.min(input.length, p + 1));
-			}
-			return;
-		}
-
-		if (key.escape) {
-			setInput("");
-			setCursorPos(0);
-			setHistoryIndex(-1);
-			return;
-		}
-
-		// Tab completion for commands
-		if (k === "\t" && input.startsWith("/")) {
-			const suggestions = getCommandSuggestions(input, commands);
-			if (suggestions.length > 0) {
-				setInput(suggestions[0].label + " ");
-				setCursorPos(suggestions[0].label.length + 1);
-			}
-			return;
-		}
-
-		if (key.ctrl && k === "c") {
-			// Already handled above
-			return;
-		}
-
-		// Handle normal character input and paste
-		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
-			const sanitized = k.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
-			if (sanitized.length > 0) {
-				setInput((i) => i.slice(0, cursorPos) + sanitized + i.slice(cursorPos));
-				setCursorPos((p) => p + sanitized.length);
-				setHistoryIndex(-1);
-			}
-		}
+	useChatInput({
+		input,
+		setInput,
+		cursorPos,
+		setCursorPos,
+		showCommandPalette,
+		setShowCommandPalette,
+		history,
+		setHistory,
+		historyIndex,
+		setHistoryIndex,
+		inputBeforeHistoryRef,
+		commands,
+		sessionId,
+		ctxRef,
+		sessionManager,
+		costTracker,
+		onExit,
+		exit,
+		selectionStart,
+		setSelectionStart,
+		selectionEnd,
+		setSelectionEnd,
+		loading,
+		scrollPageUp,
+		scrollPageDown,
+		scrollLineUp,
+		scrollLineDown,
+		scrollToTop,
+		scrollToBottom,
+		resetConversation,
+		send,
+		saveHistory,
 	});
 
 	async function send(text: string) {
@@ -2452,7 +2219,9 @@ function ChatUI({
  			if (cmd === "/sessions") {
 				setLoading(true);
 				const sessions = await sessionManager.listSessions();
-				const list = sessions
+				const limit = 30;
+				const displaySessions = sessions.slice(0, limit);
+				const list = displaySessions
 					.map((s, i) => {
 						const date = new Date(s.updatedAt).toLocaleDateString();
 						const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2469,7 +2238,7 @@ function ChatUI({
 						role: "system",
 						content:
 							sessions.length > 0
-								? `Saved sessions (${sessions.length} total):\n${list}\n\nUse: /load <id> | /search <query>`
+								? `Saved sessions (${sessions.length} total, showing recent ${displaySessions.length}):\n${list}\n\nUse: /load <id> | /search <query>`
 								: "No saved sessions",
 					},
 				]);
@@ -2876,13 +2645,13 @@ function ChatUI({
 			flushBatchedTokens();
 
 			const finalContent = result.content || response;
-			if ((!finalContent && !response) || (result.success === false && result.error)) {
+			if ((!finalContent && !response) || (result.success === false && (result as any).error)) {
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === assistantMsgId
 							? {
 									...msg,
-									content: result.error ? `Error: ${result.error}` : `No response received. Check your API key with /reset-key or verify network connectivity.`,
+									content: (result as any).error ? `Error: ${(result as any).error}` : `No response received. Check your API key with /reset-key or verify network connectivity.`,
 								}
 							: msg,
 					),
@@ -3140,7 +2909,7 @@ function ChatUI({
 									Box,
 									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: block.id || `tool-${bIdx}` },
 									React.createElement(ExpandableToolOutput, {
-										toolName: block.description || block.name,
+										toolName: getEnhancedToolName(block.name || "", block.description || ""),
 										result: block.result,
 										maxWidth: contentMaxWidth,
 										status: block.result === null ? "pending" : block.result && typeof block.result === 'object' && 'success' in block.result && !(block.result as any).success ? "error" : "success"
@@ -3190,7 +2959,7 @@ function ChatUI({
 							...m.toolCalls.map((tc, idx) =>
 								React.createElement(ExpandableToolOutput, {
 									key: tc.id || `tool-${idx}`,
-									toolName: tc.description || tc.name,
+									toolName: getEnhancedToolName(tc.name || "", tc.description || ""),
 									result: tc.result,
 									maxWidth: contentMaxWidth,
 									status: tc.result === null ? "pending" : tc.result && typeof tc.result === 'object' && 'success' in tc.result && !(tc.result as any).success ? "error" : "success"
@@ -3246,36 +3015,61 @@ function ChatUI({
 	}, [input, commands, showCommandPalette]);
 
 	const renderInput = useMemo(() => {
-		const before = input.slice(0, cursorPos);
-		const after = input.slice(cursorPos);
 		const historyIndicator = historyIndex >= 0 
 			? React.createElement(Text, { color: SAND, dimColor: true }, ` [${historyIndex + 1}/${history.length}] `)
 			: '';
+
+		if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) {
+			const start = Math.min(selectionStart, selectionEnd);
+			const end = Math.max(selectionStart, selectionEnd);
+			const before = input.slice(0, start);
+			const selected = input.slice(start, end);
+			const after = input.slice(end);
+
+			return React.createElement(
+				Text,
+				{ color: CORAL },
+				`${DECORATIVE.feather} >`,
+				historyIndicator,
+				" ",
+				before,
+				React.createElement(Text, { backgroundColor: "gray", color: "black" }, selected),
+				after
+			);
+		}
+
+		const before = input.slice(0, cursorPos);
+		const after = input.slice(cursorPos);
 		return React.createElement(
 			Text,
 			{ color: CORAL },
-			`${DECORATIVE.feather} >${historyIndicator} ${before}\u2588${after}`,
+			`${DECORATIVE.feather} >`,
+			historyIndicator,
+			" ",
+			before,
+			"\u2588",
+			after
 		);
-	}, [input, cursorPos, historyIndex, history.length]);
+	}, [input, cursorPos, historyIndex, history.length, selectionStart, selectionEnd]);
 
 	const scrollIndicator = useMemo(() => {
-		if (messages.length <= maxVisibleMessages) return null;
+		if (totalMessageLines <= chatViewportHeight) return null;
 		
-		const totalHeight = messages.length;
-		const visibleHeight = maxVisibleMessages;
 		const currentPosition = messagesEndRef.current 
-			? totalHeight - visibleHeight 
+			? 0 
 			: scrollOffset;
 		
-		const scrollPercent = Math.round((currentPosition / Math.max(1, totalHeight - visibleHeight)) * 100);
+		// In our inverted setup, offset 0 means bottom, offset max means top
+		const maxOff = Math.max(1, totalMessageLines - chatViewportHeight);
+		const scrollPercent = 100 - Math.round((currentPosition / maxOff) * 100);
 		const barWidth = 10;
 		const filledWidth = Math.round((scrollPercent / 100) * barWidth);
 		const filled = "█".repeat(filledWidth);
 		const empty = "░".repeat(barWidth - filledWidth);
 		
-		const positionText = messagesEndRef.current
+		const positionText = messagesEndRef.current || scrollOffset === 0
 			? "end"
-			: `${scrollOffset + 1}-${Math.min(scrollOffset + maxVisibleMessages, messages.length)}/${messages.length}`;
+			: `${Math.round(scrollPercent)}%`;
 		
 		return React.createElement(
 			Box,
@@ -3290,13 +3084,8 @@ function ChatUI({
 				{ color: GOLD },
 				`[${filled}${empty}]`,
 			),
-			React.createElement(
-				Text,
-				{ dimColor: true },
-				`${scrollPercent}%`,
-			),
 		);
-	}, [messages.length, maxVisibleMessages, scrollOffset]);
+	}, [totalMessageLines, chatViewportHeight, scrollOffset]);
 
 		return showConfigEditor ? (
 			React.createElement(
@@ -3429,6 +3218,7 @@ function ChatUI({
 							React.createElement(Text, { color: "yellow", bold: true }, `𓂀  Warning: ${warn}`)
 						)
 					),
+					showDashboard && React.createElement(SwarmVisualizer, null),
 					messages.length === 0
 						? React.createElement(
 								Box,
@@ -3438,13 +3228,17 @@ function ChatUI({
 							)
 						: React.createElement(
 								Box,
-								{ flexDirection: "column", flexGrow: 1 },
-								showWelcome && scrollOffset === 0 && React.createElement(
+								{ flexDirection: "column", flexGrow: 1, overflow: "hidden", justifyContent: "flex-end" },
+								React.createElement(
 									Box,
-									{ flexDirection: "column", alignItems: "center", marginBottom: 2 },
-									React.createElement(TehutiHeader, null)
-								),
-								...messageElements,
+									{ flexDirection: "column", marginBottom: -scrollOffset },
+									showWelcome && React.createElement(
+										Box,
+										{ flexDirection: "column", alignItems: "center", marginBottom: 2 },
+										React.createElement(TehutiHeader, null)
+									),
+									...messageElements,
+								)
 							),
 					showThinking &&
 						React.createElement(
@@ -3679,8 +3473,9 @@ export function createProgram(): Command {
 								? undefined
 								: (name, args) => {
 										const toolDesc = formatToolCall(name, args);
+										const enhancedDesc = getEnhancedToolName(name, toolDesc);
 										outputManager?.writeLine("");
-										outputManager?.writeLine(chalk.hex(CYAN)(`  ${toolDesc}`));
+										outputManager?.writeLine(chalk.hex(CYAN)(`  ${enhancedDesc}`));
 									},
 						onToolResult:
 							opts.json || opts.quiet

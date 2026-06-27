@@ -364,6 +364,7 @@ export function createCommands(options: {
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
 	onConfig?: () => void;
+	onDashboard?: () => void;
 	onProvider?: (provider?: string) => void;
 	onProviders?: () => void;
 }): CommandItem[] {
@@ -494,6 +495,13 @@ export function createCommands(options: {
 				aliases: ["/h"],
 				category: "help",
 				action: options.onHelp,
+			},
+			{
+				id: "/dashboard",
+				label: "/dashboard",
+				description: "Toggle Swarm Observability Dashboard",
+				category: "session",
+				action: options.onDashboard || (() => {}),
 			},
 			{
 				id: "/exit",
