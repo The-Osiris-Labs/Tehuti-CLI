@@ -109,6 +109,7 @@ import {
 	initHighlighter,
 } from "../../terminal/highlighter.js";
 import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
+import { MediaViewer } from "../ui/components/MediaViewer.js";
 import { computeMessageLines } from "../../terminal/output.js";
 import { debug } from "../../utils/debug.js";
 import { setupErrorHandlers, APIError, AgentError, ConfigError } from "../../utils/errors.js";
@@ -691,6 +692,14 @@ function renderInlineToken(
 	getKey: () => string,
 ): React.ReactNode | React.ReactNode[] | null {
 	switch (token.type) {
+		case "image": {
+			return React.createElement(MediaViewer, {
+				key: getKey(),
+				src: token.href,
+				alt: token.text,
+			});
+		}
+
 		case "text": {
 			return token.text;
 		}
