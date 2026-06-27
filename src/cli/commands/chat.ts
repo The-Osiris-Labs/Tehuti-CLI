@@ -121,7 +121,6 @@ import {
 	CommandPalette,
 	createCommands,
 	formatHelpOutput,
-	getCommandSuggestions,
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
@@ -1401,7 +1400,7 @@ function ChatUI({
 
 	const handleCommandPaletteSelect = useCallback((cmd: CommandItem) => {
 		setShowCommandPalette(false);
-		cmd.action();
+		if (cmd.action) cmd.action();
 	}, []);
 
 	const handleCommandPaletteClose = useCallback(() => {
@@ -1851,6 +1850,26 @@ function ChatUI({
 				},
 				onConfig: handleConfig,
 				onDashboard: () => setShowDashboard((prev) => !prev),
+				getAvailableModels: async () => {
+					// We import dynamically to avoid top-level load of models
+					const { listModelsForProvider } = await import("../../api/models.js");
+					const { globalConfig } = await import("../../config/index.js");
+					const provider = globalConfig.get("provider") || "openrouter";
+					const apiKeys = globalConfig.get("apiKeys") || {};
+					const apiKey = apiKeys[provider as keyof typeof apiKeys] as string | undefined;
+					
+					const liveModels = await listModelsForProvider(provider, { apiKey, baseUrl: globalConfig.get("apiBaseUrl") });
+					return liveModels.map(m => ({ id: m.id, name: m.name || m.id }));
+				},
+				getSavedSessions: async () => {
+					const { sessionManager } = await import("../../session/manager.js");
+					const sessions = await sessionManager.listSessions();
+					return sessions.map(s => ({
+						id: s.id,
+						name: s.name || s.id,
+						date: new Date(s.updatedAt).toLocaleString()
+					}));
+				}
 			}),
 		[
 			handleShowCost,
@@ -1873,12 +1892,8 @@ function ChatUI({
 		],
 	);
 
-	// Calculate command suggestions count to dynamically adjust layout
-	const suggestionsCount = useMemo(() => {
-		if (!input.startsWith("/") || showCommandPalette) return 0;
-		const suggestions = getCommandSuggestions(input, commands);
-		return suggestions.length;
-	}, [input, commands, showCommandPalette]);
+	// Calculate command suggestions count to dynamically adjust layout (now 0 because palette handles it)
+	const suggestionsCount = 0;
 
 	// Account for command palette height if open
 	const paletteHeight = showCommandPalette ? 16 : 0;
@@ -1892,7 +1907,7 @@ function ChatUI({
 	const totalMessageLines = useMemo(() => {
 		let lines = messages.reduce((acc, msg) => acc + computeMessageLines(msg, contentMaxWidth), 0);
 		if (showWelcome) {
-			lines += 12; // Approximate height of the TehutiHeader (big text + padding)
+			lines += messages.length > 0 ? 3 : 12; // Approximate height of the TehutiHeader (compact or full)
 		}
 		return lines;
 	}, [messages, contentMaxWidth, showWelcome]);
@@ -3005,23 +3020,7 @@ function ChatUI({
 		});
 	}, [visibleMessages, contentMaxWidth]);
 
-	const commandSuggestions = useMemo(() => {
-		if (!input.startsWith("/") || showCommandPalette) return null;
-		const suggestions = getCommandSuggestions(input, commands);
-		if (suggestions.length === 0) return null;
-
-		return React.createElement(
-			Box,
-			{ flexDirection: "column", paddingLeft: 2, marginTop: 0 },
-			...suggestions.map((cmd, idx) =>
-				React.createElement(
-					Text,
-					{ key: cmd.id, color: idx === 0 ? GOLD : GRAY, dimColor: idx !== 0 },
-					`${idx === 0 ? DECORATIVE.arrow : " "} ${cmd.label}${cmd.usage ? ` ${cmd.usage}` : ""} - ${cmd.description}`,
-				),
-			),
-		);
-	}, [input, commands, showCommandPalette]);
+	const commandSuggestions = null;
 
 	const renderInput = useMemo(() => {
 		const historyIndicator = historyIndex >= 0 
@@ -3243,8 +3242,8 @@ function ChatUI({
 									{ flexDirection: "column", marginBottom: -scrollOffset },
 									showWelcome && React.createElement(
 										Box,
-										{ flexDirection: "column", alignItems: "center", marginBottom: 2 },
-										React.createElement(TehutiHeader, null)
+										{ flexDirection: "column", alignItems: "center", marginBottom: 1 },
+										React.createElement(TehutiHeader, { compact: true })
 									),
 									...messageElements,
 								)

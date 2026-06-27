@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import stringWidth from "string-width";
 import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
+import { highlightToAnsi } from "../../../terminal/highlighter.js";
 
 interface ExpandableToolOutputProps {
 	toolName: string;
@@ -57,8 +58,8 @@ export function summarizeToolOutput(
 		lineArray
 			.map((line) => {
 				const truncated =
-					line.length > maxWidth - 6 ? `${line.slice(0, maxWidth - 9)}...` : line;
-				return `  │ ${truncated}`;
+					line.length > maxWidth - 4 ? `${line.slice(0, maxWidth - 7)}...` : line;
+				return truncated;
 			})
 			.join("\n");
 
@@ -124,7 +125,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const width = Math.max(40, maxWidth);
 	const summary = useMemo(() => 
-		summarizeToolOutput(result, expanded ? 1000 : width, expanded ? 10000 : 4),
+		summarizeToolOutput(result, expanded ? 10000 : width - 4, expanded ? 10000 : 4),
 	[result, expanded, width]);
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
@@ -149,77 +150,54 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const cleanToolName = stripAnsi(toolName);
 	
-	// Dynamic header part calculations to prevent wrapping in small terminals
-	const staticHeaderWidth = 15 + stringWidth(headerIcon) + stringWidth(headerStatusText);
-	const maxToolNameWidth = Math.max(10, width - staticHeaderWidth);
+	const maxToolNameWidth = Math.max(10, width - 20 - stringWidth(headerStatusText));
 	const truncatedToolName = cleanToolName.length > maxToolNameWidth
 		? (cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3)) + "...")
 		: cleanToolName;
 
-	// Left part string calculation for width using truncated name
-	const leftStr = `  ${isParallel ? "├" : "┌"}─[ ${headerIcon} ${truncatedToolName} ]`;
-	const leftWidth = stringWidth(leftStr);
-
-	// Right part string calculation for width
-	const rightStr = ` [ ${headerStatusText} ]`;
-	const rightWidth = stringWidth(rightStr);
-
-	// padLen is the number of "─" to connect them
-	const padLen = Math.max(2, width - leftWidth - rightWidth);
-	const borderLine = "─".repeat(padLen);
-
-	// Dynamic bottom border calculations
 	let footerLabel = summary.isTruncated
-		? ` ${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand) `
+		? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand)`
 		: expanded
-			? ` completed (click to collapse) `
-			: ` completed `;
+			? `completed (click to collapse)`
+			: `completed`;
 
-	// Ensure bottom label fits within terminal width to prevent wrapping
-	if (8 + stringWidth(footerLabel) > width) {
-		footerLabel = summary.isTruncated
-			? ` ${summary.lineCount} lines (click to expand) `
-			: expanded
-				? ` done (click to collapse) `
-				: ` done `;
-	}
-	if (8 + stringWidth(footerLabel) > width) {
-		footerLabel = summary.isTruncated
-			? ` ${summary.lineCount} lines `
-			: ` done `;
-	}
-	if (8 + stringWidth(footerLabel) > width) {
-		footerLabel = summary.isTruncated ? ` ... ` : ``;
-	}
+	const borderTextColor = isHovered ? "coral" : "gray";
 
-	const footerLeft = `  └─[${footerLabel}]`;
-	const footerLeftWidth = stringWidth(footerLeft);
-	const footerPad = Math.max(2, width - footerLeftWidth);
-	const footerLine = `${footerLeft}${"─".repeat(footerPad)}`;
+	const isJson = useMemo(() => {
+		try {
+			if (typeof result !== "string") return true;
+			JSON.parse(summary.displayContent);
+			return true;
+		} catch {
+			return false;
+		}
+	}, [summary.displayContent, result]);
 
-	const borderTextColor = isHovered ? "white" : "gray";
+	const displayContent = useMemo(() => {
+		if (!expanded) return summary.displayContent;
+		return highlightToAnsi(summary.displayContent, isJson ? "json" : "text");
+	}, [expanded, summary.displayContent, isJson]);
 
 	return (
-		<Box ref={boxRef} flexDirection="column" marginTop={0.25} marginBottom={0.25}>
-			{/* Top Border & Header */}
-			<Box flexDirection="row" alignItems="center">
-				<Text color={borderTextColor}>  {isParallel ? "├" : "┌"}─[ </Text>
-				<Text color={headerColor}>{headerIcon} </Text>
-				<Text bold color={headerColor}>{truncatedToolName}</Text>
-				<Text color={borderTextColor}> ]{borderLine}[ </Text>
-				<Text bold color={headerColor}>{headerStatusText}</Text>
-				<Text color={borderTextColor}> ]</Text>
+		<Box ref={boxRef} flexDirection="column" marginTop={0} marginBottom={1} paddingX={1} borderStyle="round" borderColor={borderTextColor}>
+			<Box flexDirection="row" justifyContent="space-between">
+				<Box>
+					<Text color={headerColor}>{headerIcon} </Text>
+					<Text bold color={headerColor}>{truncatedToolName}</Text>
+				</Box>
+				<Box>
+					<Text bold color={headerColor}>{headerStatusText}</Text>
+				</Box>
 			</Box>
 
-			{/* Tool Output Body */}
-			<Box flexDirection="column" marginY={0}>
-				<Text dimColor wrap="wrap">{summary.displayContent}</Text>
+			<Box flexDirection="column" marginY={1}>
+				<Text dimColor={!expanded} wrap="wrap">{displayContent}</Text>
 			</Box>
 
-			{/* Bottom Border */}
-			<Box flexDirection="row" alignItems="center">
-				<Text color={borderTextColor}>{footerLine}</Text>
+			<Box flexDirection="row">
+				<Text dimColor>{footerLabel}</Text>
 			</Box>
 		</Box>
 	);
 });
+

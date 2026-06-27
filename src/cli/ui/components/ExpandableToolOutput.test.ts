@@ -8,7 +8,7 @@ describe("summarizeToolOutput", () => {
 		expect(summary.isTruncated).toBe(true);
 		expect(summary.lineCount).toBe(5);
 		expect(summary.hiddenLineCount).toBe(1);
-		expect(summary.displayContent).toContain("  │ a");
+		expect(summary.displayContent).toContain("a\nb\nc\nd");
 		expect(summary.displayContent).not.toContain("more");
 	});
 });

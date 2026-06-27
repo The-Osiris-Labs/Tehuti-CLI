@@ -29,6 +29,16 @@ const c = {
 	sand: (text: string) => `${SAND}${text}${RESET}`,
 	dim: (text: string) => `${DIM}${text}${RESET}`,
 	green: (text: string) => `${GREEN}${text}${RESET}`,
+	cyan: (text: string) => `\x1b[36m${text}${RESET}`,
+};
+
+const egyptianTheme = {
+	prefix: c.coral(EYE),
+	style: {
+		answer: (text: string) => c.gold(text),
+		message: (text: string) => c.sand(text),
+		highlight: (text: string) => c.gold(text),
+	},
 };
 
 const PROVIDER_CHOICES = [
@@ -90,9 +100,10 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	console.log();
 
 	const provider = await select({
-		message: `${EYE} Select your AI provider:`,
+		message: `Select your AI provider:`,
 		choices: PROVIDER_CHOICES,
 		default: "opencode",
+		theme: egyptianTheme,
 	});
 
 	const info = getProviderInfo(provider);
@@ -105,6 +116,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 			const useEnv = await confirm({
 				message: `Found API key in environment variables (ends in ...${envKey.slice(-4)}). Do you want to use it?`,
 				default: true,
+				theme: egyptianTheme,
 			});
 			if (useEnv) {
 				apiKey = envKey;
@@ -112,16 +124,18 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 				const envVars = getApiKeyEnvVarsForProvider(provider);
 				const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
 				apiKey = await input({
-					message: `${SCROLL} Enter your API key for ${info?.name ?? provider}${hint}:`,
+					message: `Enter your API key for ${info?.name ?? provider}${hint}:`,
 					validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+					theme: egyptianTheme,
 				});
 			}
 		} else {
 			const envVars = getApiKeyEnvVarsForProvider(provider);
 			const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
 			apiKey = await input({
-				message: `${SCROLL} Enter your API key for ${info?.name ?? provider}${hint}:`,
+				message: `Enter your API key for ${info?.name ?? provider}${hint}:`,
 				validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+				theme: egyptianTheme,
 			});
 		}
 	}
@@ -129,9 +143,10 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	let baseUrl: string | undefined;
 	if (provider === "custom") {
 		baseUrl = await input({
-			message: `${SCROLL} Enter the custom provider base URL:`,
+			message: `Enter the custom provider base URL:`,
 			default: "https://api.example.com/v1",
 			validate: (value) => (value.startsWith("http") ? true : "Must be a valid HTTP/HTTPS URL"),
+			theme: egyptianTheme,
 		});
 	}
 
@@ -154,7 +169,8 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
 
 	const selectedModel = await search({
-		message: `${EYE} Choose a default model (type to search):`,
+		message: `Choose a default model (type to search):`,
+		theme: egyptianTheme,
 		source: async (term) => {
 			if (!term) return modelChoices;
 			const termLower = term.toLowerCase();
@@ -170,17 +186,20 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		model = await input({
 			message: "Type your model ID:",
 			validate: (value) => (value.length > 0 ? true : "Model ID cannot be empty"),
+			theme: egyptianTheme,
 		});
 	}
 
 	const enableMCP = await confirm({
 		message: "Enable MCP (Model Context Protocol) server support?",
 		default: true,
+		theme: egyptianTheme,
 	});
 
 	const trustedMode = await confirm({
 		message: "Enable trusted mode (skip safety permission prompts for read-only/non-destructive operations)?",
 		default: false,
+		theme: egyptianTheme,
 	});
 
 	const localConfigPath = path.join(process.cwd(), ".tehuti.json");
@@ -193,6 +212,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		
 		const action = await select({
 			message: "How would you like to handle this local configuration file?",
+			theme: egyptianTheme,
 			choices: [
 				{ name: "Update the local .tehuti.json with these new settings (Recommended)", value: "update" },
 				{ name: "Delete the local .tehuti.json and save globally", value: "delete" },

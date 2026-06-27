@@ -1,7 +1,7 @@
 import { useInput } from "ink";
 import chalk from "chalk";
 import { isMouseSequence } from "../../../utils/mouse.js";
-import { getCommandSuggestions } from "../components/CommandPalette.js";
+import { type CommandItem } from "../components/CommandPalette.js";
 import React from "react";
 
 export interface UseChatInputProps {
@@ -137,18 +137,7 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		if (key.tab && input.startsWith("/")) {
-			const suggestions = getCommandSuggestions(input, commands);
-			if (suggestions.length > 0) {
-				const suggestion = suggestions[0];
-				// Find where the command name ends (if there are args)
-				const args = input.slice(1).split(" ").slice(1).join(" ");
-				const completion = `/${suggestion.id}${args ? " " + args : (suggestion.usage ? " " : "")}`;
-				setInput(completion);
-				setCursorPos(completion.length);
-			}
-			return;
-		}
+		// Tab completion for commands is now handled by the Command Palette natively
 
 		if (key.return && input.trim() && !loading) {
 			const newHistory = [
@@ -368,15 +357,7 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		// Tab completion for commands
-		if (k === "\t" && input.startsWith("/")) {
-			const suggestions = getCommandSuggestions(input, commands);
-			if (suggestions.length > 0) {
-				setInput(suggestions[0].label + " ");
-				setCursorPos(suggestions[0].label.length + 1);
-			}
-			return;
-		}
+		// Tab completion for commands handled by Command Palette
 
 		if (key.ctrl && k === "c") {
 			// Already handled above
@@ -385,6 +366,12 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Handle normal character input and paste
 		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
+			// Trigger Command Palette automatically when typing '/' as the first character
+			if (k === "/" && input.trim() === "" && cursorPos === 0) {
+				setShowCommandPalette(true);
+				return;
+			}
+
 			const sanitized = k.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
 			if (sanitized.length > 0) {
 				setInput((i: string) => i.slice(0, cursorPos) + sanitized + i.slice(cursorPos));

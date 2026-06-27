@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import { DECORATIVE } from "../../../branding/index.js";
+import { DECORATIVE, BRANDING } from "../../../branding/index.js";
 import { swarmManager, type SubagentTask } from "../../../agent/swarm/manager.js";
 
-const GOLD = "#F5C518";
-const CORAL = "#FF6B35";
-const GRAY = "#9CA3AF";
-const CYAN = "#06B6D4";
-const GREEN = "#22C55E";
+const { gold: GOLD, coral: CORAL, sand: GRAY, nile: CYAN, primary: GREEN } = BRANDING.colors;
 
 export interface SubagentState {
 	id: string;
@@ -58,19 +54,19 @@ export function SwarmVisualizer() {
 			</Box>
 
 			<Box flexDirection="row" marginBottom={1}>
-				<Box width={15}>
+				<Box flexBasis={12} flexGrow={0} flexShrink={0}>
 					<Text color={GOLD} bold>AGENT ID</Text>
 				</Box>
-				<Box width={25}>
+				<Box flexBasis={15} flexGrow={1} flexShrink={1}>
 					<Text color={GOLD} bold>ROLE</Text>
 				</Box>
-				<Box width={10}>
+				<Box flexBasis={10} flexGrow={0} flexShrink={0}>
 					<Text color={GOLD} bold>STATUS</Text>
 				</Box>
-				<Box width={40}>
+				<Box flexBasis={20} flexGrow={2} flexShrink={1}>
 					<Text color={GOLD} bold>CURRENT TASK</Text>
 				</Box>
-				<Box width={15}>
+				<Box flexBasis={10} flexGrow={0} flexShrink={0}>
 					<Text color={GOLD} bold>TOKENS</Text>
 				</Box>
 			</Box>
@@ -84,19 +80,19 @@ export function SwarmVisualizer() {
 					const statusColor = agent.status === "working" ? GREEN : agent.status === "error" ? CORAL : GRAY;
 					return (
 						<Box key={agent.id} flexDirection="row" marginBottom={0}>
-							<Box width={15}>
+							<Box flexBasis={12} flexGrow={0} flexShrink={0}>
 								<Text color={CYAN}>{agent.id}</Text>
 							</Box>
-							<Box width={25}>
+							<Box flexBasis={15} flexGrow={1} flexShrink={1}>
 								<Text>{agent.role}</Text>
 							</Box>
-							<Box width={10}>
+							<Box flexBasis={10} flexGrow={0} flexShrink={0}>
 								<Text color={statusColor}>{agent.status}</Text>
 							</Box>
-							<Box width={40}>
+							<Box flexBasis={20} flexGrow={2} flexShrink={1}>
 								<Text dimColor={agent.status === "idle"}>{agent.currentTask}</Text>
 							</Box>
-							<Box width={15}>
+							<Box flexBasis={10} flexGrow={0} flexShrink={0}>
 								<Text color={GOLD}>{agent.tokensUsed.toLocaleString()}</Text>
 							</Box>
 						</Box>

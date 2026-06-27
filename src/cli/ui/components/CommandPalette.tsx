@@ -5,6 +5,7 @@ import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
 import { DECORATIVE } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import Spinner from "ink-spinner";
 
 const GOLD = "#F5C518";
 const CORAL = "#FF6B35";
@@ -20,8 +21,9 @@ export interface CommandItem {
 	usage?: string;
 	shortcut?: string;
 	aliases?: string[];
-	category: "session" | "model" | "help" | "recent";
-	action: () => void;
+	category: "session" | "model" | "help" | "recent" | "submenu";
+	action?: () => void | Promise<void>;
+	submenu?: () => Promise<CommandItem[]> | CommandItem[];
 }
 
 interface CommandPaletteProps {
@@ -40,6 +42,7 @@ const CATEGORY_LABELS: Record<
 	model: { label: "MODEL", color: CYAN, glyph: DECORATIVE.ibis },
 	help: { label: "HELP", color: GRAY, glyph: DECORATIVE.eye },
 	recent: { label: "RECENT", color: SAND, glyph: DECORATIVE.ankh },
+	submenu: { label: "OPTIONS", color: GOLD, glyph: "»" },
 };
 
 function fuzzyMatch(
@@ -68,7 +71,7 @@ function fuzzyMatch(
 	return { score, indices };
 }
 
-function highlightMatch(text: string, indices: number[]): React.ReactNode[] {
+function highlightMatch(text: string, indices: number[], isSelected: boolean): React.ReactNode[] {
 	if (indices.length === 0) {
 		return [text];
 	}
@@ -82,7 +85,7 @@ function highlightMatch(text: string, indices: number[]): React.ReactNode[] {
 			elements.push(
 				React.createElement(
 					Text,
-					{ key: `text-${i}` },
+					{ key: `text-${i}`, color: isSelected ? "black" : CORAL },
 					text.slice(lastIdx, idx),
 				),
 			);
@@ -90,7 +93,7 @@ function highlightMatch(text: string, indices: number[]): React.ReactNode[] {
 		elements.push(
 			React.createElement(
 				Text,
-				{ key: `match-${i}`, color: GOLD, bold: true },
+				{ key: `match-${i}`, color: isSelected ? "black" : GOLD, bold: true, underline: !isSelected },
 				text[idx],
 			),
 		);
@@ -99,7 +102,7 @@ function highlightMatch(text: string, indices: number[]): React.ReactNode[] {
 
 	if (lastIdx < text.length) {
 		elements.push(
-			React.createElement(Text, { key: "text-end" }, text.slice(lastIdx)),
+			React.createElement(Text, { key: "text-end", color: isSelected ? "black" : CORAL }, text.slice(lastIdx)),
 		);
 	}
 
@@ -118,6 +121,11 @@ export function CommandPalette({
 	const { stdout } = useStdout();
 	const [terminalWidth, setTerminalWidth] = useState(stdout?.columns || 80);
 
+	const [menuStack, setMenuStack] = useState<{title: string; commands: CommandItem[]}[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+
+	const currentCommands = menuStack.length > 0 ? menuStack[menuStack.length - 1].commands : commands;
+
 	useEffect(() => {
 		const handleResize = () => {
 			setTerminalWidth(stdout?.columns || 80);
@@ -130,10 +138,10 @@ export function CommandPalette({
 
 	const filteredCommands = useMemo(() => {
 		if (!query.trim()) {
-			return commands.map((cmd) => ({ ...cmd, matchIndices: [] as number[], matchField: 'label' }));
+			return currentCommands.map((cmd) => ({ ...cmd, matchIndices: [] as number[], matchField: 'label' }));
 		}
 
-		const results = commands
+		const results = currentCommands
 			.map((cmd) => {
 				const labelMatch = fuzzyMatch(cmd.label, query);
 				const descMatch = fuzzyMatch(cmd.description, query);
@@ -166,7 +174,7 @@ export function CommandPalette({
 			.filter((cmd) => (cmd.matchScore ?? -1) >= 0);
 
 		return results.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
-	}, [commands, query]);
+	}, [currentCommands, query]);
 
 	const groupedCommands = useMemo(() => {
 		const groups: Record<string, typeof filteredCommands> = {};
@@ -181,31 +189,72 @@ export function CommandPalette({
 	useEffect(() => {
 		if (visible) {
 			const initQ = initialQuery || "";
-			setQuery(initQ);
+			// Only reset if we are opening fresh
+			if (menuStack.length === 0 && !query) {
+				setQuery(initQ);
+			}
 			setSelectedIndex(0);
+		} else {
+			// Reset on close
+			setMenuStack([]);
+			setQuery("");
 		}
-	}, [visible, initialQuery]);
+	}, [visible]);
 
 	useEffect(() => {
 		setSelectedIndex(0);
 	}, [filteredCommands]);
 
+	const handleExecute = async (selected: CommandItem) => {
+		if (selected.submenu) {
+			setIsLoading(true);
+			try {
+				const children = await selected.submenu();
+				setMenuStack((prev) => [...prev, { title: selected.label, commands: children }]);
+				setQuery("");
+			} finally {
+				setIsLoading(false);
+			}
+		} else {
+			// Track recently used command if it's a top-level command
+			if (menuStack.length === 0) {
+				addRecentCommand(selected.id);
+			}
+			onSelect(selected);
+		}
+	};
+
 	useInput(
 		(char, key) => {
 			if (isMouseSequence(char)) return;
-			if (!visible) return;
+			if (!visible || isLoading) return;
 
 			if (key.escape) {
-				onClose();
+				if (menuStack.length > 0) {
+					// Pop stack
+					setMenuStack((prev) => prev.slice(0, -1));
+					setQuery("");
+				} else {
+					onClose();
+				}
 				return;
 			}
 
-			if (key.upArrow) {
+			if (key.backspace || key.delete) {
+				if (query.length === 0 && menuStack.length > 0) {
+					// Pop stack on backspace if query is empty
+					setMenuStack((prev) => prev.slice(0, -1));
+					return;
+				}
+			}
+
+			// Vim navigation (j/k) when query is empty, or standard arrows
+			if (key.upArrow || (char === 'k' && query.length === 0)) {
 				setSelectedIndex((prev) => Math.max(0, prev - 1));
 				return;
 			}
 
-			if (key.downArrow) {
+			if (key.downArrow || (char === 'j' && query.length === 0)) {
 				setSelectedIndex((prev) => Math.min(filteredCommands.length - 1, prev + 1));
 				return;
 			}
@@ -213,31 +262,31 @@ export function CommandPalette({
 			if (key.return && filteredCommands.length > 0) {
 				const selected = filteredCommands[selectedIndex] || filteredCommands[0];
 				if (selected) {
-					onSelect(selected);
+					void handleExecute(selected);
 				}
 				return;
 			}
-
-			// query editing handled by InkTextInput below - no manual char/backspace here to avoid conflict
 		},
 		{ isActive: visible },
 	);
 
 	if (!visible) return null;
 
-	// Consistent fixed sizing, never random. Clamp only for tiny terminals.
-	const paletteWidth = Math.min(62, Math.max(40, terminalWidth - 6));
-	const MAX_DISPLAY = 9; // keep palette height predictable & best-in-class
+	const paletteWidth = Math.min(64, Math.max(40, terminalWidth - 6));
+	const MAX_DISPLAY = 9; 
 	const displayCommands = filteredCommands.slice(0, MAX_DISPLAY);
 	const hasMore = filteredCommands.length > MAX_DISPLAY;
 
-	// Build ordered groups for deterministic categories (recent first)
 	const orderedGroups = [
+		["submenu", groupedCommands["submenu"] || []],
 		["recent", groupedCommands["recent"] || []],
 		["session", groupedCommands["session"] || []],
 		["model", groupedCommands["model"] || []],
 		["help", groupedCommands["help"] || []],
 	].filter(([, cmds]) => (cmds as any[]).length > 0) as Array<[string, typeof filteredCommands]>;
+
+	const breadcrumbs = menuStack.map(m => m.title).join(" > ");
+	const titleText = breadcrumbs ? ` ${DECORATIVE.ibis} Palette > ${breadcrumbs} ` : ` ${DECORATIVE.ibis} COMMAND PALETTE `;
 
 	return React.createElement(
 		Box,
@@ -245,36 +294,38 @@ export function CommandPalette({
 			flexDirection: "column",
 			width: paletteWidth,
 			borderStyle: "round",
-			borderColor: GOLD,
+			borderColor: menuStack.length > 0 ? CYAN : GOLD,
 			paddingX: 1,
 			paddingY: 1,
 		},
 		React.createElement(
 			Box,
-			{ marginBottom: 1 },
-			React.createElement(Text, { bold: true, color: GOLD }, `${DECORATIVE.ibis} COMMAND PALETTE `),
-			React.createElement(Text, { color: GRAY }, "(type • ↑↓ • ⏎ • esc)"),
+			{ marginBottom: 1, justifyContent: "space-between" },
+			React.createElement(Text, { bold: true, color: menuStack.length > 0 ? CYAN : GOLD }, titleText),
+			React.createElement(Text, { color: GRAY, dimColor: true }, isLoading ? "..." : "(type • ↑↓/jk • ⏎ • esc)"),
 		),
 		React.createElement(
 			Box,
 			{ borderStyle: "single", borderColor: CORAL, paddingX: 1, marginBottom: 1 },
 			React.createElement(Text, { color: CORAL }, `${DECORATIVE.arrow} `),
-			React.createElement(InkTextInput, {
-				value: query,
-				onChange: (val: string) => setQuery(val),
-				placeholder: "filter commands or providers...",
-				focus: visible,
-			}),
+			isLoading ? (
+				React.createElement(Text, { color: CYAN }, React.createElement(Spinner, { type: "dots" }), " Loading...")
+			) : (
+				React.createElement(InkTextInput, {
+					value: query,
+					onChange: (val: string) => setQuery(val),
+					placeholder: menuStack.length > 0 ? "filter options..." : "type a command...",
+					focus: visible,
+				})
+			)
 		),
-		filteredCommands.length === 0
+		!isLoading && filteredCommands.length === 0
 			? React.createElement(
 					Box,
 					{ paddingY: 1, flexDirection: "column" },
 					React.createElement(Text, { dimColor: true, color: CORAL }, `${DECORATIVE.eye} No match found.`),
-					React.createElement(Text, { color: SAND }, "  Try: /models  /provider openrouter  /cost  /config  /compact"),
-					React.createElement(Text, { color: GRAY, dimColor: true }, "  Dynamic providers loaded from registry. Esc to close."),
 				)
-			: React.createElement(
+			: !isLoading && React.createElement(
 					Box,
 					{ flexDirection: "column" },
 					...orderedGroups.flatMap(([category, cmds]) => [
@@ -287,8 +338,8 @@ export function CommandPalette({
 							const cmdIndex = filteredCommands.findIndex((c) => c.id === cmd.id);
 							const isSelected = cmdIndex === selectedIndex;
 							const label = (query.trim() && cmd.matchIndices.length > 0 && cmd.matchField === 'label')
-								? highlightMatch(cmd.label, cmd.matchIndices)
-								: [cmd.label];
+								? highlightMatch(cmd.label, cmd.matchIndices, isSelected)
+								: [React.createElement(Text, { key: "l", color: isSelected ? "black" : CORAL }, cmd.label)];
 
 							return React.createElement(
 								Box,
@@ -296,18 +347,18 @@ export function CommandPalette({
 									key: cmd.id,
 									flexDirection: "column",
 									paddingX: 1,
-									backgroundColor: isSelected ? "blue" : undefined,
+									backgroundColor: isSelected ? GOLD : undefined,
 								},
 								React.createElement(
 									Text,
-									{ color: isSelected ? "white" : CORAL, bold: isSelected },
-									isSelected ? `${DECORATIVE.arrow} ` : "  ",
+									{ color: isSelected ? "black" : CORAL, bold: isSelected },
+									isSelected ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
 									...label,
-									cmd.shortcut && React.createElement(Text, { color: CYAN }, ` ${cmd.shortcut}`),
+									cmd.shortcut && React.createElement(Text, { color: isSelected ? "black" : CYAN, dimColor: !isSelected }, ` ${cmd.shortcut}`),
 								),
 								React.createElement(
 									Text,
-									{ color: GRAY, dimColor: true },
+									{ color: isSelected ? "black" : GRAY, dimColor: !isSelected },
 									`    ${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ''}`,
 								),
 							);
@@ -319,11 +370,6 @@ export function CommandPalette({
 						`  … +${filteredCommands.length - MAX_DISPLAY} more — refine your filter`,
 					),
 				),
-		React.createElement(
-			Box,
-			{ marginTop: 1, borderStyle: "single", borderColor: GRAY, paddingX: 1 },
-			React.createElement(Text, { dimColor: true, color: SAND }, `${DECORATIVE.ibis} ↑↓  ⏎ run  ⎋ close  • Egyptian TUI`),
-		),
 	);
 }
 
@@ -347,14 +393,14 @@ function addRecentCommand(commandId: string): void {
 
 export function createCommands(options: {
 	onCost: () => void;
-	onModel: () => void;
+	onModel: (model: string) => void;
 	onClear: () => void;
 	onExit: () => void;
 	onHelp: () => void;
 	onSessions: () => void;
 	onModels: () => void;
 	onSave?: () => void;
-	onLoad?: () => void;
+	onLoad?: (sessionId: string) => void;
 	onStats?: () => void;
 	onCompact?: () => void;
 	onThinking?: () => void;
@@ -365,10 +411,12 @@ export function createCommands(options: {
 	onGetSkill?: (skillId: string) => void;
 	onConfig?: () => void;
 	onDashboard?: () => void;
-	onProvider?: (provider?: string) => void;
+	onProvider?: (provider: string) => void;
 	onProviders?: () => void;
+	getAvailableModels?: () => Promise<{id: string, name: string}[]>;
+	getSavedSessions?: () => Promise<{id: string, name: string, date: string}[]>;
 }): CommandItem[] {
-  const baseCommands = [
+  const baseCommands: CommandItem[] = [
 		{
 			id: "/config",
 			label: "/config",
@@ -410,7 +458,6 @@ export function createCommands(options: {
 			id: "/save",
 			label: "/save",
 			description: "Save current session for later",
-			usage: "[name]",
 			category: "session",
 			action: options.onSave || (() => {}),
 		},
@@ -418,9 +465,18 @@ export function createCommands(options: {
 			id: "/load",
 			label: "/load",
 			description: "Load a saved session",
-			usage: "<id>",
 			category: "session",
-			action: options.onLoad || (() => {}),
+			submenu: async () => {
+				if (!options.getSavedSessions) return [];
+				const sessions = await options.getSavedSessions();
+				return sessions.map(s => ({
+					id: s.id,
+					label: s.name || s.id,
+					description: s.date,
+					category: "submenu",
+					action: () => options.onLoad?.(s.id)
+				}));
+			}
 		},
 		{
 			id: "/sessions",
@@ -430,42 +486,36 @@ export function createCommands(options: {
 			action: options.onSessions,
 		},
 		{
-			id: "/search",
-			label: "/search",
-			description: "Search saved sessions by name, ID, or model",
-			usage: "<query>",
-			category: "session",
-			action: () => {}, // Placeholder - will be handled in chat.ts
-		},
-		{
 			id: "/model",
 			label: "/model",
 			description: "Switch to a different AI model",
-			usage: "<name>",
 			category: "model",
-			action: options.onModel,
-		},
-		{
-			id: "/models",
-			label: "/models",
-			description: "List available models from the current provider",
-			category: "model",
-			action: options.onModels,
+			submenu: async () => {
+				if (!options.getAvailableModels) return [];
+				const models = await options.getAvailableModels();
+				return models.map(m => ({
+					id: m.id,
+					label: m.id,
+					description: m.name,
+					category: "submenu",
+					action: () => options.onModel(m.id)
+				}));
+			}
 		},
 		{
 			id: "/provider",
 			label: "/provider",
-			description: "Switch or view AI provider (openrouter/kilocode/custom). Supports OAuth/PATs",
-			usage: "[name]",
+			description: "Switch AI provider (openrouter/kilocode/custom)",
 			category: "model",
-			action: options.onProvider || (() => {}),
-		},
-		{
-			id: "/providers",
-			label: "/providers",
-			description: "List supported providers and their capabilities (OAuth, MCP)",
-			category: "model",
-			action: options.onProviders || (() => {}),
+			submenu: () => {
+				return getAllProviders().map(p => ({
+					id: p.id,
+					label: p.id,
+					description: p.name + (p.oauthSupported ? " (OAuth supported)" : ""),
+					category: "submenu",
+					action: () => options.onProvider?.(p.id)
+				}));
+			}
 		},
 		{
 			id: "/thinking",
@@ -488,32 +538,31 @@ export function createCommands(options: {
 			category: "session",
 			action: options.onSkills || (() => {}),
 		},
-			{
-				id: "/help",
-				label: "/help",
-				description: "Show all commands and keyboard shortcuts",
-				aliases: ["/h"],
-				category: "help",
-				action: options.onHelp,
-			},
-			{
-				id: "/dashboard",
-				label: "/dashboard",
-				description: "Toggle Swarm Observability Dashboard",
-				category: "session",
-				action: options.onDashboard || (() => {}),
-			},
-			{
-				id: "/exit",
-				label: "/exit",
-				description: "Exit Tehuti CLI",
-				aliases: ["/quit", "/q"],
-				category: "session",
-				action: options.onExit,
-			},
+		{
+			id: "/help",
+			label: "/help",
+			description: "Show all commands and keyboard shortcuts",
+			aliases: ["/h"],
+			category: "help",
+			action: options.onHelp,
+		},
+		{
+			id: "/dashboard",
+			label: "/dashboard",
+			description: "Toggle Swarm Observability Dashboard",
+			category: "session",
+			action: options.onDashboard || (() => {}),
+		},
+		{
+			id: "/exit",
+			label: "/exit",
+			description: "Exit Tehuti CLI",
+			aliases: ["/quit", "/q"],
+			category: "session",
+			action: options.onExit,
+		},
 	];
 
-	// Add recently used commands
 	const recentIds = getRecentCommands();
 	const recentCommands: CommandItem[] = [];
 	
@@ -527,29 +576,9 @@ export function createCommands(options: {
 		}
 	}
 
-	// Enhanced command objects with recent tracking
-	const commandsWithTracking: CommandItem[] = baseCommands.map(cmd => ({
-		...cmd,
-		category: cmd.category as "session" | "model" | "help" | "recent",
-		action: () => {
-			addRecentCommand(cmd.id);
-			cmd.action();
-		}
-	}));
-
-	// Dynamic providers for best UX - no hardcode in TUI, from registry
-	const providerItems = getAllProviders().slice(0, 12).map(p => ({
-		id: `/provider ${p.id}`,
-		label: `/provider ${p.id}`,
-		description: p.name + (p.oauthSupported ? " (OAuth supported)" : ""),
-		usage: "",
-		category: "model" as const,
-		action: () => options.onProvider?.(p.id),
-	}));
-
-	return [...recentCommands, ...commandsWithTracking.filter(cmd => 
+	return [...recentCommands, ...baseCommands.filter(cmd => 
 		!recentIds.includes(cmd.id)
-	), ...providerItems.filter(p => !recentIds.includes(p.id)) ];
+	)];
 }
 
 export function formatHelpOutput(): string {
@@ -563,9 +592,8 @@ export function formatHelpOutput(): string {
 │    /stats              Show performance metrics                   │
 │    /compact            Compact context to free up token space     │
 │    /save [name]        Save session                               │
-│    /load <id>          Load session                               │
+│    /load               Load session (Interactive Submenu)         │
 │    /sessions           List saved sessions                        │
-│    /search <query>     Search sessions by name, ID, or model      │
 │    /plan               Enter plan mode (read-only exploration)    │
 │    /config             Open interactive configuration editor      │
 │    /skills             List all available skills                  │
@@ -573,14 +601,12 @@ export function formatHelpOutput(): string {
 │    /exit               Exit Tehuti                                │
 ├──────────────────────────────────────────────────────────────────┤
 │  MODEL                                                            │
-│    /model <name>       Switch AI model                            │
-│    /models             List models from current provider          │
-│    /provider [name]    Switch or inspect provider                 │
-│    /providers          List supported providers                   │
+│    /model              Switch AI model (Interactive Submenu)      │
+│    /provider           Switch provider (Interactive Submenu)      │
 │    /thinking           Toggle extended thinking mode              │
 ├──────────────────────────────────────────────────────────────────┤
 │  SHORTCUTS                                                        │
-│    ⌃P    Open palette       ⌃L    Clear conversation              │
+│    /     Open palette       ⌃L    Clear conversation              │
 │    ⌃A    Move to start      ⌃E    Move to end                     │
 │    ⌃U    Delete to start    ⌃W    Delete previous word            │
 │    ⌃K    Delete to end      Tab   Complete slash command          │
@@ -588,31 +614,4 @@ export function formatHelpOutput(): string {
 │    ⌃↑/⌃↓ Scroll messages    ⌃C    Exit when input is empty        │
 ╰──────────────────────────────────────────────────────────────────╯
 `.trim();
-}
-
-export function getCommandSuggestions(
-	input: string,
-	commands: CommandItem[],
-): CommandItem[] {
-	if (!input.startsWith("/")) return [];
-	const query = input.toLowerCase();
-	const queryWithoutSlash = input.slice(1).toLowerCase();
-
-	return commands
-		.filter((cmd) => {
-			if (queryWithoutSlash === "") return true;
-
-			const hasAliasMatch = cmd.aliases?.some(alias =>
-				alias.toLowerCase().includes(query) ||
-				alias.slice(1).toLowerCase().includes(queryWithoutSlash)
-			);
-
-			return (
-				cmd.label.toLowerCase().includes(queryWithoutSlash) ||
-				cmd.id.toLowerCase().includes(queryWithoutSlash) ||
-				cmd.description.toLowerCase().includes(queryWithoutSlash) ||
-				hasAliasMatch
-			);
-		})
-		.slice(0, 5);
 }

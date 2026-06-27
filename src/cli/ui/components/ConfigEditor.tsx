@@ -1,13 +1,14 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import React, { useEffect, useMemo, useState } from "react";
+import TextInput from "ink-text-input";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 
-const GOLD = "#D4AF37";
+const GOLD = BRANDING.colors.gold;
 const GRAY = "#6B7280";
-const CORAL = "#D97757";
-const CYAN = "#06B6D4";
-const GREEN = "#10B981";
-const SAND = "#C2B280";
+const CORAL = BRANDING.colors.coral;
+const NILE = BRANDING.colors.nile;
+const SAND = BRANDING.colors.sand;
 const RED = "#EF4444";
 
 interface ConfigEditorProps {
@@ -41,9 +42,10 @@ export function ConfigEditor({
 	width,
 }: ConfigEditorProps): React.ReactElement {
 	const [draftConfig, setDraftConfig] = useState<EditorConfig>(config);
-	const [selectedField, setSelectedField] = useState<ConfigField>("apiKey");
+	const [selectedField, setSelectedField] = useState<ConfigField>("provider");
 	const [editingField, setEditingField] = useState<ConfigField | null>(null);
 	const [editValue, setEditValue] = useState("");
+	const [activeTab, setActiveTab] = useState<"API & Provider" | "Model Options">("API & Provider");
 	const { stdout } = useStdout();
 	const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -51,37 +53,42 @@ export function ConfigEditor({
 		setDraftConfig(config);
 	}, [config]);
 
-	const fields = useMemo<Array<{
+	const allFields = useMemo<Array<{
 		key: ConfigField;
 		label: string;
 		type: "string" | "number";
 		min?: number;
 		max?: number;
 		description: string;
+		category: "API & Provider" | "Model Options";
 	}>>(() => [
-		{
-			key: "apiKey",
-			label: "API Key",
-			type: "string",
-			description: "API key for the selected provider (or use env vars)",
-		},
 		{
 			key: "provider",
 			label: "Provider",
 			type: "string",
 			description: "AI provider e.g. openrouter, opencode, ollama, xai, anthropic, custom",
+			category: "API & Provider",
+		},
+		{
+			key: "apiKey",
+			label: "API Key",
+			type: "string",
+			description: "API key for the selected provider (or use env vars)",
+			category: "API & Provider",
 		},
 		{
 			key: "baseUrl",
 			label: "Base URL (optional)",
 			type: "string",
 			description: "Override base URL for the provider's API endpoint (required for opencode etc)",
+			category: "API & Provider",
 		},
 		{
 			key: "model",
 			label: "Default Model",
 			type: "string",
 			description: "Default AI model (e.g. minimax-m3 for opencode go)",
+			category: "Model Options",
 		},
 		{
 			key: "temperature",
@@ -90,6 +97,7 @@ export function ConfigEditor({
 			min: 0,
 			max: 2,
 			description: "Creativity level (0.0 = deterministic, 2.0 = creative)",
+			category: "Model Options",
 		},
 		{
 			key: "maxTokens",
@@ -98,13 +106,16 @@ export function ConfigEditor({
 			min: 1000,
 			max: 128000,
 			description: "Maximum tokens per response",
+			category: "Model Options",
 		},
 	], []);
+
+	const fields = allFields.filter(f => f.category === activeTab);
 
 	const commitFieldEdit = (): void => {
 		if (!editingField) return;
 
-		const field = fields.find((f) => f.key === editingField);
+		const field = allFields.find((f) => f.key === editingField);
 		let isValid = true;
 		let parsedValue: string | number | undefined = editValue;
 
@@ -148,11 +159,6 @@ export function ConfigEditor({
 				setEditingField(null);
 				setEditValue("");
 				setValidationError(null);
-			} else if (key.backspace || key.delete) {
-				setEditValue((v) => v.slice(0, -1));
-			} else if (char && !key.ctrl && !key.meta && !char.startsWith("\x1b") && char !== "\r" && char !== "\n" && char !== "\t") {
-				const sanitized = char.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
-				setEditValue((v) => v + sanitized);
 			}
 		} else {
 			if (key.ctrl && (char === "s" || char === "S")) {
@@ -167,6 +173,9 @@ export function ConfigEditor({
 				const currentIndex = fields.findIndex((f) => f.key === selectedField);
 				const newIndex = (currentIndex + 1) % fields.length;
 				setSelectedField(fields[newIndex].key);
+			} else if (key.leftArrow || key.rightArrow || char === "\t") {
+				setActiveTab(prev => prev === "API & Provider" ? "Model Options" : "API & Provider");
+				setSelectedField(activeTab === "API & Provider" ? "model" : "provider");
 			} else if (key.home) {
 				setSelectedField(fields[0].key);
 			} else if (key.end) {
@@ -191,102 +200,88 @@ export function ConfigEditor({
 	const terminalWidth = width || stdout?.columns || 80;
 	const editorWidth = Math.min(80, terminalWidth - 4);
 
-	return React.createElement(
-		Box,
-		{
-			flexDirection: "column",
-			width: editorWidth,
-			borderStyle: "round",
-			borderColor: GOLD,
-			paddingX: 1,
-		},
-		React.createElement(
-			Box,
-			{ marginBottom: 1 },
-			React.createElement(Text, { bold: true, color: GOLD }, "𓆣 Configuration Editor"),
-		),
-		validationError && React.createElement(
-			Box,
-			{ 
-				marginBottom: 1, 
-				padding: 1, 
-				borderStyle: "single", 
-				borderColor: RED,
-				backgroundColor: "#1f2937"
-			},
-			React.createElement(Text, { color: RED }, `✖ ${validationError}`),
-		),
-		React.createElement(
-			Box,
-			{ marginBottom: 1, flexDirection: "column" },
-			...fields.map((field) => {
-				const isSelected = selectedField === field.key;
-				const isEditing = editingField === field.key;
+	return (
+		<Box
+			flexDirection="column"
+			width={editorWidth}
+			borderStyle="round"
+			borderColor={GOLD}
+			paddingX={1}
+		>
+			<Box marginBottom={1} justifyContent="space-between">
+				<Text bold color={GOLD}>𓆣 Configuration Editor</Text>
+				<Box>
+					<Text color={activeTab === "API & Provider" ? GOLD : GRAY} bold={activeTab === "API & Provider"}>
+						{activeTab === "API & Provider" ? " [ API & Provider ] " : " API & Provider "}
+					</Text>
+					<Text color={activeTab === "Model Options" ? GOLD : GRAY} bold={activeTab === "Model Options"}>
+						{activeTab === "Model Options" ? " [ Model Options ] " : " Model Options "}
+					</Text>
+				</Box>
+			</Box>
+			{validationError && (
+				<Box
+					marginBottom={1}
+					padding={1}
+					borderStyle="single"
+					borderColor={RED}
+				>
+					<Text color={RED}>{ERROR_SYMBOL} {validationError}</Text>
+				</Box>
+			)}
+			<Box marginBottom={1} flexDirection="column">
+				{fields.map((field) => {
+					const isSelected = selectedField === field.key;
+					const isEditing = editingField === field.key;
 
-				return React.createElement(
-					Box,
-					{
-						key: field.key,
-						flexDirection: "column",
-						marginBottom: 1,
-						padding: isSelected ? 1 : 0,
-						borderStyle: isSelected ? "single" : undefined,
-						borderColor: GOLD,
-					},
-					React.createElement(
-						Box,
-						{ justifyContent: "space-between", marginBottom: 0.5 },
-						React.createElement(
-							Text,
-							{ bold: true, color: isSelected ? GOLD : GRAY },
-							field.label,
-						),
-						React.createElement(
-							Text,
-							{ color: isSelected ? CORAL : SAND },
-							isEditing ? (
-								React.createElement(
-									Box,
-									null,
-									React.createElement(Text, null, editValue),
-									React.createElement(Text, { backgroundColor: CORAL }, " "),
-								)
-							) : (
-								getFieldValue(field.key)
-							),
-						),
-					),
-					React.createElement(Text, { dimColor: true, color: SAND }, field.description),
-					field.type === "number" &&
-						React.createElement(
-							Text,
-							{ dimColor: true, color: GRAY },
-							`Range: ${field.min} - ${field.max}`,
-						),
-				);
-			}),
-		),
-		React.createElement(
-			Box,
-			{
-				marginTop: 1,
-				borderStyle: "single",
-				borderColor: GRAY,
-				paddingX: 1,
-				flexDirection: "column",
-			},
-			React.createElement(
-				Text,
-				{ dimColor: true },
-				editingField
-					? "Enter to apply field | Esc cancel field"
-					: "↑↓ navigate | Enter/Space edit | Ctrl+S save | Esc cancel",
-			),
-			React.createElement(
-				Text,
-				{ dimColor: true, color: CYAN },
-				"Changes stay local until Ctrl+S saves them.",
-			),
-		),
+					return (
+						<Box
+							key={field.key}
+							flexDirection="column"
+							marginBottom={1}
+							padding={isSelected ? 1 : 0}
+							borderStyle={isSelected ? "single" : undefined}
+							borderColor={GOLD}
+						>
+							<Box justifyContent="space-between" marginBottom={0.5}>
+								<Text bold color={isSelected ? GOLD : GRAY}>{field.label}</Text>
+								{isEditing ? (
+									<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
+										<TextInput
+											value={editValue}
+											onChange={setEditValue}
+											onSubmit={commitFieldEdit}
+											focus={isEditing}
+										/>
+									</Box>
+								) : (
+									<Text color={isSelected ? CORAL : SAND}>{getFieldValue(field.key)}</Text>
+								)}
+							</Box>
+							<Text dimColor color={SAND}>{field.description}</Text>
+							{field.type === "number" && (
+								<Text dimColor color={GRAY}>Range: {field.min} - {field.max}</Text>
+							)}
+						</Box>
+					);
+				})}
+			</Box>
+			<Box
+				marginTop={1}
+				borderStyle="single"
+				borderColor={GRAY}
+				paddingX={1}
+				flexDirection="column"
+			>
+				<Text dimColor>
+					{editingField
+						? "Enter to apply field | Esc cancel field"
+						: "↑↓ navigate | ↔ switch tab | Enter/Space edit | Ctrl+S save | Esc cancel"}
+				</Text>
+				<Text dimColor color={NILE}>
+					Changes stay local until Ctrl+S saves them.
+				</Text>
+			</Box>
+		</Box>
 	);
 }

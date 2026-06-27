@@ -4,7 +4,21 @@ import Gradient from "ink-gradient";
 import BigText from "ink-big-text";
 import { HIEROGLYPHS } from "../../../branding/index.js";
 
-export function TehutiHeader() {
+export interface TehutiHeaderProps {
+	compact?: boolean;
+}
+
+export function TehutiHeader({ compact = false }: TehutiHeaderProps) {
+	if (compact) {
+		return (
+			<Box flexDirection="row" alignItems="center" marginBottom={1} borderStyle="round" borderColor="#D4AF37" paddingX={2}>
+				<Text color="#D4AF37" bold>𓆣 TEHUTI </Text>
+				<Text color="#8B7355" dimColor> │ Scribe of Code Transformations │ </Text>
+				<Text color="#D97757">𓁹 Write • Edit • Transform</Text>
+			</Box>
+		);
+	}
+
 	return (
 		<Box flexDirection="column" alignItems="center" marginBottom={1}>
 			<Gradient colors={["#D4AF37", "#D97757"]}>
