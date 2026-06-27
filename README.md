@@ -79,7 +79,7 @@ npx tsx src/index.ts
 npm run start -- "fix the bug in src/foo.ts"
 
 # With overrides
-npm run start -- -p kilocode -m deepseek-v4-flash "explain this"
+npm run start -- -p opencode -m deepseek-v4-flash "explain this"
 
 # Setup wizard
 npm run start -- init     # or npx tsx src/index.ts init
@@ -104,7 +104,7 @@ Tehuti isn't just another AI coding assistant. It's a **complete reimagining** o
 
 ### Divine Features
 
-- **🧠 Multi-Model Wisdom** - Choose from 300+ models via OpenRouter (Claude, GPT, Gemini, DeepSeek)
+- **🧠 Multi-Model Wisdom** - Choose from 300+ models via OpenRouter or OpenCode Go (Claude, GPT, Gemini, DeepSeek)
 - **⚡ Parallel Execution** - Up to 5 tools run concurrently for lightning-fast results
 - **💾 Session Persistence** - Save, resume, and name conversations like ancient scrolls
 - **📋 Plan Mode** - Read-only exploration before making changes (avoid costly mistakes)
@@ -117,11 +117,13 @@ Tehuti isn't just another AI coding assistant. It's a **complete reimagining** o
 - **🔄 Background Processes** - Run and manage long-running commands
 - **🔒 Safe Execution** - Permission prompts for dangerous operations
 - **🎯 Skills System** - Auto-apply expertise based on task type (JavaScript/TypeScript, Python, Git)
+- **⏳ Chronological Blocks TUI** - Tool runs and thoughts render in chronological block layout with animated live spinners and execution timers
+- **📏 Responsive string-width Layout** - Sized panel borders and table structures dynamically adapt on resize without wrapping
 
 ### Performance Magic
 
 - **Context Caching**: 90% cost reduction on cached tokens
-- **Model Routing**: Automatic tier selection (fast/balanced/deep)
+- **Dynamic Model Routing**: Fully provider-agnostic automatic tier selection (fast/balanced/deep) configurable using `modelTiers`
 - **Context Compression**: LLM-based summarization at 85k tokens
 - **Predictive Prefetching**: Rule-based next-tool prediction
 - **Connection Pooling**: undici HTTP connection pooling for efficiency
@@ -162,13 +164,13 @@ cp .tehuti.example.json ~/.tehuti.json
 # or keep local .tehuti.json
 ```
 
-Minimal for KiloCode (default in example):
+Minimal for OpenCode Go (default in example):
 
 ```json
 {
-  "provider": "kilocode",
+  "provider": "opencode",
   "model": "deepseek-v4-flash",
-  "apiKey": "your-kilo-or-other-key-here"
+  "apiKey": "your-opencode-api-key-here"
 }
 ```
 
@@ -219,7 +221,7 @@ npm run start
 
 ```bash
 tehuti "fix the bug in auth.ts"
-tehuti -p kilocode -m deepseek-v4-flash "explain the agent loop"
+tehuti -p opencode -m deepseek-v4-flash "explain the agent loop"
 tehuti --model anthropic/claude-fable-5 "plan the next feature"
 tehuti --no-mcp --quiet "quick task"
 ```
@@ -337,14 +339,19 @@ The authoritative config lives at `~/.tehuti.json` (or local `.tehuti.json`). St
 cp .tehuti.example.json ~/.tehuti.json
 ```
 
-Current shape (KiloCode default + GitHub MCP ready):
+Current shape (OpenCode Go default + GitHub MCP ready):
 
 ```json
 {
-  "provider": "kilocode",
+  "provider": "opencode",
   "model": "deepseek-v4-flash",
-  "fallbackModel": "minimax/minimax-m2.5:free",
+  "fallbackModel": "deepseek-v4-flash",
   "maxTokens": 32000,
+  "modelTiers": {
+    "fast": "deepseek-v4-flash",
+    "balanced": "minimax-m3",
+    "deep": "deepseek-v4-flash"
+  },
   "permissions": {
     "defaultMode": "interactive"
   },
@@ -413,7 +420,7 @@ Key files:
 ### API key required / invalid (TS path)
 
 ```bash
-export KILO_API_KEY=...     # default provider in .tehuti.example
+export OPENCODE_API_KEY=...     # default provider in .tehuti.example
 # or
 tehuti init
 tehuti config
