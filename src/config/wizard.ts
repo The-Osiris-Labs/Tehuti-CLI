@@ -32,8 +32,8 @@ const c = {
 };
 
 const PROVIDER_CHOICES = [
-	{ name: "OpenRouter (Recommended - 200+ models, pay-per-use)", value: "openrouter" },
-	{ name: "OpenCode Go (Subscription model)", value: "opencode" },
+	{ name: "OpenCode Go (Recommended - abundant context window & up-to-date models)", value: "opencode" },
+	{ name: "OpenRouter (Pay-per-use, 200+ models)", value: "openrouter" },
 	{ name: "Ollama (Local, keyless, runs offline)", value: "ollama" },
 	{ name: "LM Studio (Local, keyless, desktop app server)", value: "lmstudio" },
 	{ name: "Google Gemini (Direct AI Studio API key)", value: "google" },
@@ -92,7 +92,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	const provider = await select({
 		message: `${EYE} Select your AI provider:`,
 		choices: PROVIDER_CHOICES,
-		default: "openrouter",
+		default: "opencode",
 	});
 
 	const info = getProviderInfo(provider);
