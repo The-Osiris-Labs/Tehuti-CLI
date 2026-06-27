@@ -1241,34 +1241,6 @@ function ChatUI({
 	const headerScrollHeight = shouldShowHeader ? 14 : 0;
 	const warningsHeight = configWarnings.length * 4;
 
-	// Calculate command suggestions count to dynamically adjust layout
-	const suggestionsCount = useMemo(() => {
-		if (!input.startsWith("/") || showCommandPalette) return 0;
-		const suggestions = getCommandSuggestions(input, commands);
-		return suggestions.length;
-	}, [input, commands, showCommandPalette]);
-
-	// Account for command palette height if open
-	const paletteHeight = showCommandPalette ? 16 : 0;
-
-	const maxVisibleMessages = Math.max(
-		3,
-		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight - suggestionsCount - paletteHeight,
-	);
-	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
-
-	// Synchronize scrollOffset with message list size and terminal height changes
-	useEffect(() => {
-		if (messagesEndRef.current) {
-			setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
-		} else {
-			setScrollOffset((prev) => {
-				const maxOff = Math.max(0, messages.length - maxVisibleMessages);
-				return Math.min(prev, maxOff);
-			});
-		}
-	}, [messages.length, maxVisibleMessages]);
-
 	messagesRef.current = messages;
 
 	// Cleanup batch timer on unmount
@@ -1792,6 +1764,34 @@ function ChatUI({
 			resetConversation,
 		],
 	);
+
+	// Calculate command suggestions count to dynamically adjust layout
+	const suggestionsCount = useMemo(() => {
+		if (!input.startsWith("/") || showCommandPalette) return 0;
+		const suggestions = getCommandSuggestions(input, commands);
+		return suggestions.length;
+	}, [input, commands, showCommandPalette]);
+
+	// Account for command palette height if open
+	const paletteHeight = showCommandPalette ? 16 : 0;
+
+	const maxVisibleMessages = Math.max(
+		3,
+		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight - suggestionsCount - paletteHeight,
+	);
+	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
+
+	// Synchronize scrollOffset with message list size and terminal height changes
+	useEffect(() => {
+		if (messagesEndRef.current) {
+			setScrollOffset(Math.max(0, messages.length - maxVisibleMessages));
+		} else {
+			setScrollOffset((prev) => {
+				const maxOff = Math.max(0, messages.length - maxVisibleMessages);
+				return Math.min(prev, maxOff);
+			});
+		}
+	}, [messages.length, maxVisibleMessages]);
 
 	useEffect(() => {
 		setHistory(loadHistory());
