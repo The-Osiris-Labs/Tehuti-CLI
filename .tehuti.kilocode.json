@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tehuti.json",
   "provider": "kilocode",
-  "model": "giga-potato",
+  "model": "deepseek-v4-flash",
   "fallbackModel": "minimax/minimax-m2.5:free",
   "maxTokens": 32000,
   "maxIterations": 50,

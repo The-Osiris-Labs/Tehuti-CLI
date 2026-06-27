@@ -2,6 +2,7 @@ import type { Token } from "marked";
 import { marked } from "marked";
 import { shouldUseColors, shouldUseHighContrast } from "./capabilities.js";
 import { highlightToAnsi, isHighlighterReady, initHighlighter } from "./highlighter.js";
+import stringWidth from "string-width";
 
 const ANSI = {
 	reset: "\x1b[0m",
@@ -294,9 +295,9 @@ function renderToken(token: Token, indent: string = ""): string {
 			const prefix = "=".repeat(Math.max(1, 7 - level));
 
 			if (level === 1) {
-				return `\n${gold(bold(text))}\n${dim(prefix.repeat(text.length))}\n`;
+				return `\n${gold(bold(text))}\n${dim(prefix.repeat(stringWidth(text)))}\n`;
 			} else if (level === 2) {
-				return `\n${coral(bold(text))}\n${dim(prefix.repeat(text.length))}\n`;
+				return `\n${coral(bold(text))}\n${dim(prefix.repeat(stringWidth(text)))}\n`;
 			} else {
 				return `\n${bold(text)}\n`;
 			}
@@ -337,11 +338,11 @@ function renderToken(token: Token, indent: string = ""): string {
 
 			const widths: number[] = header.map((h: Token, i: number) => {
 				const headerLen =
-					"text" in h && typeof h.text === "string" ? h.text.length : 0;
+					"text" in h && typeof h.text === "string" ? stringWidth(h.text) : 0;
 				const rowLens = rows.map((r: Token[]) => {
 					const cell = r[i];
 					return cell && "text" in cell && typeof cell.text === "string"
-						? cell.text.length
+						? stringWidth(cell.text)
 						: 0;
 				});
 				return Math.max(headerLen, ...rowLens);
@@ -349,13 +350,19 @@ function renderToken(token: Token, indent: string = ""): string {
 
 			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
 
+			const padEndWidth = (text: string, width: number): string => {
+				const visibleWidth = stringWidth(text);
+				if (visibleWidth >= width) return text;
+				return text + " ".repeat(width - visibleWidth);
+			};
+
 			let result = "\n";
 			result += `┌${border.join("┬")}┐\n`;
 
 			const headerCells: string[] = header.map((h: Token, i: number) => {
 				const text = "text" in h && typeof h.text === "string" ? h.text : "";
 				const width = widths[i];
-				return `│ ${bold(text.padEnd(width))} `;
+				return `│ ${bold(padEndWidth(text, width))} `;
 			});
 			result += headerCells.join("") + "│\n";
 
@@ -368,12 +375,13 @@ function renderToken(token: Token, indent: string = ""): string {
 							? cell.text
 							: "";
 					const width = widths[i];
-					return `│ ${text.padEnd(width)} `;
+					return `│ ${padEndWidth(text, width)} `;
 				});
 				result += cells.join("") + "│\n";
 			}
 
 			result += `└${border.join("┴")}┘\n`;
+
 			return result;
 		}
 

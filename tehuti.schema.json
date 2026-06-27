@@ -6,7 +6,7 @@
     "$schema": { "type": "string" },
     "model": { 
       "type": "string", 
-      "default": "giga-potato",
+      "default": "deepseek-v4-flash",
       "description": "The model to use for completions"
     },
     "fallbackModel": { 

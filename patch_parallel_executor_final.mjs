@@ -20,7 +20,8 @@ const replacement = `\tconst parallelStartTime = Date.now();
 \t\t\t);
 
 \t\t\tawait mutex.runExclusive(async () => {
-\t\t\t\taddToolResult(ctx, tc.id, tc.function.name, resultForModel(result));
+\t\t\t\tconst resultStr = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
+\t\t\t\taddToolResult(ctx, tc.id, tc.function.name, resultStr);
 \t\t\t});
 \t\t\tonToolResult?.(tc.function.name, result);
 
@@ -38,5 +39,5 @@ if (regex.test(code)) {
     code = code.replace(regex, replacement);
     fs.writeFileSync(path, code);
 } else {
-    console.error("Not found!");
+    console.error("Not found! Regex did not match.");
 }

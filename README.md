@@ -79,7 +79,7 @@ npx tsx src/index.ts
 npm run start -- "fix the bug in src/foo.ts"
 
 # With overrides
-npm run start -- -p kilocode -m giga-potato "explain this"
+npm run start -- -p kilocode -m deepseek-v4-flash "explain this"
 
 # Setup wizard
 npm run start -- init     # or npx tsx src/index.ts init
@@ -167,7 +167,7 @@ Minimal for KiloCode (default in example):
 ```json
 {
   "provider": "kilocode",
-  "model": "giga-potato",
+  "model": "deepseek-v4-flash",
   "apiKey": "your-kilo-or-other-key-here"
 }
 ```
@@ -219,7 +219,7 @@ npm run start
 
 ```bash
 tehuti "fix the bug in auth.ts"
-tehuti -p kilocode -m giga-potato "explain the agent loop"
+tehuti -p kilocode -m deepseek-v4-flash "explain the agent loop"
 tehuti --model anthropic/claude-fable-5 "plan the next feature"
 tehuti --no-mcp --quiet "quick task"
 ```
@@ -342,7 +342,7 @@ Current shape (KiloCode default + GitHub MCP ready):
 ```json
 {
   "provider": "kilocode",
-  "model": "giga-potato",
+  "model": "deepseek-v4-flash",
   "fallbackModel": "minimax/minimax-m2.5:free",
   "maxTokens": 32000,
   "permissions": {

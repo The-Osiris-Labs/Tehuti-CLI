@@ -1,4 +1,5 @@
 import type { TehutiConfig } from "../config/schema.js";
+import fs from "fs";
 import {
 	getApiKeyEnvVarsForProvider,
 	getProviderAuthHeaders,
@@ -239,6 +240,7 @@ export class OpenRouterClient {
 		this.validateModel(this.fallbackModel);
 		this.validateTemperature(this.temperature);
 		this.validateMaxTokens(this.maxTokens);
+
 	}
 
 	private buildHeaders(): Record<string, string> {

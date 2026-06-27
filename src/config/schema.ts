@@ -147,8 +147,8 @@ export const COLLABORATION_SCHEMA = z.object({
 
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
-	model: z.string().default("minimax-m3"),
-	fallbackModel: z.string().default("minimax/minimax-m2.5:free"),
+	model: z.string().default("deepseek-v4-flash"),
+	fallbackModel: z.string().default("deepseek-v4-flash"),
 	apiKey: z.string().optional(),
 	baseUrl: z.string().optional(),
 	provider: PROVIDER_SCHEMA,
@@ -161,6 +161,13 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	requestTimeout: z.number().int().min(5000).max(600000).default(120000),
 	maxRetries: z.number().int().min(0).max(10).default(3),
 	modelSelection: MODEL_SELECTION_SCHEMA.default("auto"),
+	modelTiers: z
+		.object({
+			fast: z.string().optional(),
+			balanced: z.string().optional(),
+			deep: z.string().optional(),
+		})
+		.optional(),
 	permissions: PERMISSIONS_CONFIG_SCHEMA.default({}),
 	mcp: z
 		.object({
@@ -186,8 +193,8 @@ export type BrandingConfig = z.infer<typeof BRANDING_CONFIG_SCHEMA>;
 export type ModelSelectionMode = z.infer<typeof MODEL_SELECTION_SCHEMA>;
 
 export const DEFAULT_CONFIG: TehutiConfig = {
-	model: "minimax-m3",
-	fallbackModel: "minimax-m3",
+	model: "deepseek-v4-flash",
+	fallbackModel: "deepseek-v4-flash",
 	apiKey: undefined,
 	baseUrl: undefined,
 	provider: "opencode",
@@ -198,6 +205,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	requestTimeout: 120000,
 	maxRetries: 3,
 	modelSelection: "auto",
+	modelTiers: undefined,
 	permissions: {
 		defaultMode: "interactive",
 		alwaysAllow: ["read", "glob", "grep", "web_fetch", "web_search"],

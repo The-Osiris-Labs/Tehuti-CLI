@@ -8,6 +8,11 @@ export interface ProviderInfo {
 	requiresApiKey: boolean;
 	oauthSupported: boolean;
 	notes?: string;
+	modelTiers?: {
+		fast: string;
+		balanced: string;
+		deep: string;
+	};
 }
 
 export const KNOWN_PROVIDERS: ProviderInfo[] = [
@@ -20,7 +25,12 @@ export const KNOWN_PROVIDERS: ProviderInfo[] = [
 		modelListEndpoint: '/v1/models',
 		requiresApiKey: true,
 		oauthSupported: true,
-		notes: 'Huge model selection, pay per use'
+		notes: 'Huge model selection, pay per use',
+		modelTiers: {
+			fast: 'deepseek/deepseek-chat',
+			balanced: 'deepseek/deepseek-reasoner',
+			deep: 'anthropic/claude-sonnet-4'
+		}
 	},
 	{
 		id: 'anthropic',
@@ -115,7 +125,12 @@ export const KNOWN_PROVIDERS: ProviderInfo[] = [
 		modelListEndpoint: '/models',
 		requiresApiKey: true,
 		oauthSupported: false,
-		notes: 'OpenCode Go. Default model minimax-m3. Low-cost subscription. Models include minimax-m3 and others.'
+		notes: 'OpenCode Go. Default model minimax-m3. Low-cost subscription. Models include minimax-m3 and others.',
+		modelTiers: {
+			fast: 'deepseek-v4-flash',
+			balanced: 'minimax-m3',
+			deep: 'deepseek-v4-flash'
+		}
 	},
 	{
 		id: 'custom',

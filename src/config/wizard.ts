@@ -1,4 +1,6 @@
-import { confirm, input, select } from "@inquirer/prompts";
+import { confirm, input, select, search } from "@inquirer/prompts";
+import fs from "fs";
+import path from "path";
 import { isInitialized, saveGlobalConfig } from "./loader.js";
 import type { TehutiConfig } from "./schema.js";
 import { DEFAULT_CONFIG } from "./schema.js";
@@ -7,6 +9,7 @@ import {
 	getEnvApiKeyForProvider,
 	getApiKeyEnvVarsForProvider,
 } from "./providers.js";
+import { listModelsForProvider } from "../api/models.js";
 
 const GOLD = "\x1b[38;5;178m";
 const CORAL = "\x1b[38;5;174m";
@@ -99,8 +102,20 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	if (requiresKey) {
 		const envKey = getEnvApiKeyForProvider(provider);
 		if (envKey) {
-			console.log(c.green("  ✓ Found API key in environment variables."));
-			apiKey = envKey;
+			const useEnv = await confirm({
+				message: `Found API key in environment variables (ends in ...${envKey.slice(-4)}). Do you want to use it?`,
+				default: true,
+			});
+			if (useEnv) {
+				apiKey = envKey;
+			} else {
+				const envVars = getApiKeyEnvVarsForProvider(provider);
+				const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
+				apiKey = await input({
+					message: `${SCROLL} Enter your API key for ${info?.name ?? provider}${hint}:`,
+					validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+				});
+			}
 		} else {
 			const envVars = getApiKeyEnvVarsForProvider(provider);
 			const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
@@ -120,13 +135,34 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		});
 	}
 
-	const modelChoices = SUGGESTED_MODELS[provider] || [];
+	let modelChoices = SUGGESTED_MODELS[provider] || [];
+	if (!modelChoices || modelChoices.length === 0) {
+		modelChoices = [];
+	}
+
+	// Attempt to fetch models dynamically
+	console.log(c.dim(`  Fetching available models from ${info?.name ?? provider}...`));
+	try {
+		const liveModels = await listModelsForProvider(provider, { apiKey, baseUrl });
+		if (liveModels && liveModels.length > 0) {
+			modelChoices = liveModels.map(m => ({ name: m.id, value: m.id }));
+		}
+	} catch (e) {
+		console.log(c.dim(`  Failed to fetch models dynamically. Using suggested models.`));
+	}
+
 	modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
 
-	const selectedModel = await select({
-		message: `${EYE} Choose a default model:`,
-		choices: modelChoices,
-		default: modelChoices[0]?.value ?? "minimax-m3",
+	const selectedModel = await search({
+		message: `${EYE} Choose a default model (type to search):`,
+		source: async (term) => {
+			if (!term) return modelChoices;
+			const termLower = term.toLowerCase();
+			return modelChoices.filter(c => 
+				c.name.toLowerCase().includes(termLower) || 
+				c.value.toLowerCase().includes(termLower)
+			);
+		},
 	});
 
 	let model = selectedModel;
@@ -147,15 +183,62 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		default: false,
 	});
 
-	saveGlobalConfig({
-		provider: provider as any,
-		apiKey: apiKey || null,
-		baseUrl: baseUrl || null,
-		model,
-	});
+	const localConfigPath = path.join(process.cwd(), ".tehuti.json");
+	let configTarget = "global configuration";
+
+	if (fs.existsSync(localConfigPath)) {
+		console.log();
+		console.log(c.gold("𓁹 Notice:") + c.dim(" Found a local .tehuti.json in the current directory."));
+		console.log(c.dim("   A local configuration file will override any global settings."));
+		
+		const action = await select({
+			message: "How would you like to handle this local configuration file?",
+			choices: [
+				{ name: "Update the local .tehuti.json with these new settings (Recommended)", value: "update" },
+				{ name: "Delete the local .tehuti.json and save globally", value: "delete" },
+				{ name: "Keep the local .tehuti.json unchanged and save globally anyway", value: "ignore" },
+			]
+		});
+
+		if (action === "update") {
+			const existingConfig = JSON.parse(fs.readFileSync(localConfigPath, "utf-8"));
+			fs.writeFileSync(localConfigPath, JSON.stringify({
+				...existingConfig,
+				provider,
+				apiKey: apiKey || existingConfig.apiKey || null,
+				baseUrl: baseUrl || existingConfig.baseUrl || null,
+				model,
+				initialized: true
+			}, null, 2));
+			configTarget = "local .tehuti.json";
+		} else if (action === "delete") {
+			fs.unlinkSync(localConfigPath);
+			console.log(c.green(ANKH) + c.dim(" Stale local .tehuti.json deleted."));
+			saveGlobalConfig({
+				provider: provider as any,
+				apiKey: apiKey || null,
+				baseUrl: baseUrl || null,
+				model,
+			});
+		} else {
+			saveGlobalConfig({
+				provider: provider as any,
+				apiKey: apiKey || null,
+				baseUrl: baseUrl || null,
+				model,
+			});
+		}
+	} else {
+		saveGlobalConfig({
+			provider: provider as any,
+			apiKey: apiKey || null,
+			baseUrl: baseUrl || null,
+			model,
+		});
+	}
 
 	console.log();
-	console.log(c.green(ANKH) + c.dim(" Configuration successfully written to ~/.tehuti.json"));
+	console.log(c.green(ANKH) + c.dim(` Configuration successfully written to ${configTarget}`));
 	console.log(c.dim(`  Provider: ${info?.name ?? provider}`));
 	console.log(c.dim(`  Model: ${model}`));
 	console.log();

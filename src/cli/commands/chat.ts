@@ -9,6 +9,7 @@ import { Box, render, Text, useApp, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import type { Token } from "marked";
 import { marked } from "marked";
+import stringWidth from "string-width";
 import React, {
 	useCallback,
 	useEffect,
@@ -87,7 +88,7 @@ import {
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
 } from "../../branding/index.js";
-import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig, runSetupWizard } from "../../config/index.js";
+import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig, runSetupWizard, configWarnings } from "../../config/index.js";
 import {
 	getAllProviders,
 	getEnvApiKeyForProvider,
@@ -120,6 +121,7 @@ import {
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
+import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 
 // High contrast color palette (WCAG AA/AAA compliant)
 const GOLD = "#F5C518"; // Bright gold (WCAG AA)
@@ -392,11 +394,11 @@ initHighlighter().catch((err) => {
 
 import { wrap } from "../../terminal/output.js";
 
-function renderMarkdown(text: string, maxWidth?: number): React.ReactNode[] {
+function renderMarkdown(text: string, maxWidth?: number, keyPrefix: string = "md"): React.ReactNode[] {
 	const elements: React.ReactNode[] = [];
 	const tokens = marked.lexer(text);
 	let keyCounter = 0;
-	const getKey = () => `md-${keyCounter++}`;
+	const getKey = () => `${keyPrefix}-${keyCounter++}`;
 
 	for (const token of tokens) {
 		const rendered = renderToken(token, getKey, maxWidth);
@@ -537,11 +539,11 @@ function renderToken(
 
 			const widths: number[] = header.map((h: Token, i: number) => {
 				const headerLen =
-					"text" in h && typeof h.text === "string" ? h.text.length : 0;
+					"text" in h && typeof h.text === "string" ? stringWidth(h.text) : 0;
 				const rowLens = rows.map((r: Token[]) => {
 					const cell = r[i];
 					return cell && "text" in cell && typeof cell.text === "string"
-						? cell.text.length
+						? stringWidth(cell.text)
 						: 0;
 				});
 				return Math.max(headerLen, ...rowLens);
@@ -549,13 +551,19 @@ function renderToken(
 
 			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
 
+			const padEndWidth = (text: string, width: number): string => {
+				const visibleWidth = stringWidth(text);
+				if (visibleWidth >= width) return text;
+				return text + " ".repeat(width - visibleWidth);
+			};
+
 			let result = "\n";
 			result += `┌${border.join("┬")}┐\n`;
 
 			const headerCells: string[] = header.map((h: Token, i: number) => {
 				const text = "text" in h && typeof h.text === "string" ? h.text : "";
 				const width = widths[i];
-				return `│ ${text.padEnd(width)} `;
+				return `│ ${padEndWidth(text, width)} `;
 			});
 			result += headerCells.join("") + "│\n";
 
@@ -568,7 +576,7 @@ function renderToken(
 							? cell.text
 							: "";
 					const width = widths[i];
-					return `│ ${text.padEnd(width)} `;
+					return `│ ${padEndWidth(text, width)} `;
 				});
 				result += cells.join("") + "│\n";
 			}
@@ -909,6 +917,10 @@ function ChatUI({
 				result: unknown;
 				isExpanded: boolean;
 			}>;
+			blocks?: Array<
+				| { type: "text"; content: string }
+				| { type: "tool"; id: string; name: string; description: string; result: unknown }
+			>;
 		}>
 	>([]);
 	const [input, setInput] = useState("");
@@ -1224,9 +1236,12 @@ function ChatUI({
 	const terminalWidth = terminalSize.columns;
 	const headerHeight = 3;
 	const inputHeight = 3;
+	const shouldShowHeader = showWelcome && scrollOffset === 0 && messages.length > 0;
+	const headerScrollHeight = shouldShowHeader ? 14 : 0;
+	const warningsHeight = configWarnings.length * 4;
 	const maxVisibleMessages = Math.max(
 		3,
-		terminalHeight - headerHeight - inputHeight - 4,
+		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight,
 	);
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
 
@@ -1299,7 +1314,7 @@ function ChatUI({
 				id: msgIdRef.current++,
 				role: "system",
 				content:
-					"Use: /model <model-name> to switch models.\nExample: /model giga-potato\n\nUse /models to see available free models.",
+					"Use: /model <model-name> to switch models.\nExample: /model deepseek-v4-flash\n\nUse /models to see available free models.",
 			},
 		]);
 	}, []);
@@ -1962,16 +1977,16 @@ function ChatUI({
 		}
 
 		// Backspace handling
-		if (key.backspace || k === "\x7f" || k === "\b") {
+		if (key.backspace || k === "\x7f" || k === "\b" || k === "\x08" || (key.delete && k !== "\x1b[3~")) {
 			if (cursorPos > 0) {
 				setInput((i) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
-				setCursorPos((p) => p - 1);
+				setCursorPos((p) => Math.max(0, p - 1));
 			}
 			return;
 		}
 
-		// Delete handling
-		if (key.delete || k === "\x1b[3~") {
+		// Delete handling (forward delete)
+		if ((key.delete && k === "\x1b[3~") || k === "\x1b[3~") {
 			if (cursorPos < input.length) {
 				setInput((i) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
 			}
@@ -2017,36 +2032,39 @@ function ChatUI({
 			return;
 		}
 
-		// History navigation
 		if (key.upArrow && !loading) {
-			if (history.length > 0) {
-				if (historyIndex === -1) {
-					inputBeforeHistoryRef.current = input;
-					setHistoryIndex(0);
-					setInput(history[0]);
-					setCursorPos(history[0].length);
-				} else if (historyIndex < history.length - 1) {
-					const newIndex = historyIndex + 1;
-					setHistoryIndex(newIndex);
-					setInput(history[newIndex]);
-					setCursorPos(history[newIndex].length);
+			if (input === "" || historyIndex !== -1) {
+				if (history.length > 0) {
+					if (historyIndex === -1) {
+						inputBeforeHistoryRef.current = input;
+						setHistoryIndex(0);
+						setInput(history[0]);
+						setCursorPos(history[0].length);
+					} else if (historyIndex < history.length - 1) {
+						const newIndex = historyIndex + 1;
+						setHistoryIndex(newIndex);
+						setInput(history[newIndex]);
+						setCursorPos(history[newIndex].length);
+					}
 				}
+				return;
 			}
-			return;
 		}
 
 		if (key.downArrow && !loading) {
-			if (historyIndex > 0) {
-				const newIndex = historyIndex - 1;
-				setHistoryIndex(newIndex);
-				setInput(history[newIndex]);
-				setCursorPos(history[newIndex].length);
-			} else if (historyIndex === 0) {
-				setHistoryIndex(-1);
-				setInput(inputBeforeHistoryRef.current);
-				setCursorPos(inputBeforeHistoryRef.current.length);
+			if (input === "" || historyIndex !== -1) {
+				if (historyIndex > 0) {
+					const newIndex = historyIndex - 1;
+					setHistoryIndex(newIndex);
+					setInput(history[newIndex]);
+					setCursorPos(history[newIndex].length);
+				} else if (historyIndex === 0) {
+					setHistoryIndex(-1);
+					setInput(inputBeforeHistoryRef.current);
+					setCursorPos(inputBeforeHistoryRef.current.length);
+				}
+				return;
 			}
-			return;
 		}
 
 		if (key.pageUp) {
@@ -2504,7 +2522,7 @@ function ChatUI({
 						id: msgIdRef.current++,
 						role: "system",
 						content:
-							"Use: /model <model-name> to switch models.\nExample: /model giga-potato\n\nUse /models to see available options.",
+							"Use: /model <model-name> to switch models.\nExample: /model deepseek-v4-flash\n\nUse /models to see available options.",
 					},
 				]);
 				return;
@@ -2593,7 +2611,7 @@ function ChatUI({
 
 			setMessages((m) => [
 				...m.filter((msg) => msg.id !== assistantMsgId),
-				{ id: assistantMsgId, role: "assistant", content: "", toolCalls: [] },
+				{ id: assistantMsgId, role: "assistant", content: "", toolCalls: [], blocks: [] },
 			]);
 
  			const result = await runAgentLoop(ctxRef.current, text, {
@@ -2606,6 +2624,23 @@ function ChatUI({
 					}
 					response += t;
 					batchToken(t);
+
+					setMessages((m) =>
+						m.map((msg) => {
+							if (msg.id !== assistantMsgId) return msg;
+							const blocks = msg.blocks ? [...msg.blocks] : [];
+							const lastBlock = blocks[blocks.length - 1];
+							if (lastBlock && lastBlock.type === "text") {
+								blocks[blocks.length - 1] = {
+									...lastBlock,
+									content: lastBlock.content + t,
+								};
+							} else {
+								blocks.push({ type: "text", content: t });
+							}
+							return { ...msg, blocks };
+						})
+					);
 				},
 				onToolCall: (name, args) => {
 					if (
@@ -2617,20 +2652,30 @@ function ChatUI({
 					flushBatchedTokens();
 					currentToolName = name;
 					const toolDesc = formatToolCall(name, args);
+					const toolCallId = `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 					toolCallsInfo.push({
-						id: `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+						id: toolCallId,
 						name,
 						description: toolDesc,
 						result: null,
 						isExpanded: false,
 					});
+
 					setMessages((m) =>
-						m.map((msg) =>
-							msg.id === assistantMsgId
-								? { ...msg, toolCalls: [...toolCallsInfo] }
-								: msg
-						)
+						m.map((msg) => {
+							if (msg.id !== assistantMsgId) return msg;
+							const blocks = msg.blocks ? [...msg.blocks] : [];
+							blocks.push({
+								type: "tool",
+								id: toolCallId,
+								name,
+								description: toolDesc,
+								result: null,
+							});
+							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
+						})
 					);
+
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
@@ -2648,17 +2693,25 @@ function ChatUI({
 							: true;
 					const formattedResult = formatToolResult(result, terminalWidth - 10);
 
-					// Update the last tool call with result
 					if (toolCallsInfo.length > 0) {
 						toolCallsInfo[toolCallsInfo.length - 1].result = result;
-						setMessages((m) =>
-							m.map((msg) =>
-								msg.id === assistantMsgId
-									? { ...msg, toolCalls: [...toolCallsInfo] }
-									: msg
-							)
-						);
 					}
+
+					setMessages((m) =>
+						m.map((msg) => {
+							if (msg.id !== assistantMsgId) return msg;
+							const blocks = msg.blocks ? [...msg.blocks] : [];
+							const lastToolIdx = [...blocks].reverse().findIndex((b) => b.type === "tool");
+							if (lastToolIdx !== -1) {
+								const idx = blocks.length - 1 - lastToolIdx;
+								const toolBlock = blocks[idx];
+								if (toolBlock.type === "tool") {
+									blocks[idx] = { ...toolBlock, result };
+								}
+							}
+							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
+						})
+					);
 
 					setThinking("");
 					setShowThinking(false);
@@ -2697,28 +2750,32 @@ function ChatUI({
 			flushBatchedTokens();
 
 			const finalContent = result.content || response;
-			if (!finalContent && !response) {
+			if ((!finalContent && !response) || (result.success === false && result.error)) {
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === assistantMsgId
 							? {
 									...msg,
-									content: `No response received. Check your API key with /reset-key or verify network connectivity.`,
+									content: result.error ? `Error: ${result.error}` : `No response received. Check your API key with /reset-key or verify network connectivity.`,
 								}
 							: msg,
 					),
 				);
 			} else {
 				setMessages((m) =>
-					m.map((msg) =>
-						msg.id === assistantMsgId
-							? {
-									...msg,
-									content: finalContent || `Task completed.`,
-									toolCalls: [...toolCallsInfo],
-								}
-							: msg,
-					),
+					m.map((msg) => {
+						if (msg.id !== assistantMsgId) return msg;
+						let blocks = msg.blocks ? [...msg.blocks] : [];
+						if (blocks.length === 0 && finalContent) {
+							blocks = [{ type: "text", content: finalContent }];
+						}
+						return {
+							...msg,
+							content: finalContent || `Task completed.`,
+							toolCalls: [...toolCallsInfo],
+							blocks,
+						};
+					}),
 				);
 			}
 
@@ -2803,13 +2860,21 @@ function ChatUI({
 			let content: React.ReactNode[];
 
 			if (m.role === "user") {
+				const label = `${DECORATIVE.feather} You`;
+				const padLen = Math.max(10, contentMaxWidth - label.length - 2);
+				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
-					{ marginBottom: 0 },
+					{ flexDirection: "row", alignItems: "center", marginBottom: 0.5 },
 					React.createElement(
 						Text,
 						{ bold: true, color: CORAL },
-						`${DECORATIVE.feather} You`,
+						`${label} `,
+					),
+					React.createElement(
+						Text,
+						{ color: CORAL, dimColor: true },
+						divider,
 					),
 				);
 				content = [
@@ -2820,21 +2885,32 @@ function ChatUI({
 					),
 				];
 			} else if (m.role === "system") {
+				const label = `${DECORATIVE.scroll} System`;
+				const padLen = Math.max(10, contentMaxWidth - label.length - 2 - (m.status ? 10 : 0));
+				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
 					{
 						flexDirection: "row",
 						alignItems: "center",
-						gap: 1,
 						marginBottom: 0.5,
 					},
 					React.createElement(
 						Text,
 						{ bold: true, color: SAND, dimColor: true },
-						`${DECORATIVE.scroll} System`,
+						`${label} `,
 					),
 					m.status &&
-						React.createElement(StatusIndicator, { status: m.status }),
+						React.createElement(
+							Box,
+							{ marginRight: 1 },
+							React.createElement(StatusIndicator, { status: m.status })
+						),
+					React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						divider,
+					),
 				);
 				content = [
 					React.createElement(
@@ -2844,40 +2920,73 @@ function ChatUI({
 					),
 				];
 			} else {
+				const label = `${DECORATIVE.ibis} Tehuti`;
+				const padLen = Math.max(10, contentMaxWidth - label.length - 2 - (m.status ? 10 : 0));
+				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
 					{
 						flexDirection: "row",
 						alignItems: "center",
-						gap: 1,
 						marginBottom: 0.5,
 					},
 					React.createElement(
 						Text,
 						{ bold: true, color: GREEN },
-						`${DECORATIVE.ibis} Tehuti`,
+						`${label} `,
 					),
 					m.status &&
-						React.createElement(StatusIndicator, { status: m.status }),
+						React.createElement(
+							Box,
+							{ marginRight: 1 },
+							React.createElement(StatusIndicator, { status: m.status })
+						),
+					React.createElement(
+						Text,
+						{ color: GREEN, dimColor: true },
+						divider,
+					),
 				);
-				content = renderMarkdown(m.content, contentMaxWidth);
-			}
 
-			if (m.toolCalls && m.toolCalls.length > 0) {
-				const toolElements = React.createElement(
-					Box,
-					{ flexDirection: "column", marginTop: 1, key: `tool-calls-${m.id}` },
-					...m.toolCalls.map((tc, idx) =>
-						React.createElement(ExpandableToolOutput, {
-							key: tc.id || `tool-${idx}`,
-							toolName: tc.description || tc.name,
-							result: tc.result,
-							maxWidth: contentMaxWidth,
-							status: tc.result === null ? "pending" : tc.result && typeof tc.result === 'object' && 'success' in tc.result && !(tc.result as any).success ? "error" : "success"
-						})
-					)
-				);
-				content.push(toolElements);
+				if (m.blocks && m.blocks.length > 0) {
+					content = [];
+					m.blocks.forEach((block, bIdx) => {
+						if (block.type === "text") {
+							content.push(...renderMarkdown(block.content, contentMaxWidth, `msg-${m.id}-blk-${bIdx}`));
+						} else if (block.type === "tool") {
+							content.push(
+								React.createElement(
+									Box,
+									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: block.id || `tool-${bIdx}` },
+									React.createElement(ExpandableToolOutput, {
+										toolName: block.description || block.name,
+										result: block.result,
+										maxWidth: contentMaxWidth,
+										status: block.result === null ? "pending" : block.result && typeof block.result === 'object' && 'success' in block.result && !(block.result as any).success ? "error" : "success"
+									})
+								)
+							);
+						}
+					});
+				} else {
+					content = renderMarkdown(m.content, contentMaxWidth);
+					if (m.toolCalls && m.toolCalls.length > 0) {
+						const toolElements = React.createElement(
+							Box,
+							{ flexDirection: "column", marginTop: 1, key: `tool-calls-${m.id}` },
+							...m.toolCalls.map((tc, idx) =>
+								React.createElement(ExpandableToolOutput, {
+									key: tc.id || `tool-${idx}`,
+									toolName: tc.description || tc.name,
+									result: tc.result,
+									maxWidth: contentMaxWidth,
+									status: tc.result === null ? "pending" : tc.result && typeof tc.result === 'object' && 'success' in tc.result && !(tc.result as any).success ? "error" : "success"
+								})
+							)
+						);
+						content.push(toolElements);
+					}
+				}
 			}
 
 			return React.createElement(
@@ -3099,37 +3208,30 @@ function ChatUI({
 				React.createElement(
 					Box,
 					{ flexDirection: "column", flexGrow: 1, paddingX: 1, overflow: "hidden" },
-					messages.length === 0 && showWelcome
+					...configWarnings.map((warn, idx) =>
+						React.createElement(
+							Box,
+							{ key: idx, paddingY: 0, paddingX: 1, marginBottom: 1, borderStyle: "single", borderColor: "yellow" },
+							React.createElement(Text, { color: "yellow", bold: true }, `𓂀  Warning: ${warn}`)
+						)
+					),
+					messages.length === 0
 						? React.createElement(
 								Box,
-								{
-									flexGrow: 1,
-									flexDirection: "column",
-									justifyContent: "center",
-									alignItems: "center",
-								},
-								React.createElement(Text, { color: GOLD }, ASCII_ART.trim()),
-								React.createElement(
-									Text,
-									{ color: SAND, dimColor: true },
-									WELCOME_MESSAGE.trim(),
-								),
+								{ flexGrow: 1, flexDirection: "column", justifyContent: "center", alignItems: "center" },
+								showWelcome && React.createElement(TehutiHeader, null),
+								!showWelcome && React.createElement(Text, { color: SAND, dimColor: true }, "Type a message to begin")
 							)
-						: messages.length === 0
-							? React.createElement(
+						: React.createElement(
+								Box,
+								{ flexDirection: "column", flexGrow: 1 },
+								showWelcome && scrollOffset === 0 && React.createElement(
 									Box,
-									{ flexGrow: 1, justifyContent: "center", alignItems: "center" },
-									React.createElement(
-										Text,
-										{ color: SAND, dimColor: true },
-										"Type a message to begin",
-									),
-								)
-							: React.createElement(
-									Box,
-									{ flexDirection: "column", flexGrow: 1 },
-									...messageElements,
+									{ flexDirection: "column", alignItems: "center", marginBottom: 2 },
+									React.createElement(TehutiHeader, null)
 								),
+								...messageElements,
+							),
 					showThinking &&
 						React.createElement(
 							Box,
@@ -3292,7 +3394,7 @@ export function createProgram(): Command {
 
 			let apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
 			let model =
-				opts.model || envModel || cfg.model || tehuti.model || "giga-potato";
+				opts.model || envModel || cfg.model || tehuti.model || DEFAULT_CONFIG.model;
 
 			const info = getProviderInfo(provider);
 			const needsKey = info ? info.requiresApiKey : true;
@@ -3430,7 +3532,7 @@ export function createProgram(): Command {
 					await mcpManager.disconnectAll();
 				}
 			} else {
-				render(
+				const { waitUntilExit } = render(
 					React.createElement(App, {
 						apiKey: apiKey || "",
 						model,
@@ -3441,6 +3543,7 @@ export function createProgram(): Command {
 						},
 					}),
 				);
+				await waitUntilExit();
 			}
 		});
 

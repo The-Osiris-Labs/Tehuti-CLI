@@ -113,7 +113,7 @@ export function CommandPalette({
 	initialQuery = "",
 }: CommandPaletteProps): React.ReactElement | null {
 	const [query, setQuery] = useState("");
-	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [selectedIndex, setSelectedIndex] = useState<number>(0);
 	const { stdout } = useStdout();
 	const [terminalWidth, setTerminalWidth] = useState(stdout?.columns || 80);
 
@@ -181,20 +181,12 @@ export function CommandPalette({
 		if (visible) {
 			const initQ = initialQuery || "";
 			setQuery(initQ);
-			if (filteredCommands.length > 0) {
-				setSelectedId(filteredCommands[0].id);
-			} else {
-				setSelectedId(null);
-			}
+			setSelectedIndex(0);
 		}
 	}, [visible, initialQuery]);
 
 	useEffect(() => {
-		if (filteredCommands.length > 0) {
-			setSelectedId(filteredCommands[0].id);
-		} else {
-			setSelectedId(null);
-		}
+		setSelectedIndex(0);
 	}, [filteredCommands]);
 
 	useInput(
@@ -207,25 +199,17 @@ export function CommandPalette({
 			}
 
 			if (key.upArrow) {
-				const idx = filteredCommands.findIndex((c) => c.id === selectedId);
-				const newIdx = Math.max(0, (idx >= 0 ? idx : 0) - 1);
-				if (filteredCommands[newIdx]) {
-					setSelectedId(filteredCommands[newIdx].id);
-				}
+				setSelectedIndex((prev) => Math.max(0, prev - 1));
 				return;
 			}
 
 			if (key.downArrow) {
-				const idx = filteredCommands.findIndex((c) => c.id === selectedId);
-				const newIdx = Math.min(filteredCommands.length - 1, (idx >= 0 ? idx : 0) + 1);
-				if (filteredCommands[newIdx]) {
-					setSelectedId(filteredCommands[newIdx].id);
-				}
+				setSelectedIndex((prev) => Math.min(filteredCommands.length - 1, prev + 1));
 				return;
 			}
 
 			if (key.return && filteredCommands.length > 0) {
-				const selected = filteredCommands.find((c) => c.id === selectedId) || filteredCommands[0];
+				const selected = filteredCommands[selectedIndex] || filteredCommands[0];
 				if (selected) {
 					onSelect(selected);
 				}
@@ -298,7 +282,8 @@ export function CommandPalette({
 							`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
 						),
 						...cmds.slice(0, MAX_DISPLAY).map((cmd) => {
-							const isSelected = cmd.id === selectedId;
+							const cmdIndex = filteredCommands.findIndex((c) => c.id === cmd.id);
+							const isSelected = cmdIndex === selectedIndex;
 							const label = (query.trim() && cmd.matchIndices.length > 0 && cmd.matchField === 'label')
 								? highlightMatch(cmd.label, cmd.matchIndices)
 								: [cmd.label];
@@ -309,11 +294,11 @@ export function CommandPalette({
 									key: cmd.id,
 									flexDirection: "column",
 									paddingX: 1,
-									backgroundColor: isSelected ? "#1F2937" : undefined,
+									backgroundColor: isSelected ? "blue" : undefined,
 								},
 								React.createElement(
 									Text,
-									{ color: isSelected ? GOLD : CORAL, bold: isSelected },
+									{ color: isSelected ? "white" : CORAL, bold: isSelected },
 									isSelected ? `${DECORATIVE.arrow} ` : "  ",
 									...label,
 									cmd.shortcut && React.createElement(Text, { color: CYAN }, ` ${cmd.shortcut}`),

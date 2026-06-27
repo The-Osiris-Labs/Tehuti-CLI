@@ -1,4 +1,5 @@
 import pc from "picocolors";
+import stringWidth from "string-width";
 import {
 	getTerminalWidth,
 	shouldUseColors,
@@ -90,15 +91,29 @@ export function formatOutput(
 	return colorFn(`${icon} ${text}`);
 }
 
+function padEndWidth(text: string, width: number): string {
+	const visibleWidth = stringWidth(text);
+	if (visibleWidth >= width) return text;
+	return text + " ".repeat(width - visibleWidth);
+}
+
+function padStartWidth(text: string, width: number): string {
+	const visibleWidth = stringWidth(text);
+	if (visibleWidth >= width) return text;
+	return " ".repeat(width - visibleWidth) + text;
+}
+
 export function formatHeader(text: string): string {
 	const width = getTerminalWidth();
-	const padding = Math.max(0, Math.floor((width - text.length - 4) / 2));
+	const textWidth = stringWidth(text);
+	const padding = Math.max(0, Math.floor((width - textWidth - 4) / 2));
 	const line = "─".repeat(width - 2);
 
 	if (shouldUseColors()) {
+		const centeredText = padEndWidth(padStartWidth(text, padding + textWidth), width - 4);
 		return `
 ${colors.orange(`╭${line}╮`)}
-${colors.orange("│")} ${colors.coral(text.padStart(padding + text.length / 2).padEnd(width - 4))} ${colors.orange("│")}
+${colors.orange("│")} ${colors.coral(centeredText)} ${colors.orange("│")}
 ${colors.orange(`╰${line}╯`)}
 `;
 	}
@@ -140,15 +155,15 @@ export function formatCodeBlock(code: string, _language?: string): string {
 
 export function formatTable(headers: string[], rows: string[][]): string {
 	const colWidths = headers.map((h, i) =>
-		Math.max(h.length, ...rows.map((r) => r[i]?.length ?? 0)),
+		Math.max(stringWidth(h), ...rows.map((r) => stringWidth(r[i] ?? ""))),
 	);
 
 	const border = colWidths.map((w) => "─".repeat(w + 2));
 
-	const headerRow = headers.map((h, i) => h.padEnd(colWidths[i])).join(" │ ");
+	const headerRow = headers.map((h, i) => padEndWidth(h, colWidths[i])).join(" │ ");
 	const separator = border.join("┼");
 	const dataRows = rows.map((row) =>
-		row.map((cell, i) => (cell ?? "").padEnd(colWidths[i])).join(" │ "),
+		row.map((cell, i) => padEndWidth(cell ?? "", colWidths[i])).join(" │ "),
 	);
 
 	if (shouldUseColors()) {
@@ -191,7 +206,7 @@ export function truncate(text: string, maxLength?: number): string {
 	return `${text.slice(0, limit - 3)}...`;
 }
 
-import stringWidth from "string-width";
+
 
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;

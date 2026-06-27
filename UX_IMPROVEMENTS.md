@@ -91,7 +91,7 @@ Tehuti CLI has been comprehensively polished and refined with significant UX imp
 tehuti
 
 # One-shot question
-tehuti --model giga-potato --json "Explain Python lists vs dictionaries"
+tehuti --model deepseek-v4-flash --json "Explain Python lists vs dictionaries"
 ```
 
 ### Keyboard Shortcuts

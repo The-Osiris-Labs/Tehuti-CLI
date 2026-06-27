@@ -1,4 +1,5 @@
 import type { ModelSelectionMode } from "../config/schema.js";
+import { getProviderInfo } from "../config/providers.js";
 import type { AgentContext } from "./context.js";
 import { SAFE_PARALLEL_TOOLS, WRITE_TOOLS } from "./parallel-executor.js";
 
@@ -18,7 +19,7 @@ export interface ModelConfig {
 export const MODEL_TIERS: Record<ModelTier, ModelConfig> = {
 	fast: {
 		tier: "fast",
-		modelId: "giga-potato",
+		modelId: "deepseek/deepseek-chat",
 		description: "Fast and free - best for simple reads and listings",
 		maxTokens: 4096,
 		supportsTools: true,
@@ -28,7 +29,7 @@ export const MODEL_TIERS: Record<ModelTier, ModelConfig> = {
 	},
 	balanced: {
 		tier: "balanced",
-		modelId: "giga-potato-thinking",
+		modelId: "deepseek/deepseek-reasoner",
 		description: "Balanced performance with reasoning - good for most tasks",
 		maxTokens: 8192,
 		supportsTools: true,
@@ -182,40 +183,56 @@ export function classifyTask(
 	};
 }
 
+export function getModelTiersForConfig(
+	providerId: string,
+	configTiers?: { fast?: string; balanced?: string; deep?: string }
+): Record<ModelTier, string> {
+	const info = getProviderInfo(providerId);
+	return {
+		fast: configTiers?.fast || info?.modelTiers?.fast || MODEL_TIERS.fast.modelId,
+		balanced: configTiers?.balanced || info?.modelTiers?.balanced || MODEL_TIERS.balanced.modelId,
+		deep: configTiers?.deep || info?.modelTiers?.deep || MODEL_TIERS.deep.modelId,
+	};
+}
+
 export function selectModelForClassification(
 	classification: TaskClassification,
+	providerId: string,
 	config?: {
 		preferredTier?: ModelTier;
 		manualModel?: string;
 		modelSelection?: ModelSelectionMode;
+		modelTiers?: { fast?: string; balanced?: string; deep?: string };
 	},
 ): string {
+	const tiers = getModelTiersForConfig(providerId, config?.modelTiers);
+
 	// Always respect manual model selection first
 	if (config?.manualModel) {
 		// If manual model is specified, use it regardless of other settings
 		// unless explicitly in cost-optimized or speed-optimized mode
 		if (config.modelSelection === "cost-optimized") {
-			return MODEL_TIERS.fast.modelId;
+			return tiers.fast;
 		}
 		if (config.modelSelection === "speed-optimized") {
-			return MODEL_TIERS.fast.modelId;
+			return tiers.fast;
 		}
 		return config.manualModel;
 	}
 
 	if (config?.modelSelection === "cost-optimized") {
-		return MODEL_TIERS.fast.modelId;
+		return tiers.fast;
 	}
 
 	if (config?.modelSelection === "speed-optimized") {
-		return MODEL_TIERS.fast.modelId;
+		return tiers.fast;
 	}
 
 	if (config?.preferredTier) {
-		return MODEL_TIERS[config.preferredTier].modelId;
+		return tiers[config.preferredTier];
 	}
 
-	return MODEL_TIERS[classification.tier].modelId;
+	return tiers[classification.tier];
 }
 
 export function getModelConfig(modelId: string): ModelConfig | undefined {
@@ -224,7 +241,16 @@ export function getModelConfig(modelId: string): ModelConfig | undefined {
 			return config;
 		}
 	}
-	return undefined;
+	return {
+		tier: "balanced",
+		modelId,
+		description: "Custom model configuration",
+		maxTokens: 32000,
+		supportsTools: true,
+		supportsVision: false,
+		costPer1kPrompt: 0,
+		costPer1kCompletion: 0,
+	};
 }
 
 export function getTierForModel(modelId: string): ModelTier | undefined {
@@ -233,7 +259,7 @@ export function getTierForModel(modelId: string): ModelTier | undefined {
 			return tier as ModelTier;
 		}
 	}
-	return undefined;
+	return "balanced";
 }
 
 export function estimateCost(

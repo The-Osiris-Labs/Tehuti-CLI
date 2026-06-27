@@ -129,7 +129,7 @@ export async function executeTool(
 		return {
 			success: false,
 			output: "",
-			error: `Unknown tool: ${name}`,
+			error: `Unknown tool: ${name}. Please check the available tools list and use a valid tool name.`,
 		};
 	}
 
@@ -149,7 +149,7 @@ export async function executeTool(
 			return {
 				success: false,
 				output: "",
-				error: `Invalid parameters for ${name}: ${formattedErrors}`,
+				error: `Invalid parameters for ${name}: ${formattedErrors}. Please review the parameter schema and provide valid arguments.`,
 			};
 		}
 
@@ -167,7 +167,7 @@ export async function executeTool(
 		return {
 			success: false,
 			output: "",
-			error: message,
+			error: `Tool execution failed: ${message}. Please review the error, adjust your arguments, and try again.`,
 		};
 	}
 }

@@ -9,6 +9,38 @@ import type { AgentContext } from "./context.js";
 import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
 
+export const SAFE_PARALLEL_TOOLS = new Set([
+	"read",
+	"read_file",
+	"read_image",
+	"read_pdf",
+	"glob",
+	"grep",
+	"grep_search",
+	"file_info",
+	"list_dir",
+	"list_directory",
+	"web_fetch",
+	"webfetch",
+	"web_search",
+	"code_search",
+	"git_status",
+	"git_log",
+	"git_diff",
+]);
+
+export const WRITE_TOOLS = new Set([
+	"write",
+	"write_file",
+	"edit",
+	"edit_file",
+	"delete_file",
+	"delete_dir",
+	"create_dir",
+	"move",
+	"copy",
+]);
+
 export const INTERACTIVE_TOOLS = new Set(["question"]);
 
 export interface ToolCall {
@@ -51,7 +83,7 @@ export function classifyToolCalls(toolCalls: ToolCall[]): ClassifiedToolCalls {
 
 		if (INTERACTIVE_TOOLS.has(toolName)) {
 			interactive.push(tc);
-		} else if (toolDef?.isReadonly) {
+		} else if (SAFE_PARALLEL_TOOLS.has(toolName)) {
 			parallel.push(tc);
 		} else {
 			sequential.push(tc);
@@ -64,10 +96,7 @@ export function classifyToolCalls(toolCalls: ToolCall[]): ClassifiedToolCalls {
 export function canRunInParallel(toolCalls: ToolCall[]): boolean {
 	const names = toolCalls.map((tc) => tc.function.name);
 
-	const hasWrites = names.some((n) => {
-		const tool = getTool(n);
-		return !tool?.isReadonly;
-	});
+	const hasWrites = names.some((n) => WRITE_TOOLS.has(n));
 	if (hasWrites) return false;
 
 	const hasInteractive = names.some((n) => INTERACTIVE_TOOLS.has(n));
@@ -114,7 +143,7 @@ async function executeToolCall(
 	}
 
 	const toolDef = getTool(toolName);
-	if (!toolDef?.isReadonly) {
+	if (WRITE_TOOLS.has(toolName)) {
 		invalidateOnWrite(toolDef, toolName, args);
 	}
 
@@ -265,13 +294,13 @@ export async function executeToolsParallel(
 }
 
 export function getParallelizableCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter((tc) => getTool(tc.function.name)?.isReadonly).length;
+	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name)).length;
 }
 
 export function getSequentialCount(toolCalls: ToolCall[]): number {
 	return toolCalls.filter(
 		(tc) =>
-			!getTool(tc.function.name)?.isReadonly &&
+			!SAFE_PARALLEL_TOOLS.has(tc.function.name) &&
 			!INTERACTIVE_TOOLS.has(tc.function.name),
 	).length;
 }

@@ -12,9 +12,11 @@ import {
 import {
 	getEnvApiKeyForProvider,
 	resolveBaseUrlForProvider,
+	getApiKeyEnvVarsForProvider,
 } from "./providers.js";
 
 const MODULE_NAME = "tehuti";
+export const configWarnings: string[] = [];
 const CONFIG_CWD =
 	process.env.TEHUTI_CONFIG_DIR ||
 	(process.env.VITEST
@@ -219,8 +221,26 @@ export async function loadConfig(
 		(typeof resolvedFileConfig.apiKey === "string"
 			? resolvedFileConfig.apiKey
 			: undefined) ?? globalConfig.get("apiKey");
-	mergedConfig.apiKey =
-		getEnvApiKeyForProvider(currentProvider) ?? configuredApiKey;
+
+	const envVars = getApiKeyEnvVarsForProvider(currentProvider);
+	const directEnvVar = envVars[0];
+	const highPriorityKey =
+		process.env.TEHUTI_API_KEY ||
+		(directEnvVar ? process.env[directEnvVar] : undefined);
+	const lowPriorityKey = envVars.slice(1).reduce<string | undefined>((acc, key) => {
+		if (acc) return acc;
+		if (key === "TEHUTI_API_KEY") return undefined;
+		return process.env[key];
+	}, undefined);
+
+	mergedConfig.apiKey = highPriorityKey || configuredApiKey || lowPriorityKey;
+
+	if (highPriorityKey && configuredApiKey && highPriorityKey !== configuredApiKey) {
+		const overriddenBy = process.env.TEHUTI_API_KEY ? "TEHUTI_API_KEY" : (directEnvVar || "provider env var");
+		const msg = `Using ${overriddenBy} from environment, which overrides the configured API key in ~/.tehuti.json.`;
+		consola.warn(msg);
+		configWarnings.push(msg);
+	}
 
 	try {
 		const parsed = TEHUTI_CONFIG_SCHEMA.parse(mergedConfig);

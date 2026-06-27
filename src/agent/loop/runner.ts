@@ -55,6 +55,7 @@ export interface AgentLoopResult {
 		totalCost: number;
 		requestCount: number;
 	};
+	error?: string;
 }
 
 export async function runAgentLoop(
@@ -86,13 +87,14 @@ export async function runAgentLoop(
 	let selectedModel = ctx.config.model;
 	if (ctx.config.provider !== "custom") {
 		const pendingTools = classifyTask(userMessage, ctx);
-		selectedModel = selectModelForClassification(pendingTools, {
+		selectedModel = selectModelForClassification(pendingTools, ctx.config.provider, {
 			modelSelection: ctx.config.modelSelection,
+			modelTiers: ctx.config.modelTiers,
 			manualModel:
 				ctx.config.modelSelection === "manual" ? ctx.config.model : undefined,
 		});
 		if (selectedModel !== ctx.config.model) {
-			debug.log("agent", `Model routing: \${ctx.config.model} → \${selectedModel}`);
+			debug.log("agent", `Model routing: ${ctx.config.model} → ${selectedModel}`);
 			ctx.config.model = selectedModel;
 		}
 	}
@@ -291,6 +293,7 @@ export async function runAgentLoop(
 				success: false,
 				finishReason: "error",
 				sessionStats: costTracker.getSessionStats(),
+				error: agentError.message || String(agentError),
 			};
 		}
 	}
