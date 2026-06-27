@@ -474,6 +474,23 @@ function renderToken(
 		case "code": {
 			const lang = token.lang || "text";
 			const code = token.text.trim();
+			const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+
+			if (isPlain) {
+				return React.createElement(
+					Box,
+					{
+						key: getKey(),
+						flexDirection: "column",
+						marginTop: 0.5,
+						marginBottom: 0.5,
+						paddingLeft: 0,
+						paddingRight: 0,
+					},
+					React.createElement(Text, { wrap: "wrap" }, code),
+				);
+			}
+
 			const highlighted = highlightSyntax(code, lang);
 			const codeWidth = maxWidth ? Math.min(maxWidth - 4, 100) : 100;
 			

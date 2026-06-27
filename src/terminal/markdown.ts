@@ -227,6 +227,12 @@ function highlightBash(line: string): string {
 }
 
 function codeBlock(code: string, language?: string): string {
+	const lang = language || "text";
+	const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+	if (isPlain) {
+		return `\n${code}\n`;
+	}
+
 	const highlighted = highlightCode(code, language);
 	const lines = highlighted.split("\n");
 	const lineNumWidth = Math.max(2, String(lines.length).length);
@@ -303,8 +309,14 @@ function renderToken(token: Token, indent: string = ""): string {
 			}
 		}
 
-		case "code":
-			return `\n${dim("┌─ " + (token.lang || "code"))}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
+		case "code": {
+			const lang = token.lang || "text";
+			const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+			if (isPlain) {
+				return `\n${token.text}\n`;
+			}
+			return `\n${dim("┌─ " + lang)}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
+		}
 
 		case "list": {
 			const items = token.items || [];
