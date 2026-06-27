@@ -1,7 +1,8 @@
 import { Box, Text, useInput, useStdout } from "ink";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import TextInput from "ink-text-input";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import { useOnMouseEnter, useOnClick } from "@ink-tools/ink-mouse";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 
 const GOLD = BRANDING.colors.gold;
@@ -34,6 +35,85 @@ interface ConfigEditorProps {
 
 type ConfigField = "apiKey" | "model" | "provider" | "baseUrl" | "temperature" | "maxTokens";
 type EditorConfig = ConfigEditorProps["config"];
+
+function ConfigTab({
+	label,
+	isActive,
+	onClick,
+}: {
+	label: string;
+	isActive: boolean;
+	onClick: () => void;
+}) {
+	const ref = useRef<any>(null);
+	useOnClick(ref, onClick);
+
+	return (
+		<Box ref={ref} paddingX={1} borderStyle="round" borderColor={isActive ? GOLD : GRAY} marginX={1}>
+			<Text color={isActive ? GOLD : GRAY} bold={isActive}>
+				{label}
+			</Text>
+		</Box>
+	);
+}
+
+function ConfigFieldRow({
+	field,
+	isSelected,
+	isEditing,
+	editValue,
+	fieldValue,
+	onHover,
+	onClick,
+	onEditValueChange,
+	onEditCommit,
+}: {
+	field: any;
+	isSelected: boolean;
+	isEditing: boolean;
+	editValue: string;
+	fieldValue: string;
+	onHover: () => any;
+	onClick: () => void;
+	onEditValueChange: (v: string) => any;
+	onEditCommit: () => void;
+}) {
+	const ref = useRef<any>(null);
+	useOnMouseEnter(ref, onHover);
+	useOnClick(ref, onClick);
+
+	return (
+		<Box
+			ref={ref}
+			flexDirection="column"
+			marginBottom={1}
+			padding={isSelected ? 1 : 0}
+			borderStyle={isSelected ? "single" : undefined}
+			borderColor={GOLD}
+			backgroundColor={isSelected && !isEditing ? "#1A1A2E" : undefined}
+		>
+			<Box justifyContent="space-between" marginBottom={0.5}>
+				<Text bold color={isSelected ? GOLD : GRAY}>{field.label}</Text>
+				{isEditing ? (
+					<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
+						<TextInput
+							value={editValue}
+							onChange={onEditValueChange}
+							onSubmit={onEditCommit}
+							focus={isEditing}
+						/>
+					</Box>
+				) : (
+					<Text color={isSelected ? CORAL : SAND}>{fieldValue}</Text>
+				)}
+			</Box>
+			<Text dimColor color={SAND}>{field.description}</Text>
+			{field.type === "number" && (
+				<Text dimColor color={GRAY}>Range: {field.min} - {field.max}</Text>
+			)}
+		</Box>
+	);
+}
 
 export function ConfigEditor({
 	config,
@@ -211,12 +291,22 @@ export function ConfigEditor({
 			<Box marginBottom={1} justifyContent="space-between">
 				<Text bold color={GOLD}>𓆣 Configuration Editor</Text>
 				<Box>
-					<Text color={activeTab === "API & Provider" ? GOLD : GRAY} bold={activeTab === "API & Provider"}>
-						{activeTab === "API & Provider" ? " [ API & Provider ] " : " API & Provider "}
-					</Text>
-					<Text color={activeTab === "Model Options" ? GOLD : GRAY} bold={activeTab === "Model Options"}>
-						{activeTab === "Model Options" ? " [ Model Options ] " : " Model Options "}
-					</Text>
+					<ConfigTab
+						label="API & Provider"
+						isActive={activeTab === "API & Provider"}
+						onClick={() => {
+							setActiveTab("API & Provider");
+							setSelectedField("provider");
+						}}
+					/>
+					<ConfigTab
+						label="Model Options"
+						isActive={activeTab === "Model Options"}
+						onClick={() => {
+							setActiveTab("Model Options");
+							setSelectedField("model");
+						}}
+					/>
 				</Box>
 			</Box>
 			{validationError && (
@@ -235,34 +325,23 @@ export function ConfigEditor({
 					const isEditing = editingField === field.key;
 
 					return (
-						<Box
+						<ConfigFieldRow
 							key={field.key}
-							flexDirection="column"
-							marginBottom={1}
-							padding={isSelected ? 1 : 0}
-							borderStyle={isSelected ? "single" : undefined}
-							borderColor={GOLD}
-						>
-							<Box justifyContent="space-between" marginBottom={0.5}>
-								<Text bold color={isSelected ? GOLD : GRAY}>{field.label}</Text>
-								{isEditing ? (
-									<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
-										<TextInput
-											value={editValue}
-											onChange={setEditValue}
-											onSubmit={commitFieldEdit}
-											focus={isEditing}
-										/>
-									</Box>
-								) : (
-									<Text color={isSelected ? CORAL : SAND}>{getFieldValue(field.key)}</Text>
-								)}
-							</Box>
-							<Text dimColor color={SAND}>{field.description}</Text>
-							{field.type === "number" && (
-								<Text dimColor color={GRAY}>Range: {field.min} - {field.max}</Text>
-							)}
-						</Box>
+							field={field}
+							isSelected={isSelected}
+							isEditing={isEditing}
+							editValue={editValue}
+							fieldValue={getFieldValue(field.key)}
+							onHover={() => setSelectedField(field.key)}
+							onClick={() => {
+								setSelectedField(field.key);
+								setEditingField(field.key);
+								setEditValue(String(draftConfig[field.key] ?? ""));
+								setValidationError(null);
+							}}
+							onEditValueChange={(v) => setEditValue(v)}
+							onEditCommit={commitFieldEdit}
+						/>
 					);
 				})}
 			</Box>

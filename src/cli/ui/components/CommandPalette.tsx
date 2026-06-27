@@ -1,6 +1,7 @@
 import { Box, Text, useInput, useStdout } from "ink";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import InkTextInput from "ink-text-input";
+import { useOnMouseEnter, useOnClick } from "@ink-tools/ink-mouse";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
 import { DECORATIVE } from "../../../branding/index.js";
@@ -107,6 +108,46 @@ function highlightMatch(text: string, indices: number[], isSelected: boolean): R
 	}
 
 	return elements;
+}
+
+function CommandItemRow({
+	cmd,
+	cmdIndex,
+	isSelected,
+	query,
+	onHover,
+	onClick
+}: any) {
+	const ref = useRef<any>(null);
+	useOnMouseEnter(ref, () => onHover(cmdIndex));
+	useOnClick(ref, () => onClick(cmd));
+
+	const label = (query.trim() && cmd.matchIndices && cmd.matchIndices.length > 0 && cmd.matchField === 'label')
+		? highlightMatch(cmd.label, cmd.matchIndices, isSelected)
+		: [React.createElement(Text, { key: "l", color: isSelected ? "black" : CORAL, bold: isSelected }, cmd.label)];
+
+	return React.createElement(
+		Box,
+		{
+			ref,
+			flexDirection: "column",
+			paddingX: 1,
+			paddingY: isSelected ? 1 : 0,
+			backgroundColor: isSelected ? GOLD : undefined
+		},
+		React.createElement(
+			Box,
+			{ flexDirection: "row" },
+			React.createElement(Text, { color: isSelected ? "black" : CORAL, bold: isSelected }, isSelected ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  "),
+			React.createElement(Text, null, label),
+			cmd.shortcut && React.createElement(Text, { color: isSelected ? "black" : CYAN, dimColor: !isSelected }, `  ${cmd.shortcut}`)
+		),
+		React.createElement(
+			Box,
+			{ paddingLeft: 2 },
+			React.createElement(Text, { color: isSelected ? "black" : GRAY, dimColor: !isSelected }, `${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ''}`)
+		)
+	);
 }
 
 export function CommandPalette({
@@ -337,31 +378,16 @@ export function CommandPalette({
 						...cmds.slice(0, MAX_DISPLAY).map((cmd) => {
 							const cmdIndex = filteredCommands.findIndex((c) => c.id === cmd.id);
 							const isSelected = cmdIndex === selectedIndex;
-							const label = (query.trim() && cmd.matchIndices.length > 0 && cmd.matchField === 'label')
-								? highlightMatch(cmd.label, cmd.matchIndices, isSelected)
-								: [React.createElement(Text, { key: "l", color: isSelected ? "black" : CORAL }, cmd.label)];
 
-							return React.createElement(
-								Box,
-								{
-									key: cmd.id,
-									flexDirection: "column",
-									paddingX: 1,
-									backgroundColor: isSelected ? GOLD : undefined,
-								},
-								React.createElement(
-									Text,
-									{ color: isSelected ? "black" : CORAL, bold: isSelected },
-									isSelected ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
-									...label,
-									cmd.shortcut && React.createElement(Text, { color: isSelected ? "black" : CYAN, dimColor: !isSelected }, ` ${cmd.shortcut}`),
-								),
-								React.createElement(
-									Text,
-									{ color: isSelected ? "black" : GRAY, dimColor: !isSelected },
-									`    ${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ''}`,
-								),
-							);
+							return React.createElement(CommandItemRow, {
+								key: cmd.id,
+								cmd,
+								cmdIndex,
+								isSelected,
+								query,
+								onHover: setSelectedIndex,
+								onClick: handleExecute,
+							});
 						}),
 					]),
 					hasMore && React.createElement(
