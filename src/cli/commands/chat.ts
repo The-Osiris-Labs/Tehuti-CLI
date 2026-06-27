@@ -393,7 +393,56 @@ initHighlighter().catch((err) => {
 	console.error("Failed to initialize syntax highlighter:", err);
 });
 
-import { wrap } from "../../terminal/output.js";
+export function parseContentBlocks(content: string): Array<{ type: "text" | "reasoning"; content: string }> {
+	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
+	let remaining = content;
+
+	while (remaining.length > 0) {
+		const thinkStart = remaining.indexOf("<think>");
+		if (thinkStart === -1) {
+			blocks.push({ type: "text", content: remaining });
+			break;
+		}
+
+		if (thinkStart > 0) {
+			blocks.push({ type: "text", content: remaining.slice(0, thinkStart) });
+		}
+
+		const thinkEnd = remaining.indexOf("</think>", thinkStart + 7);
+		if (thinkEnd === -1) {
+			blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7) });
+			break;
+		}
+
+		blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7, thinkEnd) });
+		remaining = remaining.slice(thinkEnd + 8);
+	}
+
+	return blocks;
+}
+
+export function normalizeBlocks(
+	blocks: Array<
+		| { type: "text"; content: string }
+		| { type: "reasoning"; content: string }
+		| { type: "tool"; id: string; name: string; description: string; result: unknown }
+	>
+): Array<
+	| { type: "text"; content: string }
+	| { type: "reasoning"; content: string }
+	| { type: "tool"; id: string; name: string; description: string; result: unknown }
+> {
+	const normalized: typeof blocks = [];
+	for (const block of blocks) {
+		if (block.type === "text") {
+			const parsed = parseContentBlocks(block.content);
+			normalized.push(...parsed);
+		} else {
+			normalized.push(block);
+		}
+	}
+	return normalized;
+}
 
 function renderMarkdown(text: string, maxWidth?: number, keyPrefix: string = "md"): React.ReactNode[] {
 	const elements: React.ReactNode[] = [];
@@ -920,6 +969,7 @@ function ChatUI({
 			}>;
 			blocks?: Array<
 				| { type: "text"; content: string }
+				| { type: "reasoning"; content: string }
 				| { type: "tool"; id: string; name: string; description: string; result: unknown }
 			>;
 		}>
@@ -2761,6 +2811,23 @@ function ChatUI({
 					if (content.length > 0) {
 						setThinking(`  💭 Thinking...`);
 						setShowThinking(true);
+
+						setMessages((m) =>
+							m.map((msg) => {
+								if (msg.id !== assistantMsgId) return msg;
+								const blocks = msg.blocks ? [...msg.blocks] : [];
+								const lastBlock = blocks[blocks.length - 1];
+								if (lastBlock && lastBlock.type === "reasoning") {
+									blocks[blocks.length - 1] = {
+										...lastBlock,
+										content: lastBlock.content + content,
+									};
+								} else {
+									blocks.push({ type: "reasoning", content: content });
+								}
+								return { ...msg, blocks };
+							})
+						);
 					}
 				},
 				onProgress: (progress, label) => {
@@ -2986,7 +3053,62 @@ function ChatUI({
 					content = [];
 					m.blocks.forEach((block, bIdx) => {
 						if (block.type === "text") {
-							content.push(...renderMarkdown(block.content, contentMaxWidth, `msg-${m.id}-blk-${bIdx}`));
+							const subBlocks = parseContentBlocks(block.content);
+							subBlocks.forEach((subBlock, sbIdx) => {
+								if (subBlock.type === "text") {
+									content.push(...renderMarkdown(subBlock.content, contentMaxWidth, `msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`));
+								} else if (subBlock.type === "reasoning") {
+									const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
+									content.push(
+										React.createElement(
+											Box,
+											{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-${bIdx}-${sbIdx}` },
+											React.createElement(
+												Box,
+												{ flexDirection: "row", alignItems: "center" },
+												React.createElement(Text, { color: "gray" }, "  ┌─[ "),
+												React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
+												React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+											),
+											React.createElement(
+												Box,
+												{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
+												...renderMarkdown(subBlock.content, contentMaxWidth - 4, `reasoning-${bIdx}-${sbIdx}-md`)
+											),
+											React.createElement(
+												Box,
+												{ flexDirection: "row" },
+												React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+											),
+										)
+									);
+								}
+							});
+						} else if (block.type === "reasoning") {
+							const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
+							content.push(
+								React.createElement(
+									Box,
+									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-${bIdx}` },
+									React.createElement(
+										Box,
+										{ flexDirection: "row", alignItems: "center" },
+										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
+										React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
+										React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+									),
+									React.createElement(
+										Box,
+										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
+										...renderMarkdown(block.content, contentMaxWidth - 4, `reasoning-${bIdx}-md`)
+									),
+									React.createElement(
+										Box,
+										{ flexDirection: "row" },
+										React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+									),
+								)
+							);
 						} else if (block.type === "tool") {
 							content.push(
 								React.createElement(
@@ -3003,7 +3125,39 @@ function ChatUI({
 						}
 					});
 				} else {
-					content = renderMarkdown(m.content, contentMaxWidth);
+					const subBlocks = parseContentBlocks(m.content);
+					content = [];
+					subBlocks.forEach((subBlock, sbIdx) => {
+						if (subBlock.type === "text") {
+							content.push(...renderMarkdown(subBlock.content, contentMaxWidth, `msg-${m.id}-sub-${sbIdx}`));
+						} else if (subBlock.type === "reasoning") {
+							const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
+							content.push(
+								React.createElement(
+									Box,
+									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-fallback-${sbIdx}` },
+									React.createElement(
+										Box,
+										{ flexDirection: "row", alignItems: "center" },
+										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
+										React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
+										React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+									),
+									React.createElement(
+										Box,
+										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
+										...renderMarkdown(subBlock.content, contentMaxWidth - 4, `reasoning-fallback-${sbIdx}-md`)
+									),
+									React.createElement(
+										Box,
+										{ flexDirection: "row" },
+										React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+									),
+								)
+							);
+						}
+					});
+
 					if (m.toolCalls && m.toolCalls.length > 0) {
 						const toolElements = React.createElement(
 							Box,
