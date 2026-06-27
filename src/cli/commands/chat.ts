@@ -10,6 +10,7 @@ import Spinner from "ink-spinner";
 import type { Token } from "marked";
 import { marked } from "marked";
 import stringWidth from "string-width";
+import { MouseProvider } from "@ink-tools/ink-mouse";
 import React, {
 	useCallback,
 	useEffect,
@@ -3366,13 +3367,17 @@ function App({
 	cfg: typeof DEFAULT_CONFIG;
 	onExit: () => void;
 }) {
-	return React.createElement(ChatUI, {
-		apiKey,
-		model,
-		diffPreview,
-		cfg,
-		onExit,
-	});
+	return React.createElement(
+		MouseProvider,
+		{ autoEnable: true },
+		React.createElement(ChatUI, {
+			apiKey,
+			model,
+			diffPreview,
+			cfg,
+			onExit,
+		})
+	);
 }
 
 export function createProgram(): Command {

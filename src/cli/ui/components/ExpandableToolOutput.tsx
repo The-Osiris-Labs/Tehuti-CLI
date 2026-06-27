@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import React, { useState, useRef, useEffect } from "react";
 import stringWidth from "string-width";
+import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
 
 interface ExpandableToolOutputProps {
 	toolName: string;
@@ -79,10 +80,19 @@ export function ExpandableToolOutput({
 	status,
 	defaultExpanded = false,
 }: ExpandableToolOutputProps): React.ReactElement {
-	const [expanded] = useState(defaultExpanded);
+	const [expanded, setExpanded] = useState(defaultExpanded);
 	const startTimeRef = useRef<number>(Date.now());
 	const [duration, setDuration] = useState<number | null>(null);
 	const [spinnerFrame, setSpinnerFrame] = useState(0);
+	const [isHovered, setIsHovered] = useState(false);
+	const boxRef = useRef<any>(null);
+
+	useOnClick(boxRef, () => {
+		setExpanded((prev) => !prev);
+	});
+
+	useOnMouseEnter(boxRef, () => setIsHovered(true));
+	useOnMouseLeave(boxRef, () => setIsHovered(false));
 
 	const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	const DECORATIVE = {
@@ -111,7 +121,7 @@ export function ExpandableToolOutput({
 	}, [status]);
 
 	const width = Math.max(40, maxWidth);
-	const summary = summarizeToolOutput(result, expanded ? 1000 : width);
+	const summary = summarizeToolOutput(result, expanded ? 1000 : width, expanded ? 10000 : 4);
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
@@ -156,10 +166,19 @@ export function ExpandableToolOutput({
 
 	// Dynamic bottom border calculations
 	let footerLabel = summary.isTruncated
-		? ` ${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden `
-		: ` completed `;
+		? ` ${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand) `
+		: expanded
+			? ` completed (click to collapse) `
+			: ` completed `;
 
 	// Ensure bottom label fits within terminal width to prevent wrapping
+	if (8 + stringWidth(footerLabel) > width) {
+		footerLabel = summary.isTruncated
+			? ` ${summary.lineCount} lines (click to expand) `
+			: expanded
+				? ` done (click to collapse) `
+				: ` done `;
+	}
 	if (8 + stringWidth(footerLabel) > width) {
 		footerLabel = summary.isTruncated
 			? ` ${summary.lineCount} lines `
@@ -174,16 +193,18 @@ export function ExpandableToolOutput({
 	const footerPad = Math.max(2, width - footerLeftWidth);
 	const footerLine = `${footerLeft}${"─".repeat(footerPad)}`;
 
+	const borderTextColor = isHovered ? "white" : "gray";
+
 	return (
-		<Box flexDirection="column" marginTop={0.25} marginBottom={0.25}>
+		<Box ref={boxRef} flexDirection="column" marginTop={0.25} marginBottom={0.25}>
 			{/* Top Border & Header */}
 			<Box flexDirection="row" alignItems="center">
-				<Text color="gray">  ┌─[ </Text>
+				<Text color={borderTextColor}>  ┌─[ </Text>
 				<Text color={headerColor}>{headerIcon} </Text>
 				<Text bold color={headerColor}>{truncatedToolName}</Text>
-				<Text color="gray"> ]{borderLine}[ </Text>
+				<Text color={borderTextColor}> ]{borderLine}[ </Text>
 				<Text bold color={headerColor}>{headerStatusText}</Text>
-				<Text color="gray"> ]</Text>
+				<Text color={borderTextColor}> ]</Text>
 			</Box>
 
 			{/* Tool Output Body */}
@@ -193,7 +214,7 @@ export function ExpandableToolOutput({
 
 			{/* Bottom Border */}
 			<Box flexDirection="row" alignItems="center">
-				<Text color="gray">{footerLine}</Text>
+				<Text color={borderTextColor}>{footerLine}</Text>
 			</Box>
 		</Box>
 	);
