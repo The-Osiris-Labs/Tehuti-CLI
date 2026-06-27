@@ -8,7 +8,7 @@ Built with React (Ink), Tehuti goes beyond standard CLI tools by offering a rich
 
 ## ✨ Features
 
-- **🧠 Multi-Model Wisdom:** Access 300+ models via OpenRouter or OpenCode Go (Claude 3.5, GPT-4o, DeepSeek, Gemini).
+- **🧠 Multi-Model Wisdom:** Access 300+ models via OpenCode Go or OpenCode Go (Claude 3.5, GPT-4o, DeepSeek, Gemini).
 - **🖥️ Elite TUI Experience:** A bespoke "Virtual Sliding Viewport" built in Ink allows for pixel-perfect layout stability, native line-by-line scrolling, and fully interactive, clickable tool outputs inside the terminal.
 - **⚡ Parallel Execution:** Run up to 5 read-only tools concurrently for lightning-fast codebase analysis.
 - **💾 Session Persistence:** Automatically save and load previous conversation states and cache trees to disk.

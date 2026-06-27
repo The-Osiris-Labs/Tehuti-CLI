@@ -3358,7 +3358,7 @@ export function createProgram(): Command {
 
 	program
 		.name("tehuti")
-		.description("Tehuti CLI - Coding assistant powered by OpenRouter")
+		.description("Tehuti CLI - Coding assistant powered by OpenCode Go")
 		.version("0.1.0", "-v, --version")
 		.option("-m, --model <model>", "Override model")
 		.option(

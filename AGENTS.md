@@ -4,10 +4,10 @@ Welcome, divine scribe! This document provides sacred instructions for AI agents
 
 ## 🏛️ The Purpose of Tehuti
 
-Tehuti CLI is an AI-powered coding assistant that connects to OpenRouter. It serves as a modern-day scribe, helping developers transform ideas into code with wisdom and precision.
+Tehuti CLI is an AI-powered coding assistant that connects to OpenCode Go. It serves as a modern-day scribe, helping developers transform ideas into code with wisdom and precision.
 
 **Key Responsibilities:**
-- Multi-model support via OpenRouter
+- Multi-model support via OpenCode Go
 - File system operations (read, write, edit, glob, grep)
 - Bash command execution
 - Web fetch and search capabilities
@@ -47,8 +47,8 @@ src/
 │       ├── web.ts                   # Web fetch and search tools
 │       ├── git.ts                   # Git operations
 │       └── system.ts                # System tools (question resolver)
-├── api/                              # OpenRouter API client
-│   ├── openrouter.ts                # OpenRouter API client (singleton)
+├── api/                              # OpenCode Go API client
+│   ├── openrouter.ts                # OpenCode Go API client (singleton)
 │   ├── streaming.ts                 # Streaming response handling
 │   ├── model-capabilities.ts        # Model capability detection
 │   └── http-agent.ts                # Undici connection pooling
@@ -67,7 +67,7 @@ src/
 - **Runtime**: Node.js 20+
 - **Language**: TypeScript (ESM)
 - **CLI**: Commander.js + Ink (React for CLI)
-- **AI**: OpenRouter API
+- **AI**: OpenCode Go API
 - **Tools**: tinyglobby, ripgrep, just-bash
 - **MCP**: @modelcontextprotocol/sdk
 - **HTTP**: undici (connection pooling)
@@ -277,7 +277,7 @@ Tehuti supports reasoning models that return content in `reasoning` field:
 | `/clear` | Clear conversation, new session |
 | `/cost` | Show tokens and cost |
 | `/stats` | Show performance metrics |
-| `/models` | List free models on OpenRouter |
+| `/models` | List free models on OpenCode Go |
 | `/model <name>` | Switch AI model |
 | `/sessions` | List saved sessions |
 | `/save [name]` | Save current session |
@@ -296,7 +296,7 @@ src/
 ├── agent/model-router.ts      # LLM tier routing
 ├── agent/context-compressor.ts # Context summarization
 ├── agent/prefetcher.ts        # Predictive prefetching
-├── api/openrouter.ts          # OpenRouter client (singleton)
+├── api/openrouter.ts          # OpenCode Go client (singleton)
 ├── api/http-agent.ts          # Undici connection pooling
 ├── utils/telemetry.ts         # Performance metrics
 ├── utils/mutex.ts             # Async mutex, semaphore
