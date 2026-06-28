@@ -145,6 +145,17 @@ export const COLLABORATION_SCHEMA = z.object({
 	realTime: z.boolean().default(true),
 });
 
+export const HTTP_CONFIG_SCHEMA = z.object({
+	keepAliveTimeout: z.number().int().positive().default(60000),
+	keepAliveMaxTimeout: z.number().int().positive().default(600000),
+	keepAliveTimeoutThreshold: z.number().int().positive().default(1000),
+	connections: z.number().int().positive().default(50),
+	pipelining: z.number().int().positive().default(1),
+	connectTimeout: z.number().int().positive().default(10000),
+	tcpKeepAlive: z.boolean().default(true),
+	tcpKeepAliveInitialDelay: z.number().int().positive().default(30000),
+});
+
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
 	model: z.string().default("deepseek-v4-flash"),
@@ -183,6 +194,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	kilocode: KILOCODE_ADVANCED_SCHEMA.optional(),
 	grepai: GREPAI_ADVANCED_SCHEMA.optional(),
 	collaboration: COLLABORATION_SCHEMA.optional(),
+	http: HTTP_CONFIG_SCHEMA.optional().default({}),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -191,6 +203,7 @@ export type MCPServerConfig = z.infer<typeof MCP_SERVER_CONFIG_SCHEMA>;
 export type MCPTransportType = z.infer<typeof MCPTransportTypeSchema>;
 export type BrandingConfig = z.infer<typeof BRANDING_CONFIG_SCHEMA>;
 export type ModelSelectionMode = z.infer<typeof MODEL_SELECTION_SCHEMA>;
+export type HttpConfig = z.infer<typeof HTTP_CONFIG_SCHEMA>;
 
 export const DEFAULT_CONFIG: TehutiConfig = {
 	model: "deepseek-v4-flash",
@@ -252,4 +265,14 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		realTime: true,
 	},
 	customProvider: undefined,
+	http: {
+		keepAliveTimeout: 60000,
+		keepAliveMaxTimeout: 600000,
+		keepAliveTimeoutThreshold: 1000,
+		connections: 50,
+		pipelining: 1,
+		connectTimeout: 10000,
+		tcpKeepAlive: true,
+		tcpKeepAliveInitialDelay: 30000,
+	},
 };

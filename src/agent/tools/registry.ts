@@ -34,6 +34,12 @@ export interface ToolDefinition {
 	execute: (args: unknown, ctx: ToolContext) => Promise<ToolResult>;
 	requiresPermission?: boolean;
 	isReadonly?: boolean;
+	prefetchRules?: Array<{
+		tool: string;
+		argMapper: (args: unknown, ctx: ToolContext) => unknown | null;
+		condition?: (args: unknown) => boolean;
+		priority?: "high" | "medium" | "low";
+	}>;
 	category:
 		| "fs"
 		| "bash"

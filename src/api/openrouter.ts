@@ -90,8 +90,6 @@ const MAX_MODEL_NAME_LENGTH = 256;
 const VALID_MODEL_PATTERN = /^[a-zA-Z0-9_\-./:]+$/;
 const MIN_TIMEOUT_MS = 5000;
 const MAX_TIMEOUT_MS = 600000;
-const DEFAULT_TIMEOUT_MS = 120000;
-const DEFAULT_MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 60000;
 const BASE_RETRY_DELAY_MS = 1000;
 
@@ -201,9 +199,10 @@ export class OpenRouterClient {
 		}
 		this.baseUrl =
 			resolveBaseUrlForProvider(this.providerId, config.baseUrl) ??
+			getProviderInfo(this.providerId)?.defaultBaseUrl ??
 			"https://openrouter.ai/api/v1";
 		this.model = config.model;
-		this.fallbackModel = config.fallbackModel ?? config.model ?? "minimax-m3";
+		this.fallbackModel = config.fallbackModel || config.model;
 		this.maxTokens = config.maxTokens ?? 4096;
 		this.temperature = config.temperature ?? 0.7;
 		this.supportsCaching = this.checkCachingSupport(config.model);
@@ -211,9 +210,9 @@ export class OpenRouterClient {
 		this.thinkingBudgetTokens = config.thinkingBudgetTokens;
 		this.requestTimeout = this.validateTimeout(
 			config.requestTimeout,
-			DEFAULT_TIMEOUT_MS,
+			120000,
 		);
-		this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+		this.maxRetries = config.maxRetries ?? 3;
 
 		if (this.requiresApiKey && !this.apiKey) {
 			const preferredEnvVar =

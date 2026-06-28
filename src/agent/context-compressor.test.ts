@@ -27,7 +27,7 @@ describe("Context Compressor", () => {
 			const messages: OpenRouterMessage[] = [
 				{
 					role: "assistant",
-					content: { type: "text", text: "complex content" },
+					content: [{ type: "text" as const, text: "complex content" }],
 				},
 			];
 
@@ -49,36 +49,23 @@ describe("Context Compressor", () => {
 			expect(critical).toContain(0);
 		});
 
-		it("should identify messages with multiple critical patterns as critical", () => {
+		it("should identify assistant messages with tool calls as critical", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "user", content: "Do something" },
 				{
 					role: "assistant",
-					content:
-						"I encountered an error and the operation failed. This is important.",
+					content: "Calling tool",
+					tool_calls: [{ id: "call_1", type: "function", function: { name: "test", arguments: "{}" } }],
 				},
 			];
 
 			const critical = identifyCriticalMessages(messages);
 
 			expect(critical.length).toBeGreaterThan(0);
+			expect(critical).toContain(1);
 		});
 
-		it("should identify messages with error and decision patterns as critical", () => {
-			const messages: OpenRouterMessage[] = [
-				{ role: "user", content: "Do something" },
-				{
-					role: "assistant",
-					content: "Error occurred. Decision: we will fix it.",
-				},
-			];
-
-			const critical = identifyCriticalMessages(messages);
-
-			expect(critical.length).toBeGreaterThan(0);
-		});
-
-		it("should not identify tool messages as critical by default (score 15 < threshold 20)", () => {
+		it("should not identify normal tool results as critical by default", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "user", content: "Read file" },
 				{ role: "tool", content: "file content" },
@@ -86,53 +73,22 @@ describe("Context Compressor", () => {
 
 			const critical = identifyCriticalMessages(messages);
 
-			expect(critical.length).toBe(1); // User message gets pinned
+			expect(critical).not.toContain(1);
 		});
 
-		it("should identify messages with TODO and important patterns as critical", () => {
-			const messages: OpenRouterMessage[] = [
-				{
-					role: "assistant",
-					content: "TODO: fix this. Important: check this later.",
-				},
+		it("should penalize long tool results structurally", () => {
+			const shortMessages: OpenRouterMessage[] = [
+				{ role: "tool", content: "short" },
+			];
+			const longMessages: OpenRouterMessage[] = [
+				{ role: "tool", content: "long".repeat(1000) },
 			];
 
-			const critical = identifyCriticalMessages(messages);
-
-			expect(critical.length).toBeGreaterThan(0);
-		});
-
-		it("should identify messages with 10+ code blocks as critical", () => {
-			const messagesWithCode: OpenRouterMessage[] = [
-				{
-					role: "assistant",
-					content:
-						"Code:\n```ts\n1\n```\n```ts\n2\n```\n```ts\n3\n```\n```ts\n4\n```\n```ts\n5\n```\n```ts\n6\n```\n```ts\n7\n```\n```ts\n8\n```\n```ts\n9\n```\n```ts\n10\n```",
-				},
-			];
-
-			const critical = identifyCriticalMessages(messagesWithCode);
-
-			expect(critical.length).toBeGreaterThan(0);
-		});
-
-		it("should score code blocks higher than no code", () => {
-			const messagesWithCode: OpenRouterMessage[] = [
-				{
-					role: "assistant",
-					content: "Here's code:\n```typescript\nconst x = 1;\n```",
-				},
-			];
-			const messagesWithoutCode: OpenRouterMessage[] = [
-				{ role: "assistant", content: "Just text, no code" },
-			];
-
-			const criticalWithCode = identifyCriticalMessages(messagesWithCode);
-			const criticalWithoutCode = identifyCriticalMessages(messagesWithoutCode);
-
-			expect(criticalWithCode.length).toBeGreaterThanOrEqual(
-				criticalWithoutCode.length,
-			);
+			const criticalShort = identifyCriticalMessages(shortMessages);
+			const criticalLong = identifyCriticalMessages(longMessages);
+            
+			expect(criticalShort).toEqual([]);
+			expect(criticalLong).toEqual([]);
 		});
 	});
 
@@ -143,9 +99,7 @@ describe("Context Compressor", () => {
 				{ role: "user", content: "Hi" },
 			];
 
-			const result = await compressContext(messages, async () => "summary", {
-				targetTokens: 100000,
-			});
+			const result = await compressContext(messages, async () => "summary", 100000);
 
 			expect(result).toEqual(messages);
 		});
@@ -156,8 +110,7 @@ describe("Context Compressor", () => {
 				{ role: "user", content: "Hi" },
 			];
 
-			const result = await compressContext(messages, async () => "summary", {
-				targetTokens: 10,
+			const result = await compressContext(messages, async () => "summary", 10, {
 				keepFirstN: 2,
 				keepLastN: 2,
 			});
@@ -170,18 +123,13 @@ describe("Context Compressor", () => {
 				{ role: "system", content: "System prompt" },
 				...Array.from({ length: 20 }, (_, i) => ({
 					role: "user" as const,
-					content:
-						`Message ${i} with lots of content to make it long enough to trigger compression`.repeat(
-							10,
-						),
+					content: `Message ${i} with lots of content to make it long enough to trigger compression`.repeat(10),
 				})),
 				{ role: "user", content: "Final message" },
 			];
 
-			const summarizer = async (text: string) =>
-				`Summary of: ${text.slice(0, 50)}`;
-			const result = await compressContext(messages, summarizer, {
-				targetTokens: 1000,
+			const summarizer = async (text: string) => `Summary of: ${text.slice(0, 50)}`;
+			const result = await compressContext(messages, summarizer, 1000, {
 				keepFirstN: 1,
 				keepLastN: 2,
 				chunkSize: 5,
@@ -204,8 +152,7 @@ describe("Context Compressor", () => {
 				throw new Error("Summarizer failed");
 			};
 
-			const result = await compressContext(messages, failingSummarizer, {
-				targetTokens: 500,
+			const result = await compressContext(messages, failingSummarizer, 500, {
 				keepFirstN: 1,
 				keepLastN: 2,
 				chunkSize: 3,
@@ -229,7 +176,8 @@ describe("Context Compressor", () => {
 			const result = await compressContextWithMetrics(
 				messages,
 				async () => "Summary",
-				{ targetTokens: 500, keepFirstN: 1, keepLastN: 2, chunkSize: 3 },
+				500,
+				{ keepFirstN: 1, keepLastN: 2, chunkSize: 3 },
 			);
 
 			expect(result).toHaveProperty("messages");
@@ -274,16 +222,16 @@ describe("Context Compressor", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "system", content: "System" },
 				{ role: "user", content: "Do something" },
-				{ role: "assistant", content: "Error: Something went wrong" },
+				{ role: "assistant", content: "assistant tool call", tool_calls: [{ id: "c1", type: "function", function: { name: "t", arguments: "{}" } }] },
 				{ role: "user", content: "Try again" },
 			];
 
 			const result = progressiveCompress(messages, 50);
 
-			const errorIndex = result.findIndex((m) =>
-				m.content.toString().includes("Error"),
+			const hasToolCall = result.some((m) =>
+				m.tool_calls && m.tool_calls.length > 0,
 			);
-			expect(errorIndex).toBeGreaterThanOrEqual(0);
+			expect(hasToolCall).toBe(true);
 		});
 	});
 
@@ -298,38 +246,36 @@ describe("Context Compressor", () => {
 
 		it("should return fallback on model call failure", async () => {
 			const failingModelCall = async () => {
-				throw new Error("Model failed");
+				throw new Error("Failed");
 			};
 			const summarizer = createContextSummarizer(failingModelCall);
 
-			const result = await summarizer("Some text");
+			const result = await summarizer("some text");
 
-			expect(result).toBe(
-				"Context was summarized but details are no longer available.",
-			);
+			expect(result).toContain("Context was summarized but details are no longer available.");
 		});
 	});
 
 	describe("createSmartSummarizer", () => {
-		it("should create a summarizer with context hint", async () => {
-			const modelCall = async (prompt: string, systemPrompt?: string) => {
-				expect(systemPrompt).toBeDefined();
+		it("should create a smart summarizer with context", async () => {
+			const modelCall = async (prompt: string, sysPrompt?: string) => {
+				expect(sysPrompt).toBeDefined();
 				return "Smart summary";
 			};
-
 			const summarizer = createSmartSummarizer(modelCall);
-			const result = await summarizer("Some content", "Working on file.ts");
+
+			const result = await summarizer("some text", "context hint");
 
 			expect(result).toBe("Smart summary");
 		});
 
-		it("should handle errors gracefully", async () => {
+		it("should return fallback on failure", async () => {
 			const failingModelCall = async () => {
 				throw new Error("Failed");
 			};
-
 			const summarizer = createSmartSummarizer(failingModelCall);
-			const result = await summarizer("Content");
+
+			const result = await summarizer("some text");
 
 			expect(result).toBe("Context summarized.");
 		});

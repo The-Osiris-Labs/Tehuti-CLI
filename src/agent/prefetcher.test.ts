@@ -4,7 +4,40 @@ import type { ToolContext } from "./tools/registry.js";
 
 vi.mock("./tools/registry.js", () => ({
 	executeTool: vi.fn().mockResolvedValue({ success: true, output: "result" }),
-	getTool: vi.fn().mockReturnValue({ name: "mock-tool", isReadonly: true }),
+	getTool: vi.fn((name: string) => {
+		if (name === "read") {
+			return {
+				name: "read",
+				isReadonly: true,
+				prefetchRules: [
+					{
+						tool: "file_info",
+						argMapper: (args: any) => ({ file_path: args.file_path }),
+						priority: "medium",
+					},
+					{
+						tool: "list_dir",
+						argMapper: (args: any) => ({ dir_path: args.file_path.replace(/\/file\.ts$/, "") }),
+						priority: "low",
+					},
+				],
+			};
+		}
+		if (name === "git_status") {
+			return {
+				name: "git_status",
+				isReadonly: true,
+				prefetchRules: [
+					{
+						tool: "git_diff",
+						argMapper: () => ({}),
+						priority: "high",
+					},
+				],
+			};
+		}
+		return { name: name || "mock-tool", isReadonly: true };
+	}),
 }));
 
 vi.mock("./cache/index.js", async (importOriginal) => {

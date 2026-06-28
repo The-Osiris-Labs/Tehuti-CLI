@@ -1126,7 +1126,54 @@ Usage:
 		execute: readFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-		isReadonly: true,
+				isReadonly: true,
+		prefetchRules: [
+			{
+				tool: "file_info",
+				argMapper: (args: unknown) => {
+					if (!args || typeof args !== "object") return null;
+					const record = args as Record<string, unknown>;
+					return { file_path: record.file_path };
+				},
+				priority: "medium",
+			},
+			{
+				tool: "list_dir",
+				argMapper: (args: unknown, ctx: ToolContext) => {
+					if (!args || typeof args !== "object") return null;
+					const record = args as Record<string, unknown>;
+					const filePath = record.file_path;
+					if (typeof filePath !== "string") return null;
+					return { dir_path: require("node:path").dirname(filePath) };
+				},
+				priority: "low",
+			},
+			{
+				tool: "grep",
+				argMapper: (args: unknown, ctx: ToolContext) => {
+					if (!args || typeof args !== "object") return null;
+					const record = args as Record<string, unknown>;
+					const filePath = record.file_path;
+					if (typeof filePath !== "string") return null;
+					const ext = require("node:path").extname(filePath).slice(1);
+					if (!ext) return null;
+					return {
+						pattern: "import|require|from",
+						path: require("node:path").dirname(filePath),
+						include: `*.${ext}`,
+					};
+				},
+				condition: (args: unknown) => {
+					if (!args || typeof args !== "object") return false;
+					const record = args as Record<string, unknown>;
+					const filePath = record.file_path;
+					if (typeof filePath !== "string") return false;
+					const ext = require("node:path").extname(filePath).slice(1);
+					return ["ts", "tsx", "js", "jsx", "py", "go", "rs"].includes(ext);
+				},
+				priority: "low",
+			},
+		],
 	},
 	{
 		name: "write",
