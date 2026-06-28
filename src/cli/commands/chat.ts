@@ -3316,14 +3316,16 @@ function ChatUI({
 						paddingTop: 1,
 						flexDirection: "column",
 					},
-					loading
+					(showCommandPalette || showConfigEditor)
+						? null
+						: loading
 						? React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
 								`  ${HIEROGLYPHS.loading[0]} channeling wisdom...`,
 							)
 						: renderInput,
-					commandSuggestions,
+					(showCommandPalette || showConfigEditor) ? null : commandSuggestions,
 				),
 				React.createElement(CommandPalette, {
 					commands,
