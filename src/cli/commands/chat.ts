@@ -85,6 +85,7 @@ import {
 import { costTracker } from "../../api/index.js";
 import {
 	ASCII_ART,
+	BRANDING,
 	DECORATIVE,
 	HIEROGLYPHS,
 	WELCOME_MESSAGE,
@@ -127,20 +128,20 @@ import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
+import { useChatState } from "../ui/hooks/useChatState.js";
 
-// High contrast color palette (WCAG AA/AAA compliant)
-const GOLD = "#F5C518"; // Bright gold (WCAG AA)
-const CORAL = "#FF6B35"; // Vibrant coral (high contrast)
-const GREEN = "#22C55E"; // Bright green (WCAG AA)
-const GRAY = "#9CA3AF"; // Lighter gray for better contrast
-const RED = "#EF4444"; // Bright red (high contrast)
-const OBSIDIAN = "#1A1A2E";
-const CYAN = "#06B6D4";
-const SAND = "#8B7355"; // Darker sand (better contrast)
-const NILE = "#165DFF"; // Bright blue (high contrast)
-const PAPYRUS = "#F5E6C8";
-const BLUE = "#3B82F6";
-const PURPLE = "#A855F7";
+const GOLD = BRANDING.colors?.primary || "#F5C518";
+const CORAL = BRANDING.colors?.accent || "#FF6B35";
+const GREEN = BRANDING.colors?.green || "#22C55E";
+const GRAY = BRANDING.colors?.gray || "#9CA3AF";
+const RED = BRANDING.colors?.red || "#EF4444";
+const OBSIDIAN = BRANDING.colors?.obsidian || "#1A1A2E";
+const CYAN = BRANDING.colors?.cyan || "#06B6D4";
+const SAND = BRANDING.colors?.sand || "#8B7355";
+const NILE = BRANDING.colors?.nile || "#165DFF";
+const PAPYRUS = BRANDING.colors?.papyrus || "#F5E6C8";
+const BLUE = BRANDING.colors?.blue || "#3B82F6";
+const PURPLE = BRANDING.colors?.purple || "#A855F7";
 
 const TOOL_ICONS: Record<string, string> = {
 	read: "📖",
@@ -1006,65 +1007,36 @@ function ChatUI({
 	cfg: typeof DEFAULT_CONFIG;
 	onExit: () => void;
 }) {
-	const [messages, setMessages] = useState<
-		Array<{
-			id: number;
-			role: string;
-			content: string;
-			status?: "success" | "error" | "loading";
-			toolCalls?: Array<{
-				id: string;
-				name: string;
-				description: string;
-				result: unknown;
-				isExpanded: boolean;
-			}>;
-			blocks?: Array<
-				| { type: "text"; content: string }
-				| { type: "reasoning"; content: string }
-				| { type: "tool"; id: string; name: string; description: string; result: unknown }
-			>;
-		}>
-	>([]);
-	const [input, setInput] = useState("");
-	const [cursorPos, setCursorPos] = useState(0);
-	const [selectionStart, setSelectionStart] = useState<number | null>(null);
-	const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState("");
-		const [ctxModel, setCtxModel] = useState(model);
-	const [runtimeProvider, setRuntimeProvider] = useState(
-		cfg.provider || "openrouter",
-	);
-	const [runtimeBaseUrl, setRuntimeBaseUrl] = useState(cfg.baseUrl);
-	const [runtimeApiKey, setRuntimeApiKey] = useState(
-		apiKey || cfg.apiKey || "",
-	);
-	const [runtimeCustomProvider, setRuntimeCustomProvider] = useState<
-		RuntimeCustomProvider | undefined
-	>(() => normalizeCustomProvider(cfg.customProvider));
-		const [scrollOffset, setScrollOffset] = useState(0);
-	const [history, setHistory] = useState<string[]>([]);
-	const [historyIndex, setHistoryIndex] = useState(-1);
-	const [sessionId, setSessionId] = useState<string | null>(null);
-	const [showWelcome, setShowWelcome] = useState(true);
-		const [sessionCost, setSessionCost] = useState(0);
-		const [thinking, setThinking] = useState("");
-	const [showThinking, setShowThinking] = useState(false);
-	const [thinkingDots, setThinkingDots] = useState("");
-	const [showCommandPalette, setShowCommandPalette] = useState(false);
-	const [showDashboard, setShowDashboard] = useState(false);
-	const [pendingQuestion, setPendingQuestion] = useState<{
-		questions: QuestionData[];
-		resolve: (answers: string[]) => void;
-		reject: (error: Error) => void;
-	} | null>(null);
-	const [progress, setProgress] = useState(0);
-	const [operationLabel, setOperationLabel] = useState("");
-	const [showConfigEditor, setShowConfigEditor] = useState(false);
-	const questionResolverRef = useRef<
-		((questions: QuestionData[]) => Promise<string[]>) | null
-	>(null);
+	const {
+		messages, setMessages,
+		input, setInput,
+		cursorPos, setCursorPos,
+		selectionStart, setSelectionStart,
+		selectionEnd, setSelectionEnd,
+		loading, setLoading,
+		error, setError,
+		ctxModel, setCtxModel,
+		runtimeProvider, setRuntimeProvider,
+		runtimeBaseUrl, setRuntimeBaseUrl,
+		runtimeApiKey, setRuntimeApiKey,
+		runtimeCustomProvider, setRuntimeCustomProvider,
+		scrollOffset, setScrollOffset,
+		history, setHistory,
+		historyIndex, setHistoryIndex,
+		sessionId, setSessionId,
+		showWelcome, setShowWelcome,
+		sessionCost, setSessionCost,
+		thinking, setThinking,
+		showThinking, setShowThinking,
+		thinkingDots, setThinkingDots,
+		showCommandPalette, setShowCommandPalette,
+		showDashboard, setShowDashboard,
+		pendingQuestion, setPendingQuestion,
+		progress, setProgress,
+		operationLabel, setOperationLabel,
+		showConfigEditor, setShowConfigEditor,
+		questionResolverRef
+	} = useChatState(model, apiKey, cfg);
 	const normalizedProvider = useMemo(
 		() => runtimeProvider.trim().toLowerCase() || "openrouter",
 		[runtimeProvider],
