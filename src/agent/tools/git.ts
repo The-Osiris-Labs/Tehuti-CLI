@@ -493,7 +493,19 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitStatus as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
-		isReadonly: true,
+				isReadonly: true,
+		prefetchRules: [
+			{
+				tool: "git_diff",
+				argMapper: () => ({}),
+				priority: "high",
+			},
+			{
+				tool: "git_log",
+				argMapper: () => ({ n: 5 }),
+				priority: "medium",
+			},
+		],
 	},
 	{
 		name: "git_diff",
@@ -502,7 +514,14 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitDiff as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
-		isReadonly: true,
+				isReadonly: true,
+		prefetchRules: [
+			{
+				tool: "read",
+				argMapper: () => null,
+				condition: () => false,
+			},
+		],
 	},
 	{
 		name: "git_log",

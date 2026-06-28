@@ -13,160 +13,14 @@ export interface PrefetchRule {
 	}>;
 }
 
-const PREFETCH_RULES: PrefetchRule[] = [
-	{
-		currentTool: "read",
-		nextTools: [
-			{
-				tool: "file_info",
-				argMapper: (args: unknown) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					return { file_path: record.file_path };
-				},
-				priority: "medium",
-			},
-			{
-				tool: "list_dir",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					const filePath = record.file_path;
-					if (typeof filePath !== "string") return null;
-					return { dir_path: path.dirname(filePath) };
-				},
-				priority: "low",
-			},
-			{
-				tool: "grep",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					const filePath = record.file_path;
-					if (typeof filePath !== "string") return null;
-					const ext = path.extname(filePath).slice(1);
-					if (!ext) return null;
-					return {
-						pattern: "import|require|from",
-						path: path.dirname(filePath),
-						include: `*.${ext}`,
-					};
-				},
-				condition: (args: unknown) => {
-					if (!args || typeof args !== "object") return false;
-					const record = args as Record<string, unknown>;
-					const filePath = record.file_path;
-					if (typeof filePath !== "string") return false;
-					const ext = path.extname(filePath).slice(1);
-					return ["ts", "tsx", "js", "jsx", "py", "go", "rs"].includes(ext);
-				},
-				priority: "low",
-			},
-		],
-	},
-	{
-		currentTool: "glob",
-		nextTools: [
-			{
-				tool: "read",
-				argMapper: (args: unknown, ctx: ToolContext, results?: unknown) => {
-					return null;
-				},
-				condition: () => false,
-			},
-		],
-	},
 
-	{
-		currentTool: "git_status",
-		nextTools: [
-			{
-				tool: "git_diff",
-				argMapper: () => ({}),
-				priority: "high",
-			},
-			{
-				tool: "git_log",
-				argMapper: () => ({ n: 5 }),
-				priority: "medium",
-			},
-		],
-	},
-	{
-		currentTool: "git_diff",
-		nextTools: [
-			{
-				tool: "read",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					return null;
-				},
-				condition: () => false,
-			},
-		],
-	},
-	{
-		currentTool: "grep",
-		nextTools: [
-			{
-				tool: "read",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					return null;
-				},
-				condition: () => false,
-			},
-		],
-	},
-	{
-		currentTool: "edit_file",
-		nextTools: [
-			{
-				tool: "read",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					return { file_path: record.file_path };
-				},
-				priority: "high",
-			},
-		],
-	},
-	{
-		currentTool: "write_file",
-		nextTools: [
-			{
-				tool: "read",
-				argMapper: (args: unknown, ctx: ToolContext) => {
-					if (!args || typeof args !== "object") return null;
-					const record = args as Record<string, unknown>;
-					return { file_path: record.file_path };
-				},
-				priority: "high",
-			},
-		],
-	},
-];
-
-const PREFETCHABLE_TOOLS = new Set([
-	"read",
-	"read_file",
-	"file_info",
-	"list_dir",
-	"list_directory",
-	"glob",
-	"git_status",
-	"git_diff",
-	"git_log",
-	"grep",
-	"grep_search",
-]);
 
 const MAX_PREFETCH_QUEUE = 10;
 
 export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
 	private abortControllers = new Map<string, AbortController>();
-	private rules: PrefetchRule[];
-	private enabled: boolean = true;
+		private enabled: boolean = true;
 	private recentPatterns: Array<{
 		tool: string;
 		args: unknown;
@@ -174,9 +28,7 @@ export class Prefetcher {
 	}> = [];
 	private readonly maxRecentPatterns = 50;
 
-	constructor(rules: PrefetchRule[] = PREFETCH_RULES) {
-		this.rules = rules;
-	}
+	constructor() {}
 
 	setEnabled(enabled: boolean): void {
 		this.enabled = enabled;
@@ -221,32 +73,38 @@ export class Prefetcher {
 	}
 
 	private abortPrefetchIfMatches(toolName: string, args: unknown): void {
-		if (toolName === "write_file" || toolName === "edit_file" || toolName === "replace_file_content" || toolName === "multi_replace_file_content" || toolName === "bash" || toolName === "run_command") {
-			const record = args as Record<string, unknown>;
-			const filePath = record?.file_path || record?.target_file || record?.path || record?.TargetFile;
-			
-			if (typeof filePath === "string") {
-				for (const [key, controller] of this.abortControllers.entries()) {
-					if (key.startsWith("read:") || key.startsWith("read_file:")) {
-						try {
-							const colonIndex = key.indexOf(":");
-							const readArgs = JSON.parse(key.slice(colonIndex + 1));
-							const readFilePath = readArgs.file_path || readArgs.path || readArgs.AbsolutePath;
-							if (readFilePath === filePath) {
-								controller.abort();
-								this.pending.delete(key);
-								this.abortControllers.delete(key);
-							}
-						} catch {}
-					}
+		const tool = getTool(toolName);
+		if (!tool) return;
+
+		// Skip read-only tools and safe tools
+		if (tool.isReadonly !== false && !tool.requiresPermission && tool.category !== "bash") return;
+
+		const record = args as Record<string, unknown>;
+		const filePath = record?.file_path || record?.target_file || record?.path || record?.TargetFile;
+
+		// Specific check for file modifications
+		if (typeof filePath === "string" && tool.category !== "bash") {
+			for (const [key, controller] of this.abortControllers.entries()) {
+				if (key.startsWith("read:") || key.startsWith("read_file:")) {
+					try {
+						const colonIndex = key.indexOf(":");
+						const readArgs = JSON.parse(key.slice(colonIndex + 1));
+						const readFilePath = readArgs.file_path || readArgs.path || readArgs.AbsolutePath;
+						if (readFilePath === filePath) {
+							controller.abort();
+							this.pending.delete(key);
+							this.abortControllers.delete(key);
+						}
+					} catch {}
 				}
-			} else if (toolName === "bash" || toolName === "run_command") {
-				for (const [key, controller] of this.abortControllers.entries()) {
-					if (key.startsWith("read:") || key.startsWith("read_file:")) {
-						controller.abort();
-						this.pending.delete(key);
-						this.abortControllers.delete(key);
-					}
+			}
+		} else {
+			// For bash/run_command or other broad state changes, abort all file reads just in case
+			for (const [key, controller] of this.abortControllers.entries()) {
+				if (key.startsWith("read:") || key.startsWith("read_file:")) {
+					controller.abort();
+					this.pending.delete(key);
+					this.abortControllers.delete(key);
 				}
 			}
 		}
@@ -312,14 +170,14 @@ export class Prefetcher {
 			return;
 		}
 
-		const rule = this.rules.find((r) => r.currentTool === toolName);
-		if (!rule) return;
+		const currentToolDef = getTool(toolName);
+		const prefetchRules = currentToolDef?.prefetchRules || [];
 
 		const cache = getToolCache();
 		// Key for the current call — never prefetch something we are already executing
 		const currentKey = this.buildKey(toolName, args);
 
-		for (const nextTool of rule.nextTools) {
+		for (const nextTool of prefetchRules) {
 			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
 
 			if (nextTool.condition && !nextTool.condition(args)) {
@@ -335,8 +193,11 @@ export class Prefetcher {
 				continue;
 			}
 
-			if (!this.pending.has(key) && PREFETCHABLE_TOOLS.has(nextTool.tool)) {
-				this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
+			if (!this.pending.has(key)) {
+				const nextToolDef = getTool(nextTool.tool);
+				if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
+					this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
+				}
 			}
 		}
 
@@ -348,7 +209,8 @@ export class Prefetcher {
 			// Skip if already pending, already cached, or is the same call we are currently handling
 			if (key === currentKey) continue;
 			if (!this.pending.has(key) && !cache.has(pred.tool, pred.args)) {
-				if (PREFETCHABLE_TOOLS.has(pred.tool)) {
+				const nextToolDef = getTool(pred.tool);
+				if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
 					this.queuePrefetch(pred.tool, pred.args, ctx, key);
 				}
 			}

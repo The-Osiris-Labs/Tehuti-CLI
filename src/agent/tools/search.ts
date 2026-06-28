@@ -555,7 +555,14 @@ export const searchTools: ToolDefinition[] = [
 		execute: globFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-		isReadonly: true,
+				isReadonly: true,
+		prefetchRules: [
+			{
+				tool: "read",
+				argMapper: () => null,
+				condition: () => false,
+			},
+		],
 	},
 	{
 		name: "grep",
@@ -571,7 +578,14 @@ export const searchTools: ToolDefinition[] = [
 		execute: grepFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-		isReadonly: true,
+				isReadonly: true,
+		prefetchRules: [
+			{
+				tool: "read",
+				argMapper: () => null,
+				condition: () => false,
+			},
+		],
 	},
 	{
 		name: "find_references",
