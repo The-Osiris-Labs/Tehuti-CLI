@@ -88,7 +88,7 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 
 export const PROVIDER_SCHEMA = z
 	.string()
-	.default("openrouter");
+	.default("opencode");
 
 export const CUSTOM_PROVIDER_SCHEMA = z.object({
 	name: z.string().describe("Name of custom provider"),
