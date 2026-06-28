@@ -4,10 +4,15 @@ import { getEncoding } from "js-tiktoken";
 const tokenizer = getEncoding("cl100k_base");
 
 export interface CompressionOptions {
-	targetTokens: number;
 	keepFirstN: number;
 	keepLastN: number;
 	chunkSize: number;
+	weights: {
+		assistant: number;
+		toolCall: number;
+		toolResult: number;
+		lengthPenalty: number;
+	};
 }
 
 export interface CompressionResult {
@@ -20,26 +25,16 @@ export interface CompressionResult {
 }
 
 const DEFAULT_OPTIONS: CompressionOptions = {
-	targetTokens: 80000,
 	keepFirstN: 2,
 	keepLastN: 10,
 	chunkSize: 5,
+	weights: {
+		assistant: 50,
+		toolCall: 500,
+		toolResult: 15,
+		lengthPenalty: 0.05,
+	},
 };
-
-const CRITICAL_PATTERNS = [
-	/error/i,
-	/failed/i,
-	/exception/i,
-	/trace/i,
-	/architecture/i,
-	/decision/i,
-	/important/i,
-	/critical/i,
-	/todo/i,
-	/fixme/i,
-];
-
-const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
 function estimateTokens(messages: OpenRouterMessage[]): number {
 	let total = 0;
@@ -61,63 +56,35 @@ function chunk<T>(array: T[], size: number): T[][] {
 	return chunks;
 }
 
-function extractCodeBlocks(text: string): string[] {
-	const blocks: string[] = [];
-	let match;
-	while ((match = CODE_BLOCK_PATTERN.exec(text)) !== null) {
-		blocks.push(match[0]);
-	}
-	return blocks;
-}
-
-function calculateMessageImportance(msg: OpenRouterMessage): number {
-	const content =
-		typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-
+function calculateMessageImportance(
+	msg: OpenRouterMessage,
+	options: CompressionOptions = DEFAULT_OPTIONS
+): number {
 	let score = 0;
 
 	// PIN user prompts and system prompts
 	if (msg.role === "user" || msg.role === "system") {
-		return 10000;
+		return Number.MAX_SAFE_INTEGER;
 	}
 
-	for (const pattern of CRITICAL_PATTERNS) {
-		if (pattern.test(content)) {
-			score += 500;
+	if (msg.role === "assistant") {
+		score += options.weights.assistant;
+		if (msg.tool_calls && msg.tool_calls.length > 0) {
+			score += options.weights.toolCall * msg.tool_calls.length;
 		}
+	} else if (msg.role === "tool") {
+		score += options.weights.toolResult;
 	}
 
-	const codeBlocks = extractCodeBlocks(content);
-	score += codeBlocks.length * 10;
+	const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+	
+	score -= Math.floor(content.length * options.weights.lengthPenalty);
 
-	if (msg.role === "tool") {
-		score += 15;
+	if (Array.isArray(msg.content)) {
+		score += msg.content.length * 10;
 	}
 
-	// Eagerly drop massive CLI logs (npm install, massive file listings)
-	if (content.length > 2000) {
-		score -= Math.floor(content.length / 1000) * 50;
-	}
-
-	const isMassiveLog = 
-		/npm (install|ci|outdated)/i.test(content) ||
-		/yarn (install|add)/i.test(content) ||
-		/pnpm (install|add)/i.test(content) ||
-		/added \d+ packages/i.test(content) ||
-		/total\s+\d+/i.test(content) ||
-		/node_modules\//i.test(content);
-
-	if (isMassiveLog) {
-		score -= 2000;
-	}
-
-	const hasFileReferences =
-		/(?:file|path|directory|folder)[:\s]+['"`]?([/.][^'"`\s]+)/i.test(content);
-	if (hasFileReferences) {
-		score += 5;
-	}
-
-	return score;
+	return Math.max(-5000, score);
 }
 
 async function summarizeChunk(
@@ -142,6 +109,7 @@ async function summarizeChunk(
 
 function summarizeWithoutLLM(
 	messages: OpenRouterMessage[],
+	options: CompressionOptions = DEFAULT_OPTIONS
 ): OpenRouterMessage[] {
 	const summaries: OpenRouterMessage[] = [];
 
@@ -150,7 +118,7 @@ function summarizeWithoutLLM(
 			typeof msg.content === "string"
 				? msg.content
 				: JSON.stringify(msg.content);
-		const importance = calculateMessageImportance(msg);
+		const importance = calculateMessageImportance(msg, options);
 
 		if (importance >= 20) {
 			summaries.push(msg);
@@ -171,6 +139,7 @@ function summarizeWithoutLLM(
 export async function compressContext(
 	messages: OpenRouterMessage[],
 	summarizer: (text: string) => Promise<string>,
+	targetTokens: number,
 	options: Partial<CompressionOptions> = {},
 ): Promise<OpenRouterMessage[]> {
 	const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -181,7 +150,7 @@ export async function compressContext(
 
 	const currentTokens = estimateTokens(messages);
 
-	if (currentTokens <= opts.targetTokens) {
+	if (currentTokens <= targetTokens) {
 		return messages;
 	}
 
@@ -201,7 +170,7 @@ export async function compressContext(
 			const summary = await summarizeChunk(chunkMessages, summarizer);
 			summaries.push(summary);
 		} catch {
-			const chunkSummaries = summarizeWithoutLLM(chunkMessages);
+			const chunkSummaries = summarizeWithoutLLM(chunkMessages, opts);
 			summaries.push(...chunkSummaries);
 		}
 	}
@@ -214,12 +183,13 @@ export async function compressContext(
 export function compressContextWithMetrics(
 	messages: OpenRouterMessage[],
 	summarizer: (text: string) => Promise<string>,
+	targetTokens: number,
 	options: Partial<CompressionOptions> = {},
 ): Promise<CompressionResult> {
 	const opts = { ...DEFAULT_OPTIONS, ...options };
 	const originalTokens = estimateTokens(messages);
 
-	return compressContext(messages, summarizer, opts).then((compressed) => {
+	return compressContext(messages, summarizer, targetTokens, opts).then((compressed) => {
 		const newTokens = estimateTokens(compressed);
 		return {
 			messages: compressed,
@@ -234,6 +204,7 @@ export function compressContextWithMetrics(
 
 export function identifyCriticalMessages(
 	messages: OpenRouterMessage[],
+	options: CompressionOptions = DEFAULT_OPTIONS
 ): number[] {
 	const criticalIndices: number[] = [];
 
@@ -245,7 +216,7 @@ export function identifyCriticalMessages(
 			continue;
 		}
 
-		const importance = calculateMessageImportance(msg);
+		const importance = calculateMessageImportance(msg, options);
 		if (importance >= 100) {
 			criticalIndices.push(i);
 		}
@@ -257,6 +228,7 @@ export function identifyCriticalMessages(
 export function progressiveCompress(
 	messages: OpenRouterMessage[],
 	targetTokens: number,
+	options: CompressionOptions = DEFAULT_OPTIONS
 ): OpenRouterMessage[] {
 	let currentTokens = estimateTokens(messages);
 
@@ -265,14 +237,14 @@ export function progressiveCompress(
 	}
 
 	let compressed = [...messages];
-	const criticalIndices = new Set(identifyCriticalMessages(messages));
+	const criticalIndices = new Set(identifyCriticalMessages(messages, options));
 
 	while (currentTokens > targetTokens && compressed.length > 4) {
 		const nonCritical = compressed
 			.map((m, i) => ({
 				msg: m,
 				originalIndex: i,
-				importance: calculateMessageImportance(m),
+				importance: calculateMessageImportance(m, options),
 			}))
 			.filter((_, i) => !criticalIndices.has(i))
 			.sort((a, b) => a.importance - b.importance);

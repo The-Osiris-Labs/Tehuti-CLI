@@ -8,7 +8,7 @@ export async function manageContextWindow(
 	client: OpenRouterClient | KiloCodeClient | CustomProviderClient
 ): Promise<void> {
 	const currentTokens = estimateTokens(ctx.messages);
-	const maxContext = 100000;
+	const maxContext = ctx.config.kilocode?.contextManagement?.maxContextLength || 32000;
 	// Trigger compression at 85% of max context
 	const triggerThreshold = Math.floor(maxContext * 0.85);
 	const targetTokens = Math.floor(maxContext * 0.80);
@@ -16,7 +16,7 @@ export async function manageContextWindow(
 	if (currentTokens > triggerThreshold) {
 		debug.log(
 			"agent",
-			`Context compression triggered (\${currentTokens} > \${triggerThreshold} tokens)`,
+			`Context compression triggered (${currentTokens} > ${triggerThreshold} tokens)`,
 		);
 		
 		const summarizer = createContextSummarizer(async (prompt: string) => {
@@ -29,8 +29,6 @@ export async function manageContextWindow(
 				: "";
 		});
 		
-		ctx.messages = await compressContext(ctx.messages, summarizer, {
-			targetTokens,
-		});
+		ctx.messages = await compressContext(ctx.messages, summarizer, targetTokens, {});
 	}
 }
