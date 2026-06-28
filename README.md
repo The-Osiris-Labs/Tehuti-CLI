@@ -1,14 +1,56 @@
-# 𓆣 Tehuti CLI - Architect of Truth
+𓅞 Thoth, Tongue of Ra
 
-Tehuti is not another toy for hobbyists. It is an elite, fully interactive, agentic AI coding assistant that lives directly in your terminal. 
-
-Built with React (Ink), Tehuti goes beyond standard CLI tools by offering a rich, mouse-aware, natively scrolling TUI (Terminal User Interface) while packing serious multi-agent AI firepower.
+Halls of Records • Balance of Ma'at • Architect of Truth
 
 ---
 
-## ✨ Features
+# 𓆣 Tehuti CLI - Architect of Truth
 
-- **🧠 Multi-Model Wisdom:** Access 300+ models via OpenCode Go or OpenCode Go (Claude 3.5, GPT-4o, DeepSeek, Gemini).
+## The Mission Statement
+
+Chaos has descended upon software development.
+
+Every week, a new AI tool emerges. Every developer with access to an LLM spins up their own "revolutionary" project. Vibe coding has replaced engineering. "It works" has replaced "it is correct."
+
+This ends now.
+
+Tehuti is not another toy for hobbyists. It is not another chat interface wrapped in a terminal. It is the Architect of Truth—an elite, fully interactive, agentic AI coding assistant built for developers who understand that code is not about "shipping fast" but about shipping right.
+
+Built with React (Ink), Tehuti goes beyond standard CLI tools by offering a rich, mouse-aware, natively scrolling TUI (Terminal User Interface) while packing serious multi-agent AI firepower.
+
+## OSIRIS — The Mother Company
+
+OSIRIS — God of the afterlife, transition, and rebirth. OSIRIS oversees the reincarnation of Egyptian deities into cutting-edge AI technology.
+
+OSIRIS represents:
+- **Transition** — From chaos to order
+- **Rebirth** — Ancient wisdom into modern form
+- **Afterlife** — Knowledge that never dies
+
+## The Deities
+
+| Deity | Hieroglyph | Role | Status |
+|-------|------------|------|--------|
+| **Tehuti** | 𓅞 | Truth, Order, Engineering Excellence | 🏛️ Active |
+| **IBIS** | 𓃠 | AGI Trading & Pattern Recognition | 🔗 Live |
+
+## The Problem Statement
+
+The AI development landscape has descended into chaos. Every amateur with LLM access spins up half-baked "tools." Vibe coding replaces engineering. "It works" replaces "it is correct."
+
+## The Solution
+
+Tehuti is not for everyone. It is for the engineer who understands that code is craft, not commodity. It remembers, it reasons, it executes with precision. It demands excellence—and delivers it.
+
+## Call to Action
+
+If you are here to build something real, something lasting, something correct—welcome home.
+
+---
+
+## ✨ Divine Features
+
+- **🧠 Multi-Model Wisdom:** Access 300+ models via OpenCode Go (Claude 3.5, GPT-4o, DeepSeek, Gemini).
 - **🖥️ Elite TUI Experience:** A bespoke "Virtual Sliding Viewport" built in Ink allows for pixel-perfect layout stability, native line-by-line scrolling, and fully interactive, clickable tool outputs inside the terminal.
 - **⚡ Parallel Execution:** Run up to 5 read-only tools concurrently for lightning-fast codebase analysis.
 - **💾 Session Persistence:** Automatically save and load previous conversation states and cache trees to disk.
@@ -19,7 +61,7 @@ Built with React (Ink), Tehuti goes beyond standard CLI tools by offering a rich
 
 ---
 
-## 🚀 Installation & Quick Start
+## 📦 Installation & Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -32,7 +74,7 @@ npm install
 # 3. Build the CLI
 npm run build
 
-# 4. Run the setup wizard to configure your provider and API keys
+# 4. Run the setup wizard to configure your OpenCode Go provider and API keys
 npm run start -- init
 ```
 
@@ -57,13 +99,13 @@ npm run start -- -m anthropic/claude-3.5-sonnet "Audit the security of the API"
 
 ## 📖 Interactive Slash Commands
 
-Inside a running Tehuti session, use the following commands or trigger the Command Palette (Arrow keys) when the input is empty:
+Inside a running Tehuti session, use the following commands or trigger the Command Palette (Arrow keys or Mouse) when the input is empty:
 
 | Command | Description |
 |---------|-------------|
 | `/help` | Show all commands |
 | `/model <name>` | Change the active AI model |
-| `/models` | List available models from your provider |
+| `/models` | List available models from OpenCode Go |
 | `/thinking` | Toggle extended thinking mode for complex reasoning |
 | `/plan` | Enter read-only planning mode |
 | `/compact` | Force context compression to free up token space |
@@ -117,8 +159,31 @@ npm run lint        # Run ESLint
 
 ---
 
-## 📜 License & Support
+## About TheOsirisLabs.com
 
-MIT License.
+Project Tehuti is a product of TheOsirisLabs.com — a laboratory dedicated to building tools that demand excellence.
 
-**The Osiris Labs** — Building instruments of precision for developers who understand that code is a craft, not a commodity.
+We do not build chatbots. We do not build toys for the impatient. We build instruments of precision for developers who understand that code is a craft, not a commodity.
+
+The chaos of modern AI development—the "vibe coders," the immature tools, the endless stream of half-baked projects—ends here.
+
+## Contact & Links
+
+| Resource | URL |
+|----------|-----|
+| **Main Repository** | https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival |
+| **IBIS (Sister Project)** | https://github.com/The-Osiris-Labs/IBIS-AGI-TRADER |
+| **Website** | https://theosirislabs.com |
+
+## Final Words
+
+"To know how to understand is to know how to live."
+— Ancient Egyptian wisdom, applicable today
+
+---
+
+𓅞 Thoth, Tongue of Ra
+
+Halls of Records • Balance of Ma'at • Architect of Truth
+
+From the House of OSIRIS — TheOsirisLabs.com
