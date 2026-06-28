@@ -90,6 +90,11 @@ export function getPool(origin: string): Pool {
 	return pool;
 }
 
+export function updateHttpAgentConfig(config: HttpAgentConfig): void {
+	resetAgent();
+	initializeHttpAgent(config);
+}
+
 export function resetAgent(): void {
 	if (globalAgent) {
 		globalAgent.close();

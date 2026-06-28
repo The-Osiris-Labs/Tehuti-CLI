@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import chalk from "chalk";
 import { Command } from "commander";
+import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { consola } from "consola";
 import { Box, render, Text, useApp, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
@@ -3397,6 +3398,9 @@ export function createProgram(): Command {
 			let provider = opts.provider || process.env.TEHUTI_PROVIDER;
 
 			const cfg = await loadConfig();
+			if (cfg.http) {
+				updateHttpAgentConfig(cfg.http);
+			}
 			const tehuti = loadTehutiConfig();
 
 			if (opts.resetKey) {
@@ -3601,6 +3605,9 @@ export function createProgram(): Command {
 		.argument("[name]", "Server name for connect/disconnect")
 		.action(async (action, name) => {
 			const cfg = await loadConfig();
+			if (cfg.http) {
+				updateHttpAgentConfig(cfg.http);
+			}
 
 			if (!action || action === "status") {
 				const servers = cfg.mcp?.servers ?? {};
