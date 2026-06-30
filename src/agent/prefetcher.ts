@@ -50,15 +50,30 @@ export class Prefetcher {
 		const controller = new AbortController();
 		this.abortControllers.set(key, controller);
 		
-		const prefetchPromise = executeTool(toolName, args, { ...ctx, signal: controller.signal })
+		let timeoutId: NodeJS.Timeout | undefined;
+		const timeoutPromise = new Promise<null>((resolve) => {
+			timeoutId = setTimeout(() => {
+				controller.abort();
+				resolve(null);
+			}, 5000);
+		});
+
+		const prefetchPromise = Promise.race([
+			executeTool(toolName, args, { ...ctx, signal: controller.signal }),
+			timeoutPromise
+		])
 			.then((result) => {
+				if (timeoutId) clearTimeout(timeoutId);
 				if (controller.signal.aborted) return null;
 				if (result && result.success && shouldCacheTool(getTool(toolName), toolName, args)) {
 					getToolCache().set(toolName, args, result);
 				}
 				return result;
 			})
-			.catch(() => null);
+			.catch(() => {
+				if (timeoutId) clearTimeout(timeoutId);
+				return null;
+			});
 
 		const trackedPromise = prefetchPromise.finally(() => {
 			if (this.pending.get(key) === trackedPromise) {
@@ -84,16 +99,33 @@ export class Prefetcher {
 
 		// Specific check for file modifications
 		if (typeof filePath === "string" && tool.category !== "bash") {
+			const resolvedFilePath = path.resolve(filePath);
 			for (const [key, controller] of this.abortControllers.entries()) {
-				if (key.startsWith("read:") || key.startsWith("read_file:")) {
+				const colonIndex = key.indexOf(":");
+				if (colonIndex < 0) continue;
+				const prefetchTool = key.slice(0, colonIndex);
+				
+				if (["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(prefetchTool)) {
 					try {
-						const colonIndex = key.indexOf(":");
 						const readArgs = JSON.parse(key.slice(colonIndex + 1));
-						const readFilePath = readArgs.file_path || readArgs.path || readArgs.AbsolutePath;
-						if (readFilePath === filePath) {
-							controller.abort();
-							this.pending.delete(key);
-							this.abortControllers.delete(key);
+						const readPathVal = readArgs.file_path || readArgs.path || readArgs.AbsolutePath || readArgs.directory || readArgs.directoryPath || readArgs.directory_path || readArgs.TargetFile;
+						if (typeof readPathVal === "string") {
+							const resolvedReadPath = path.resolve(readPathVal);
+							if (prefetchTool === "list_dir") {
+								const relative = path.relative(resolvedReadPath, resolvedFilePath);
+								const isSubPath = !relative.startsWith("..") && !path.isAbsolute(relative);
+								if (isSubPath) {
+									controller.abort();
+									this.pending.delete(key);
+									this.abortControllers.delete(key);
+								}
+							} else {
+								if (resolvedReadPath === resolvedFilePath) {
+									controller.abort();
+									this.pending.delete(key);
+									this.abortControllers.delete(key);
+								}
+							}
 						}
 					} catch {}
 				}
@@ -101,7 +133,10 @@ export class Prefetcher {
 		} else {
 			// For bash/run_command or other broad state changes, abort all file reads just in case
 			for (const [key, controller] of this.abortControllers.entries()) {
-				if (key.startsWith("read:") || key.startsWith("read_file:")) {
+				const colonIndex = key.indexOf(":");
+				if (colonIndex < 0) continue;
+				const prefetchTool = key.slice(0, colonIndex);
+				if (["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(prefetchTool)) {
 					controller.abort();
 					this.pending.delete(key);
 					this.abortControllers.delete(key);
@@ -173,31 +208,42 @@ export class Prefetcher {
 		const currentToolDef = getTool(toolName);
 		const prefetchRules = currentToolDef?.prefetchRules || [];
 
+		const priorityWeights = { high: 3, medium: 2, low: 1 };
+		const sortedRules = [...prefetchRules].sort((a, b) => {
+			const aWeight = priorityWeights[a.priority || "medium"];
+			const bWeight = priorityWeights[b.priority || "medium"];
+			return bWeight - aWeight;
+		});
+
 		const cache = getToolCache();
 		// Key for the current call — never prefetch something we are already executing
 		const currentKey = this.buildKey(toolName, args);
 
-		for (const nextTool of prefetchRules) {
+		for (const nextTool of sortedRules) {
 			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
 
-			if (nextTool.condition && !nextTool.condition(args)) {
-				continue;
-			}
-
-			const predictedArgs = nextTool.argMapper(args, ctx);
-			if (!predictedArgs) continue;
-
-			const key = this.buildKey(nextTool.tool, predictedArgs);
-
-			if (cache.has(nextTool.tool, predictedArgs)) {
-				continue;
-			}
-
-			if (!this.pending.has(key)) {
-				const nextToolDef = getTool(nextTool.tool);
-				if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
-					this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
+			try {
+				if (nextTool.condition && !nextTool.condition(args)) {
+					continue;
 				}
+
+				const predictedArgs = nextTool.argMapper(args, ctx);
+				if (!predictedArgs) continue;
+
+				const key = this.buildKey(nextTool.tool, predictedArgs);
+
+				if (cache.has(nextTool.tool, predictedArgs)) {
+					continue;
+				}
+
+				if (!this.pending.has(key)) {
+					const nextToolDef = getTool(nextTool.tool);
+					if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
+						this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
+					}
+				}
+			} catch (error) {
+				// Prevent condition/mapper errors from crashing the loop
 			}
 		}
 

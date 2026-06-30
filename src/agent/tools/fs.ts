@@ -195,14 +195,14 @@ async function _safeOverwriteFile(
 	await fs.promises.writeFile(filePath, content, "utf8");
 }
 
-function resolvePath(filePath: string, cwd: string): string {
+export function resolvePath(filePath: string, cwd: string): string {
 	if (path.isAbsolute(filePath)) {
 		return filePath;
 	}
 	return path.resolve(cwd, filePath);
 }
 
-function validatePathSecurity(
+export function validatePathSecurity(
 	resolvedPath: string,
 	cwd: string,
 ): { safe: boolean; reason?: string } {

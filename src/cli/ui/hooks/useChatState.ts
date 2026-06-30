@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback } from "react";
-import { type QuestionData } from "../../../../agent/tools/system.js";
+import { type QuestionData } from "../../../agent/tools/system.js";
 
 // We'll use any for types imported from chat.ts to avoid circular dependencies for now,
 // or just copy the types.
@@ -68,7 +68,6 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 	const [sessionCost, setSessionCost] = useState(0);
 	const [thinking, setThinking] = useState("");
 	const [showThinking, setShowThinking] = useState(false);
-	const [thinkingDots, setThinkingDots] = useState("");
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [showDashboard, setShowDashboard] = useState(false);
 	const [pendingQuestion, setPendingQuestion] = useState<{
@@ -104,7 +103,6 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 		sessionCost, setSessionCost,
 		thinking, setThinking,
 		showThinking, setShowThinking,
-		thinkingDots, setThinkingDots,
 		showCommandPalette, setShowCommandPalette,
 		showDashboard, setShowDashboard,
 		pendingQuestion, setPendingQuestion,

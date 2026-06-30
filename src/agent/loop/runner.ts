@@ -6,7 +6,7 @@ import { debug } from "../../utils/debug.js";
 import { consola } from "../../utils/logger.js";
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
-import { getPrefetcher } from "../prefetcher.js";
+import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
 import {
 	addAssistantMessageWithTools,
 	addUserMessage,
@@ -67,7 +67,8 @@ export async function runAgentLoop(
 ): Promise<AgentLoopResult> {
 	const { onToken, onToolCall, onToolResult, onThinking, onProgress, signal } = options;
 
-	let totalTokensGenerated = 0;
+	try {
+		let totalTokensGenerated = 0;
 	const maxTokens = ctx.config.maxTokens ?? 4096;
 
 	setParentContext(ctx);
@@ -141,7 +142,7 @@ export async function runAgentLoop(
 				for await (const chunk of stream) {
 					if (signal?.aborted) {
 						client.abort();
-						break;
+						throw new AgentError("Execution aborted by user", "execution");
 					}
 
 					const { hasContent, newContent, hasThinking, newThinking } =
@@ -239,10 +240,20 @@ export async function runAgentLoop(
 				onToolCall,
 				onToolResult,
 				onProgress
-			});
+			}, signal);
 			totalToolCalls += processedCount;
 
 		} catch (error) {
+			if (signal?.aborted || (error instanceof Error && error.message.includes("aborted"))) {
+				return {
+					content: totalContent,
+					toolCalls: totalToolCalls,
+					success: false,
+					finishReason: "aborted",
+					sessionStats: costTracker.getSessionStats(),
+				};
+			}
+
 			let agentError: any;
 			
 			if (error instanceof APIError) {
@@ -298,11 +309,14 @@ export async function runAgentLoop(
 		}
 	}
 
-	return {
-		content: totalContent,
-		toolCalls: totalToolCalls,
-		success: false,
-		finishReason: "max_iterations",
-		sessionStats: costTracker.getSessionStats(),
-	};
+		return {
+			content: totalContent,
+			toolCalls: totalToolCalls,
+			success: false,
+			finishReason: "max_iterations",
+			sessionStats: costTracker.getSessionStats(),
+		};
+	} finally {
+		resetPrefetcher();
+	}
 }

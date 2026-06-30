@@ -6,6 +6,8 @@ import {
 	shouldUseUnicode,
 	shouldUseHighContrast,
 } from "./capabilities.js";
+import { renderMarkdownToAnsi } from "./markdown.js";
+
 
 // High contrast colors (WCAG AA/AAA compliant)
 const HIGH_CONTRAST_GOLD = "\x1b[38;5;220m"; // Bright yellow/gold (WCAG AAA)
@@ -34,8 +36,8 @@ const colors = {
 	gold: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text),
 	sand: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_SAND : SAND}${text}\x1b[0m` : text),
 	nile: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_BLUE : NILE}${text}\x1b[0m` : text),
-	green: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GREEN : pc.green(text)}` : text),
-	red: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_RED : pc.red(text)}` : text),
+	green: (text: string) => (shouldUseColors() ? (shouldUseHighContrast() ? `${HIGH_CONTRAST_GREEN}${text}\x1b[0m` : pc.green(text)) : text),
+	red: (text: string) => (shouldUseColors() ? (shouldUseHighContrast() ? `${HIGH_CONTRAST_RED}${text}\x1b[0m` : pc.red(text)) : text),
 };
 
 const IBIS = "\u{131A3}";
@@ -208,30 +210,111 @@ export function truncate(text: string, maxLength?: number): string {
 
 
 
+function parseContentBlocks(content: string): Array<{ type: "text" | "reasoning"; content: string }> {
+	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
+	let remaining = content;
+
+	while (remaining.length > 0) {
+		const thinkStart = remaining.indexOf("<think>");
+		if (thinkStart === -1) {
+			blocks.push({ type: "text", content: remaining });
+			break;
+		}
+
+		if (thinkStart > 0) {
+			blocks.push({ type: "text", content: remaining.slice(0, thinkStart) });
+		}
+
+		const thinkEnd = remaining.indexOf("</think>", thinkStart + 7);
+		if (thinkEnd === -1) {
+			blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7) });
+			break;
+		}
+
+		blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7, thinkEnd) });
+		remaining = remaining.slice(thinkEnd + 8);
+	}
+
+	return blocks;
+}
+
+function computeMarkdownLines(text: string, width: number): number {
+	const rendered = renderMarkdownToAnsi(text);
+	return wrap(rendered, width).split("\n").length;
+}
+
+function computeToolHeight(result: any, contentMaxWidth: number, isExpanded = false): number {
+	let output: string;
+	if (typeof result === "string") {
+		output = result;
+	} else if (
+		typeof result === "object" &&
+		result !== null &&
+		"output" in result
+	) {
+		output = String((result as Record<string, unknown>).output);
+	} else if (
+		result &&
+		typeof result === "object" &&
+		("preview" in result || "full" in result)
+	) {
+		output = String(
+			(result as { full?: unknown; preview?: unknown }).full ||
+				(result as { full?: unknown; preview?: unknown }).preview ||
+				JSON.stringify(result),
+		);
+	} else {
+		output = JSON.stringify(result, null, 2);
+	}
+
+	if (output.length > 8000) {
+		output = `${output.slice(0, 8000)}\n... [truncated]`;
+	}
+
+	const lines = output.split("\n").filter(Boolean);
+	let wrappedLines = 0;
+	for (const line of lines) {
+		wrappedLines += wrap(line, contentMaxWidth - 4).split("\n").length;
+	}
+	const previewLines = isExpanded ? wrappedLines : Math.min(4, wrappedLines);
+	// 2 lines borders + 1 line header + 2 lines marginY + previewLines + 1 line footer + 1 line marginBottom
+	return 2 + 1 + 2 + previewLines + 1 + 1;
+}
+
 export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	let lines = 0;
 	lines += 1; // Role header
 
-	if (typeof msg.content === 'string') {
-		lines += wrap(msg.content, contentMaxWidth).split('\n').length;
-	} else if (Array.isArray(msg.content)) {
-		msg.content.forEach((sub: any) => {
-			if (sub.type === 'text') {
-				lines += wrap(sub.content, contentMaxWidth).split('\n').length;
-			} else if (sub.type === 'reasoning') {
+	const blocks = msg.blocks || (Array.isArray(msg.content) ? msg.content : (typeof msg.content === 'string' ? parseContentBlocks(msg.content) : []));
+
+	if (blocks && blocks.length > 0) {
+		blocks.forEach((block: any) => {
+			if (block.type === 'text') {
+				lines += computeMarkdownLines(block.content, contentMaxWidth - 1); // -1 for paddingLeft
+			} else if (block.type === 'reasoning') {
 				lines += 2; // Borders
-				lines += wrap(sub.content, Math.max(10, contentMaxWidth - 4)).split('\n').length;
+				lines += wrap(block.content, Math.max(10, contentMaxWidth - 5)).split('\n').length;
+			} else if (block.type === 'tool') {
+				lines += computeToolHeight(block.result, contentMaxWidth, block.isExpanded);
 			}
 		});
+	} else if (typeof msg.content === 'string') {
+		lines += computeMarkdownLines(msg.content, contentMaxWidth - 1);
 	}
 
 	if (msg.toolCalls && msg.toolCalls.length > 0) {
-		lines += msg.toolCalls.length; // Assume 1 line per tool call when collapsed
+		const hasToolBlock = blocks && blocks.some((b: any) => b.type === 'tool');
+		if (!hasToolBlock) {
+			msg.toolCalls.forEach((tc: any) => {
+				lines += computeToolHeight(tc.result, contentMaxWidth, tc.isExpanded);
+			});
+		}
 	}
 
 	lines += 1; // Margin bottom between messages
 	return lines;
 }
+
 
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;

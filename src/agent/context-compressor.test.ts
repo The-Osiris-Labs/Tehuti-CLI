@@ -244,15 +244,14 @@ describe("Context Compressor", () => {
 			expect(typeof summarizer).toBe("function");
 		});
 
-		it("should return fallback on model call failure", async () => {
+		it("should return fallback string on model call failure", async () => {
 			const failingModelCall = async () => {
 				throw new Error("Failed");
 			};
 			const summarizer = createContextSummarizer(failingModelCall);
 
 			const result = await summarizer("some text");
-
-			expect(result).toContain("Context was summarized but details are no longer available.");
+			expect(result).toBe("Context was summarized but details are no longer available.");
 		});
 	});
 
@@ -269,14 +268,13 @@ describe("Context Compressor", () => {
 			expect(result).toBe("Smart summary");
 		});
 
-		it("should return fallback on failure", async () => {
+		it("should return fallback string on failure", async () => {
 			const failingModelCall = async () => {
 				throw new Error("Failed");
 			};
 			const summarizer = createSmartSummarizer(failingModelCall);
 
 			const result = await summarizer("some text");
-
 			expect(result).toBe("Context summarized.");
 		});
 	});

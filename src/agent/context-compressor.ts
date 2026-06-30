@@ -36,14 +36,38 @@ const DEFAULT_OPTIONS: CompressionOptions = {
 	},
 };
 
+function encodeStringSafely(str: string): number {
+	if (str.length <= 4000) {
+		return tokenizer.encode(str).length;
+	}
+	const sample = str.slice(0, 4000);
+	const sampleTokens = tokenizer.encode(sample).length;
+	return Math.ceil((sampleTokens / 4000) * str.length);
+}
+
 function estimateTokens(messages: OpenRouterMessage[]): number {
 	let total = 0;
 	for (const msg of messages) {
-		const content =
-			typeof msg.content === "string"
-				? msg.content
-				: JSON.stringify(msg.content);
-		total += tokenizer.encode(content).length + 10;
+		let content = "";
+		if (typeof msg.content === "string") {
+			content = msg.content;
+		} else if (Array.isArray(msg.content)) {
+			content = msg.content
+				.map((c) => (typeof c === "string" ? c : JSON.stringify(c)))
+				.join("");
+		} else if (msg.content !== undefined && msg.content !== null) {
+			content = JSON.stringify(msg.content);
+		}
+		
+		if (msg.tool_calls) {
+			content += JSON.stringify(msg.tool_calls);
+		}
+		
+		if (msg.name) {
+			content += msg.name;
+		}
+
+		total += encodeStringSafely(content) + 10;
 	}
 	return total;
 }
@@ -62,8 +86,8 @@ function calculateMessageImportance(
 ): number {
 	let score = 0;
 
-	// PIN user prompts and system prompts
-	if (msg.role === "user" || msg.role === "system") {
+	// PIN system prompts
+	if (msg.role === "system") {
 		return Number.MAX_SAFE_INTEGER;
 	}
 
@@ -76,7 +100,12 @@ function calculateMessageImportance(
 		score += options.weights.toolResult;
 	}
 
-	const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+	let content = "";
+	if (typeof msg.content === "string") {
+		content = msg.content;
+	} else if (msg.content !== undefined && msg.content !== null) {
+		content = JSON.stringify(msg.content);
+	}
 	
 	score -= Math.floor(content.length * options.weights.lengthPenalty);
 
@@ -162,7 +191,15 @@ export async function compressContext(
 		return messages;
 	}
 
-	const chunks = chunk(toCompress, opts.chunkSize);
+	// Separate system messages from items that will be chunk-summarized
+	const systemMessages = toCompress.filter((m) => m.role === "system");
+	const compressableMessages = toCompress.filter((m) => m.role !== "system");
+
+	if (compressableMessages.length === 0) {
+		return [...keepFirst, ...systemMessages, ...keepLast];
+	}
+
+	const chunks = chunk(compressableMessages, opts.chunkSize);
 	const summaries: OpenRouterMessage[] = [];
 
 	for (const chunkMessages of chunks) {
@@ -175,7 +212,7 @@ export async function compressContext(
 		}
 	}
 
-	const compressed = [...keepFirst, ...summaries, ...keepLast];
+	const compressed = [...keepFirst, ...systemMessages, ...summaries, ...keepLast];
 
 	return compressed;
 }
@@ -236,31 +273,31 @@ export function progressiveCompress(
 		return messages;
 	}
 
-	let compressed = [...messages];
-	const criticalIndices = new Set(identifyCriticalMessages(messages, options));
+	// Pre-map static metadata once to avoid index shifts & redundant computations
+	let annotated = messages.map((msg) => {
+		const importance = calculateMessageImportance(msg, options);
+		const isCritical = msg.role === "system" || msg.role === "user" || importance >= 100;
+		return { msg, importance, isCritical };
+	});
 
-	while (currentTokens > targetTokens && compressed.length > 4) {
-		const nonCritical = compressed
-			.map((m, i) => ({
-				msg: m,
-				originalIndex: i,
-				importance: calculateMessageImportance(m, options),
-			}))
-			.filter((_, i) => !criticalIndices.has(i))
-			.sort((a, b) => a.importance - b.importance);
+	while (currentTokens > targetTokens && annotated.length > 4) {
+		const nonCritical = annotated
+			.map((item, index) => ({ item, index }))
+			.filter(({ item }) => !item.isCritical)
+			.sort((a, b) => a.item.importance - b.item.importance);
 
 		if (nonCritical.length === 0) break;
 
 		const toRemove = Math.max(1, Math.floor(nonCritical.length / 4));
 		const indicesToRemove = new Set(
-			nonCritical.slice(0, toRemove).map((x) => x.originalIndex),
+			nonCritical.slice(0, toRemove).map((x) => x.index),
 		);
 
-		compressed = compressed.filter((_, i) => !indicesToRemove.has(i));
-		currentTokens = estimateTokens(compressed);
+		annotated = annotated.filter((_, index) => !indicesToRemove.has(index));
+		currentTokens = estimateTokens(annotated.map((x) => x.msg));
 	}
 
-	return compressed;
+	return annotated.map((x) => x.msg);
 }
 
 export function createContextSummarizer(

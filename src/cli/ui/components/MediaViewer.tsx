@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { renderMediaToTerminal } from "../../../utils/media.js";
 import Spinner from "ink-spinner";
 import fs from "fs";
@@ -10,8 +10,21 @@ export interface MediaViewerProps {
 }
 
 export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
+	const { stdout } = useStdout();
 	const [ansi, setAnsi] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [width, setWidth] = useState(stdout?.columns || 80);
+
+	useEffect(() => {
+		if (!stdout) return;
+		const onResize = () => {
+			setWidth(stdout.columns);
+		};
+		stdout.on("resize", onResize);
+		return () => {
+			stdout.off("resize", onResize);
+		};
+	}, [stdout]);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -47,7 +60,7 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 		return () => {
 			isMounted = false;
 		};
-	}, [src]);
+	}, [src, width]);
 
 	if (error) {
 		return React.createElement(

@@ -1,366 +1,376 @@
-# 𓆣 Tehuti CLI - Agent Instructions
+# 𓆣 Tehuti CLI — Agent Instructions
 
-Welcome, divine scribe! This document provides sacred instructions for AI agents working with Tehuti CLI.
+Sacred instructions for AI agents working in this codebase. This document reflects **what the code actually does**, not roadmap promises.
 
-## 🏛️ The Purpose of Tehuti
+## 🏛️ Purpose
 
-Tehuti CLI is an AI-powered coding assistant that connects to OpenCode Go. It serves as a modern-day scribe, helping developers transform ideas into code with wisdom and precision.
+Tehuti CLI is a **TypeScript-only**, **Node.js 20+** terminal coding agent. It connects to LLM providers through custom HTTP clients in `src/api/` (native `fetch` + hand-rolled SSE parsing). The default provider is **OpenCode Go** (`opencode` → `https://opencode.ai/zen/go/v1`).
 
-**Key Responsibilities:**
-- Multi-model support via OpenCode Go
-- File system operations (read, write, edit, glob, grep)
-- Bash command execution
-- Web fetch and search capabilities
-- MCP (Model Context Protocol) server integration
+**Runtime reality:** The shipped binary is pure Node/TS. A `rust-core/` directory exists in the repo but is **not linked into the runtime** — do not assume Rust is active.
 
-## 🏗️ Architecture Overview
+**Core responsibilities:**
+- Interactive TUI chat (`src/cli/commands/chat.ts`) and one-shot CLI prompts
+- Agent loop with tool execution (`src/agent/loop/runner.ts`)
+- File system, search, bash, web, git, MCP, memory, skills, and extension tools
+- Session persistence and Egyptian-themed terminal output
 
-**⚠️ CRITICAL:** Before modifying the TUI (`src/cli/commands/chat.ts`), you **MUST** read [HANDOFF.md](./HANDOFF.md). The TUI uses a bespoke "Virtual Sliding Viewport" with negative margins that must not be broken by standard array slicing.
+---
+
+## 🏗️ Architecture
 
 ```
-src/
-├── index.ts                          # Entry point (initializes API and CLI)
-├── cli/                              # CLI commands and UI
-│   ├── commands/
-│   │   └── chat.ts                   # Main chat command (React/Ink UI)
-│   ├── onboarding.ts                 # Initial API key configuration
-│   └── ui/
-│       └── components/               # React components
-├── agent/                            # AI agent and tools
-│   ├── index.ts                     # Agent loop with parallel execution
-│   ├── context.ts                   # Context management
-│   ├── context-compressor.ts        # Context summarization
-│   ├── model-router.ts              # Model tier routing
-│   ├── parallel-executor.ts         # Parallel tool execution
-│   ├── prefetcher.ts                # Predictive prefetching
-│   ├── skills/
-│   │   ├── manager.ts               # Skills manager and built-in skills
-│   │   └── tools.ts                 # Skills management tools
-│   ├── cache/
-│   │   ├── tool-cache.ts            # LRU cache for tool results
-│   │   ├── persistent-cache.ts      # Disk persistence
-│   │   └── invalidation.ts          # Cache invalidation
-│   └── tools/
-│       ├── fs.ts                    # File system tools (read, write, edit)
-│       ├── search.ts                # Glob and grep tools
-│       ├── bash.ts                  # Bash command tool
-│       ├── web.ts                   # Web fetch and search tools
-│       ├── git.ts                   # Git operations
-│       └── system.ts                # System tools (question resolver)
-├── api/                              # OpenCode Go API client
-│   ├── openrouter.ts                # OpenCode Go API client (singleton)
-│   ├── streaming.ts                 # Streaming response handling
-│   ├── model-capabilities.ts        # Model capability detection
-│   └── http-agent.ts                # Undici connection pooling
-├── config/                          # Configuration management
-├── branding/                        # Egyptian visual theme
-├── permissions/                     # Permission system
-├── mcp/                             # MCP integration
-├── hooks/                           # Hook execution system
-├── terminal/                        # Terminal utilities
-├── session/                         # Session persistence
-└── utils/                          # Utility functions
+Tehuti-CLI-Revival/
+├── src/
+│   ├── index.ts                    # Entry: HTTP agent init, CLI bootstrap
+│   ├── api/                        # Provider clients (fetch + SSE streaming)
+│   │   ├── openrouter.ts           # OpenRouter / OpenCode / compatible providers
+│   │   ├── kilocode.ts             # KiloCode provider client
+│   │   ├── custom-provider.ts      # Custom OpenAI-compatible adapter
+│   │   ├── streaming.ts            # Stream chunk processing
+│   │   ├── model-capabilities.ts   # Reasoning model detection
+│   │   ├── http-agent.ts           # undici connection pooling
+│   │   ├── cost.ts                 # Per-request cost tracking
+│   │   └── models.ts               # Model list fetching
+│   ├── agent/
+│   │   ├── index.ts                # Tool registration, public agent API
+│   │   ├── loop/
+│   │   │   ├── runner.ts           # ★ Agent loop (stream → tools → repeat)
+│   │   │   ├── tool-processing.ts  # Permission checks, cache, parallel dispatch
+│   │   │   ├── compression.ts      # LLM-based context compression in loop
+│   │   │   └── retry.ts            # API retry wrapper
+│   │   ├── context.ts              # Messages, system prompt, compactContext()
+│   │   ├── context-compressor.ts   # LLM summarization for compression
+│   │   ├── model-router.ts         # Keyword-based tier routing (session start)
+│   │   ├── parallel-executor.ts    # Parallel safe read-only tools
+│   │   ├── prefetcher.ts           # Rule-based next-tool prefetch
+│   │   ├── cache/                  # LRU tool cache + disk persistence
+│   │   ├── skills/                 # Built-in + user skills
+│   │   ├── memory/                 # Insight graph
+│   │   ├── subagents/              # Subagent spawning (system tools)
+│   │   ├── swarm/                  # Swarm delegation support
+│   │   ├── shadow-workspace.ts     # ⚠️ DEAD — not registered
+│   │   └── tools/                  # All tool implementations
+│   ├── cli/
+│   │   ├── index.ts                # Commander program
+│   │   ├── commands/
+│   │   │   └── chat.ts             # ★ Monolithic TUI (~3700 LOC)
+│   │   └── ui/
+│   │       ├── components/         # Ink/React components
+│   │       └── hooks/              # useChatState, useChatInput
+│   ├── config/
+│   │   ├── loader.ts               # Config merge precedence
+│   │   ├── schema.ts               # Zod schema + DEFAULT_CONFIG
+│   │   ├── providers.ts            # Provider registry + base URLs
+│   │   └── wizard.ts               # First-run setup wizard
+│   ├── mcp/                        # MCP client + dynamic tool adapter
+│   ├── hooks/                      # Hook executor (code exists, config unwired)
+│   ├── permissions/                # Permission prompts and rules
+│   ├── session/                    # Session save/load
+│   ├── terminal/                   # Markdown, buffering, highlighting
+│   ├── branding/                   # Egyptian theme constants
+│   └── utils/                      # Telemetry, debug, mutex, logger
+├── tests/e2e/                      # End-to-end tests
+├── tools/grepai                    # Bundled grepai binary (used by semantic tools)
+├── dist/index.js                   # Production bundle (~650 KB)
+├── rust-core/                      # Not in runtime — experimental/unwired
+├── AGENTS.md                       # This file
+└── HANDOFF.md                      # TUI scroll architecture — read before editing chat.ts
 ```
+
+### Architectural notes
+
+| Component | Reality |
+|-----------|---------|
+| `chat.ts` | Monolithic: CLI routing, Ink TUI, slash commands, agent invocation, config editor — all in one file |
+| `agent/index.ts` | Registers tools, exposes `runAgentLoop` / `runOneShot`; delegates loop to `loop/runner.ts` |
+| `api/openrouter.ts` | Singleton client used for OpenRouter, OpenCode, and other OpenAI-compatible providers |
+| MCP tools | Static prompt tools registered at startup; server tools registered dynamically via `syncMCPToolRegistry()` |
+
+---
 
 ## 🛠️ Key Technologies
 
-- **Runtime**: Node.js 20+
-- **Language**: TypeScript (ESM)
-- **CLI**: Commander.js + Ink (React for CLI)
-- **AI**: OpenCode Go API
-- **Tools**: tinyglobby, ripgrep, just-bash
-- **MCP**: @modelcontextprotocol/sdk
-- **HTTP**: undici (connection pooling)
+| Layer | Choice |
+|-------|--------|
+| Runtime | Node.js ≥ 20 (ESM) |
+| Language | TypeScript only |
+| CLI framework | Commander.js |
+| TUI | Ink 6 + React 19 |
+| Validation | Zod |
+| Config | `conf` (global) + cosmiconfig (project) |
+| HTTP | `fetch` + undici Agent pooling |
+| Search | `@lvce-editor/ripgrep`, `tinyglobby` |
+| Shell | `just-bash` (sandboxed bash tool) |
+| MCP | `@modelcontextprotocol/sdk` |
+| AST | `tree-sitter` + `tree-sitter-typescript` |
+| Lint | Biome (not ESLint) |
+| Build | tsup |
+| Test | Vitest |
 
-## 📜 Development Rituals
+---
+
+## 📜 Development
 
 ```bash
 npm install          # Install dependencies
-npm run build        # Build for production
-npm test             # Run tests (405 tests)
-npx tsc --noEmit    # Type check
+npm run build        # Production bundle → dist/index.js (~650 KB)
+npm test             # 570 unit tests (2 skipped)
+npm run test:e2e     # 106 e2e tests (1 known failure in tier1.test.ts)
+npm run typecheck    # tsc --noEmit (clean)
+npm run lint         # biome check src/
+npm start            # tsx src/index.ts (dev)
 ```
+
+**Current verified status (2026-06-29):**
+- Unit: **570 passed**, 2 skipped
+- E2E: **105 passed**, 1 failed (known: `tests/e2e/tier1.test.ts` line-count assertion)
+- TypeScript: **clean**
+- Build output: **~668 KB** (`dist/index.js`)
+
+---
 
 ## 🔮 Configuration
 
-Configuration is loaded from:
-1. `~/.tehuti.json` - User config (API key, default model)
-2. Environment variables
-3. Project `.tehuti.json`
+Loaded in `src/config/loader.ts`. **Precedence (lowest → highest):**
 
-**Priority order (highest to lowest):**
-1. `OPENROUTER_API_KEY` / `TEHUTI_API_KEY` environment variables
-2. `TEHUTI_MODEL` environment variable
-3. Command-line options (`--model`)
-4. `~/.tehuti.json` config file
-5. Default model: `giga-potato`
+1. `DEFAULT_CONFIG` (`src/config/schema.ts`)
+2. Global conf store (`~/.config/tehuti/config.json` via `conf` package)
+3. Project cosmiconfig (`.tehuti.json`, `.tehuti.yaml`, `.tehuti.yml`, `.tehuti.js`, `package.json` `tehuti` key)
+4. Environment variables (override file values)
 
-### Model Selection Modes
+**Defaults:**
+- Model: `deepseek-v4-flash`
+- Provider: `opencode`
+- Base URL: resolved per provider (`https://opencode.ai/zen/go/v1` for opencode)
 
-Set `modelSelection` in config to control automatic model routing:
-- `auto` - Automatically select model based on task complexity (default)
-- `manual` - Always use the configured model
-- `cost-optimized` - Prefer free/fast models
-- `speed-optimized` - Always use fastest model
+**Key environment variables:**
 
-## 🚀 Performance Optimization System
+| Variable | Effect |
+|----------|--------|
+| `TEHUTI_MODEL` | Override model |
+| `TEHUTI_PROVIDER` | Override provider |
+| `TEHUTI_BASE_URL` | Override API base URL |
+| `TEHUTI_API_KEY` | API key (highest priority) |
+| Provider-specific keys | e.g. `OPENROUTER_API_KEY` (see `providers.ts`) |
+| `TEHUTI_DEBUG` | Enable debug logging |
+| `TEHUTI_CUSTOM_PROVIDER` | JSON override for custom provider config |
 
-Tehuti employs several divine optimization techniques:
+**Model selection modes** (`modelSelection` in config):
+- `auto` — keyword heuristics route to fast/balanced/deep tiers (default)
+- `manual` — always use configured `model`
+- `cost-optimized` / `speed-optimized` — prefer cheaper/faster tiers
 
-### 1. Connection Pooling (undici)
-- HTTP connection pooling via undici Agent
-- Reduces latency for repeated API calls
-- Initialized early in `src/index.ts`
+Model routing runs **once at session start** in `runner.ts` (not per iteration).
 
-### 2. Tool Result Caching
-- LRU cache with TTL and size limits
-- File mtime tracking for cache invalidation
-- Automatic invalidation on write operations
-- Persistence across sessions in `~/.tehuti/cache/`
+---
 
-### 3. Parallel Tool Execution
-- Independent read-only tools run in parallel
-- Up to 5 concurrent parallel executions
-- Telemetry tracks parallel savings
+## 🔄 Agent Loop Flow
 
-### 4. LLM Tier Routing
-- Automatic model selection based on task complexity
-- Three tiers defined in `MODEL_TIERS`:
-  - `fast` - Simple reads, listings (`giga-potato`)
-  - `balanced` - Most tasks (`z-ai/glm-5:free`)
-  - `deep` - Complex tasks (`anthropic/claude-sonnet-4`)
-- Keyword-based task classification
+Entry: `runAgentLoop()` in `src/agent/index.ts` → `src/agent/loop/runner.ts`
 
-### 5. Context Compression
-- Progressive compression at 85k tokens
-- LLM-based summarization with fallback
-- Preserves critical messages (errors, decisions)
-- Smart importance scoring for message retention
+```
+1. createAgentContext / setParentContext
+2. Build system prompt (first message only)
+3. addUserMessage
+4. Model routing (keyword classifyTask → selectModelForClassification) — once
+5. syncMCPToolRegistry() — register dynamic mcp_* tools
+6. LOOP (maxIterations, default 50):
+   a. manageContextWindow() — LLM compression if >85% context (compression.ts)
+   b. normalizeToolMessageHistory()
+   c. client.streamChat() — SSE stream via fetch
+   d. processStreamChunk() — tokens, thinking, tool_calls
+   e. If no tool calls → return content
+   f. prefetcher.predict() on FIRST tool call only in the batch
+   g. processToolCalls() — permissions, hooks, cache, parallel/sequential execution
+   h. Add tool results to context → next iteration
+7. saveCacheToDisk on shutdown
+```
 
-### 6. Predictive Prefetching
-- Rule-based next-tool prediction
-- History-based pattern learning
-- Max 10 concurrent prefetch operations
-- Prefetches file info, directory listings, git diffs
+**Two compression systems (do not conflate):**
 
-### 7. Performance Telemetry
-- Track tool execution times
-- Cache hit/miss rates
-- Parallel execution savings
-- Session stats via `/stats` command
+| System | Trigger | Method | File |
+|--------|---------|--------|------|
+| In-loop compression | Auto at ~85% of `maxContextLength` during agent loop | LLM summarization via `compressContext()` | `loop/compression.ts`, `context-compressor.ts` |
+| `/compact` command | User-initiated slash command | Simple placeholder summary, keeps system + last 6 messages | `context.ts` → `compactContext()` |
+
+---
+
+## 🛠️ Tools
+
+Registered in `src/agent/index.ts` via `registerTools([...])`:
+
+| Category | Tools |
+|----------|-------|
+| **AST** | `parse_ast` |
+| **Filesystem** | `read`, `write`, `edit`, `create_dir`, `delete_file`, `delete_dir`, `copy`, `move`, `list_dir`, `file_info`, `read_image`, `read_pdf` |
+| **Search** | `glob`, `grep`, `find_references`, `go_to_definition` |
+| **Repo** | `repo_map` |
+| **Bash** | `bash` |
+| **Web** | `web_fetch`, `web_search`, `code_search` |
+| **System** | `todo_write`, `task`, `question` |
+| **MCP prompts** | `mcp_get_prompt`, `mcp_list_prompts` |
+| **Memory** | `store_insight`, `query_memory` |
+| **Background** | `start_background`, `list_processes`, `read_output`, `kill_process` |
+| **Plan mode** | `write_plan`, `exit_plan_mode` |
+| **Git** | `git_status`, `git_diff`, `git_log`, `git_add`, `git_commit`, `git_branch`, `git_remote`, `git_pull`, `git_push` |
+| **Skills** | `list_skills`, `activate_skill`, `deactivate_skill`, `find_skills`, `get_skill` |
+| **Semantic** | `semantic`, `semantic_init`, `semantic_status`, `semantic_trace` (wraps `tools/grepai` binary) |
+| **KiloCode** | `configure_memory_bank`, `clear_memory`, `configure_streaming`, `configure_context_management`, `review_code`, `summarize_context` |
+| **Collaboration** | `configure_collaboration`, `invite_collaborator`, `leave_collaboration` |
+| **Custom provider** | `configure_custom_provider`, `set_custom_header`, `remove_custom_header`, `get_custom_provider_info` |
+| **Swarm** | `delegate_task`, `check_subagent_status` |
+| **Dynamic MCP** | `mcp_<server>_<tool>` — registered at runtime from connected MCP servers |
+
+### Dead / unregistered code
+
+These files exist but are **not** in `registerTools()`:
+
+| File | Notes |
+|------|-------|
+| `src/agent/tools/grepai.ts` | Standalone grepai tools — superseded by `semantic.ts` |
+| `src/agent/tools/grepai-cache.ts` | Grepai cache tools — not registered |
+| `src/agent/tools/grepai-mcp.ts` | Grepai MCP serve tools — not registered |
+| `src/agent/tools/grepai-advanced.ts` | Advanced grepai config — not registered |
+| `src/agent/shadow-workspace.ts` | Speculative git worktree execution — not registered |
+| `create_reusable_skill` | Defined in `skills/manager.ts`, exported as tool — **not** in `skillsTools` array |
+
+Do not assume these are available to the agent unless you register them.
+
+### Tool permissions
+
+- **Safe (parallel-eligible):** read, glob, grep, list_dir, web_fetch, web_search, git_status, git_log, git_diff, etc. (`SAFE_PARALLEL_TOOLS` in `parallel-executor.ts`)
+- **Destructive (require permission):** write, edit, bash, git_write ops
+- **Interactive:** `question` — blocks parallel execution
+- **Readonly mode:** blocks all write tools
+
+---
+
+## ⚡ Performance (Honest Limits)
+
+What actually works vs. what marketing might imply:
+
+| Feature | Reality |
+|---------|---------|
+| **Parallel execution** | Only when the model returns **multiple tool calls in a single turn**. Safe read-only tools run in parallel (max 5 concurrency). Writes and `question` force sequential. |
+| **Prefetching** | `prefetcher.predict()` runs on the **first tool call only** in each batch (`runner.ts` line ~220). Rule-based (read → file_info/list_dir, git_status → git_diff). Max 10 queued prefetches. |
+| **Model routing** | Keyword heuristics (`DEEP_KEYWORDS`, `FAST_KEYWORDS`) applied **once at session start**, not per message or per tool. |
+| **Tool cache** | LRU with mtime invalidation; persists to `~/.config/tehuti/` cache dir. Helps repeated identical reads. |
+| **Connection pooling** | undici Agent in `http-agent.ts` — reduces TLS overhead for repeated API calls. |
+| **Context compression** | Two separate systems (see above). In-loop uses an extra LLM call. `/compact` is cheap but lossy. |
+| **Telemetry** | `getTelemetry()` always collects in-memory metrics for `/stats`. The `telemetry: true` config flag is **not wired** — collection happens regardless. |
+
+---
+
+## ⚠️ TUI Warnings
+
+**Before editing `src/cli/commands/chat.ts`, read [HANDOFF.md](./HANDOFF.md).**
+
+### Virtual sliding viewport (critical)
+
+Scrolling uses a **negative margin**, not array slicing for scroll position:
+
+```tsx
+<Box flexDirection="column" marginBottom={-scrollOffset}>
+```
+
+- Parent has `overflow="hidden"`
+- Negative `marginBottom` physically slides the rendered column
+- **Do not** slice the full message array for scrolling — causes React remounts and destroys scroll state
+
+### Hybrid performance slice
+
+For rendering performance, `visibleMessages` **does** slice messages to viewport + buffer:
+
+```ts
+// chat.ts ~line 2030
+return messages.slice(Math.min(sliceIndex, Math.max(0, messages.length - 50)));
+```
+
+This is intentional: negative margin handles scroll position; slicing limits what Ink renders. Do not remove the hybrid approach without understanding both mechanisms.
+
+### Other TUI facts
+
+- Mouse support via `@ink-tools/ink-mouse` on Command Palette and Config Editor
+- Input bar hidden when palette/config editor is open
+- `TehutiHeader` collapses after first message
+- Reasoning models show spinner + truncated thinking text (not bordered blocks)
+
+---
+
+## 🚧 Known Gaps (Unwired Features)
+
+| Feature | Status |
+|---------|--------|
+| **Hooks** | `hooks/executor.ts` works; `configureHooks(cfg)` called in chat.ts but **no `hooks` field in config schema** — always loads empty config |
+| **Telemetry config flag** | `telemetry: boolean` in schema defaults `false` but is never checked — metrics always collected |
+| **MCP sampling** | `mcpManager.setSamplingHandler()` exists; **never called** — MCP sampling capability config is inert |
+| **Question UI** | `question` tool + `_QuestionPrompt` component + `pendingQuestion` state exist; **prompt component is not rendered** in the TUI tree — interactive questions will hang |
+| **grepai standalone tools** | Full tool suite in `grepai*.ts` files — dead code; use `semantic` tools instead |
+| **shadow-workspace** | Implemented, not registered |
+| **create_reusable_skill** | Tool defined, not registered |
+| **rust-core** | Present in repo, not in Node runtime |
+
+---
 
 ## 🎨 Visual Theme
 
-### Color Palette (Egyptian-Inspired)
+Egyptian-inspired palette (see `src/branding/`):
+
 | Color | Hex | Usage |
 |-------|-----|-------|
-| Gold | `#D4AF37` | Primary accent (Tehuti brand) |
-| Sand | `#C2B280` | Secondary text, subtle elements |
-| Coral | `#D97757` | User messages, prompts |
+| Gold | `#D4AF37` | Primary accent, Tehuti brand |
+| Sand | `#C2B280` | Secondary text |
+| Coral | `#D97757` | User messages |
 | Green | `#10B981` | Assistant responses |
 | Nile | `#2E5A6B` | Subtle accents |
 | Obsidian | `#1A1A2E` | Backgrounds |
 
-### Hieroglyphic Symbols
-| Symbol | Unicode | Usage |
-|--------|---------|-------|
-| 𓆣 | U+131A3 | Ibis (Tehuti symbol) |
-| 𓁹 | U+13075 | Eye of Ra (visibility) |
-| 𓂀 | U+13080 | Eye of Horus (errors) |
-| 𓋹 | U+13269 | Ankh (success) |
-| 𓏛 | U+1331B | Scroll (input/docs) |
-| 𓆄 | U+13184 | Feather (user messages) |
-| 𓂝 | U+13009 | Arm (navigation) |
-| 𓊖 | U+13296 | Basket (lists) |
+Key symbols: 𓆣 (ibis/Tehuti), 𓁹 (visibility), 𓂀 (errors), 𓋹 (success), 𓏛 (input), 𓊖 (lists)
 
-### UI Elements
-- `𓆣` - Ibis hieroglyph (Tehuti symbol)
-- `𓁹` - Eye indicator
-- `𓋹` - Ankh for success
-- `𓏛` - Scroll for input prompt
-- `𓊖` - Bullet points
-
-## 🛠️ Tool System
-
-Tools are registered in `src/agent/tools/`. Each tool has:
-- Zod schema for parameters
-- Execute function returning `ToolResult`
-- Permission requirements
-- Category (safe/destructive)
-
-### Tool Classification
-- **Always allowed (safe tools):** read, glob, grep
-- **Require permission (destructive):** write, edit, bash
-- **Blocked in readonly mode:** All write operations
-
-## 🏺 Session Management
-
-Sessions stored in `~/.tehuti/sessions/`:
-- Auto-save on exit (Ctrl+C)
-- `/save [name]` - Save with custom name
-- `/load <id>` - Load and rebuild context
-- `/sessions` - List all sessions
-
-Cache stored in `~/.tehuti/cache/`:
-- Persists across sessions
-- Auto-loads on startup
-- Saves on exit
-
-## 📝 Output Formatting System
-
-### Buffered StreamWriter (`src/terminal/buffered-writer.ts`)
-- ANSI-safe streaming with escape sequence preservation
-- Unicode width calculation for Egyptian hieroglyphs
-- Token batching with 30ms flush interval
-- Word-aware line breaking
-- Safe write operations with error handling
-- Terminal resize handling via SIGWINCH
-- `destroy()` method for proper cleanup
-
-### Interactive Mode (Ink/React)
-- Token batching with 50ms debounce
-- Ref-based content accumulation
-- Width constraints on message containers
-- Text wrapping enabled on all components
-
-### Output Utilities (`src/terminal/output.ts`)
-- `wrap()` - ANSI-safe line breaking
-- `truncate()` - Truncate with ellipsis
-- `stripAnsi()` - Remove ANSI sequences
-
-## 🌟 Current State
-
-### Build Status
-- TypeScript: No errors
-- All 405 tests pass (2 TTL tests skipped)
-- Build: 344KB output (`dist/index.js`)
-
-### Skills System
-New skills system implemented:
-- `src/agent/skills/manager.ts` - Manages built-in and user-defined skills
-- `src/agent/skills/tools.ts` - Five tools for skill management: list_skills, activate_skill, deactivate_skill, find_skills, get_skill
-- Built-in skills for JavaScript/TypeScript, Python, and Git expertise
-- Auto-applies relevant expertise based on task type
-- Integrated into system prompt generation
-
-### Chat UI Enhancements
-Improved chat UI in `src/cli/commands/chat.ts`:
-- Enhanced history navigation with better index management
-- Improved input handling for backspace, delete, and cursor navigation
-- Added copy-paste support (key combination detection)
-- Added `/skills` command handler using `runOneShot` function
-- Updated CommandPalette.tsx to include `/skills` command
-
-### Markdown Rendering
-Full ANSI markdown rendering implemented in `src/terminal/markdown.ts`:
-- **Bold** rendered with ANSI bold
-- *Italic* rendered with ANSI italic
-- `inline code` rendered in cyan
-- Code blocks with syntax highlighting and line numbers
-- Headers with gold/coral colors
-- Lists with coral bullets
-- Tables with box-drawing characters
-- Links with blue underline
-- Blockquotes with dim styling
-
-### Reasoning Model Support
-Tehuti supports reasoning models that return content in `reasoning` field:
-- Detection: `isReasoningModel()` in `src/api/model-capabilities.ts`
-- Known models: `z-ai/glm-*`, `deepseek/deepseek-r1`, `openai/o1`, `openai/o3-mini`
-- Streaming: `reasoning` field merged into content automatically
-
-## 📜 Commands Available
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show all commands |
-| `/clear` | Clear conversation, new session |
-| `/cost` | Show tokens and cost |
-| `/stats` | Show performance metrics |
-| `/models` | List free models on OpenCode Go |
-| `/model <name>` | Switch AI model |
-| `/sessions` | List saved sessions |
-| `/save [name]` | Save current session |
-| `/load <id>` | Load session by ID |
-| `/exit` | Exit CLI |
+---
 
 ## 🗝️ Key Files
 
-```
-src/
-├── cli/commands/chat.ts       # Main UI (React/Ink)
-├── cli/ui/CommandPalette.tsx  # Command palette
-├── agent/index.ts             # Agent loop with caching, parallel execution
-├── agent/cache/               # LRU cache, tool cache, persistence
-├── agent/parallel-executor.ts # Parallel tool execution
-├── agent/model-router.ts      # LLM tier routing
-├── agent/context-compressor.ts # Context summarization
-├── agent/prefetcher.ts        # Predictive prefetching
-├── api/openrouter.ts          # OpenCode Go client (singleton)
-├── api/http-agent.ts          # Undici connection pooling
-├── utils/telemetry.ts         # Performance metrics
-├── utils/mutex.ts             # Async mutex, semaphore
-└── utils/concurrency.ts       # Promise concurrency utilities
-```
+| File | Why it matters |
+|------|----------------|
+| `src/cli/commands/chat.ts` | Entire interactive TUI — tread carefully |
+| `HANDOFF.md` | Scroll/viewport architecture |
+| `src/agent/loop/runner.ts` | Agent loop orchestration |
+| `src/agent/index.ts` | Tool registration, public API |
+| `src/agent/loop/tool-processing.ts` | Tool dispatch, permissions, caching |
+| `src/config/loader.ts` | Config precedence |
+| `src/config/schema.ts` | Defaults and validation |
+| `src/api/openrouter.ts` | Primary provider client + SSE |
+| `src/agent/parallel-executor.ts` | Parallel tool batching |
+| `src/agent/context-compressor.ts` | LLM summarization |
+| `src/agent/context.ts` | `compactContext()` for `/compact` |
+| `src/mcp/client.ts` | MCP connection + dynamic tools |
+| `src/terminal/markdown.ts` | ANSI markdown rendering |
+
+---
 
 ## 🚀 Running Tehuti
 
 ```bash
-# Direct
-node dist/index.js
-
-# With alias
-alias tehuti='node /path/to/Tehuti-CLI/dist/index.js'
-tehuti
-
-# One-shot prompt
-node dist/index.js "your prompt here"
-
-# With specific model
-node dist/index.js --model anthropic/claude-sonnet-4
-
-# JSON output
-node dist/index.js --json "prompt"
-
-# Quiet mode (no tool output)
-node dist/index.js --quiet "prompt"
+node dist/index.js                          # Interactive TUI
+node dist/index.js "your prompt"              # One-shot
+node dist/index.js --model <id> "prompt"     # Override model
+node dist/index.js --json "prompt"            # JSON output
+node dist/index.js --quiet "prompt"           # Suppress tool output
 ```
+
+Sessions: `~/.config/tehuti/sessions/` (save/load via `/save`, `/load`, `/sessions`)
+
+---
 
 ## 📚 Session History
 
-### 2026-02-25
+### 2026-06-29 — AGENTS.md rewrite
 
-**Skills System and Chat UI Enhancements:**
-
-1. **Skills System Implementation** - Complete skills management system:
-   - `src/agent/skills/manager.ts` - Manages built-in and user-defined skills
-   - `src/agent/skills/tools.ts` - Five tools for skill management: list_skills, activate_skill, deactivate_skill, find_skills, get_skill
-   - Built-in skills for JavaScript/TypeScript, Python, and Git expertise
-   - Auto-applies relevant expertise based on task type
-   - Integrated into system prompt generation
-
-2. **Chat UI Improvements** - Enhanced user experience:
-   - Added `/skills` command handler using `runOneShot` function
-   - Updated CommandPalette.tsx to include `/skills`, `/thinking`, `/plan`, and `/compact` commands
-   - Improved history navigation with better index management
-   - Enhanced input handling for backspace, delete, and cursor navigation
-   - Added copy-paste support (key combination detection)
-
-3. **Model Selection Fix** - Updated model-router.ts:
-   - Always respect manual model selection first
-   - Improved logic for model selection modes
-   - Fixed configuration precedence issues
-
-**Files Modified This Session:**
-- `src/agent/context.ts` - Integrated skills into system prompt
-- `src/agent/index.ts` - Added skills tools registration
-- `src/agent/model-router.ts` - Improved model selection logic
-- `src/agent/tools/registry.ts` - Added createTool helper function
-- `src/cli/commands/chat.ts` - Enhanced chat UI and command handlers
-- `src/cli/ui/components/CommandPalette.tsx` - Added new commands
-
-**New Files Created:**
-- `src/agent/skills/manager.ts` - Skills manager
-- `src/agent/skills/tools.ts` - Skills management tools
-
-**Build Status:** ✅ Build succeeds, 344KB output, 405 tests pass
+Rewrote this document to match actual codebase state:
+- Corrected defaults (`deepseek-v4-flash`, `opencode`)
+- Documented monolithic `chat.ts` and `loop/runner.ts` split
+- Listed registered vs. dead tools honestly
+- Documented hybrid TUI viewport (negative margin + `visibleMessages` slice)
+- Recorded unwired features (hooks, telemetry flag, MCP sampling, question UI)
+- Updated test counts (570 unit, 106 e2e with 1 known fail) and build size (~650 KB)

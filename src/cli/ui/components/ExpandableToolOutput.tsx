@@ -20,6 +20,35 @@ export interface ToolOutputSummary {
 	hiddenLineCount: number;
 }
 
+function sliceAnsi(str: string, limit: number): string {
+	let visibleWidth = 0;
+	let output = "";
+	let i = 0;
+	const ansiRegex = /^\u001b\[[0-9;]*[a-zA-Z]/;
+
+	while (i < str.length) {
+		const remaining = str.slice(i);
+		const match = remaining.match(ansiRegex);
+		if (match) {
+			output += match[0];
+			i += match[0].length;
+		} else {
+			const char = str[i];
+			const charWidth = stringWidth(char);
+			if (visibleWidth + charWidth > limit) {
+				break;
+			}
+			visibleWidth += charWidth;
+			output += char;
+			i++;
+		}
+	}
+	if (i < str.length) {
+		output += "\x1b[0m";
+	}
+	return output;
+}
+
 export function summarizeToolOutput(
 	result: unknown,
 	maxWidth: number,
@@ -58,10 +87,11 @@ export function summarizeToolOutput(
 		lineArray
 			.map((line) => {
 				const truncated =
-					line.length > maxWidth - 4 ? `${line.slice(0, maxWidth - 7)}...` : line;
+					stringWidth(line) > maxWidth - 4 ? `${sliceAnsi(line, maxWidth - 7)}...` : line;
 				return truncated;
 			})
 			.join("\n");
+
 
 	return {
 		displayContent: formatLines(isTruncated ? lines.slice(0, previewLines) : lines),

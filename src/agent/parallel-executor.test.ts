@@ -343,4 +343,91 @@ describe("Parallel Executor", () => {
 			expect(addToolResult).toHaveBeenCalledTimes(10);
 		});
 	});
+
+	describe("Order Preservation, Abort and Hardening", () => {
+		const mockCtx = {
+			messages: [],
+			config: { model: "test" },
+			cwd: "/test",
+			metadata: { tokensUsed: 0 },
+			toolCallCount: 0,
+			toolCalls: [],
+		} as unknown as Parameters<typeof executeToolsParallel>[1]["ctx"];
+
+		const mockToolContext = {};
+
+		it("should maintain sequential order for writes without shuffling with parallel ones", async () => {
+			const executionOrder: string[] = [];
+			const { executeTool } = await import("./tools/registry.js");
+			vi.mocked(executeTool).mockImplementation(async (name: string) => {
+				executionOrder.push(name);
+				return { success: true, output: `${name} result` };
+			});
+
+			const toolCalls: ToolCall[] = [
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "write", arguments: "{}" } },
+				{ id: "3", function: { name: "read", arguments: "{}" } },
+			];
+
+			await executeToolsParallel(toolCalls, {
+				ctx: mockCtx,
+				toolContext: mockToolContext,
+				addToolResult: vi.fn(),
+			});
+
+			expect(executionOrder).toEqual(["read", "write", "read"]);
+		});
+
+		it("should abort execution if signal is aborted", async () => {
+			const controller = new AbortController();
+			const toolCalls: ToolCall[] = [
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "read", arguments: "{}" } },
+			];
+
+			controller.abort();
+
+			const results = await executeToolsParallel(
+				toolCalls,
+				{
+					ctx: mockCtx,
+					toolContext: mockToolContext,
+					addToolResult: vi.fn(),
+				},
+				controller.signal
+			);
+
+			expect(results[0]?.success).toBe(false);
+			expect(results[0]?.error).toContain("Execution aborted by user");
+			expect(results[1]?.success).toBe(false);
+			expect(results[1]?.error).toContain("Execution aborted by user");
+		});
+
+		it("should be rejection-resistant when a tool execution throws an error", async () => {
+			const { executeTool } = await import("./tools/registry.js");
+			vi.mocked(executeTool).mockImplementation(async (name: string) => {
+				if (name === "grep") {
+					throw new Error("Grep failed unexpectedly");
+				}
+				return { success: true, output: `${name} result` };
+			});
+
+			const toolCalls: ToolCall[] = [
+				{ id: "1", function: { name: "read", arguments: "{}" } },
+				{ id: "2", function: { name: "grep", arguments: "{}" } },
+			];
+
+			const results = await executeToolsParallel(toolCalls, {
+				ctx: mockCtx,
+				toolContext: mockToolContext,
+				addToolResult: vi.fn(),
+			});
+
+			expect(results).toHaveLength(2);
+			expect(results[0]?.success).toBe(true);
+			expect(results[1]?.success).toBe(false);
+			expect(results[1]?.error).toContain("Parallel execution failed: Grep failed unexpectedly");
+		});
+	});
 });

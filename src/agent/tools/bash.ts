@@ -593,12 +593,39 @@ async function executeBash(
 		let resolved = false;
 		let timeoutId: NodeJS.Timeout | null = null;
 
+		const onAbort = () => {
+			if (resolved) return;
+			cleanup();
+			resolved = true;
+			try {
+				if (proc.pid) {
+					process.kill(-proc.pid, "SIGTERM");
+				}
+			} catch {}
+			resolve({
+				success: false,
+				output: "",
+				error: "Command execution aborted by user",
+			});
+		};
+
 		const cleanup = () => {
 			if (timeoutId) {
 				clearTimeout(timeoutId);
 				timeoutId = null;
 			}
+			if (ctx.signal) {
+				ctx.signal.removeEventListener("abort", onAbort);
+			}
 		};
+
+		if (ctx.signal) {
+			if (ctx.signal.aborted) {
+				onAbort();
+				return;
+			}
+			ctx.signal.addEventListener("abort", onAbort);
+		}
 
 		proc.stdout?.on("data", (data: Buffer) => {
 			if (resolved) return;

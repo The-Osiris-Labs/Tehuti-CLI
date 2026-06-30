@@ -11,4 +11,9 @@ describe("summarizeToolOutput", () => {
 		expect(summary.displayContent).toContain("a\nb\nc\nd");
 		expect(summary.displayContent).not.toContain("more");
 	});
+
+	it("truncates lines containing ANSI codes without color bleeding", () => {
+		const summary = summarizeToolOutput("\x1b[31mHelloWorld\x1b[0m", 11, 4);
+		expect(summary.displayContent).toContain("\x1b[31mHell\x1b[0m...");
+	});
 });

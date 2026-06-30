@@ -3,7 +3,7 @@ import { checkPermission } from "../../permissions/index.js";
 import { hookExecutor } from "../../hooks/executor.js";
 import { isPlanMode, isToolAllowedInPlanMode } from "../tools/plan-mode.js";
 import { getToolContext, trackToolCall, addToolResult } from "../context.js";
-import { shouldCacheTool, getToolCache, invalidateOnWrite } from "../cache/index.js";
+import { shouldCacheTool, getToolCache, invalidateOnWrite, invalidateOnBash } from "../cache/index.js";
 import { executeTool, getTool } from "../tools/registry.js";
 import { getTelemetry } from "../../utils/telemetry.js";
 import { debug } from "../../utils/debug.js";
@@ -33,12 +33,13 @@ function checkFirewallPolicy(toolName: string, args: any): { allowed: boolean; r
 export async function processToolCalls(
 	ctx: AgentContext,
 	toolCallsTyped: ToolCall[],
-	options: ToolProcessingOptions
+	options: ToolProcessingOptions,
+	signal?: AbortSignal
 ): Promise<number> {
 	const { onToolCall, onToolResult, onProgress } = options;
 	let processedCount = 0;
 	
-	const contextForTools = getToolContext(ctx);
+	const contextForTools = getToolContext(ctx, signal);
 	const classified = classifyToolCalls(toolCallsTyped);
 	const parallelCount = getParallelizableCount(toolCallsTyped);
 	
@@ -149,7 +150,8 @@ export async function processToolCalls(
 				addToolResult: (c, id, name, resultStr) => {
 					addToolResult(c, id, name, resultStr);
 				},
-			});
+				signal,
+			}, signal);
 
 			for (let i = 0; i < allowedCalls.length; i++) {
 				const tc = allowedCalls[i];
@@ -182,6 +184,18 @@ export async function processToolCalls(
 		const cache = getToolCache();
 		const telemetry = getTelemetry();
 		for (const tc of toolCallsTyped) {
+			if (signal?.aborted) {
+				const errorMsg = "Execution aborted by user";
+				onToolResult?.(tc.function.name, { error: errorMsg });
+				addToolResult(
+					ctx,
+					tc.id,
+					tc.function.name,
+					JSON.stringify({ error: errorMsg }),
+				);
+				processedCount++;
+				continue;
+			}
 			processedCount++;
 			trackToolCall(ctx, tc.function.name);
 
@@ -330,6 +344,13 @@ export async function processToolCalls(
 				});
 
 				invalidateOnWrite(getTool(tc.function.name), tc.function.name, args);
+
+				if (tc.function.name === "bash") {
+					const command = (args as any)?.command;
+					if (typeof command === "string") {
+						invalidateOnBash(command);
+					}
+				}
 
 				const duration = Date.now() - startTime;
 				onProgress?.(70, `Executed \${tc.function.name} in \${(duration / 1000).toFixed(2)}s`);

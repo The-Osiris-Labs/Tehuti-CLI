@@ -2,6 +2,7 @@ import { AsyncMutex } from "../utils/mutex.js";
 import { getTelemetry } from "../utils/telemetry.js";
 import {
 	getToolCache,
+	invalidateOnBash,
 	invalidateOnWrite,
 	shouldCacheTool,
 } from "./cache/index.js";
@@ -64,6 +65,7 @@ export interface ParallelExecutionOptions {
 	) => void;
 	ctx: AgentContext;
 	toolContext: Parameters<typeof executeTool>[2];
+	signal?: AbortSignal;
 }
 
 export interface ClassifiedToolCalls {
@@ -156,12 +158,20 @@ async function executeToolCall(
 		invalidateOnWrite(toolDef, toolName, args);
 	}
 
+	if (toolName === "bash") {
+		const command = (args as any)?.command;
+		if (typeof command === "string") {
+			invalidateOnBash(command);
+		}
+	}
+
 	return result;
 }
 
 export async function executeToolsParallel(
 	toolCalls: ToolCall[],
 	options: ParallelExecutionOptions,
+	signal?: AbortSignal,
 ): Promise<ToolResult[]> {
 	const {
 		maxConcurrency = 5,
@@ -170,15 +180,16 @@ export async function executeToolsParallel(
 		addToolResult,
 		ctx,
 		toolContext,
+		signal: optionsSignal,
 	} = options;
 
+	const activeSignal = signal ?? optionsSignal;
 	const cache = getToolCache();
 	const telemetry = getTelemetry();
 	const mutex = new AsyncMutex();
 	const results: ToolResult[] = new Array(toolCalls.length);
-	const classified = classifyToolCalls(toolCalls);
 
-	for (const tc of classified.parallel) {
+	for (const tc of toolCalls) {
 		try {
 			onToolCall?.(tc.function.name, JSON.parse(tc.function.arguments));
 		} catch (e) {
@@ -186,24 +197,138 @@ export async function executeToolsParallel(
 		}
 	}
 
-	for (const tc of classified.sequential) {
-		try {
-			onToolCall?.(tc.function.name, JSON.parse(tc.function.arguments));
-		} catch (e) {
-			onToolCall?.(tc.function.name, { __parseError: String(e), __rawArguments: tc.function.arguments });
+	interface Batch {
+		type: "parallel" | "sequential";
+		toolCalls: ToolCall[];
+	}
+
+	const batches: Batch[] = [];
+	let currentParallelBatch: ToolCall[] = [];
+
+	for (const tc of toolCalls) {
+		const toolName = tc.function.name;
+		const isSafe = SAFE_PARALLEL_TOOLS.has(toolName) && !INTERACTIVE_TOOLS.has(toolName);
+
+		if (isSafe) {
+			currentParallelBatch.push(tc);
+		} else {
+			if (currentParallelBatch.length > 0) {
+				batches.push({ type: "parallel", toolCalls: currentParallelBatch });
+				currentParallelBatch = [];
+			}
+			batches.push({ type: "sequential", toolCalls: [tc] });
 		}
 	}
-
-	const parallelStartTime = Date.now();
-	const parallelChunks: ToolCall[][] = [];
-
-	for (let i = 0; i < classified.parallel.length; i += maxConcurrency) {
-		parallelChunks.push(classified.parallel.slice(i, i + maxConcurrency));
+	if (currentParallelBatch.length > 0) {
+		batches.push({ type: "parallel", toolCalls: currentParallelBatch });
 	}
 
-	for (const chunk of parallelChunks) {
-		const chunkResults = await Promise.all(
-			chunk.map(async (tc) => {
+	for (const batch of batches) {
+		if (activeSignal?.aborted) {
+			for (let i = 0; i < toolCalls.length; i++) {
+				if (!results[i]) {
+					results[i] = {
+						success: false,
+						output: "",
+						error: "Execution aborted by user",
+					};
+				}
+			}
+			return results;
+		}
+
+		if (batch.type === "parallel") {
+			const parallelStartTime = Date.now();
+			const parallelChunks: ToolCall[][] = [];
+
+			for (let i = 0; i < batch.toolCalls.length; i += maxConcurrency) {
+				parallelChunks.push(batch.toolCalls.slice(i, i + maxConcurrency));
+			}
+
+			for (const chunk of parallelChunks) {
+				if (activeSignal?.aborted) {
+					for (let i = 0; i < toolCalls.length; i++) {
+						if (!results[i]) {
+							results[i] = {
+								success: false,
+								output: "",
+								error: "Execution aborted by user",
+							};
+						}
+					}
+					return results;
+				}
+
+				const chunkResults = await Promise.all(
+					chunk.map(async (tc) => {
+						try {
+							if (activeSignal?.aborted) {
+								return {
+									success: false,
+									output: "",
+									error: "Execution aborted by user",
+								};
+							}
+
+							const result = await executeToolCall(
+								tc,
+								ctx,
+								toolContext,
+								cache,
+								telemetry,
+							);
+
+							await mutex.runExclusive(async () => {
+								const resultStr =
+									typeof result.output === "string"
+										? result.output
+										: JSON.stringify(result.output ?? "");
+								addToolResult(ctx, tc.id, tc.function.name, resultStr);
+							});
+
+							onToolResult?.(tc.function.name, result);
+							return result;
+						} catch (error) {
+							const result = {
+								success: false,
+								output: "",
+								error: `Parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
+							};
+							onToolResult?.(tc.function.name, result);
+							return result;
+						}
+					}),
+				);
+
+				for (let i = 0; i < chunk.length; i++) {
+					const globalIndex = toolCalls.indexOf(chunk[i]);
+					if (globalIndex >= 0) {
+						results[globalIndex] = chunkResults[i];
+					}
+				}
+			}
+
+			const parallelEndTime = Date.now();
+			const parallelDuration = parallelEndTime - parallelStartTime;
+
+			let sequentialEstimate = 0;
+			for (const tc of batch.toolCalls) {
+				const toolStats = telemetry.getToolStats().get(tc.function.name);
+				if (toolStats) {
+					sequentialEstimate += toolStats.avgMs;
+				}
+			}
+
+			if (batch.toolCalls.length > 1 && sequentialEstimate > parallelDuration) {
+				telemetry.recordParallelExecution(
+					batch.toolCalls.length,
+					parallelDuration,
+					sequentialEstimate,
+				);
+			}
+		} else {
+			const tc = batch.toolCalls[0];
+			try {
 				const result = await executeToolCall(
 					tc,
 					ctx,
@@ -212,90 +337,30 @@ export async function executeToolsParallel(
 					telemetry,
 				);
 
-				await mutex.runExclusive(async () => {
-					const resultStr =
-						typeof result.output === "string"
-							? result.output
-							: JSON.stringify(result.output);
-					addToolResult(ctx, tc.id, tc.function.name, resultStr);
-				});
+				const resultStr =
+					typeof result.output === "string"
+						? result.output
+						: JSON.stringify(result.output ?? "");
+				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 				onToolResult?.(tc.function.name, result);
 
-				return result;
-			}),
-		);
-
-		for (let i = 0; i < chunk.length; i++) {
-			const globalIndex = toolCalls.indexOf(chunk[i]);
-			if (globalIndex >= 0) {
-				results[globalIndex] = chunkResults[i];
+				const globalIndex = toolCalls.indexOf(tc);
+				if (globalIndex >= 0) {
+					results[globalIndex] = result;
+				}
+			} catch (error) {
+				const result = {
+					success: false,
+					output: "",
+					error: `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
+				};
+				onToolResult?.(tc.function.name, result);
+				const globalIndex = toolCalls.indexOf(tc);
+				if (globalIndex >= 0) {
+					results[globalIndex] = result;
+				}
 			}
-		}
-	}
-
-	const parallelEndTime = Date.now();
-	const parallelDuration = parallelEndTime - parallelStartTime;
-
-	let sequentialEstimate = 0;
-	for (const tc of classified.parallel) {
-		const toolStats = telemetry.getToolStats().get(tc.function.name);
-		if (toolStats) {
-			sequentialEstimate += toolStats.avgMs;
-		}
-	}
-
-	if (classified.parallel.length > 1 && sequentialEstimate > parallelDuration) {
-		telemetry.recordParallelExecution(
-			classified.parallel.length,
-			parallelDuration,
-			sequentialEstimate,
-		);
-	}
-
-	for (const tc of classified.sequential) {
-		const result = await executeToolCall(
-			tc,
-			ctx,
-			toolContext,
-			cache,
-			telemetry,
-		);
-
-		const resultStr =
-			typeof result.output === "string"
-				? result.output
-				: JSON.stringify(result.output);
-		addToolResult(ctx, tc.id, tc.function.name, resultStr);
-
-		onToolResult?.(tc.function.name, result);
-
-		const globalIndex = toolCalls.indexOf(tc);
-		if (globalIndex >= 0) {
-			results[globalIndex] = result;
-		}
-	}
-
-	for (const tc of classified.interactive) {
-		const result = await executeToolCall(
-			tc,
-			ctx,
-			toolContext,
-			cache,
-			telemetry,
-		);
-
-		const resultStr =
-			typeof result.output === "string"
-				? result.output
-				: JSON.stringify(result.output);
-		addToolResult(ctx, tc.id, tc.function.name, resultStr);
-
-		onToolResult?.(tc.function.name, result);
-
-		const globalIndex = toolCalls.indexOf(tc);
-		if (globalIndex >= 0) {
-			results[globalIndex] = result;
 		}
 	}
 

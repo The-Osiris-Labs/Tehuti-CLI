@@ -6,6 +6,7 @@ import {
 	getTool,
 	getToolDefinitions,
 	registerTools,
+	ToolRegistryManager,
 } from "./registry.js";
 
 describe("Tool Registry", () => {
@@ -187,6 +188,118 @@ describe("Tool Registry", () => {
 
 			const definitions = getToolDefinitions();
 			expect(definitions[0].function.parameters).toEqual(jsonSchema);
+		});
+	});
+
+	describe("Scoped Registries", () => {
+		it("should fall back to parent registry and allow overrides", () => {
+			const parent = new ToolRegistryManager();
+			const child = new ToolRegistryManager(parent);
+
+			const pTool = {
+				name: "parent_tool",
+				description: "Parent",
+				parameters: z.object({}),
+				execute: async () => ({ success: true, output: "parent" }),
+				category: "test" as const,
+			};
+
+			const cTool = {
+				name: "child_tool",
+				description: "Child",
+				parameters: z.object({}),
+				execute: async () => ({ success: true, output: "child" }),
+				category: "test" as const,
+			};
+
+			parent.registerTool(pTool);
+			child.registerTool(cTool);
+
+			expect(child.getTool("parent_tool")).toBeDefined();
+			expect(child.getTool("child_tool")).toBeDefined();
+			expect(parent.getTool("child_tool")).toBeUndefined();
+		});
+	});
+
+	describe("Lifecycle Hooks", () => {
+		it("should trigger onRegister and onUnregister hooks", async () => {
+			let registered = false;
+			let unregistered = false;
+
+			const hookTool = {
+				name: "hook_tool",
+				description: "Hook test",
+				parameters: z.object({}),
+				execute: async () => ({ success: true, output: "" }),
+				category: "test" as const,
+				onRegister: () => {
+					registered = true;
+				},
+				onUnregister: () => {
+					unregistered = true;
+				},
+			};
+
+			const registry = new ToolRegistryManager();
+			registry.registerTool(hookTool);
+			expect(registered).toBe(true);
+
+			registry.unregisterTool("hook_tool");
+			expect(unregistered).toBe(true);
+		});
+	});
+
+	describe("JSON Schema parameter validation", () => {
+		it("should validate inputs against JSON Schema parameter definition", async () => {
+			const jsonTool = {
+				name: "json_val_tool",
+				description: "JSON Val test",
+				parameters: {
+					type: "object",
+					properties: {
+						name: { type: "string" },
+						age: { type: "integer" },
+					},
+					required: ["name"],
+				},
+				execute: async (args: any) => ({
+					success: true,
+					output: `Hello ${args.name}`,
+				}),
+				category: "test" as const,
+			};
+
+			const registry = new ToolRegistryManager();
+			registry.registerTool(jsonTool);
+
+			const ctx = { cwd: "/tmp", workingDir: "/tmp", env: {}, timeout: 30000 };
+
+			// Valid arguments
+			const res1 = await registry.executeTool(
+				"json_val_tool",
+				{ name: "Alice", age: 30 },
+				ctx,
+			);
+			expect(res1.success).toBe(true);
+			expect(res1.output).toBe("Hello Alice");
+
+			// Invalid type
+			const res2 = await registry.executeTool(
+				"json_val_tool",
+				{ name: 123 },
+				ctx,
+			);
+			expect(res2.success).toBe(false);
+			expect(res2.error).toContain("Expected string");
+
+			// Missing required
+			const res3 = await registry.executeTool(
+				"json_val_tool",
+				{ age: 30 },
+				ctx,
+			);
+			expect(res3.success).toBe(false);
+			expect(res3.error).toContain("Missing required property");
 		});
 	});
 });

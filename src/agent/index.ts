@@ -15,8 +15,8 @@ import { mcpManager } from "../mcp/client.js";
 import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
 import { checkPermission } from "../permissions/index.js";
 import { debug } from "../utils/debug.js";
-import { consola } from "../utils/logger.js";
 import { AgentError, APIError, formatError } from "../utils/errors.js";
+import { consola } from "../utils/logger.js";
 import { getTelemetry } from "../utils/telemetry.js";
 import {
 	getToolCache,
@@ -55,14 +55,13 @@ import {
 } from "./parallel-executor.js";
 import { getPrefetcher } from "./prefetcher.js";
 import { skillsTools } from "./skills/tools.js";
+import { astTool } from "./tools/ast.js";
 import { backgroundTools } from "./tools/background.js";
 import { bashTool } from "./tools/bash.js";
 import { collaborationTools } from "./tools/collaboration.js";
 import { customProviderTools } from "./tools/custom-provider.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
-import { grepaiTools } from "./tools/grepai.js";
-import { grepaiAdvancedTools } from "./tools/grepai-advanced.js";
 import {
 	executeTool,
 	getToolDefinitions,
@@ -79,14 +78,15 @@ import {
 	planTools,
 	setPlanMode,
 } from "./tools/plan-mode.js";
-import { searchTools } from "./tools/search.js";
 import { repoMapTool } from "./tools/repo-map.js";
+import { searchTools } from "./tools/search.js";
+import { semanticTools } from "./tools/semantic.js";
+import { swarmTools } from "./tools/swarm.js";
 import { setParentContext, systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
-import { swarmTools } from "./tools/swarm.js";
-
 
 registerTools([
+	astTool,
 	...allFsTools,
 	...searchTools,
 	repoMapTool,
@@ -99,8 +99,7 @@ registerTools([
 	...planTools,
 	...gitTools,
 	...skillsTools,
-	...grepaiTools,
-	...grepaiAdvancedTools,
+	...semanticTools,
 	...kiloCodeTools,
 	...kilocodeAdvancedTools,
 	...collaborationTools,
@@ -151,17 +150,20 @@ function syncMCPToolRegistry(): void {
 			tool.name !== "mcp_list_prompts",
 	);
 
-	const dynamicTools = mcpManager.getAllTools().map(({ serverName, tool }) =>
-		createMCPToolDefinition(serverName, tool, async (args) =>
-			mcpManager.executeTool(
-				serverName,
-				tool.name,
-				(args && typeof args === "object"
-					? args
-					: {}) as Record<string, unknown>,
+	const dynamicTools = mcpManager
+		.getAllTools()
+		.map(({ serverName, tool }) =>
+			createMCPToolDefinition(serverName, tool, async (args) =>
+				mcpManager.executeTool(
+					serverName,
+					tool.name,
+					(args && typeof args === "object" ? args : {}) as Record<
+						string,
+						unknown
+					>,
+				),
 			),
-		),
-	);
+		);
 
 	if (dynamicTools.length > 0) {
 		registerTools(dynamicTools);
@@ -224,7 +226,13 @@ export async function runAgentLoop(
 	options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
 	const client = createProviderClient(ctx);
-	return await _runAgentLoop(ctx, userMessage, client, syncMCPToolRegistry, options);
+	return await _runAgentLoop(
+		ctx,
+		userMessage,
+		client,
+		syncMCPToolRegistry,
+		options,
+	);
 }
 
 export async function runOneShot(

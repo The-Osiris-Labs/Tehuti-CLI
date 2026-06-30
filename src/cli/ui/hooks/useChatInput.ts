@@ -37,6 +37,8 @@ export interface UseChatInputProps {
 	resetConversation: () => Promise<void>;
 	send: (text: string) => Promise<void>;
 	saveHistory: (history: string[]) => void;
+	showConfigEditor?: boolean;
+	pendingQuestion?: any;
 }
 
 export function useChatInput(props: UseChatInputProps) {
@@ -73,28 +75,89 @@ export function useChatInput(props: UseChatInputProps) {
 		resetConversation,
 		send,
 		saveHistory,
+		showConfigEditor,
+		pendingQuestion,
 	} = props;
 
+	const showCommandPaletteRef = React.useRef(showCommandPalette);
+	React.useEffect(() => {
+		showCommandPaletteRef.current = showCommandPalette;
+	}, [showCommandPalette]);
+
 	useInput((k, key) => {
+		if (k && k.startsWith("\x1b[<64;")) {
+			scrollLineUp();
+			return;
+		}
+		if (k && k.startsWith("\x1b[<65;")) {
+			scrollLineDown();
+			return;
+		}
 		if (isMouseSequence(k)) {
 			return;
 		}
 
-		if (showCommandPalette) {
+		if (key.ctrl && k === "p") {
+			const newVal = !showCommandPaletteRef.current;
+			showCommandPaletteRef.current = newVal;
+			setShowCommandPalette(newVal);
 			return;
+		}
+
+		if (showCommandPaletteRef.current || showConfigEditor || pendingQuestion) {
+			return;
+		}
+
+		const hasSelection = selectionStart !== null && selectionEnd !== null;
+
+		const deleteSelection = () => {
+			if (!hasSelection) return { text: input, pos: cursorPos };
+			const start = Math.min(selectionStart!, selectionEnd!);
+			const end = Math.max(selectionStart!, selectionEnd!);
+			const newText = input.slice(0, start) + input.slice(end);
+			setInput(newText);
+			setCursorPos(start);
+			setSelectionStart(null);
+			setSelectionEnd(null);
+			return { text: newText, pos: start };
+		};
+
+		// Clear selection on cursor navigation without Shift
+		if (!key.shift && (
+			key.leftArrow || key.rightArrow || key.upArrow || key.downArrow ||
+			key.pageUp || key.pageDown || key.home || key.end ||
+			(key.ctrl && (key.upArrow || key.downArrow))
+		)) {
+			if (hasSelection) {
+				setSelectionStart(null);
+				setSelectionEnd(null);
+			}
 		}
 
 		// Bracketed paste handling
 		if (k && k.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
+			if (loading) return;
 			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
-			setInput((i: string) => i.slice(0, cursorPos) + pastedText + i.slice(cursorPos));
-			setCursorPos((p: number) => p + pastedText.length);
+			let targetText = input;
+			let targetPos = cursorPos;
+			if (hasSelection) {
+				const res = deleteSelection();
+				targetText = res.text;
+				targetPos = res.pos;
+			}
+			setInput(targetText.slice(0, targetPos) + pastedText + targetText.slice(targetPos));
+			setCursorPos(targetPos + pastedText.length);
 			setHistoryIndex(-1);
 			return;
 		}
 
 		// Backspace handling
 		if (key.backspace || k === "\x7f" || k === "\b" || k === "\x08" || (key.delete && k !== "\x1b[3~")) {
+			if (loading) return;
+			if (hasSelection) {
+				deleteSelection();
+				return;
+			}
 			if (cursorPos > 0) {
 				setInput((i: string) => i.slice(0, cursorPos - 1) + i.slice(cursorPos));
 				setCursorPos((p: number) => Math.max(0, p - 1));
@@ -104,14 +167,14 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Delete handling (forward delete)
 		if ((key.delete && k === "\x1b[3~") || k === "\x1b[3~") {
+			if (loading) return;
+			if (hasSelection) {
+				deleteSelection();
+				return;
+			}
 			if (cursorPos < input.length) {
 				setInput((i: string) => i.slice(0, cursorPos) + i.slice(cursorPos + 1));
 			}
-			return;
-		}
-
-		if (key.ctrl && k === "p") {
-			setShowCommandPalette(true);
 			return;
 		}
 
@@ -124,22 +187,22 @@ export function useChatInput(props: UseChatInputProps) {
 				console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
 				onExit();
 				exit();
-			} else if (selectionStart !== null && selectionEnd !== null) {
-				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
+			} else if (hasSelection) {
+				const [start, end] = [Math.min(selectionStart!, selectionEnd!), Math.max(selectionStart!, selectionEnd!)];
 				const selectedText = input.slice(start, end);
 				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
 				setSelectionStart(null);
 				setSelectionEnd(null);
 			} else {
+				if (loading) return;
 				setInput("");
 				setCursorPos(0);
 			}
 			return;
 		}
 
-		// Tab completion for commands is now handled by the Command Palette natively
-
-		if (key.return && input.trim() && !loading) {
+		if (key.return && input.trim()) {
+			if (loading) return;
 			const newHistory = [
 				input.trim(),
 				...history.filter((h) => h !== input.trim()),
@@ -213,11 +276,13 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "l") {
+			if (loading) return;
 			void resetConversation();
 			return;
 		}
 
 		if (key.ctrl && k === "u") {
+			if (loading) return;
 			setInput(input.slice(cursorPos));
 			setCursorPos(0);
 			setHistoryIndex(-1);
@@ -236,6 +301,7 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Delete previous word: Ctrl+W or Option+Backspace (Meta+Backspace / Meta+Delete)
 		if (((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) || (key.ctrl && k === "w")) {
+			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
 			const match = before.match(/\S+\s*$/);
@@ -251,6 +317,7 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "k") {
+			if (loading) return;
 			setInput(input.slice(0, cursorPos));
 			setCursorPos(cursorPos);
 			return;
@@ -258,16 +325,28 @@ export function useChatInput(props: UseChatInputProps) {
 
 		if (key.ctrl && k === "d") {
 			if (input.length === 0) {
+				if (sessionId && ctxRef.current) {
+					sessionManager.saveSession(sessionId, ctxRef.current);
+				}
+				console.log();
+				console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
 				onExit();
+				exit();
 			} else {
-				setInput(input.slice(0, cursorPos) + input.slice(cursorPos + 1));
+				if (loading) return;
+				if (hasSelection) {
+					deleteSelection();
+				} else {
+					setInput(input.slice(0, cursorPos) + input.slice(cursorPos + 1));
+				}
 			}
 			return;
 		}
 
 		if (key.ctrl && k === "x") {
-			if (selectionStart !== null && selectionEnd !== null) {
-				const [start, end] = [Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)];
+			if (loading) return;
+			if (hasSelection) {
+				const [start, end] = [Math.min(selectionStart!, selectionEnd!), Math.max(selectionStart!, selectionEnd!)];
 				const selectedText = input.slice(start, end);
 				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
 				setInput(input.slice(0, start) + input.slice(end));
@@ -283,6 +362,7 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "t") {
+			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
 			if (before.length > 0) {
@@ -351,31 +431,34 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.escape) {
+			if (loading) return;
 			setInput("");
 			setCursorPos(0);
 			setHistoryIndex(-1);
 			return;
 		}
 
-		// Tab completion for commands handled by Command Palette
-
-		if (key.ctrl && k === "c") {
-			// Already handled above
-			return;
-		}
-
 		// Handle normal character input and paste
 		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
+			if (loading) return;
 			// Trigger Command Palette automatically when typing '/' as the first character
 			if (k === "/" && input.trim() === "" && cursorPos === 0) {
+				showCommandPaletteRef.current = true;
 				setShowCommandPalette(true);
 				return;
 			}
 
 			const sanitized = k.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
 			if (sanitized.length > 0) {
-				setInput((i: string) => i.slice(0, cursorPos) + sanitized + i.slice(cursorPos));
-				setCursorPos((p: number) => p + sanitized.length);
+				let targetText = input;
+				let targetPos = cursorPos;
+				if (hasSelection) {
+					const res = deleteSelection();
+					targetText = res.text;
+					targetPos = res.pos;
+				}
+				setInput(targetText.slice(0, targetPos) + sanitized + targetText.slice(targetPos));
+				setCursorPos(targetPos + sanitized.length);
 				setHistoryIndex(-1);
 			}
 		}

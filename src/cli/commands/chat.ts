@@ -1029,7 +1029,6 @@ function ChatUI({
 		sessionCost, setSessionCost,
 		thinking, setThinking,
 		showThinking, setShowThinking,
-		thinkingDots, setThinkingDots,
 		showCommandPalette, setShowCommandPalette,
 		showDashboard, setShowDashboard,
 		pendingQuestion, setPendingQuestion,
@@ -1234,36 +1233,40 @@ function ChatUI({
 	);
 
 	const resetConversation = useCallback(async (createNewSession = true) => {
-		abortActiveRequest();
-		if (pendingQuestion) {
-			pendingQuestion.reject(new Error("Question cancelled by reset"));
-			setPendingQuestion(null);
-		}
+		setLoading(true);
+		try {
+			abortActiveRequest();
+			if (pendingQuestion) {
+				pendingQuestion.reject(new Error("Question cancelled by reset"));
+				setPendingQuestion(null);
+			}
 
-		setMessages([]);
-		setThinking("");
-		setShowThinking(false);
-		setSessionCost(0);
-		setShowWelcome(true);
-		setHistoryIndex(-1);
-		setInput("");
-		setCursorPos(0);
-		setScrollOffset(0);
-		setLoading(false);
-		setError("");
-		setProgress(0);
-		setOperationLabel("");
-		costTracker.reset();
-		resetTelemetry();
-		ctxRef.current = null;
-		if (createNewSession) {
-			const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
-				provider: normalizedProvider,
-				baseUrl: runtimeBaseUrl,
-				customProvider:
-					normalizedProvider === "custom" ? runtimeCustomProvider : undefined,
-			});
-			setSessionId(id);
+			setMessages([]);
+			setThinking("");
+			setShowThinking(false);
+			setSessionCost(0);
+			setShowWelcome(true);
+			setHistoryIndex(-1);
+			setInput("");
+			setCursorPos(0);
+			setScrollOffset(0);
+			setError("");
+			setProgress(0);
+			setOperationLabel("");
+			costTracker.reset();
+			resetTelemetry();
+			ctxRef.current = null;
+			if (createNewSession) {
+				const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
+					provider: normalizedProvider,
+					baseUrl: runtimeBaseUrl,
+					customProvider:
+						normalizedProvider === "custom" ? runtimeCustomProvider : undefined,
+				});
+				setSessionId(id);
+			}
+		} finally {
+			setLoading(false);
 		}
 	}, [
 		ctxModel,
@@ -1404,8 +1407,8 @@ function ChatUI({
 		]);
 	}, []);
 
-	const handleClear = useCallback(() => {
-		void resetConversation();
+	const handleClear = useCallback(async () => {
+		await resetConversation();
 	}, [resetConversation]);
 
 	const handleCompact = useCallback(() => {
@@ -1731,7 +1734,131 @@ function ChatUI({
 			]);
 		}
 	}, [sessionId]);
-	  const handleLoad = useCallback(async () => {
+	const loadSessionById = useCallback(async (id: string) => {
+		setLoading(true);
+		try {
+			const data = await sessionManager.loadSession(id);
+			if (data && data.messages.length > 0) {
+				const loadedProvider = data.metadata.provider?.trim().toLowerCase();
+				const loadedBaseUrl = data.metadata.baseUrl?.trim();
+				const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
+				const resolvedProvider = loadedProvider || runtimeProvider;
+				const sourceCustomProvider =
+					loadedCustomProvider ||
+					runtimeCustomProvider ||
+					normalizeCustomProvider(cfg.customProvider);
+				const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+					baseUrl: loadedBaseUrl || "",
+					customProvider: sourceCustomProvider,
+				});
+				const resolvedModel = data.metadata.model || ctxModel;
+
+				applyRuntimeProviderState(resolvedState);
+				persistRuntimeProviderState(resolvedState, { model: resolvedModel });
+
+				const loadedMsgs = data.messages
+					.filter((m) => m.role === "user" || m.role === "assistant")
+					.map((m, i) => ({
+						id: i,
+						role: m.role,
+						content:
+							typeof m.content === "string"
+								? m.content
+								: JSON.stringify(m.content),
+					}));
+				setMessages(loadedMsgs);
+				msgIdRef.current = loadedMsgs.length;
+				setSessionId(id);
+				setShowWelcome(false);
+				setThinking("");
+				setShowThinking(false);
+				costTracker.reset();
+				setSessionCost(0);
+
+				ctxRef.current = await createAgentContext(
+					process.cwd(),
+					{
+						...getActiveConfig(),
+						provider: resolvedState.provider,
+						baseUrl: resolvedState.baseUrl,
+						apiKey: resolvedState.apiKey,
+						customProvider:
+							resolvedState.provider === "custom" &&
+							resolvedState.customProvider?.baseUrl
+								? resolvedState.customProvider
+								: undefined,
+						model: resolvedModel,
+						maxIterations: 50,
+						maxTokens: 4096,
+						permissions: {
+							defaultMode: "trust",
+							alwaysAllow: [],
+							alwaysDeny: [],
+							trustedMode: true,
+						},
+					},
+					diffPreview,
+				);
+				ctxRef.current.config.provider = resolvedState.provider;
+				if (resolvedState.baseUrl) {
+					ctxRef.current.config.baseUrl = resolvedState.baseUrl;
+				} else {
+					delete ctxRef.current.config.baseUrl;
+				}
+				if (resolvedState.apiKey) {
+					ctxRef.current.config.apiKey = resolvedState.apiKey;
+				} else {
+					delete ctxRef.current.config.apiKey;
+				}
+				if (
+					resolvedState.provider === "custom" &&
+					resolvedState.customProvider?.baseUrl
+				) {
+					ctxRef.current.config.customProvider = resolvedState.customProvider;
+				} else {
+					delete ctxRef.current.config.customProvider;
+				}
+				ctxRef.current.messages = data.messages;
+				if (data.metadata.model) {
+					setCtxModel(resolvedModel);
+				}
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Loaded session: ${data.metadata.name || id.slice(0, 8)} (${loadedMsgs.length} messages)`,
+					},
+				]);
+			} else {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Session not found or empty: ${id}`,
+					},
+				]);
+			}
+		} catch (error: any) {
+			setMessages((m) => [
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Error loading session ${id}: ${error.message || error}`,
+				},
+			]);
+		} finally {
+			setLoading(false);
+		}
+	}, [runtimeProvider, runtimeBaseUrl, runtimeCustomProvider, cfg.customProvider, ctxModel, applyRuntimeProviderState, persistRuntimeProviderState, setMessages, setSessionId, setShowWelcome, setThinking, setShowThinking, costTracker, setSessionCost, diffPreview]);
+
+	const handleLoad = useCallback(async (targetSessionId?: string) => {
+		if (typeof targetSessionId === "string" && targetSessionId.trim()) {
+			await loadSessionById(targetSessionId.trim());
+			return;
+		}
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
 		if (sessions.length === 0) {
@@ -1759,7 +1886,7 @@ function ChatUI({
 			]);
 		}
 		setLoading(false);
-	}, []);
+	}, [loadSessionById, sessionManager]);
 
   const handleSearchSessions = useCallback(async (query: string) => {
 		setLoading(true);
@@ -1969,29 +2096,12 @@ function ChatUI({
 			mounted = false;
 			controller.abort();
 			abortActiveRequest();
-		};
-	}, []);
-
-	useEffect(() => {
-		let thinkingTimer: NodeJS.Timeout;
-		if (showThinking) {
-			let dotCount = 0;
-			thinkingTimer = setInterval(() => {
-				dotCount = (dotCount + 1) % 4;
-				setThinkingDots(".".repeat(dotCount));
-			}, 400);
-		}
-
-		return () => {
 			if (batchTimerRef.current) {
 				clearTimeout(batchTimerRef.current);
 				batchTimerRef.current = null;
 			}
-			if (thinkingTimer) {
-				clearInterval(thinkingTimer);
-			}
 		};
-	}, [showThinking]);
+	}, []);
 
 	useEffect(() => {
 		questionResolverRef.current = async (
@@ -2135,6 +2245,8 @@ function ChatUI({
 		resetConversation,
 		send,
 		saveHistory,
+		showConfigEditor,
+		pendingQuestion,
 	});
 
 	async function send(text: string) {
@@ -2285,108 +2397,7 @@ function ChatUI({
 
 			if (text.toLowerCase().startsWith("/load ")) {
 				const id = text.slice(6).trim();
-				const data = await sessionManager.loadSession(id);
-			if (data && data.messages.length > 0) {
-					const loadedProvider = data.metadata.provider?.trim().toLowerCase();
-					const loadedBaseUrl = data.metadata.baseUrl?.trim();
-					const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
-					const resolvedProvider = loadedProvider || runtimeProvider;
-					const sourceCustomProvider =
-						loadedCustomProvider ||
-						runtimeCustomProvider ||
-						normalizeCustomProvider(cfg.customProvider);
-					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
-						baseUrl: loadedBaseUrl || "",
-						customProvider: sourceCustomProvider,
-					});
-					const resolvedModel = data.metadata.model || ctxModel;
-
-					applyRuntimeProviderState(resolvedState);
-					persistRuntimeProviderState(resolvedState, { model: resolvedModel });
-
-					const loadedMsgs = data.messages
-						.filter((m) => m.role === "user" || m.role === "assistant")
-						.map((m, i) => ({
-							id: i,
-							role: m.role,
-							content:
-								typeof m.content === "string"
-									? m.content
-									: JSON.stringify(m.content),
-						}));
-					setMessages(loadedMsgs);
-					msgIdRef.current = loadedMsgs.length;
-					setSessionId(id);
-					setShowWelcome(false);
-					setThinking("");
-					setShowThinking(false);
-					costTracker.reset();
-					setSessionCost(0);
-					ctxRef.current = await createAgentContext(
-						process.cwd(),
-						{
-							...getActiveConfig(),
-							provider: resolvedState.provider,
-							baseUrl: resolvedState.baseUrl,
-							apiKey: resolvedState.apiKey,
-							customProvider:
-								resolvedState.provider === "custom" &&
-								resolvedState.customProvider?.baseUrl
-									? resolvedState.customProvider
-									: undefined,
-							model: resolvedModel,
-							maxIterations: 50,
-							maxTokens: 4096,
-							permissions: {
-								defaultMode: "trust",
-								alwaysAllow: [],
-								alwaysDeny: [],
-								trustedMode: true,
-							},
-						},
-						diffPreview,
-					);
-					ctxRef.current.config.provider = resolvedState.provider;
-					if (resolvedState.baseUrl) {
-						ctxRef.current.config.baseUrl = resolvedState.baseUrl;
-					} else {
-						delete ctxRef.current.config.baseUrl;
-					}
-					if (resolvedState.apiKey) {
-						ctxRef.current.config.apiKey = resolvedState.apiKey;
-					} else {
-						delete ctxRef.current.config.apiKey;
-					}
-					if (
-						resolvedState.provider === "custom" &&
-						resolvedState.customProvider?.baseUrl
-					) {
-						ctxRef.current.config.customProvider = resolvedState.customProvider;
-					} else {
-						delete ctxRef.current.config.customProvider;
-					}
-					ctxRef.current.messages = data.messages;
-					if (data.metadata.model) {
-						setCtxModel(resolvedModel);
-					}
-					setMessages((m) => [
-						...m,
-						{
-							id: msgIdRef.current++,
-							role: "system",
-							content: `Loaded session: ${data.metadata.name || id.slice(0, 8)} (${loadedMsgs.length} messages)`,
-						},
-					]);
-				} else {
-					setMessages((m) => [
-						...m,
-						{
-							id: msgIdRef.current++,
-							role: "system",
-							content: `Session not found: ${id}`,
-						},
-					]);
-				}
+				await loadSessionById(id);
 				return;
 			}
 
@@ -2853,7 +2864,7 @@ function ChatUI({
 									content.push(
 										React.createElement(
 											Box,
-											{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-${bIdx}-${sbIdx}` },
+											{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-${bIdx}-${sbIdx}` },
 											React.createElement(
 												Box,
 												{ flexDirection: "row", alignItems: "center" },
@@ -2864,7 +2875,7 @@ function ChatUI({
 											React.createElement(
 												Box,
 												{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-												...renderMarkdown(subBlock.content, contentMaxWidth - 4, `reasoning-${bIdx}-${sbIdx}-md`)
+												...renderMarkdown(subBlock.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-${bIdx}-${sbIdx}-md`)
 											),
 											React.createElement(
 												Box,
@@ -2880,7 +2891,7 @@ function ChatUI({
 							content.push(
 								React.createElement(
 									Box,
-									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-${bIdx}` },
+									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-${bIdx}` },
 									React.createElement(
 										Box,
 										{ flexDirection: "row", alignItems: "center" },
@@ -2891,7 +2902,7 @@ function ChatUI({
 									React.createElement(
 										Box,
 										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(block.content, contentMaxWidth - 4, `reasoning-${bIdx}-md`)
+										...renderMarkdown(block.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-${bIdx}-md`)
 									),
 									React.createElement(
 										Box,
@@ -2926,7 +2937,7 @@ function ChatUI({
 							content.push(
 								React.createElement(
 									Box,
-									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `reasoning-fallback-${sbIdx}` },
+									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-fallback-${sbIdx}` },
 									React.createElement(
 										Box,
 										{ flexDirection: "row", alignItems: "center" },
@@ -2937,7 +2948,7 @@ function ChatUI({
 									React.createElement(
 										Box,
 										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(subBlock.content, contentMaxWidth - 4, `reasoning-fallback-${sbIdx}-md`)
+										...renderMarkdown(subBlock.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-fallback-${sbIdx}-md`)
 									),
 									React.createElement(
 										Box,
@@ -3009,7 +3020,7 @@ function ChatUI({
 
 			return React.createElement(
 				Text,
-				{ color: CORAL },
+				{ color: CORAL, wrap: "wrap" },
 				`${DECORATIVE.feather} >`,
 				historyIndicator,
 				" ",
@@ -3023,7 +3034,7 @@ function ChatUI({
 		const after = input.slice(cursorPos);
 		return React.createElement(
 			Text,
-			{ color: CORAL },
+			{ color: CORAL, wrap: "wrap" },
 			`${DECORATIVE.feather} >`,
 			historyIndicator,
 			" ",
@@ -3291,6 +3302,12 @@ function ChatUI({
 					},
 					(showCommandPalette || showConfigEditor)
 						? null
+						: pendingQuestion
+						? React.createElement(_QuestionPrompt, {
+								question: pendingQuestion.questions[0],
+								onAnswer: (ans) => _handleQuestionAnswer(0, ans),
+								onCancel: _handleQuestionCancel,
+							})
 						: loading
 						? React.createElement(
 								Text,

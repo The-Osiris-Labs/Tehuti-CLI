@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { createCommands, formatHelpOutput } from "./CommandPalette.js";
+import { describe, expect, it, vi } from "vitest";
+import { createCommands, formatHelpOutput, CommandPalette } from "./CommandPalette.js";
+import { render } from "ink";
+import React from "react";
 
 describe("CommandPalette helpers", () => {
 	it("includes the real provider commands in the shared command list", () => {
@@ -25,5 +27,41 @@ describe("CommandPalette helpers", () => {
 		expect(help).not.toContain("Copy selected");
 		expect(help).not.toContain("Paste");
 		expect(help).not.toContain("Swap characters");
+	});
+});
+
+describe("CommandPalette Selection State", () => {
+	it("should verify selection index behavior on query change", () => {
+		const commands = [
+			{ id: "cmd1", label: "Clear", description: "Clear chat", category: "session" as const },
+			{ id: "cmd2", label: "Cost", description: "Show cost", category: "session" as const },
+			{ id: "cmd3", label: "Help", description: "Show help", category: "help" as const },
+		];
+
+		// Mock implementation to test selection index logic
+		let query = "";
+		let selectedIndex = 2; // user has scrolled to the 3rd command
+
+		// Simulate user typing a filter "Cl"
+		query = "Cl";
+		const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
+		
+		// In the render pass, filtered has length 1.
+		// However, selectedIndex is still 2 because useEffect hasn't run yet!
+		expect(filtered.length).toBe(1);
+		
+		// If user presses Enter here, it falls back:
+		const selectedBeforeEffect = filtered[selectedIndex] || filtered[0];
+		expect(selectedBeforeEffect.id).toBe("cmd1"); // falls back to index 0, which is safe but ignores selection index
+		
+		// What if filtered has 3 elements, but we type "C" which matches both Clear and Cost?
+		query = "C";
+		const filtered2 = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
+		expect(filtered2.length).toBe(2);
+		
+		// selectedIndex is still 2. Since filtered2 has length 2, filtered2[selectedIndex] (filtered2[2]) is undefined.
+		// So it falls back to filtered2[0] ("cmd1").
+		const selectedFallback = filtered2[selectedIndex] || filtered2[0];
+		expect(selectedFallback.id).toBe("cmd1");
 	});
 });

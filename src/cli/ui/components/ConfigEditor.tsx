@@ -87,9 +87,9 @@ function ConfigFieldRow({
 			ref={ref}
 			flexDirection="column"
 			marginBottom={1}
-			padding={isSelected ? 1 : 0}
-			borderStyle={isSelected ? "single" : undefined}
-			borderColor={GOLD}
+			padding={1}
+			borderStyle="single"
+			borderColor={isSelected ? GOLD : NILE}
 			backgroundColor={isSelected && !isEditing ? "#1A1A2E" : undefined}
 		>
 			<Box justifyContent="space-between" marginBottom={0.5}>

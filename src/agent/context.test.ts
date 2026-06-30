@@ -1,7 +1,16 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "fs-extra";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("./memory/graph.js", () => ({
+	getSystemPromptMemory: vi.fn().mockResolvedValue(""),
+	loadGraph: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
+	saveGraph: vi.fn().mockResolvedValue(undefined),
+	addNode: vi.fn().mockResolvedValue(undefined),
+	addEdge: vi.fn().mockResolvedValue(undefined),
+	searchGraph: vi.fn().mockResolvedValue([]),
+}));
 import type { OpenRouterMessage } from "../api/openrouter.js";
 import type { TehutiConfig } from "../config/schema.js";
 import {
@@ -223,18 +232,18 @@ describe("Agent Context", () => {
 	});
 
 	describe("estimateTokens", () => {
-		it("should estimate tokens based on character count", () => {
+		it("should estimate tokens using tiktoken base", () => {
 			const messages: OpenRouterMessage[] = [
 				{ role: "user", content: "12345678" },
 			];
 			const tokens = estimateTokens(messages);
-			expect(tokens).toBe(2);
+			expect(tokens).toBe(13);
 		});
 
 		it("should handle string content", () => {
 			const messages: OpenRouterMessage[] = [{ role: "user", content: "test" }];
 			const tokens = estimateTokens(messages);
-			expect(tokens).toBe(1);
+			expect(tokens).toBe(11);
 		});
 
 		it("should handle array content", () => {

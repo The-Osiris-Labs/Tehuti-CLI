@@ -14,6 +14,12 @@ export const BRANDING = {
 		obsidian: "#1A1A2E",
 		nile: "#165DFF", // High contrast blue
 		sand: "#8B7355", // Darker sand for better contrast with gold
+		green: "#22C55E",
+		gray: "#9CA3AF",
+		red: "#EF4444",
+		cyan: "#06B6D4",
+		blue: "#3B82F6",
+		purple: "#A855F7",
 		// High contrast mode colors
 		highContrast: {
 			primary: "#FFD700", // Bright yellow/gold (WCAG AAA compliant)

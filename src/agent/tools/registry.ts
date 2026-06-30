@@ -29,15 +29,15 @@ export interface ToolContext {
 export interface ToolDefinition {
 	name: string;
 	description: string;
-	parameters: z.ZodType<unknown>;
+	parameters: z.ZodType<unknown> | Record<string, unknown>;
 	jsonSchema?: Record<string, unknown>;
-	execute: (args: unknown, ctx: ToolContext) => Promise<ToolResult>;
+	execute: (args: any, ctx: ToolContext) => Promise<ToolResult>;
 	requiresPermission?: boolean;
 	isReadonly?: boolean;
 	prefetchRules?: Array<{
 		tool: string;
-		argMapper: (args: unknown, ctx: ToolContext) => unknown | null;
-		condition?: (args: unknown) => boolean;
+		argMapper: (args: any, ctx: ToolContext) => unknown | null;
+		condition?: (args: any) => boolean;
 		priority?: "high" | "medium" | "low";
 	}>;
 	category:
@@ -49,80 +49,340 @@ export interface ToolDefinition {
 		| "git"
 		| "search"
 		| "development";
+	onRegister?: (manager: ToolRegistryManager) => Promise<void> | void;
+	onUnregister?: (manager: ToolRegistryManager) => Promise<void> | void;
 }
 
 export type AnyToolExecutor = (
-	args: unknown,
+	args: any,
 	ctx: ToolContext,
 ) => Promise<ToolResult>;
 
-const toolRegistry = new Map<string, ToolDefinition>();
+export function validateJsonSchema(
+	data: unknown,
+	schema: Record<string, any>,
+): { success: boolean; error?: string } {
+	if (!schema || typeof schema !== "object") {
+		return { success: true };
+	}
+
+	const type = schema.type;
+	if (type === "object") {
+		if (typeof data !== "object" || data === null) {
+			return { success: false, error: "Expected an object" };
+		}
+
+		const properties = schema.properties || {};
+		const required = schema.required || [];
+
+		// Check required fields
+		for (const reqKey of required) {
+			if (!(reqKey in data) || (data as any)[reqKey] === undefined) {
+				return {
+					success: false,
+					error: `Missing required property: ${reqKey}`,
+				};
+			}
+		}
+
+		// Validate properties recursively
+		for (const [key, val] of Object.entries(data)) {
+			if (properties[key]) {
+				const res = validateJsonSchema(val, properties[key]);
+				if (!res.success) {
+					return { success: false, error: `${key}: ${res.error}` };
+				}
+			}
+		}
+	} else if (type === "array") {
+		if (!Array.isArray(data)) {
+			return { success: false, error: "Expected an array" };
+		}
+		if (schema.items) {
+			for (let i = 0; i < data.length; i++) {
+				const res = validateJsonSchema(data[i], schema.items);
+				if (!res.success) {
+					return { success: false, error: `[${i}]: ${res.error}` };
+				}
+			}
+		}
+	} else if (type === "string") {
+		if (typeof data !== "string") {
+			return { success: false, error: `Expected string, got ${typeof data}` };
+		}
+		if (schema.enum && !schema.enum.includes(data)) {
+			return {
+				success: false,
+				error: `Expected one of [${schema.enum.join(", ")}], got ${data}`,
+			};
+		}
+	} else if (type === "number") {
+		if (typeof data !== "number") {
+			return { success: false, error: `Expected number, got ${typeof data}` };
+		}
+	} else if (type === "integer") {
+		if (typeof data !== "number" || !Number.isInteger(data)) {
+			return { success: false, error: `Expected integer, got ${data}` };
+		}
+	} else if (type === "boolean") {
+		if (typeof data !== "boolean") {
+			return { success: false, error: `Expected boolean, got ${typeof data}` };
+		}
+	}
+
+	return { success: true };
+}
+
+export class ToolRegistryManager {
+	private tools = new Map<string, ToolDefinition>();
+	private parent?: ToolRegistryManager;
+
+	constructor(parent?: ToolRegistryManager) {
+		this.parent = parent;
+	}
+
+	registerTool(tool: ToolDefinition): void {
+		if (this.tools.has(tool.name)) {
+			debug.log("tools", `Overwriting existing tool: ${tool.name}`);
+			const existing = this.tools.get(tool.name);
+			if (existing?.onUnregister) {
+				try {
+					const res = existing.onUnregister(this);
+					if (res instanceof Promise) {
+						res.catch((err) =>
+							debug.log(
+								"tools",
+								`Error in onUnregister for ${tool.name}:`,
+								err,
+							),
+						);
+					}
+				} catch (err) {
+					debug.log("tools", `Error in onUnregister for ${tool.name}:`, err);
+				}
+			}
+		}
+		this.tools.set(tool.name, tool);
+		debug.log("tools", `Registered tool: ${tool.name}`);
+		if (tool.onRegister) {
+			try {
+				const res = tool.onRegister(this);
+				if (res instanceof Promise) {
+					res.catch((err) =>
+						debug.log("tools", `Error in onRegister for ${tool.name}:`, err),
+					);
+				}
+			} catch (err) {
+				debug.log("tools", `Error in onRegister for ${tool.name}:`, err);
+			}
+		}
+	}
+
+	registerTools(tools: ToolDefinition[]): void {
+		for (const tool of tools) {
+			this.registerTool(tool);
+		}
+	}
+
+	unregisterTool(name: string): boolean {
+		const tool = this.tools.get(name);
+		if (tool) {
+			if (tool.onUnregister) {
+				try {
+					const res = tool.onUnregister(this);
+					if (res instanceof Promise) {
+						res.catch((err) =>
+							debug.log("tools", `Error in onUnregister for ${name}:`, err),
+						);
+					}
+				} catch (err) {
+					debug.log("tools", `Error in onUnregister for ${name}:`, err);
+				}
+			}
+			this.tools.delete(name);
+			return true;
+		}
+		return false;
+	}
+
+	unregisterToolsWhere(predicate: (tool: ToolDefinition) => boolean): number {
+		let removed = 0;
+		for (const [name, tool] of this.tools.entries()) {
+			if (predicate(tool)) {
+				this.unregisterTool(name);
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	getTool(name: string): ToolDefinition | undefined {
+		if (this.tools.has(name)) {
+			return this.tools.get(name);
+		}
+		return this.parent?.getTool(name);
+	}
+
+	getAllTools(): ToolDefinition[] {
+		const all = new Map<string, ToolDefinition>();
+		if (this.parent) {
+			for (const tool of this.parent.getAllTools()) {
+				all.set(tool.name, tool);
+			}
+		}
+		for (const tool of this.tools.values()) {
+			all.set(tool.name, tool);
+		}
+		return Array.from(all.values());
+	}
+
+	getToolsByCategory(category: ToolDefinition["category"]): ToolDefinition[] {
+		return this.getAllTools().filter((t) => t.category === category);
+	}
+
+	clearTools(): void {
+		for (const name of this.tools.keys()) {
+			this.unregisterTool(name);
+		}
+		this.tools.clear();
+	}
+
+	getToolDefinitions(): OpenRouterTool[] {
+		return this.getAllTools().map((tool) => {
+			const schema =
+				tool.jsonSchema ??
+				(typeof (tool.parameters as any).safeParse === "function"
+					? zodToJsonSchema(tool.parameters as z.ZodType<unknown>)
+					: (tool.parameters as Record<string, unknown>));
+			return {
+				type: "function",
+				function: {
+					name: tool.name,
+					description: tool.description,
+					parameters: schema,
+				},
+			};
+		});
+	}
+
+	async executeTool(
+		name: string,
+		args: unknown,
+		ctx: ToolContext,
+	): Promise<ToolResult> {
+		const tool = this.getTool(name);
+
+		if (!tool) {
+			return {
+				success: false,
+				output: "",
+				error: `Unknown tool: ${name}. Please check the available tools list and use a valid tool name.`,
+			};
+		}
+
+		debug.log("tools", `Executing tool: ${name}`, args);
+
+		try {
+			let validatedArgs: unknown;
+			if (typeof (tool.parameters as any).safeParse === "function") {
+				const parsed = (tool.parameters as z.ZodType<unknown>).safeParse(args);
+
+				if (!parsed.success) {
+					const formattedErrors = parsed.error.issues
+						.map((issue) => {
+							const path =
+								issue.path.length > 0 ? issue.path.join(".") : "value";
+							return `${path}: ${issue.message}`;
+						})
+						.join("; ");
+
+					return {
+						success: false,
+						output: "",
+						error: `Invalid parameters for ${name}: ${formattedErrors}. Please review the parameter schema and provide valid arguments.`,
+					};
+				}
+				validatedArgs = parsed.data;
+			} else {
+				const validationResult = validateJsonSchema(
+					args,
+					tool.parameters as Record<string, unknown>,
+				);
+				if (!validationResult.success) {
+					return {
+						success: false,
+						output: "",
+						error: `Invalid parameters for ${name}: ${validationResult.error}. Please review the parameter schema and provide valid arguments.`,
+					};
+				}
+				validatedArgs = args;
+			}
+
+			const result = await tool.execute(validatedArgs, ctx);
+			debug.log(
+				"tools",
+				`Tool ${name} completed: ${result.success ? "success" : "failed"}`,
+			);
+
+			return result;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			debug.log("tools", `Tool ${name} error: ${message}`);
+
+			return {
+				success: false,
+				output: "",
+				error: `Tool execution failed: ${message}. Please review the error, adjust your arguments, and try again.`,
+			};
+		}
+	}
+}
+
+// Global default registry for backward compatibility
+export const globalRegistry = new ToolRegistryManager();
 
 export function createTool(tool: ToolDefinition): ToolDefinition {
 	return tool;
 }
 
 export function registerTool(tool: ToolDefinition): void {
-	if (toolRegistry.has(tool.name)) {
-		debug.log("tools", `Overwriting existing tool: ${tool.name}`);
-	}
-	toolRegistry.set(tool.name, tool);
-	debug.log("tools", `Registered tool: ${tool.name}`);
+	globalRegistry.registerTool(tool);
 }
 
 export function registerTools(tools: ToolDefinition[]): void {
-	for (const tool of tools) {
-		registerTool(tool);
-	}
+	globalRegistry.registerTools(tools);
 }
 
 export function unregisterTool(name: string): boolean {
-	return toolRegistry.delete(name);
+	return globalRegistry.unregisterTool(name);
 }
 
 export function unregisterToolsWhere(
 	predicate: (tool: ToolDefinition) => boolean,
 ): number {
-	let removed = 0;
-	for (const [name, tool] of toolRegistry.entries()) {
-		if (predicate(tool)) {
-			toolRegistry.delete(name);
-			removed++;
-		}
-	}
-	return removed;
+	return globalRegistry.unregisterToolsWhere(predicate);
 }
 
 export function getTool(name: string): ToolDefinition | undefined {
-	return toolRegistry.get(name);
+	return globalRegistry.getTool(name);
 }
 
 export function getAllTools(): ToolDefinition[] {
-	return Array.from(toolRegistry.values());
+	return globalRegistry.getAllTools();
 }
 
 export function getToolsByCategory(
 	category: ToolDefinition["category"],
 ): ToolDefinition[] {
-	return getAllTools().filter((t) => t.category === category);
+	return globalRegistry.getToolsByCategory(category);
 }
 
 export function clearTools(): void {
-	toolRegistry.clear();
+	globalRegistry.clearTools();
 }
 
 export function getToolDefinitions(): OpenRouterTool[] {
-	return getAllTools().map((tool) => {
-		const schema = tool.jsonSchema ?? zodToJsonSchema(tool.parameters);
-		return {
-			type: "function",
-			function: {
-				name: tool.name,
-				description: tool.description,
-				parameters: schema,
-			},
-		};
-	});
+	return globalRegistry.getToolDefinitions();
 }
 
 export async function executeTool(
@@ -130,53 +390,7 @@ export async function executeTool(
 	args: unknown,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
-	const tool = getTool(name);
-
-	if (!tool) {
-		return {
-			success: false,
-			output: "",
-			error: `Unknown tool: ${name}. Please check the available tools list and use a valid tool name.`,
-		};
-	}
-
-	debug.log("tools", `Executing tool: ${name}`, args);
-
-	try {
-		const parsed = tool.parameters.safeParse(args);
-
-		if (!parsed.success) {
-			const formattedErrors = parsed.error.issues
-				.map((issue) => {
-					const path = issue.path.length > 0 ? issue.path.join(".") : "value";
-					return `${path}: ${issue.message}`;
-				})
-				.join("; ");
-
-			return {
-				success: false,
-				output: "",
-				error: `Invalid parameters for ${name}: ${formattedErrors}. Please review the parameter schema and provide valid arguments.`,
-			};
-		}
-
-		const result = await tool.execute(parsed.data, ctx);
-		debug.log(
-			"tools",
-			`Tool ${name} completed: ${result.success ? "success" : "failed"}`,
-		);
-
-		return result;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		debug.log("tools", `Tool ${name} error: ${message}`);
-
-		return {
-			success: false,
-			output: "",
-			error: `Tool execution failed: ${message}. Please review the error, adjust your arguments, and try again.`,
-		};
-	}
+	return globalRegistry.executeTool(name, args, ctx);
 }
 
 function zodToJsonSchema(schema: z.ZodType<unknown>): Record<string, unknown> {

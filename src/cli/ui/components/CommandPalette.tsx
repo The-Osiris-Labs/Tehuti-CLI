@@ -4,16 +4,17 @@ import InkTextInput from "ink-text-input";
 import { useOnMouseEnter, useOnClick } from "@ink-tools/ink-mouse";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
-import { DECORATIVE } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import Spinner from "ink-spinner";
 
-const GOLD = "#F5C518";
-const CORAL = "#FF6B35";
-const GRAY = "#9CA3AF";
-const CYAN = "#06B6D4";
-const GREEN = "#22C55E";
-const SAND = "#8B7355";
+const GOLD = BRANDING.colors.gold;
+const CORAL = BRANDING.colors.coral;
+const GRAY = BRANDING.colors.gray;
+const CYAN = BRANDING.colors.cyan;
+const GREEN = BRANDING.colors.green;
+const SAND = BRANDING.colors.sand;
+const RED = BRANDING.colors.red;
 
 export interface CommandItem {
 	id: string;
@@ -132,7 +133,7 @@ function CommandItemRow({
 			ref,
 			flexDirection: "column",
 			paddingX: 1,
-			paddingY: isSelected ? 1 : 0,
+			paddingY: 0,
 			backgroundColor: isSelected ? GOLD : undefined
 		},
 		React.createElement(
@@ -164,6 +165,7 @@ export function CommandPalette({
 
 	const [menuStack, setMenuStack] = useState<{title: string; commands: CommandItem[]}[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const currentCommands = menuStack.length > 0 ? menuStack[menuStack.length - 1].commands : commands;
 
@@ -235,24 +237,31 @@ export function CommandPalette({
 				setQuery(initQ);
 			}
 			setSelectedIndex(0);
+			setError(null);
 		} else {
 			// Reset on close
 			setMenuStack([]);
 			setQuery("");
+			setError(null);
 		}
 	}, [visible]);
 
-	useEffect(() => {
+	const [prevFilteredCommands, setPrevFilteredCommands] = useState(filteredCommands);
+	if (filteredCommands !== prevFilteredCommands) {
 		setSelectedIndex(0);
-	}, [filteredCommands]);
+		setPrevFilteredCommands(filteredCommands);
+	}
 
 	const handleExecute = async (selected: CommandItem) => {
 		if (selected.submenu) {
 			setIsLoading(true);
+			setError(null);
 			try {
 				const children = await selected.submenu();
 				setMenuStack((prev) => [...prev, { title: selected.label, commands: children }]);
 				setQuery("");
+			} catch (err: any) {
+				setError(err.message || String(err));
 			} finally {
 				setIsLoading(false);
 			}
@@ -270,11 +279,12 @@ export function CommandPalette({
 			if (isMouseSequence(char)) return;
 			if (!visible || isLoading) return;
 
-			if (key.escape) {
+			if (key.escape || (key.ctrl && (char === 'p' || char === '\x10'))) {
 				if (menuStack.length > 0) {
 					// Pop stack
 					setMenuStack((prev) => prev.slice(0, -1));
 					setQuery("");
+					setError(null);
 				} else {
 					onClose();
 				}
@@ -285,6 +295,7 @@ export function CommandPalette({
 				if (query.length === 0 && menuStack.length > 0) {
 					// Pop stack on backspace if query is empty
 					setMenuStack((prev) => prev.slice(0, -1));
+					setError(null);
 					return;
 				}
 			}
@@ -315,16 +326,25 @@ export function CommandPalette({
 
 	const paletteWidth = Math.min(64, Math.max(40, terminalWidth - 6));
 	const MAX_DISPLAY = 9; 
-	const displayCommands = filteredCommands.slice(0, MAX_DISPLAY);
+	const windowStart = Math.max(0, Math.min(filteredCommands.length - MAX_DISPLAY, selectedIndex - Math.floor(MAX_DISPLAY / 2)));
+	const displayCommands = filteredCommands.slice(windowStart, windowStart + MAX_DISPLAY);
 	const hasMore = filteredCommands.length > MAX_DISPLAY;
 
+	const groupedDisplayCommands = {
+		submenu: displayCommands.filter(c => c.category === "submenu"),
+		recent: displayCommands.filter(c => c.category === "recent"),
+		session: displayCommands.filter(c => c.category === "session"),
+		model: displayCommands.filter(c => c.category === "model"),
+		help: displayCommands.filter(c => c.category === "help"),
+	};
+
 	const orderedGroups = [
-		["submenu", groupedCommands["submenu"] || []],
-		["recent", groupedCommands["recent"] || []],
-		["session", groupedCommands["session"] || []],
-		["model", groupedCommands["model"] || []],
-		["help", groupedCommands["help"] || []],
-	].filter(([, cmds]) => (cmds as any[]).length > 0) as Array<[string, typeof filteredCommands]>;
+		["submenu", groupedDisplayCommands["submenu"]],
+		["recent", groupedDisplayCommands["recent"]],
+		["session", groupedDisplayCommands["session"]],
+		["model", groupedDisplayCommands["model"]],
+		["help", groupedDisplayCommands["help"]],
+	].filter(([, cmds]) => (cmds as any[]).length > 0) as Array<[string, typeof displayCommands]>;
 
 	const breadcrumbs = menuStack.map(m => m.title).join(" > ");
 	const titleText = breadcrumbs ? ` ${DECORATIVE.ibis} Palette > ${breadcrumbs} ` : ` ${DECORATIVE.ibis} COMMAND PALETTE `;
@@ -354,7 +374,12 @@ export function CommandPalette({
 			) : (
 				React.createElement(InkTextInput, {
 					value: query,
-					onChange: (val: string) => setQuery(val),
+					onChange: (val: string) => {
+						if (query === "" && (val === "j" || val === "k")) {
+							return;
+						}
+						setQuery(val);
+					},
 					placeholder: menuStack.length > 0 ? "filter options..." : "type a command...",
 					focus: visible,
 				})
@@ -375,7 +400,7 @@ export function CommandPalette({
 							{ key: `cat-${category}`, dimColor: true, color: SAND, bold: true },
 							`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
 						),
-						...cmds.slice(0, MAX_DISPLAY).map((cmd) => {
+						...cmds.map((cmd) => {
 							const cmdIndex = filteredCommands.findIndex((c) => c.id === cmd.id);
 							const isSelected = cmdIndex === selectedIndex;
 
@@ -393,7 +418,7 @@ export function CommandPalette({
 					hasMore && React.createElement(
 						Text,
 						{ color: GRAY, dimColor: true },
-						`  … +${filteredCommands.length - MAX_DISPLAY} more — refine your filter`,
+						`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
 					),
 				),
 	);

@@ -59,28 +59,34 @@ npm install
 ### Development Scripts
 
 ```bash
-npm start          # Run development version
-npm run build      # Build for production
-npm test           # Run all tests
-npm run lint       # Lint code with Biome
-npx tsc --noEmit   # Type check
+npm start          # Run via tsx (no build)
+npm run build      # tsup → dist/index.js (~652 KB)
+npm test           # Unit tests (src/**/*.test.ts) — 570 pass, 2 skip
+npm run test:e2e   # E2E tests (tests/e2e/) — 105 pass, 1 known fail
+npm run typecheck  # tsc --noEmit
+npm run lint       # biome check src/
 ```
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Unit tests
 npm test
 
-# Run specific test file
+# E2E tests (isolated temp homes, mocked API)
+npm run test:e2e
+
+# Full gate (recommended before PR)
+npm run typecheck && npm test && npm run test:e2e && npm run build
+
+# Specific test file
 npx vitest run src/agent/index.test.ts
 
-# Run tests in watch mode
+# Watch mode
 npx vitest watch
-
-# Generate coverage report
-npx vitest run --coverage
 ```
+
+See [TEST_INFRA.md](./TEST_INFRA.md) and [TEST_READY.md](./TEST_READY.md) for tier architecture and known failures.
 
 ## 🎯 Pull Request Process
 
@@ -142,55 +148,59 @@ npx vitest run --coverage
 
 ## 🏗️ Architecture Overview
 
-Tehuti CLI follows a modular architecture with clear separation of concerns:
+Tehuti is a TypeScript-only Node.js agent CLI. Default API target is OpenCode Go (`opencode` provider). The HTTP layer is OpenAI-compatible (`/chat/completions` + SSE) via custom clients in `src/api/` — not the Vercel AI SDK.
+
+**Important:** `src/cli/commands/chat.ts` is a monolith (~3,700 lines) containing CLI routing, the Ink TUI, and much agent integration. Read [HANDOFF.md](./HANDOFF.md) before editing it.
 
 ### Core Modules
 
-- **agent/** - AI agent and tools
-- **api/** - OpenRouter API client
-- **cli/** - CLI commands and UI
-- **config/** - Configuration management
-- **branding/** - Egyptian visual theme
-- **permissions/** - Permission system
-- **mcp/** - MCP integration
-- **hooks/** - Hook execution system
-- **terminal/** - Terminal utilities
-- **session/** - Session persistence
-- **utils/** - Utility functions
+| Module | Role |
+|--------|------|
+| `agent/` | Agent loop (`loop/runner.ts`), tools, cache, memory, skills |
+| `api/` | Provider clients (`openrouter.ts` is generic, despite the name) |
+| `cli/` | Commander entry + Ink TUI (`commands/chat.ts`) |
+| `config/` | Schema, loader, wizard, provider metadata |
+| `mcp/` | MCP client (4 transports) + dynamic tool adapter |
+| `permissions/` | Interactive/trust/readonly tool gates |
+| `hooks/` | Pre/Post tool bash hooks (executor works; config wiring incomplete) |
+| `session/` | Manual save/load to `~/.tehuti/sessions/` |
+| `terminal/` | ANSI output, markdown, `computeMessageLines` |
+| `branding/` | Egyptian theme constants (visual only) |
 
 ### Agent Loop
 
-The main agent loop is in `src/agent/index.ts` and handles:
-- Context management
-- Parallel tool execution
-- Model routing
-- Context compression
-- Caching
-- Prefetching
+Orchestrated in `src/agent/loop/runner.ts` (exported via `src/agent/index.ts`):
+
+- Stream LLM response, accumulate tool calls
+- LLM context compression near ~85% window
+- Permission checks, hooks, tool cache
+- Parallel safe read-only tools when the model returns multiple calls in one turn
+- Prefetch on first tool call in each batch
 
 ### Tool System
 
-Tools are registered in `src/agent/tools/` and follow this pattern:
+Tools are registered at module load in `src/agent/index.ts` via `registerTools([...])`. MCP tools sync each loop iteration.
 
 ```typescript
 import { z } from "zod";
-import type { OpenRouterTool } from "../api/openrouter.js";
+import type { ToolDefinition } from "./registry.js";
 
-export const myTool: OpenRouterTool = {
+export const myTool: ToolDefinition = {
 	name: "my_tool",
-	description: "Description of what the tool does",
+	description: "What the tool does",
 	parameters: z.object({
-		param1: z.string().describe("Description of parameter"),
+		param1: z.string().describe("Parameter description"),
 	}),
-	execute: async (args, context) => {
-		// Tool implementation
-		return {
-			success: true,
-			output: "Result",
-		};
-	},
+	category: "fs",
+	isReadonly: true,
+	execute: async (args, ctx) => ({
+		success: true,
+		output: "Result",
+	}),
 };
 ```
+
+New tools: add to `src/agent/tools/`, export, register in `src/agent/index.ts`, add tests alongside the module.
 
 ## 🎨 Visual Theme Guidelines
 

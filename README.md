@@ -4,125 +4,180 @@ Halls of Records • Balance of Ma'at • Architect of Truth
 
 ---
 
-# 𓆣 Tehuti CLI - Architect of Truth
+# 𓆣 Tehuti CLI
 
-## The Mission Statement
+Tehuti is a Node.js 20+ agent CLI for software development. It runs a local agent loop against OpenAI-compatible `/chat/completions` APIs (custom `fetch` + SSE streaming via `undici`, not the Vercel AI SDK), presents a React/Ink terminal UI or one-shot ANSI streaming output, and exposes roughly 68 built-in tools plus dynamically registered MCP tools. The default provider is OpenCode Go (`https://opencode.ai/zen/go/v1`) with model `deepseek-v4-flash`. Egyptian theming (gold palette, hieroglyphs, deity naming) is visual branding only—it does not affect runtime behavior.
 
-Chaos has descended upon software development.
-
-Every week, a new AI tool emerges. Every developer with access to an LLM spins up their own "revolutionary" project. Vibe coding has replaced engineering. "It works" has replaced "it is correct."
-
-This ends now.
-
-Tehuti is not another toy for hobbyists. It is not another chat interface wrapped in a terminal. It is the Architect of Truth—an elite, fully interactive, agentic AI coding assistant built for developers who understand that code is not about "shipping fast" but about shipping right.
-
-Built with React (Ink), Tehuti goes beyond standard CLI tools by offering a rich, mouse-aware, natively scrolling TUI (Terminal User Interface) while packing serious multi-agent AI firepower.
-
-## OSIRIS — The Mother Company
-
-OSIRIS — God of the afterlife, transition, and rebirth. OSIRIS oversees the reincarnation of Egyptian deities into cutting-edge AI technology.
-
-OSIRIS represents:
-- **Transition** — From chaos to order
-- **Rebirth** — Ancient wisdom into modern form
-- **Afterlife** — Knowledge that never dies
-
-## The Deities
-
-| Deity | Hieroglyph | Role | Status |
-|-------|------------|------|--------|
-| **Tehuti** | 𓅞 | Truth, Order, Engineering Excellence | 🏛️ Active |
-| **IBIS** | 𓃠 | AGI Trading & Pattern Recognition | 🔗 Live |
-
-## The Problem Statement
-
-The AI development landscape has descended into chaos. Every amateur with LLM access spins up half-baked "tools." Vibe coding replaces engineering. "It works" replaces "it is correct."
-
-## The Solution
-
-Tehuti is not for everyone. It is for the engineer who understands that code is craft, not commodity. It remembers, it reasons, it executes with precision. It demands excellence—and delivers it.
-
-## Call to Action
-
-If you are here to build something real, something lasting, something correct—welcome home.
+The shipped codebase is TypeScript-only. A `rust-core/` directory exists with artifacts but is not wired into the build or CLI path.
 
 ---
 
-## ✨ Divine Features
+## Features
 
-- **🧠 Multi-Model Wisdom:** Access 300+ models via OpenCode Go (Claude 3.5, GPT-4o, DeepSeek, Gemini).
-- **🖥️ Elite TUI Experience:** A bespoke "Virtual Sliding Viewport" built in Ink allows for pixel-perfect layout stability, native line-by-line scrolling, and fully interactive, clickable tool outputs inside the terminal.
-- **⚡ Parallel Execution:** Run up to 5 read-only tools concurrently for lightning-fast codebase analysis.
-- **💾 Session Persistence:** Automatically save and load previous conversation states and cache trees to disk.
-- **📋 Plan Mode (`/plan`):** Force the agent into a read-only exploration mode to propose architectural changes before touching your code.
-- **🧠 Extended Thinking (`/thinking`):** Enable deep reasoning modes for complex debugging.
-- **🎯 Skills System:** Auto-applies specific expertise (TypeScript, Git, Python) directly into the agent's system prompt based on the task type.
-- **🔌 MCP Ready:** Native support for the Model Context Protocol, enabling connections to GitHub, Postgres, and browser tools.
+- OpenAI-compatible LLM client (`OpenRouterClient`) supporting ~18 named providers (OpenRouter, OpenCode, KiloCode, Ollama, LM Studio, Anthropic, OpenAI, xAI, DeepSeek, Google, and others) plus a custom provider adapter
+- React/Ink TUI with mouse-aware command palette, virtual sliding viewport scrolling, and interactive config editor
+- One-shot mode with live ANSI token streaming, optional JSON output (`-j`), and quiet mode (`-q`)
+- Agent loop with tool-call caching, predictive prefetch for read-only tools, parallel execution of safe read-only tool batches (up to 5 concurrent), and LLM-driven context compression near window capacity
+- ~68 registered tools covering filesystem, search, bash, git, web, semantic search, planning, memory, skills, swarm delegation, and more
+- MCP client with four transports: `stdio`, `http`, `sse`, `websocket`
+- Skills system: prompt injection only—3 built-in expertise profiles (JavaScript/TypeScript, Python, Git) plus user-defined JSON skills in `~/.tehuti/skills/`
+- Session persistence via explicit `/save` and `/load` (no automatic mid-session checkpointing)
+- Permission modes: interactive, trust, and read-only; plan mode for read-only exploration
 
 ---
 
-## 📦 Installation & Quick Start
+## Installation & Quick Start
+
+Requires Node.js 20 or later.
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival.git
 cd Tehuti-CLI-Revival
-
-# 2. Install dependencies
 npm install
-
-# 3. Build the CLI
 npm run build
-
-# 4. Run the setup wizard to configure your OpenCode Go provider and API keys
-npm run start -- init
 ```
 
-### Usage
+Run the setup wizard to configure provider and API key:
 
-Once configured, you can launch Tehuti in interactive mode:
+```bash
+npm run start -- init
+# or after linking/installing globally:
+tehuti init
+```
+
+Set an API key for the default OpenCode provider:
+
+```bash
+export OPENCODE_API_KEY=your-key-here
+# TEHUTI_API_KEY also works across providers
+```
+
+Launch interactive mode:
+
 ```bash
 npm run start
 ```
 
-Or pass a direct prompt (One-Shot Mode):
-```bash
-npm run start -- "Refactor the authentication logic in src/auth.ts"
-```
-
-Override models on the fly:
-```bash
-npm run start -- -m anthropic/claude-3.5-sonnet "Audit the security of the API"
-```
-
 ---
 
-## 📖 Interactive Slash Commands
+## Usage
 
-Inside a running Tehuti session, use the following commands or trigger the Command Palette (Arrow keys or Mouse) when the input is empty:
+### Interactive TUI
+
+```bash
+tehuti
+# or during development:
+npm run start
+```
+
+Type `/` with an empty input to open the command palette. Arrow keys, Tab completion, and mouse interaction are supported where the terminal allows.
+
+### One-shot prompts
+
+```bash
+tehuti "Refactor the authentication logic in src/auth.ts"
+tehuti -m deepseek-v4-flash "Summarize this repository"
+tehuti -j "Return structured output"          # JSON response envelope
+tehuti -q "Quick answer without tool noise"   # suppress intermediate tool output
+```
+
+### CLI flags
+
+| Flag | Description |
+|------|-------------|
+| `-m, --model <model>` | Override the active model |
+| `-p, --provider <id>` | Override provider (`opencode`, `openrouter`, `kilocode`, `ollama`, etc.) |
+| `-d, --debug` | Enable debug logging |
+| `-j, --json` | Emit final result as JSON (one-shot mode) |
+| `-q, --quiet` | Suppress tool call/result output (one-shot mode) |
+| `--diff` | Show diff preview before file edits |
+| `--diff-auto` | Show diff preview and auto-approve |
+| `--no-mcp` | Disable MCP server connections |
+| `--reset-key` | Clear persisted credentials and re-run setup |
+| `-v, --version` | Print version |
+
+### Subcommands
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show all commands |
-| `/model <name>` | Change the active AI model |
-| `/models` | List available models from OpenCode Go |
-| `/thinking` | Toggle extended thinking mode for complex reasoning |
-| `/plan` | Enter read-only planning mode |
-| `/compact` | Force context compression to free up token space |
-| `/skills` | List all active agent skills |
-| `/save [name]` | Save current session with a name |
-| `/load <id>` | Load a specific session by ID |
-| `/sessions` | List recent sessions |
-| `/cost` | Show session cost and token usage |
-| `/stats` | Show cache performance and parallel execution metrics |
-| `/clear` | Clear conversation history |
-| `/exit` | Exit CLI |
+| `tehuti init` | Interactive setup wizard |
+| `tehuti config` | Print current persisted config (API key masked) |
+| `tehuti mcp [status\|tools\|connect\|disconnect]` | MCP server management |
+
+Interactive mode requires a TTY. Piping or running without a prompt in a non-TTY environment exits with an error.
 
 ---
 
-## 🔮 Configuration (`~/.tehuti.json`)
+## Slash Commands
 
-Tehuti looks for its configuration in your home directory or locally in the project.
+Available in interactive sessions (palette via `/` or direct typing):
+
+| Command | Description |
+|---------|-------------|
+| `/help` (`/h`) | Show commands and keyboard shortcuts |
+| `/clear` (`/cls`, `/c`, `Ctrl+L`) | Clear conversation history |
+| `/model` | Switch model (interactive submenu) |
+| `/models` | List models for the current provider |
+| `/provider` | Switch provider (interactive submenu) |
+| `/thinking` | Toggle extended thinking mode |
+| `/plan` | Enter read-only plan mode |
+| `/compact` | Force LLM context compression |
+| `/skills` | List available skills |
+| `/save [name]` | Save session to disk |
+| `/load` | Load a saved session (submenu) |
+| `/sessions` | List saved sessions |
+| `/cost` | Show token usage and estimated cost |
+| `/stats` | Show cache and parallel execution metrics |
+| `/config` | Open interactive configuration editor |
+| `/dashboard` | Toggle swarm observability dashboard |
+| `/exit` (`/quit`, `/q`) | Exit the CLI |
+
+---
+
+## Configuration
+
+Tehuti merges configuration from several sources. Understanding precedence helps avoid surprises.
+
+### Config file discovery
+
+Cosmiconfig searches upward from the current working directory for:
+
+`.tehuti.json`, `.tehuti.yaml`, `.tehuti.yml`, `.tehuti.js`, `.tehuti.mjs`, `.tehuti.cjs`, or a `tehuti` key in `package.json`.
+
+Wizard credentials and runtime overrides are also persisted via the `conf` package (global store keyed as `tehuti`). The `tehuti config` subcommand reads from this store.
+
+### Merge precedence (`loadConfig`)
+
+For most fields the effective order is:
+
+1. **Defaults** from `DEFAULT_CONFIG` / Zod schema
+2. **Global persisted store** (`conf`, written by the wizard and `/config`)
+3. **Project config file** (cosmiconfig result)—overrides global for overlapping keys
+4. **Environment variables**—override file/global where noted below
+
+**Provider** (special case):
+
+`TEHUTI_PROVIDER` → project file `provider` → global store `provider` → default (`opencode`)
+
+**Model:**
+
+`TEHUTI_MODEL` → project file → global store → default (`deepseek-v4-flash`)
+
+**Base URL:**
+
+`TEHUTI_BASE_URL` (highest) → otherwise resolved from the active provider's default (e.g. `https://opencode.ai/zen/go/v1` for `opencode`), using a `baseUrl` from the file or global store only when that same source also set the provider
+
+**API key:**
+
+`TEHUTI_API_KEY` or provider-specific env (e.g. `OPENCODE_API_KEY`, `OPENROUTER_API_KEY`) → `apiKey` in project file or global store → other provider env fallbacks
+
+**Other env vars:**
+
+- `TEHUTI_CUSTOM_PROVIDER` — JSON blob for custom provider settings
+- `TEHUTI_DEBUG=true` — enable debug mode
+- `${VAR}` and `$VAR` substitution inside config file string values
+
+### Defaults
 
 ```json
 {
@@ -130,55 +185,96 @@ Tehuti looks for its configuration in your home directory or locally in the proj
   "model": "deepseek-v4-flash",
   "fallbackModel": "deepseek-v4-flash",
   "maxTokens": 32000,
-  "modelTiers": {
-    "fast": "deepseek-v4-flash",
-    "balanced": "minimax-m3",
-    "deep": "anthropic/claude-3.5-sonnet"
-  },
-  "mcp": {
-    "enabled": true
+  "maxIterations": 50,
+  "temperature": 0.7,
+  "mcp": { "enabled": true, "servers": {} },
+  "permissions": {
+    "defaultMode": "interactive",
+    "alwaysAllow": ["read", "glob", "grep", "web_fetch", "web_search"]
   }
 }
 ```
 
+See `.tehuti.example.json` for a fuller template including MCP server entries.
+
+### User data paths
+
+| Path | Purpose |
+|------|---------|
+| `~/.tehuti/skills/` | User-defined skill JSON files |
+| `~/.tehuti/` | Session history, memory graph, API cache |
+| `.tehuti/` (project) | Project-local API response cache |
+
 ---
 
-## 🏗️ Architecture & Development Handoff
+## Architecture Overview
 
-For agents or developers looking to contribute, please read the [HANDOFF.md](./HANDOFF.md) guide.
-
-Tehuti uses a highly complex Ink (React) TUI. **Do not** attempt to modify the scrolling logic in `chat.ts` without understanding the `marginBottom: -scrollOffset` Virtual Sliding Viewport implementation. Standard array slicing or static rendering will destroy the clickability of tool outputs.
-
-### Development Scripts
-```bash
-npm run start       # Run locally via tsx without building
-npm run build       # Compile TypeScript
-npm test            # Run the 400+ unit tests
-npm run lint        # Run ESLint
+```
+Entry (src/index.ts)
+  → CLI / TUI (src/cli/commands/chat.ts)
+    → Agent loop (src/agent/loop/)
+      → OpenRouterClient (src/api/openrouter.ts)  — OpenAI-compatible fetch + SSE
+      → Tool registry (src/agent/tools/)          — ~68 static tools + MCP dynamic tools
+      → Parallel executor, prefetcher, context compressor, memory graph
+    → MCP manager (src/mcp/)                      — 4 transports
 ```
 
+Key modules:
+
+- **Agent loop** coordinates LLM calls, streaming parse, tool dispatch, retries, and compression
+- **OpenRouterClient** is the generic provider client name; it handles OpenCode, OpenRouter, and other OpenAI-compatible endpoints
+- **Ink TUI** uses a hybrid viewport: negative margin (`marginBottom: -scrollOffset`) for scroll position, plus a `visibleMessages` slice for render performance—see [HANDOFF.md](./HANDOFF.md)
+- **Skills** inject expertise text into the system prompt when activated; they do not add executable capabilities
+- **MCP** registers remote tools into the same registry used by built-in tools
+
+For deeper detail see [PROJECT.md](./PROJECT.md) (architecture and directory layout) and [HANDOFF.md](./HANDOFF.md) (contributor guide and TUI caveats).
+
+Note: `ai`, `@openrouter/ai-sdk-provider`, and `@aiter/core` appear in `package.json` but are not imported from `src/`. The LLM path is the hand-rolled client in `src/api/openrouter.ts`.
+
 ---
 
-## About TheOsirisLabs.com
+## Development
 
-Project Tehuti is a product of TheOsirisLabs.com — a laboratory dedicated to building tools that demand excellence.
+```bash
+npm run start       # Run via tsx without building
+npm run build       # tsup → dist/index.js (~650 KB)
+npm run typecheck   # tsc --noEmit
+npm run lint        # biome check src/
+npm test            # Vitest unit tests (~570 cases)
+npm run test:e2e    # Vitest e2e tests (~106 cases)
+npm run clean       # Remove dist/
+```
 
-We do not build chatbots. We do not build toys for the impatient. We build instruments of precision for developers who understand that code is a craft, not a commodity.
+**Test status (as of June 2026):**
 
-The chaos of modern AI development—the "vibe coders," the immature tools, the endless stream of half-baked projects—ends here.
+- Unit: **570 passed**, **2 skipped** (572 total)
+- E2E: **105 passed**, **1 failed** (106 total — `computeMessageLines` array `content` handling)
+- Build output: `dist/index.js` ≈ 652 KB
 
-## Contact & Links
+---
+
+## Known Limitations
+
+These are current engineering realities, not roadmap promises:
+
+- **Hooks system** — `src/hooks/executor.ts` is implemented and called from the agent loop, but hook definitions are not part of `TEHUTI_CONFIG_SCHEMA`; there is no supported config-file wiring yet
+- **`question` tool UI** — `_QuestionPrompt` exists in `chat.ts` but is not mounted in the TUI render tree; the agent can call `question` but users may not see an interactive picker
+- **No mid-session auto-save** — sessions persist only when you run `/save`; exiting without saving loses unsaved conversation state
+- **Two markdown pipelines** — Ink TUI uses `renderMarkdown()` (React nodes); one-shot/ANSI mode uses `renderMarkdownToAnsi()` in `src/terminal/markdown.ts`; formatting can diverge between modes
+- **Memory graph edges unused** — nodes are stored and injected into prompts; edge relationships are written to disk but not traversed at runtime
+- **Not self-evolving** — despite older marketing copy, there is no autonomous self-modification or evolution loop
+- **Rust core unwired** — `rust-core/` contains artifacts only; the shipped binary is pure TypeScript
+- **Provider/runtime gap** — providers marked non–OpenAI-compatible in `providers.ts` (e.g. native Anthropic) are rejected unless routed through an OpenAI-compatible base URL or adapter
+
+---
+
+## Links
 
 | Resource | URL |
 |----------|-----|
-| **Main Repository** | https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival |
-| **IBIS (Sister Project)** | https://github.com/The-Osiris-Labs/IBIS-AGI-TRADER |
-| **Website** | https://theosirislabs.com |
-
-## Final Words
-
-"To know how to understand is to know how to live."
-— Ancient Egyptian wisdom, applicable today
+| Repository | https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival |
+| IBIS (sister project) | https://github.com/The-Osiris-Labs/IBIS-AGI-TRADER |
+| The Osiris Labs | https://theosirislabs.com |
 
 ---
 

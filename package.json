@@ -1,7 +1,7 @@
 {
   "name": "tehuti-cli",
   "version": "0.1.0",
-  "description": "Tehuti CLI - Architect of Truth. Self-evolving agent harness (Rust core + TS). MCP, subagents, memory, Ma'at.",
+  "description": "Tehuti CLI — Ink/React terminal coding assistant with OpenAI-compatible agent loop, ~66 native tools, MCP, and OpenCode-default provider.",
   "type": "module",
   "bin": {
     "tehuti": "./dist/index.js"
@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
     "test": "vitest run",
+    "test:e2e": "vitest run -c vitest.e2e.config.ts",
     "clean": "rm -rf dist"
   },
   "keywords": [

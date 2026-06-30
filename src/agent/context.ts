@@ -10,6 +10,7 @@ import { consola } from "../utils/logger.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
+import { estimateTokens as tiktokenEstimateTokens } from "./context-compressor.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -23,28 +24,16 @@ const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
 export function estimateTokens(messages: OpenRouterMessage[]): number {
-	return messages.reduce((sum, msg) => {
-		let content = "";
-		if (typeof msg.content === "string") {
-			content = msg.content;
-		} else if (Array.isArray(msg.content)) {
-			content = msg.content
-				.map((c) => (typeof c === "string" ? c : JSON.stringify(c)))
-				.join("");
-		}
-		if (msg.tool_calls) {
-			content += JSON.stringify(msg.tool_calls);
-		}
-		return sum + Math.ceil(content.length / 4);
-	}, 0);
+	return tiktokenEstimateTokens(messages);
 }
 
 export function compactContext(
 	ctx: AgentContext,
 	targetTokens?: number,
 ): boolean {
+	const maxContext = ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
 	const target =
-		targetTokens ?? Math.floor(MAX_CONTEXT_TOKENS * COMPACT_THRESHOLD);
+		targetTokens ?? Math.floor(maxContext * COMPACT_THRESHOLD);
 	const currentTokens = estimateTokens(ctx.messages);
 
 	if (currentTokens <= target) {
@@ -83,8 +72,9 @@ export function compactContext(
 }
 
 export function warnOnContextLimit(ctx: AgentContext): boolean {
+	const maxContext = ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
 	const tokens = estimateTokens(ctx.messages);
-	const ratio = tokens / MAX_CONTEXT_TOKENS;
+	const ratio = tokens / maxContext;
 
 	if (ratio > 0.95) {
 		consola.warn(
@@ -220,7 +210,7 @@ export async function createAgentContext(
 ): Promise<AgentContext> {
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
-	const systemMemory = await getSystemPromptMemory();
+	const systemMemory = await getSystemPromptMemory(resolvedCwd);
 
 	return {
 		cwd: resolvedCwd,
@@ -416,7 +406,7 @@ export function addToolResult(
 	debug.log("context", `Added tool result for ${toolName}`);
 }
 
-export function getToolContext(ctx: AgentContext) {
+export function getToolContext(ctx: AgentContext, signal?: AbortSignal) {
 	return {
 		cwd: ctx.cwd,
 		workingDir: ctx.workingDir,
@@ -424,6 +414,7 @@ export function getToolContext(ctx: AgentContext) {
 		timeout: 120000,
 		diffPreview: ctx.diffPreview,
 		readFilesThisSession: ctx.readFilesThisSession,
+		signal,
 	};
 }
 
