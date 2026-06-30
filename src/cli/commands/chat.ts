@@ -2755,6 +2755,12 @@ function ChatUI({
 			setOperationLabel("");
 			requestControllerRef.current = null;
 		}
+
+		if (sessionId && ctxRef.current) {
+			void sessionManager.saveSession(sessionId, ctxRef.current).catch((err) => {
+				debug.log("chat", "Auto-save failed:", err);
+			});
+		}
 	}
 
 	const messageElements = useMemo(() => {

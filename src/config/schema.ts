@@ -156,6 +156,24 @@ export const HTTP_CONFIG_SCHEMA = z.object({
 	tcpKeepAliveInitialDelay: z.number().int().positive().default(30000),
 });
 
+export const HOOK_CONFIG_SCHEMA = z.object({
+	type: z.literal("command").default("command"),
+	command: z.string(),
+	timeout: z.number().int().positive().optional().default(30000),
+});
+
+export const HOOK_MATCHER_SCHEMA = z.object({
+	matcher: z.string().default("*"),
+	hooks: z.array(HOOK_CONFIG_SCHEMA),
+});
+
+export const HOOKS_CONFIG_SCHEMA = z.object({
+	PreToolUse: z.array(HOOK_MATCHER_SCHEMA).optional(),
+	PostToolUse: z.array(HOOK_MATCHER_SCHEMA).optional(),
+	PreCommit: z.array(HOOK_MATCHER_SCHEMA).optional(),
+	Notification: z.array(HOOK_MATCHER_SCHEMA).optional(),
+});
+
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
 	model: z.string().default("deepseek-v4-flash"),
@@ -190,6 +208,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	branding: BRANDING_CONFIG_SCHEMA.optional(),
 	debug: z.boolean().default(false),
 	telemetry: z.boolean().default(false),
+	hooks: HOOKS_CONFIG_SCHEMA.optional().default({}),
 	// Advanced features
 	kilocode: KILOCODE_ADVANCED_SCHEMA.optional(),
 	grepai: GREPAI_ADVANCED_SCHEMA.optional(),
@@ -232,6 +251,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	branding: undefined,
 	debug: false,
 	telemetry: false,
+	hooks: {},
 	kilocode: {
 		memoryBank: {
 			enabled: false,

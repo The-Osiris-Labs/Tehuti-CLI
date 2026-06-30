@@ -180,7 +180,11 @@ export function shutdownAgent(): void {
 }
 
 export function configureHooks(hooksConfig: unknown): void {
-	const hooks = parseHooksConfig(hooksConfig);
+	let targetConfig = hooksConfig;
+	if (hooksConfig && typeof hooksConfig === "object" && "hooks" in hooksConfig) {
+		targetConfig = (hooksConfig as any).hooks;
+	}
+	const hooks = parseHooksConfig(targetConfig);
 	hookExecutor.loadConfig(hooks);
 }
 

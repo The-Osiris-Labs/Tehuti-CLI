@@ -178,5 +178,20 @@ describe("Agent Loop", () => {
 			configureHooks(undefined);
 			expect(true).toBe(true);
 		});
+
+		it("should extract hooks config from nested object", () => {
+			const nestedConfig = {
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Write",
+							hooks: [{ type: "command", command: "echo nested" }],
+						},
+					],
+				},
+			};
+			configureHooks(nestedConfig);
+			expect(true).toBe(true);
+		});
 	});
 });
