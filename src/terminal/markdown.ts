@@ -185,6 +185,9 @@ function renderInlineTokens(tokens: Token[]): string {
 					ANSI.underline + renderInlineTokens(token.tokens || []) + ANSI.reset,
 				);
 				break;
+			case "image":
+				result += dim(`[Image: ${token.text || token.href || ""}]`);
+				break;
 			case "br":
 				result += "\n";
 				break;
@@ -262,6 +265,9 @@ function renderToken(token: Token, indent: string = ""): string {
 
 		case "space":
 			return "\n";
+
+		case "image":
+			return `\n${dim(`[Image: ${token.text || token.href || ""}]`)}\n`;
 
 		case "html":
 			return `\n${token.text}\n`;

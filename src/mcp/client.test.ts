@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
 			"ResourceUpdatedNotificationSchema",
 		),
 		ToolListChangedNotificationSchema: Symbol("ToolListChangedNotificationSchema"),
+		CreateMessageRequestSchema: Symbol("CreateMessageRequestSchema"),
 	};
 
 	class MockTransport {
@@ -58,6 +59,11 @@ const mocks = vi.hoisted(() => {
 		}));
 		setNotificationHandler = vi.fn(
 			(schema: unknown, handler: (notification: any) => unknown) => {
+				this.handlers.set(schema, handler);
+			},
+		);
+		setRequestHandler = vi.fn(
+			(schema: unknown, handler: (request: any) => unknown) => {
 				this.handlers.set(schema, handler);
 			},
 		);

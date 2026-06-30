@@ -100,6 +100,7 @@ import {
 } from "../../config/providers.js";
 import { mcpManager } from "../../mcp/index.js";
 import { sessionManager } from "../../session/manager.js";
+import { OpenRouterClient, type OpenRouterMessage } from "../../api/openrouter.js";
 import { listModelsForProvider } from "../../api/models.js";
 import {
 	createStreamingOutputManager,
@@ -127,6 +128,7 @@ import {
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
+import { SessionList } from "../ui/components/SessionList.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
@@ -351,6 +353,23 @@ function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCo
 }
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
+
+function formatSessionsTable(sessions: any[]): string {
+	if (!sessions || sessions.length === 0) return "No saved sessions";
+	return `[SESSION_LIST]${JSON.stringify(sessions)}`;
+}
+
+function HieroglyphSpinner() {
+	const [frame, setFrame] = useState(0);
+	useEffect(() => {
+		const interval = setInterval(() => {
+			setFrame(f => (f + 1) % HIEROGLYPHS.thinking.length);
+		}, 150);
+		return () => clearInterval(interval);
+	}, []);
+	return React.createElement(Text, { color: BRANDING.colors.gold }, HIEROGLYPHS.thinking[frame]);
+}
+
 const HISTORY_PATH = path.join(os.homedir(), ".tehuti", "history.json");
 
 function loadHistory(): string[] {
@@ -1037,6 +1056,8 @@ function ChatUI({
 		showConfigEditor, setShowConfigEditor,
 		questionResolverRef
 	} = useChatState(model, apiKey, cfg);
+	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = React.useState("");
+
 	const normalizedProvider = useMemo(
 		() => runtimeProvider.trim().toLowerCase() || "openrouter",
 		[runtimeProvider],
@@ -1376,11 +1397,13 @@ function ChatUI({
 
 	const handleCommandPaletteSelect = useCallback((cmd: CommandItem) => {
 		setShowCommandPalette(false);
+		setCommandPaletteInitialQuery("");
 		if (cmd.action) cmd.action();
 	}, []);
 
 	const handleCommandPaletteClose = useCallback(() => {
 		setShowCommandPalette(false);
+		setCommandPaletteInitialQuery("");
 	}, []);
 
 	const handleModelSwitch = useCallback(() => {
@@ -1503,25 +1526,13 @@ function ChatUI({
   const handleShowSessions = useCallback(async () => {
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
-		const list = sessions
-			.map((s, i) => {
-				const date = new Date(s.updatedAt).toLocaleDateString();
-				const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-				const msgs = `${s.messageCount} msgs`;
-				const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
-				const model = s.model.split('/').pop()?.split(':')[0] || s.model;
-				return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
-			})
-			.join("\n");
+		const table = formatSessionsTable(sessions);
 		setMessages((m) => [
 			...m,
 			{
 				id: msgIdRef.current++,
 				role: "system",
-				content:
-					sessions.length > 0
-						? `Saved sessions (${sessions.length} total):\n${list}\n\nUse: /load <id> | /search <query>`
-						: "No saved sessions",
+				content: sessions.length > 0 ? table : "No saved sessions",
 			},
 		]);
 		setLoading(false);
@@ -1891,25 +1902,15 @@ function ChatUI({
   const handleSearchSessions = useCallback(async (query: string) => {
 		setLoading(true);
 		const results = await sessionManager.searchSessions(query);
-		const list = results
-			.map((s, i) => {
-				const date = new Date(s.updatedAt).toLocaleDateString();
-				const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-				const msgs = `${s.messageCount} msgs`;
-				const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
-				const model = s.model.split('/').pop()?.split(':')[0] || s.model;
-				return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
-			})
-			.join("\n");
+		const limit = 30;
+		const displaySessions = results.slice(0, limit);
+		const table = formatSessionsTable(displaySessions);
 		setMessages((m) => [
 			...m,
 			{
 				id: msgIdRef.current++,
 				role: "system",
-				content:
-					results.length > 0
-						? `Search results for "${query}" (${results.length}):\n${list}\n\nUse: /load <id>`
-						: `No sessions found for "${query}"`,
+				content: results.length > 0 ? table : `No sessions found for "${query}"`,
 			},
 		]);
 		setLoading(false);
@@ -2330,16 +2331,7 @@ function ChatUI({
 				const sessions = await sessionManager.listSessions();
 				const limit = 30;
 				const displaySessions = sessions.slice(0, limit);
-				const list = displaySessions
-					.map((s, i) => {
-						const date = new Date(s.updatedAt).toLocaleDateString();
-						const time = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-						const msgs = `${s.messageCount} msgs`;
-						const tokens = `${s.tokensUsed.toLocaleString()} tokens`;
-						const model = s.model.split('/').pop()?.split(':')[0] || s.model;
-						return `  ${i + 1}. ${s.name || s.id.slice(0, 8)} (${msgs}, ${tokens}, ${model} | ${date} ${time})`;
-					})
-					.join("\n");
+				const table = formatSessionsTable(displaySessions);
 				setMessages((m) => [
 					...m,
 					{
@@ -2347,7 +2339,7 @@ function ChatUI({
 						role: "system",
 						content:
 							sessions.length > 0
-								? `Saved sessions (${sessions.length} total, showing recent ${displaySessions.length}):\n${list}\n\nUse: /load <id> | /search <query>`
+								? `**Saved sessions (${sessions.length} total, showing recent ${displaySessions.length}):**\n\n${table}\n\n*Use: /load <id> | /search <query>*`
 								: "No saved sessions",
 					},
 				]);
@@ -2611,7 +2603,7 @@ function ChatUI({
 						return;
 					}
 					if (content.length > 0) {
-						setThinking(`  💭 Thinking...`);
+						setThinking(`Thinking...`);
 						setShowThinking(true);
 
 						setMessages((m) =>
@@ -2821,13 +2813,29 @@ function ChatUI({
 						divider,
 					),
 				);
-				content = [
-					React.createElement(
-						Text,
-						{ key: 0, dimColor: true, wrap: "wrap" },
-						m.content,
-					),
-				];
+				if (m.content.startsWith("[SESSION_LIST]")) {
+					try {
+						const sessionsStr = m.content.substring("[SESSION_LIST]".length);
+						const sessions = JSON.parse(sessionsStr);
+						content = [
+							React.createElement(SessionList, {
+								key: `session-list-${m.id}`,
+								sessions,
+								onLoadSession: (id) => loadSessionById(id),
+							})
+						];
+					} catch (e) {
+						content = [React.createElement(Text, { key: 0, dimColor: true, wrap: "wrap" }, "Error parsing session list")];
+					}
+				} else {
+					content = [
+						React.createElement(
+							Text,
+							{ key: 0, dimColor: true, wrap: "wrap" },
+							m.content,
+						),
+					];
+				}
 			} else {
 				const label = `${DECORATIVE.ibis} Tehuti`;
 				const padLen = Math.max(10, contentMaxWidth - label.length - 2 - (m.status ? 10 : 0));
@@ -2992,6 +3000,13 @@ function ChatUI({
 					flexDirection: "column",
 					marginBottom: 1,
 					paddingTop: 0,
+					paddingLeft: 1,
+					borderStyle: "single",
+					borderTop: false,
+					borderRight: false,
+					borderBottom: false,
+					borderLeft: true,
+					borderColor: m.role === "assistant" ? GOLD : m.role === "user" ? CORAL : "gray",
 					width: contentMaxWidth,
 					flexShrink: 0,
 				},
@@ -2999,7 +3014,7 @@ function ChatUI({
 				React.createElement(
 					Box,
 					{
-						paddingLeft: 1,
+						paddingLeft: 0,
 						marginTop: 0,
 						flexDirection: "column",
 						flexWrap: "wrap",
@@ -3017,6 +3032,9 @@ function ChatUI({
 			? React.createElement(Text, { color: SAND, dimColor: true }, ` [${historyIndex + 1}/${history.length}] `)
 			: '';
 
+		const indicatorText = loading ? HIEROGLYPHS.loading[0] : `${DECORATIVE.feather} >`;
+		const indicatorColor = loading ? GOLD : CORAL;
+
 		if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) {
 			const start = Math.min(selectionStart, selectionEnd);
 			const end = Math.max(selectionStart, selectionEnd);
@@ -3026,8 +3044,8 @@ function ChatUI({
 
 			return React.createElement(
 				Text,
-				{ color: CORAL, wrap: "wrap" },
-				`${DECORATIVE.feather} >`,
+				{ color: indicatorColor, wrap: "wrap" },
+				indicatorText,
 				historyIndicator,
 				" ",
 				before,
@@ -3038,17 +3056,22 @@ function ChatUI({
 
 		const before = input.slice(0, cursorPos);
 		const after = input.slice(cursorPos);
+		const hint = (!loading && input.length === 0) 
+			? React.createElement(Text, { color: "gray", dimColor: true }, " Type a message, or /help for commands...")
+			: null;
+
 		return React.createElement(
 			Text,
-			{ color: CORAL, wrap: "wrap" },
-			`${DECORATIVE.feather} >`,
+			{ color: indicatorColor, wrap: "wrap" },
+			indicatorText,
 			historyIndicator,
 			" ",
 			before,
-			"\u2588",
-			after
+			loading ? null : "\u2588",
+			after,
+			hint
 		);
-	}, [input, cursorPos, historyIndex, history.length, selectionStart, selectionEnd]);
+	}, [input, cursorPos, historyIndex, history.length, selectionStart, selectionEnd, loading]);
 
 	const scrollIndicator = useMemo(() => {
 		if (totalMessageLines <= chatViewportHeight) return null;
@@ -3221,7 +3244,20 @@ function ChatUI({
 						? React.createElement(
 								Box,
 								{ flexGrow: 1, flexDirection: "column", justifyContent: "center", alignItems: "center" },
-								showWelcome && React.createElement(TehutiHeader, null),
+								showWelcome && React.createElement(TehutiHeader, {
+									model: ctxModel,
+									provider: normalizedProvider,
+									onModelClick: () => {
+										setCommandPaletteInitialQuery("/model ");
+										setShowCommandPalette(true);
+									},
+									onConfigClick: () => setShowConfigEditor(true),
+									onCommandClick: (cmd) => {
+										if (cmd === "/clear") setMessages([]);
+										else if (cmd === "/exit") process.exit(0);
+										else if (cmd === "/help") setMessages((prev) => [...prev, { id: msgIdRef.current++, role: "system", content: formatHelpOutput() }]);
+									}
+								}),
 								!showWelcome && React.createElement(Text, { color: SAND, dimColor: true }, "Type a message to begin")
 							)
 						: React.createElement(
@@ -3233,7 +3269,21 @@ function ChatUI({
 									showWelcome && React.createElement(
 										Box,
 										{ flexDirection: "column", alignItems: "center", marginBottom: 1 },
-										React.createElement(TehutiHeader, { compact: true })
+										React.createElement(TehutiHeader, {
+											compact: true,
+											model: ctxModel,
+											provider: normalizedProvider,
+											onModelClick: () => {
+												setCommandPaletteInitialQuery("/model ");
+												setShowCommandPalette(true);
+											},
+											onConfigClick: () => setShowConfigEditor(true),
+											onCommandClick: (cmd) => {
+												if (cmd === "/clear") setMessages([]);
+												else if (cmd === "/exit") process.exit(0);
+												else if (cmd === "/help") setMessages((prev) => [...prev, { id: msgIdRef.current++, role: "system", content: formatHelpOutput() }]);
+											}
+										})
 									),
 									...messageElements,
 								)
@@ -3246,12 +3296,14 @@ function ChatUI({
 								paddingLeft: 2,
 								flexDirection: "row",
 								gap: 1,
+								borderStyle: "single",
+								borderTop: false,
+								borderRight: false,
+								borderBottom: false,
+								borderLeft: true,
+								borderColor: BRANDING.colors.gold,
 							},
-							React.createElement(
-								Text,
-								{ color: SAND, dimColor: true },
-								React.createElement(Spinner, { type: "dots" }),
-							),
+							React.createElement(HieroglyphSpinner, null),
 							React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
@@ -3314,12 +3366,6 @@ function ChatUI({
 								onAnswer: (ans) => _handleQuestionAnswer(0, ans),
 								onCancel: _handleQuestionCancel,
 							})
-						: loading
-						? React.createElement(
-								Text,
-								{ color: SAND, dimColor: true },
-								`  ${HIEROGLYPHS.loading[0]} channeling wisdom...`,
-							)
 						: renderInput,
 					(showCommandPalette || showConfigEditor) ? null : commandSuggestions,
 				),
@@ -3328,6 +3374,7 @@ function ChatUI({
 					onSelect: handleCommandPaletteSelect,
 					onClose: handleCommandPaletteClose,
 					visible: showCommandPalette,
+					initialQuery: commandPaletteInitialQuery,
 				}),
 			)
 		);
@@ -3393,6 +3440,7 @@ export function createProgram(): Command {
 			let provider = opts.provider || process.env.TEHUTI_PROVIDER;
 
 			const cfg = await loadConfig();
+			getTelemetry().setEnabled(cfg.telemetry ?? false);
 			if (cfg.http) {
 				updateHttpAgentConfig(cfg.http);
 			}
@@ -3450,6 +3498,40 @@ export function createProgram(): Command {
 					: undefined;
 
 			if (cfg.mcp?.enabled && !opts.noMcp) {
+				mcpManager.setSamplingHandler(async (request) => {
+					const client = OpenRouterClient.getInstance(cfg);
+					
+					const messages: OpenRouterMessage[] = request.messages.map((m) => {
+						const textContent = Array.isArray(m.content) 
+							? m.content.find(c => c.type === 'text')?.text || '' 
+							: (m.content.type === 'text' ? m.content.text : '');
+							
+						return {
+							role: m.role,
+							content: textContent,
+						};
+					});
+
+					if (request.systemPrompt) {
+						messages.unshift({ role: "system", content: request.systemPrompt });
+					}
+
+					const response = await client.completeChat(messages, undefined, undefined);
+
+					const responseContent = response.choices[0]?.message.content || "";
+					const text = typeof responseContent === "string" 
+						? responseContent 
+						: JSON.stringify(responseContent);
+
+					return {
+						model: request.modelPreferences?.hints?.[0]?.name || cfg.model || "deepseek-v4-flash",
+						role: "assistant",
+						content: {
+							type: "text",
+							text,
+						},
+					};
+				});
 				await mcpManager.connectAll(cfg);
 			}
 
@@ -3522,8 +3604,8 @@ export function createProgram(): Command {
 								? undefined
 								: (content) => {
 										if (content.length > 0) {
-											outputManager?.writeLine(
-												chalk.hex(PURPLE)(`  💭 Thinking...`),
+											process.stdout.write(
+												`\r\x1b[K${chalk.hex(GOLD)(HIEROGLYPHS.thinking[0])} ${chalk.hex(PURPLE)(`Thinking...`)}`,
 											);
 										}
 									},

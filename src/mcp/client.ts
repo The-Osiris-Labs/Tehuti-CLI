@@ -7,6 +7,9 @@ import {
 	ResourceListChangedNotificationSchema,
 	ResourceUpdatedNotificationSchema,
 	ToolListChangedNotificationSchema,
+	CreateMessageRequestSchema,
+	type CreateMessageRequestParams,
+	type CreateMessageResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MCPServerConfig, TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
@@ -116,44 +119,8 @@ export interface ResourceSubscription {
 }
 
 export type SamplingHandler = (
-	request: SamplingRequest,
-) => Promise<SamplingResponse>;
-
-export interface SamplingRequest {
-	messages: Array<{
-		role: "user" | "assistant";
-		content: {
-			type: "text" | "image";
-			text?: string;
-			data?: string;
-			mimeType?: string;
-		};
-	}>;
-	modelPreferences?: {
-		hints?: Array<{ name?: string }>;
-		costPriority?: number;
-		speedPriority?: number;
-		intelligencePriority?: number;
-	};
-	systemPrompt?: string;
-	includeContext?: "none" | "thisServer" | "allServers";
-	temperature?: number;
-	maxTokens: number;
-	stopSequences?: string[];
-	metadata?: Record<string, unknown>;
-}
-
-export interface SamplingResponse {
-	model: string;
-	role: "assistant";
-	content: {
-		type: "text" | "image";
-		text?: string;
-		data?: string;
-		mimeType?: string;
-	};
-	stopReason?: "endTurn" | "stopSequence" | "maxTokens";
-}
+	request: CreateMessageRequestParams,
+) => Promise<CreateMessageResult>;
 
 type HealthCheckCallback = (serverName: string, healthy: boolean) => void;
 type ToolRefreshCallback = (serverName: string, tools: MCPTool[]) => void;
@@ -388,6 +355,16 @@ export class MCPClientManager {
 			ResourceUpdatedNotificationSchema,
 			async (notification) => {
 				await this.handleResourceUpdated(info.name, notification.params.uri);
+			},
+		);
+
+		info.client.setRequestHandler(
+			CreateMessageRequestSchema,
+			async (request) => {
+				if (!this.samplingHandler) {
+					throw new Error("Sampling handler not configured");
+				}
+				return this.samplingHandler(request.params);
 			},
 		);
 	}
