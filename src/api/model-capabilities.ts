@@ -24,6 +24,15 @@ export function isReasoningModel(modelId: string): boolean {
 	return false;
 }
 
+export function supportsPromptCaching(modelId: string): boolean {
+	const lowerId = modelId.toLowerCase();
+	// Providers known to support native prompt caching
+	if (lowerId.includes("anthropic") || lowerId.includes("claude") || lowerId.includes("gemini") || lowerId.includes("deepseek") || lowerId.includes("opencode")) {
+		return true;
+	}
+	return false;
+}
+
 export function getReasoningField(
 	modelId: string,
 ): "reasoning" | "thinking" | "none" {

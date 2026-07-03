@@ -176,6 +176,8 @@ export interface AgentContext {
 	systemMemory?: string;
 	diffPreview?: DiffPreviewOptions;
 	readFilesThisSession: Set<string>;
+	isSleeping?: boolean;
+	wakeupCallback?: (message?: string) => void;
 	metadata: {
 		startTime: Date;
 		toolCalls: number;
@@ -416,6 +418,7 @@ export function getToolContext(ctx: AgentContext, signal?: AbortSignal) {
 		diffPreview: ctx.diffPreview,
 		readFilesThisSession: ctx.readFilesThisSession,
 		signal,
+		agentContext: ctx,
 	};
 }
 

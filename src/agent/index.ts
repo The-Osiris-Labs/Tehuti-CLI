@@ -60,6 +60,7 @@ import { backgroundTools } from "./tools/background.js";
 import { bashTool } from "./tools/bash.js";
 import { collaborationTools } from "./tools/collaboration.js";
 import { customProviderTools } from "./tools/custom-provider.js";
+import { applyDiffTool } from "./tools/apply-diff.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
 import {
@@ -88,6 +89,7 @@ import { shadowWorkspaceTool } from "./shadow-workspace.js";
 
 registerTools([
 	astTool,
+	applyDiffTool,
 	...allFsTools,
 	...searchTools,
 	repoMapTool,

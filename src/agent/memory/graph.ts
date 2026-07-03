@@ -2,6 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "fs-extra";
 import { ReadWriteLock } from "../../utils/mutex.js";
+import { vectorStore } from "./vector-store.js";
 
 export interface Node {
 	id: string;
@@ -112,6 +113,15 @@ export async function addNode(
 			graph.nodes.push(node);
 		}
 
+		// Add to vector store
+		await vectorStore.addEmbedding(node.id, node.content, {
+			type: node.type,
+			cwd: node.cwd,
+			priority: node.priority,
+			importance: node.importance,
+			timestamp: node.timestamp,
+		});
+
 		// Sort and evict least relevant nodes if we exceed a threshold
 		const MAX_NODES = 1000;
 		if (graph.nodes.length > MAX_NODES) {
@@ -137,13 +147,17 @@ export async function searchGraph(query: string, cwd: string = process.cwd()): P
 		const lowerQuery = query.toLowerCase();
 		const resolvedCwd = cwd ? path.resolve(cwd) : undefined;
 		
+		// Vector RAG retrieval instead of naive string matching
+		const vectorResults = await vectorStore.search(query, 20); // Get top 20 matches
+		const vectorNodeIds = new Set(vectorResults.map(r => r.id));
+		
 		// Node scoping filter: include match if n.cwd is undefined/empty, "global", or equals current workspace CWD
 		const scopedNodes = graph.nodes.filter(
 			(n) => !n.cwd || n.cwd === "global" || (resolvedCwd && path.resolve(n.cwd) === resolvedCwd)
 		);
 
 		const matched = scopedNodes.filter(
-			(n) => n.id.toLowerCase().includes(lowerQuery) || n.content.toLowerCase().includes(lowerQuery)
+			(n) => vectorNodeIds.has(n.id) || n.id.toLowerCase().includes(lowerQuery) || n.content.toLowerCase().includes(lowerQuery)
 		);
 
 		// Sort matched nodes by relevance/date (highest relevance first)

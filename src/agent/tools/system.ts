@@ -71,6 +71,10 @@ const TASK_SCHEMA = z.object({
 		.describe("Timeout in milliseconds (default: 60000)"),
 });
 
+const WAIT_FOR_EVENT_SCHEMA = z.object({
+	reason: z.string().describe("Reason for waiting (e.g., 'waiting for background process PID 123 to finish')"),
+});
+
 let currentTodos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"] = [];
 let parentContext: AgentContext | null = null;
 let questionResolver:
@@ -303,6 +307,26 @@ async function askQuestion(
 	}
 }
 
+async function waitForEvent(
+	args: z.infer<typeof WAIT_FOR_EVENT_SCHEMA>,
+	ctx: ToolContext,
+): Promise<ToolResult> {
+	if (!ctx.agentContext) {
+		return {
+			success: false,
+			output: "",
+			error: "Agent context not available. Cannot sleep.",
+		};
+	}
+
+	ctx.agentContext.isSleeping = true;
+
+	return {
+		success: true,
+		output: `Agent is now sleeping. Reason: ${args.reason}. The loop will pause and automatically wake up when an event occurs.`,
+	};
+}
+
 export const systemTools: ToolDefinition[] = [
 	{
 		name: "todo_write",
@@ -338,6 +362,15 @@ Usage notes:
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label`,
 		parameters: QUESTION_SCHEMA,
 		execute: askQuestion as AnyToolExecutor,
+		category: "system",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "wait_for_event",
+		description: "Suspends the agent's execution loop until a background process or subagent finishes. Use this after launching a background task or subagent if you need to wait for its results before proceeding.",
+		parameters: WAIT_FOR_EVENT_SCHEMA,
+		execute: waitForEvent as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
 		isReadonly: true,

@@ -37,6 +37,7 @@ export class SwarmManager extends EventEmitter {
 	public async spawnSubagent(
 		prompt: string,
 		workingDir: string,
+		parentContext?: any
 	): Promise<string> {
 		const id = randomUUID();
 		const abortController = new AbortController();
@@ -75,6 +76,15 @@ export class SwarmManager extends EventEmitter {
 					task.result = result;
 					this.emitUpdate();
 				}
+				if (parentContext) {
+					const msg = `[Task Completed] Subagent ${id} completed`;
+					if (typeof parentContext.wakeupCallback === "function") {
+						parentContext.wakeupCallback(msg);
+					} else {
+						parentContext.messages.push({ role: "system", content: msg });
+						parentContext.isSleeping = false;
+					}
+				}
 			})
 			.catch((error) => {
 				if (task.status === "running") {
@@ -82,6 +92,15 @@ export class SwarmManager extends EventEmitter {
 					task.error = error instanceof Error ? error.message : String(error);
 					debug.log("agent", `Subagent ${id} failed:`, error);
 					this.emitUpdate();
+				}
+				if (parentContext) {
+					const msg = `[Task Completed] Subagent ${id} failed: ${error instanceof Error ? error.message : String(error)}`;
+					if (typeof parentContext.wakeupCallback === "function") {
+						parentContext.wakeupCallback(msg);
+					} else {
+						parentContext.messages.push({ role: "system", content: msg });
+						parentContext.isSleeping = false;
+					}
 				}
 			});
 

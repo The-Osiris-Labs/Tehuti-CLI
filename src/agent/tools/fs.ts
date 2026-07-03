@@ -10,7 +10,7 @@ import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
 
 const execAsync = promisify(exec);
 
-async function runAciLinter(filePath: string, content: string): Promise<{ success: boolean; error?: string }> {
+export async function runAciLinter(filePath: string, content: string): Promise<{ success: boolean; error?: string }> {
 	if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx") && !filePath.endsWith(".js") && !filePath.endsWith(".jsx")) {
 		return { success: true };
 	}
@@ -224,7 +224,7 @@ export function validatePathSecurity(
 	return { safe: true };
 }
 
-async function checkSymlinkSafety(
+export async function checkSymlinkSafety(
 	resolvedPath: string,
 	cwd: string,
 ): Promise<{ safe: boolean; reason?: string; realPath?: string }> {

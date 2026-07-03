@@ -123,12 +123,31 @@ export async function runAgentLoop(
 		}
 
 		try {
+			if (ctx.isSleeping) {
+				debug.log("agent", "Agent is sleeping, waiting for event...");
+				onProgress?.(50, "Sleeping... waiting for background task or subagent to complete");
+				const message = await new Promise<string | undefined>(resolve => {
+					ctx.wakeupCallback = resolve;
+				});
+				ctx.isSleeping = false;
+				ctx.wakeupCallback = undefined;
+				if (message) {
+					ctx.messages.push({
+						role: "system",
+						content: message
+					});
+					debug.log("agent", `Agent woke up with message: ${message}`);
+				}
+				iteration--;
+				continue;
+			}
+
 			await manageContextWindow(ctx, client);
 
 			ctx.messages = normalizeToolMessageHistory(ctx.messages);
 
 			const modelId = ctx.config.model;
-			debug.log("agent", `Available tools: \${tools.map(t => t.function.name).join(", ")}`);
+			debug.log("agent", `Available tools: ${tools.map(t => t.function.name).join(", ")}`);
 
 			// Use retry wrapper for API calls
 			const state = createStreamingState(modelId);

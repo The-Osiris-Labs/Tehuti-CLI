@@ -20,7 +20,7 @@ export const swarmTools: ToolDefinition[] = [
 		execute: async (args: unknown, ctx) => {
 			const { prompt } = args as z.infer<typeof delegateTaskSchema>;
 			try {
-				const id = await swarmManager.spawnSubagent(prompt, ctx.workingDir);
+				const id = await swarmManager.spawnSubagent(prompt, ctx.workingDir, ctx.agentContext);
 				return {
 					success: true,
 					output: `Subagent spawned successfully with ID: ${id}\nUse the check_subagent_status tool to poll its status.`,

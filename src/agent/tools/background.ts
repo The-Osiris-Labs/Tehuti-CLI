@@ -193,6 +193,16 @@ async function startBackground(
 				p.status = "exited";
 				p.exitCode = code ?? 0;
 			}
+			
+			if (ctx.agentContext) {
+				const msg = `[Task Completed] Background process PID ${pid} exited with code ${code}`;
+				if (typeof ctx.agentContext.wakeupCallback === "function") {
+					ctx.agentContext.wakeupCallback(msg);
+				} else {
+					ctx.agentContext.messages.push({ role: "system", content: msg });
+					ctx.agentContext.isSleeping = false;
+				}
+			}
 		});
 
 		proc.on("error", (error) => {
@@ -200,6 +210,16 @@ async function startBackground(
 			if (p) {
 				p.status = "exited";
 				p.error.push(`Process error: ${error.message}`);
+			}
+			
+			if (ctx.agentContext) {
+				const msg = `[Task Completed] Background process PID ${pid} failed with error: ${error.message}`;
+				if (typeof ctx.agentContext.wakeupCallback === "function") {
+					ctx.agentContext.wakeupCallback(msg);
+				} else {
+					ctx.agentContext.messages.push({ role: "system", content: msg });
+					ctx.agentContext.isSleeping = false;
+				}
 			}
 		});
 

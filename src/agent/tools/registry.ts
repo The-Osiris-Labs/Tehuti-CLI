@@ -24,6 +24,7 @@ export interface ToolContext {
 	diffPreview?: DiffPreviewOptions;
 	cache?: unknown;
 	readFilesThisSession?: Set<string>;
+	agentContext?: any; // Avoiding circular dependency with AgentContext
 }
 
 export interface ToolDefinition {

@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "fs-extra";
 import { glob } from "tinyglobby";
 import { z } from "zod";
+import { mcpManager } from "../../mcp/client.js";
 import type {
 	AnyToolExecutor,
 	ToolContext,
@@ -498,6 +499,31 @@ async function findReferences(
 	args: z.infer<typeof FIND_REFERENCES_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
+	// Attempt to use MCP LSP integration if available
+	const tools = mcpManager.getAllTools();
+	const lspTool = tools.find((t) => t.tool.name === "find_references" || t.tool.name === "textDocument/references");
+	if (lspTool) {
+		try {
+			const mcpArgs: Record<string, unknown> = { symbol: args.symbol };
+			if (args.path) mcpArgs.path = args.path;
+			
+			const result = await mcpManager.executeTool(
+				lspTool.serverName,
+				lspTool.tool.name,
+				mcpArgs,
+			);
+			return {
+				success: true,
+				output: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+				metadata: { source: "mcp", serverName: lspTool.serverName },
+			};
+		} catch (error) {
+			// Fallback to regex if MCP tool fails
+			// console.warn("MCP LSP failed, falling back to ripgrep:", error);
+		}
+	}
+
+	// Fallback to purely ripgrep-based regex
 	return grepFiles(
 		{
 			pattern: `\\b${args.symbol}\\b`,
@@ -513,6 +539,29 @@ async function goToDefinition(
 	args: z.infer<typeof GO_TO_DEFINITION_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
+	// Attempt to use MCP LSP integration if available
+	const tools = mcpManager.getAllTools();
+	const lspTool = tools.find((t) => t.tool.name === "go_to_definition" || t.tool.name === "textDocument/definition");
+	if (lspTool) {
+		try {
+			const mcpArgs: Record<string, unknown> = { symbol: args.symbol };
+			if (args.path) mcpArgs.path = args.path;
+			
+			const result = await mcpManager.executeTool(
+				lspTool.serverName,
+				lspTool.tool.name,
+				mcpArgs,
+			);
+			return {
+				success: true,
+				output: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+				metadata: { source: "mcp", serverName: lspTool.serverName },
+			};
+		} catch (error) {
+			// Fallback to regex if MCP tool fails
+		}
+	}
+
 	// Advanced grep pattern for definitions
 	const pattern = `(export\\s+)?(default\\s+)?(class|interface|type|function|const|let|var)\\s+${args.symbol}\\b`;
 	const result = await grepFiles(
