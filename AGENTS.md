@@ -213,8 +213,9 @@ Registered in `src/agent/index.ts` via `registerTools([...])`:
 | **Background** | `start_background`, `list_processes`, `read_output`, `kill_process` |
 | **Plan mode** | `write_plan`, `exit_plan_mode` |
 | **Git** | `git_status`, `git_diff`, `git_log`, `git_add`, `git_commit`, `git_branch`, `git_remote`, `git_pull`, `git_push` |
-| **Skills** | `list_skills`, `activate_skill`, `deactivate_skill`, `find_skills`, `get_skill` |
+| **Skills** | `list_skills`, `activate_skill`, `deactivate_skill`, `find_skills`, `get_skill`, `create_reusable_skill` |
 | **Semantic** | `semantic`, `semantic_init`, `semantic_status`, `semantic_trace` (wraps `tools/grepai` binary) |
+| **Workspace**| `shadow_workspace` |
 | **KiloCode** | `configure_memory_bank`, `clear_memory`, `configure_streaming`, `configure_context_management`, `review_code`, `summarize_context` |
 | **Collaboration** | `configure_collaboration`, `invite_collaborator`, `leave_collaboration` |
 | **Custom provider** | `configure_custom_provider`, `set_custom_header`, `remove_custom_header`, `get_custom_provider_info` |
@@ -231,8 +232,6 @@ These files exist but are **not** in `registerTools()`:
 | `src/agent/tools/grepai-cache.ts` | Grepai cache tools — not registered |
 | `src/agent/tools/grepai-mcp.ts` | Grepai MCP serve tools — not registered |
 | `src/agent/tools/grepai-advanced.ts` | Advanced grepai config — not registered |
-| `src/agent/shadow-workspace.ts` | Speculative git worktree execution — not registered |
-| `create_reusable_skill` | Defined in `skills/manager.ts`, exported as tool — **not** in `skillsTools` array |
 
 Do not assume these are available to the agent unless you register them.
 
@@ -301,13 +300,7 @@ This is intentional: negative margin handles scroll position; slicing limits wha
 
 | Feature | Status |
 |---------|--------|
-| **Hooks** | `hooks/executor.ts` works; `configureHooks(cfg)` called in chat.ts but **no `hooks` field in config schema** — always loads empty config |
-| **Telemetry config flag** | `telemetry: boolean` in schema defaults `false` but is never checked — metrics always collected |
-| **MCP sampling** | `mcpManager.setSamplingHandler()` exists; **never called** — MCP sampling capability config is inert |
-| **Question UI** | `question` tool + `_QuestionPrompt` component + `pendingQuestion` state exist; **prompt component is not rendered** in the TUI tree — interactive questions will hang |
 | **grepai standalone tools** | Full tool suite in `grepai*.ts` files — dead code; use `semantic` tools instead |
-| **shadow-workspace** | Implemented, not registered |
-| **create_reusable_skill** | Tool defined, not registered |
 | **rust-core** | Present in repo, not in Node runtime |
 
 ---
@@ -364,6 +357,10 @@ Sessions: `~/.config/tehuti/sessions/` (save/load via `/save`, `/load`, `/sessio
 ---
 
 ## 📚 Session History
+
+### 2026-07-02 — Completing Missing Features
+- Registered `shadowWorkspaceTool` and `createReusableSkillTool`.
+- Confirmed `hooks`, `telemetry`, `MCP sampling`, and `Question UI` were already fully wired in previous recent commits.
 
 ### 2026-06-29 — AGENTS.md rewrite
 

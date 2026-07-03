@@ -1,4 +1,4 @@
-import { confirm } from "@inquirer/prompts";
+import { Mutex } from "async-mutex";
 import chalk from "chalk";
 import type { PermissionsConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
@@ -14,6 +14,18 @@ export interface PermissionResult {
 	allowed: boolean;
 	reason?: string;
 	remember?: boolean;
+}
+
+let permissionResolver:
+	| ((request: PermissionRequest, isDangerous: boolean) => Promise<boolean>)
+	| null = null;
+
+const promptMutex = new Mutex();
+
+export function setPermissionResolver(
+	resolver: (request: PermissionRequest, isDangerous: boolean) => Promise<boolean>,
+): void {
+	permissionResolver = resolver;
 }
 
 const SAFE_TOOLS = [
@@ -192,7 +204,7 @@ export async function checkPermission(
 	return interactivePrompt(request, isDangerous);
 }
 
-function buildPromptMessage(
+export function buildPromptMessage(
 	toolName: string,
 	args: unknown,
 	isDangerous: boolean,
@@ -278,30 +290,35 @@ async function interactivePrompt(
 ): Promise<PermissionResult> {
 	const { toolName, args } = request;
 
-	const message = buildPromptMessage(toolName, args, isDangerous);
-
-	try {
-		const allowed = await confirm({
-			message,
-			default: !isDangerous,
-		});
-
-		permissionManager.recordDecision(
-			toolName,
-			(args ?? {}) as Record<string, unknown>,
-			allowed,
-		);
-
+	if (!permissionResolver) {
+		// Fallback if no UI resolver is mounted: deny dangerous, allow safe
 		return {
-			allowed,
-			reason: allowed ? "User approved" : "User denied",
-		};
-	} catch (_error) {
-		return {
-			allowed: false,
-			reason: "Prompt cancelled",
+			allowed: !isDangerous,
+			reason: !isDangerous ? "Auto-allowed safe tool (no UI)" : "Auto-denied dangerous tool (no UI)",
 		};
 	}
+
+	return await promptMutex.runExclusive(async () => {
+		try {
+			const allowed = await permissionResolver!(request, isDangerous);
+
+			permissionManager.recordDecision(
+				toolName,
+				(args ?? {}) as Record<string, unknown>,
+				allowed,
+			);
+
+			return {
+				allowed,
+				reason: allowed ? "User approved" : "User denied",
+			};
+		} catch (_error) {
+			return {
+				allowed: false,
+				reason: "Prompt cancelled",
+			};
+		}
+	});
 }
 
 export function createPermissionFilter(config: PermissionsConfig) {

@@ -3,7 +3,7 @@ import { access, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { consola } from "../../utils/logger.js";
+import { debug } from "../../utils/debug.js";
 import { createTool } from "../tools/registry.js";
 
 export interface Skill {
@@ -47,7 +47,7 @@ export class SkillsManager {
 
 		// Load user-defined skills (from ~/.tehuti/skills) asynchronously
 		this.loadUserSkills().catch((err) =>
-			consola.error("Failed to load user skills:", err),
+			debug.log("agent", "Failed to load user skills:", err),
 		);
 	}
 
@@ -192,12 +192,12 @@ When working with Git:
 			watch(this.skillsDirectory, (eventType, filename) => {
 				if (filename && filename.endsWith(".json")) {
 					this.readUserSkillsDirectory().catch((err) =>
-						consola.error("Error reloading user skills:", err),
+						debug.log("agent", "Error reloading user skills:", err),
 					);
 				}
 			});
 		} catch (error) {
-			consola.warn("Failed to watch skills directory:", error);
+			debug.log("agent", "Failed to watch skills directory:", error);
 		}
 	}
 
@@ -218,7 +218,7 @@ When working with Git:
 						this.addSkill(skill);
 						currentUserSkills.add(skill.id);
 					} catch (err) {
-						consola.error(`Failed to load skill from ${file}:`, err);
+						debug.log("agent", `Failed to load skill from ${file}:`, err);
 					}
 				}
 			}
@@ -230,7 +230,7 @@ When working with Git:
 				}
 			}
 		} catch (error) {
-			consola.error("Error reading user skills directory:", error);
+			debug.log("agent", "Error reading user skills directory:", error);
 		}
 	}
 

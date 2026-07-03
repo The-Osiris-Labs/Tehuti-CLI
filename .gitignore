@@ -24,3 +24,4 @@ dist/
 .tehuti.json
 private_research/
 tests/e2e/.tmp-home*
+scratch/

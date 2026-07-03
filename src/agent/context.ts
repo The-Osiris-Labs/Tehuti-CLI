@@ -6,7 +6,7 @@ import type {
 } from "../api/openrouter.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
-import { consola } from "../utils/logger.js";
+
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
@@ -44,7 +44,7 @@ export function compactContext(
 		"context",
 		`Compacting context: ${currentTokens} tokens -> ${target}`,
 	);
-	consola.warn(`Context compaction triggered (${currentTokens} tokens)`);
+	debug.log("context", `Context compaction triggered (${currentTokens} tokens)`);
 
 	const systemMessage = ctx.messages[0];
 	const recentMessages = ctx.messages.slice(-MIN_MESSAGES_TO_KEEP);
@@ -77,7 +77,8 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 	const ratio = tokens / maxContext;
 
 	if (ratio > 0.95) {
-		consola.warn(
+		debug.log(
+			"context",
 			`Context at ${Math.round(ratio * 100)}% capacity (${tokens} tokens)`,
 		);
 		compactContext(ctx);
@@ -85,7 +86,7 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 	}
 
 	if (ratio > 0.8) {
-		consola.info(`Context at ${Math.round(ratio * 100)}% capacity`);
+		debug.log("context", `Context at ${Math.round(ratio * 100)}% capacity`);
 	}
 
 	return false;

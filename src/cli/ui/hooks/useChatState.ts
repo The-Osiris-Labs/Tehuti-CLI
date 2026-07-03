@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useCallback } from "react";
 import { type QuestionData } from "../../../agent/tools/system.js";
+import { type PermissionRequest } from "../../../permissions/prompts.js";
 
 // We'll use any for types imported from chat.ts to avoid circular dependencies for now,
 // or just copy the types.
@@ -78,8 +79,17 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 	const [progress, setProgress] = useState(0);
 	const [operationLabel, setOperationLabel] = useState("");
 	const [showConfigEditor, setShowConfigEditor] = useState(false);
+	const [pendingPermission, setPendingPermission] = useState<{
+		request: PermissionRequest;
+		isDangerous: boolean;
+		resolve: (allowed: boolean) => void;
+		reject: (error: Error) => void;
+	} | null>(null);
 	const questionResolverRef = useRef<
 		((questions: QuestionData[]) => Promise<string[]>) | null
+	>(null);
+	const permissionResolverRef = useRef<
+		((request: PermissionRequest, isDangerous: boolean) => Promise<boolean>) | null
 	>(null);
 
 	return {
@@ -106,9 +116,11 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 		showCommandPalette, setShowCommandPalette,
 		showDashboard, setShowDashboard,
 		pendingQuestion, setPendingQuestion,
+		pendingPermission, setPendingPermission,
 		progress, setProgress,
 		operationLabel, setOperationLabel,
 		showConfigEditor, setShowConfigEditor,
-		questionResolverRef
+		questionResolverRef,
+		permissionResolverRef
 	};
 }

@@ -11,7 +11,7 @@ import Spinner from "ink-spinner";
 import type { Token } from "marked";
 import { marked } from "marked";
 import stringWidth from "string-width";
-import { MouseProvider } from "@ink-tools/ink-mouse";
+import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import React, {
 	useCallback,
 	useEffect,
@@ -83,6 +83,7 @@ import {
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
+import { setPermissionResolver, type PermissionRequest, buildPromptMessage } from "../../permissions/prompts.js";
 import { costTracker } from "../../api/index.js";
 import {
 	ASCII_ART,
@@ -820,6 +821,43 @@ function saveTehutiConfig(data: Record<string, unknown>) {
 
 
 
+function _PermissionPrompt({
+	request,
+	isDangerous,
+	onAnswer,
+}: {
+	request: PermissionRequest;
+	isDangerous: boolean;
+	onAnswer: (allowed: boolean) => void;
+}) {
+	useInput((k, key) => {
+		if (key.return) {
+			onAnswer(!isDangerous);
+		} else if (k.toLowerCase() === "y") {
+			onAnswer(true);
+		} else if (k.toLowerCase() === "n") {
+			onAnswer(false);
+		}
+	});
+
+	const messageLines = buildPromptMessage(request.toolName, request.args, isDangerous).split("\n");
+
+	return React.createElement(
+		Box,
+		{ flexDirection: "column", marginY: 1 },
+		messageLines.map((line, index) =>
+			React.createElement(Text, { key: index }, line)
+		),
+		React.createElement(
+			Box,
+			{ marginTop: 1, flexDirection: "row" },
+			React.createElement(Text, { color: GOLD }, "Allow execution? "),
+			React.createElement(Text, { color: SAND }, isDangerous ? "(y/N)" : "(Y/n)"),
+			React.createElement(Text, { dimColor: true }, "  Press Enter for default"),
+		)
+	);
+}
+
 function _QuestionPrompt({
 	question,
 	onAnswer,
@@ -1054,7 +1092,9 @@ function ChatUI({
 		progress, setProgress,
 		operationLabel, setOperationLabel,
 		showConfigEditor, setShowConfigEditor,
-		questionResolverRef
+		questionResolverRef,
+		pendingPermission, setPendingPermission,
+		permissionResolverRef,
 	} = useChatState(model, apiKey, cfg);
 	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = React.useState("");
 
@@ -1333,6 +1373,15 @@ function ChatUI({
 			stdout?.off("resize", handleResize);
 		};
 	}, [stdout]);
+
+	const scrollContainerRef = useRef<any>(null);
+	useOnWheel(scrollContainerRef, (event) => {
+		if (event.button === "wheel-up") {
+			scrollLineUp();
+		} else if (event.button === "wheel-down") {
+			scrollLineDown();
+		}
+	});
 
 	const terminalHeight = terminalSize.rows;
 	const terminalWidth = terminalSize.columns;
@@ -2113,10 +2162,14 @@ function ChatUI({
 			});
 		};
 		setQuestionResolver(questionResolverRef.current);
+		setPermissionResolver(permissionResolverRef.current!);
 
 		return () => {
 			setQuestionResolver(async () => {
-				throw new Error("Question cancelled - component unmounted");
+				throw new Error("UI disconnected.");
+			});
+			setPermissionResolver(async (req, isDangerous) => {
+				return !isDangerous; // Default fallback if UI unmounts
 			});
 		};
 	}, []);
@@ -2565,14 +2618,28 @@ function ChatUI({
 						return;
 					}
 					flushBatchedTokens();
+					
+					// Fix memory leak: Truncate massive string outputs before storing in React state indefinitely
+					const truncateDeep = (obj: any): any => {
+						if (typeof obj === "string") return obj.length > 15000 ? obj.slice(0, 15000) + "\n... [truncated for UI memory]" : obj;
+						if (Array.isArray(obj)) return obj.map(truncateDeep);
+						if (obj && typeof obj === "object") {
+							const newObj: any = {};
+							for (const key in obj) newObj[key] = truncateDeep(obj[key]);
+							return newObj;
+						}
+						return obj;
+					};
+					const safeResult = truncateDeep(result);
+
 					const success =
-						result && typeof result === "object" && "success" in result
-							? result.success
+						safeResult && typeof safeResult === "object" && "success" in safeResult
+							? safeResult.success
 							: true;
-					const formattedResult = formatToolResult(result, terminalWidth - 10);
+					const formattedResult = formatToolResult(safeResult, terminalWidth - 10);
 
 					if (toolCallsInfo.length > 0) {
-						toolCallsInfo[toolCallsInfo.length - 1].result = result;
+						toolCallsInfo[toolCallsInfo.length - 1].result = safeResult;
 					}
 
 					setMessages((m) =>
@@ -2584,7 +2651,7 @@ function ChatUI({
 								const idx = blocks.length - 1 - lastToolIdx;
 								const toolBlock = blocks[idx];
 								if (toolBlock.type === "tool") {
-									blocks[idx] = { ...toolBlock, result };
+									blocks[idx] = { ...toolBlock, result: safeResult };
 								}
 							}
 							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
@@ -3262,7 +3329,7 @@ function ChatUI({
 							)
 						: React.createElement(
 								Box,
-								{ flexDirection: "column", flexGrow: 1, overflow: "hidden", justifyContent: "flex-end" },
+								{ ref: scrollContainerRef, flexDirection: "column", flexGrow: 1, overflow: "hidden", justifyContent: "flex-end" },
 								React.createElement(
 									Box,
 									{ flexDirection: "column", marginBottom: -scrollOffset },
@@ -3360,6 +3427,15 @@ function ChatUI({
 					},
 					(showCommandPalette || showConfigEditor)
 						? null
+						: pendingPermission
+						? React.createElement(_PermissionPrompt, {
+								request: pendingPermission.request,
+								isDangerous: pendingPermission.isDangerous,
+								onAnswer: (allowed: boolean) => {
+									pendingPermission.resolve(allowed);
+									setPendingPermission(null);
+								},
+							})
 						: pendingQuestion
 						? React.createElement(_QuestionPrompt, {
 								question: pendingQuestion.questions[0],

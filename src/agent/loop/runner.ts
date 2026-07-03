@@ -3,7 +3,7 @@ import { isReasoningModel } from "../../api/model-capabilities.js";
 import type { OpenRouterTool, OpenRouterClient } from "../../api/openrouter.js";
 import type { KiloCodeClient, CustomProviderClient } from "../../api/index.js";
 import { debug } from "../../utils/debug.js";
-import { consola } from "../../utils/logger.js";
+
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
 import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
@@ -296,7 +296,7 @@ export async function runAgentLoop(
 			debug.log("agent", `Agent loop error (phase: \${agentError.phase}):`, agentError);
 			debug.log("agent", "Error stack:", agentError.stack);
 			
-			consola.error(formatError(agentError));
+			debug.log("agent", "Agent error UI duplication prevented:", formatError(agentError));
 			
 			return {
 				content: totalContent,

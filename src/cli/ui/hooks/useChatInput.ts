@@ -430,6 +430,16 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
+		// PageUp / PageDown for scrolling history without a mouse
+		if (key.pageUp) {
+			scrollPageUp();
+			return;
+		}
+		if (key.pageDown) {
+			scrollPageDown();
+			return;
+		}
+
 		if (key.escape) {
 			if (loading) return;
 			setInput("");
@@ -440,6 +450,21 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Handle normal character input and paste
 		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
+			// Aggressively filter out mouse sequence fragments that leak into stdin
+			// This covers individual characters, partial sequences, and glued sequences
+			// produced by rapid mouse scrolling or dragging in SGR tracking mode.
+			if (
+				isMouseSequence(k) ||
+				k === "[" ||
+				k === "<" ||
+				k === "[[ " ||
+				/^(?:\d+;)+\d+[Mm]?$/.test(k) ||
+				/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(k) || 
+				k.includes("[<") || 
+				k.includes("[M")
+			) {
+				return;
+			}
 			if (loading) return;
 			// Trigger Command Palette automatically when typing '/' as the first character
 			if (k === "/" && input.trim() === "" && cursorPos === 0) {

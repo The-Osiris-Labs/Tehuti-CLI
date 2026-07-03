@@ -279,10 +279,13 @@ export async function executeToolsParallel(
 							);
 
 							await mutex.runExclusive(async () => {
-								const resultStr =
+								let resultStr =
 									typeof result.output === "string"
 										? result.output
 										: JSON.stringify(result.output ?? "");
+								if (resultStr.length > 50000) {
+									resultStr = resultStr.slice(0, 50000) + "\n... (truncated due to excessive size)";
+								}
 								addToolResult(ctx, tc.id, tc.function.name, resultStr);
 							});
 
@@ -337,10 +340,13 @@ export async function executeToolsParallel(
 					telemetry,
 				);
 
-				const resultStr =
+				let resultStr =
 					typeof result.output === "string"
 						? result.output
 						: JSON.stringify(result.output ?? "");
+				if (resultStr.length > 50000) {
+					resultStr = resultStr.slice(0, 50000) + "\n... (truncated due to excessive size)";
+				}
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 				onToolResult?.(tc.function.name, result);

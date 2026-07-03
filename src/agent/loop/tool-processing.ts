@@ -330,9 +330,12 @@ export async function processToolCalls(
 					}
 				}
 
-				const resultStr = result.success
-					? result.output
-					: `Error: \${result.error}`;
+				let resultStr = result.success
+					? String(result.output)
+					: `Error: ${result.error}`;
+				if (resultStr.length > 50000) {
+					resultStr = resultStr.slice(0, 50000) + "\n... (truncated due to excessive size)";
+				}
 
 				await hookExecutor.executeHook("PostToolUse", {
 					toolName: tc.function.name,

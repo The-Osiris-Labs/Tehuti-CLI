@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { runAgentLoop, createAgentContext, type AgentLoopResult } from "../index.js";
 import { loadConfig } from "../../config/index.js";
-import { consola } from "../../utils/logger.js";
+import { debug } from "../../utils/debug.js";
 
 export interface SubagentTask {
 	id: string;
@@ -80,7 +80,7 @@ export class SwarmManager extends EventEmitter {
 				if (task.status === "running") {
 					task.status = "failed";
 					task.error = error instanceof Error ? error.message : String(error);
-					consola.error(`Subagent ${id} failed:`, error);
+					debug.log("agent", `Subagent ${id} failed:`, error);
 					this.emitUpdate();
 				}
 			});

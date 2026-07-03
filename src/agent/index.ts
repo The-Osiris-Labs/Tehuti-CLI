@@ -16,7 +16,7 @@ import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
 import { checkPermission } from "../permissions/index.js";
 import { debug } from "../utils/debug.js";
 import { AgentError, APIError, formatError } from "../utils/errors.js";
-import { consola } from "../utils/logger.js";
+
 import { getTelemetry } from "../utils/telemetry.js";
 import {
 	getToolCache,
@@ -84,6 +84,7 @@ import { semanticTools } from "./tools/semantic.js";
 import { swarmTools } from "./tools/swarm.js";
 import { setParentContext, systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
+import { shadowWorkspaceTool } from "./shadow-workspace.js";
 
 registerTools([
 	astTool,
@@ -105,6 +106,7 @@ registerTools([
 	...collaborationTools,
 	...customProviderTools,
 	...swarmTools,
+	shadowWorkspaceTool,
 ]);
 
 loadCacheFromDisk();

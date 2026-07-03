@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTool, type ToolContext, ToolResult } from "../tools/registry.js";
-import { getSkillsManager, type Skill } from "./manager.js";
+import { getSkillsManager, type Skill, createReusableSkillTool } from "./manager.js";
 
 const skillsManager = getSkillsManager();
 
@@ -144,4 +144,5 @@ export const skillsTools = [
 	deactivateSkillTool,
 	findSkillsTool,
 	getSkillTool,
+	createReusableSkillTool,
 ];

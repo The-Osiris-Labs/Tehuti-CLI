@@ -18,9 +18,13 @@ async function generateRepoMap(
 	const searchPath = args.path ? path.resolve(ctx.cwd, args.path) : ctx.cwd;
 	
 	try {
+		const baseIgnores = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/*.test.ts", "**/tests/**"];
+		const userIgnores = (args.ignore || []).map(p => p.includes("**") ? p : `**/${p}/**`);
+		const combinedIgnores = [...new Set([...baseIgnores, ...userIgnores])];
+		
 		const files = await glob(["**/*.{ts,tsx,js,jsx}"], {
 			cwd: searchPath,
-			ignore: args.ignore ?? ["node_modules/**", "dist/**", "build/**", ".git/**", "**/*.test.ts", "**/tests/**"],
+			ignore: combinedIgnores,
 			absolute: true,
 		});
 
