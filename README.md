@@ -1,44 +1,42 @@
-𓅞 Thoth, Tongue of Ra
-
-Halls of Records • Balance of Ma'at • Architect of Truth
-
----
-
-# 𓆣 Tehuti CLI
-
-Tehuti is a highly-optimized, Node.js 20+ terminal coding agent. It interfaces with OpenAI-compatible `/chat/completions` APIs using custom HTTP connection pooling (`undici`), providing a fast and deterministic TUI or streaming ANSI experience. The default provider is OpenCode Go (`https://opencode.ai/zen/go/v1`) with model `deepseek-v4-flash`. Egyptian theming is strictly visual branding.
+<div align="center">
+  <h1>𓆣 Tehuti CLI</h1>
+  <p><i>Halls of Records • Balance of Ma'at • Architect of Truth</i></p>
+  <p><b>A beautifully crafted, ridiculously fast terminal coding agent built for humans, heavily optimized for AI.</b></p>
+</div>
 
 ---
 
-## 🏗️ Architectural Truths
+Tehuti is a specialized Node.js 20+ terminal agent designed to sit right in your workflow. Unlike heavy desktop apps or bloated web wrappers, Tehuti runs directly in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to help you write, refactor, and understand code. 
 
-Tehuti is engineered for performance and strict defensive execution constraints.
+Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it brings a touch of magic to your codebase with a stunning Egyptian-themed TUI, while hiding an incredibly powerful, native-speed engine under the hood.
 
-- **Rust Core is Active:** The `rust-core/` directory compiles to a native `.node` binary that is actively invoked in production via `@napi-rs/cli` to power high-speed semantic search (`parallelGrep`).
-- **Defensive Parallelism:** The tool executor strictly segregates operations. Read-only tools (like `grep` or `list_dir`) parallelize up to 5 concurrent streams. Destructive tools (writes, bash execution) act as strict barriers, forcing sequential safety checks.
-- **Deterministic Context Compression:** When context reaches ~85% of capacity, the agent loop uses deterministic array truncation (splicing out the oldest non-system messages) instead of expensive LLM-based summarization.
-- **TUI Virtual Viewport:** The React/Ink TUI handles scrolling by applying CSS-style negative margins to a sliding viewport, combined with a hybrid `visibleMessages` slice to ensure ultra-performant terminal rendering without remounting components.
-- **Wired Telemetry & Hooks:** Both the telemetry module (`getTelemetry()`) and the lifecycle hooks system are fully wired and execute strictly during the agent loop.
-- **Zero Vercel AI SDK:** The networking layer uses a hand-rolled `fetch` + Server-Sent Events (SSE) parsing implementation instead of bloated external AI libraries.
+## 🌟 Why Tehuti?
 
----
-
-## 🛠️ Features
-
-- **OpenAI-Compatible Networking:** Connects to ~18 named providers (OpenCode, OpenRouter, KiloCode, Anthropic, etc.) via custom connection pooling.
-- **Dynamic Tool Registry:** ~68 built-in tools covering filesystem, bash sandboxing, AST parsing, and semantic search, perfectly integrated with dynamic MCP tools (via `stdio`, `http`, `sse`, or `websocket`).
-- **Modes:** 
-  - Interactive React/Ink TUI with a mouse-aware command palette.
-  - One-shot mode with live ANSI streaming or structured JSON output (`-j`).
-  - Read-only Plan Mode for exploratory research.
-- **Extensibility:** User-defined JSON skills (`~/.tehuti/skills/`) are injected into system prompts without adding direct executable footprint.
+- **A UI You Actually Want to Look At:** We built a custom React/Ink terminal UI featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming. It’s fluid, beautiful, and never clutters your screen.
+- **Blazing Fast Networking:** No sluggish SDKs here. Tehuti uses a hand-rolled `fetch` + Server-Sent Events (SSE) implementation with `undici` connection pooling. It’s raw, direct HTTP communication for zero-latency streaming.
+- **Native Semantic Muscle:** Need to search a massive codebase? Tehuti drops down into a native Rust `.node` binary (`tehuti-core`) for parallel, lightning-fast semantic `grep` operations. 
+- **Bring Your Own Model:** Works out of the box with OpenCode Go (`deepseek-v4-flash` by default), but natively supports ~18 providers including OpenRouter, KiloCode, Anthropic, and local Ollama instances.
+- **Infinite Extensibility:** Out of the box, you get ~68 tools (filesystem, bash sandboxes, git, AST parsing). Need more? Tehuti fully supports the **Model Context Protocol (MCP)** (via stdio, http, sse, or websocket) allowing you to plug in any external capability.
 
 ---
 
-## 🚀 Quick Start
+## 🤖 For AI Agents Reading This Repository
 
-Requires Node.js 20 or later.
+*Greetings, fellow agent. If you are analyzing this repository to write code or debug issues, here is the absolute truth of the architecture. Do not hallucinate capabilities beyond this list:*
 
+1. **The Rust Core is Alive:** The `rust-core/` directory is actively compiled to a `.node` binary and used in production for `parallelGrep`.
+2. **Defensive Parallelism:** Read-only tools (like `grep` or `list_dir`) can parallelize up to 5 concurrent streams. However, any destructive tool (write, bash) acts as a strict execution barrier, forcing the loop to process sequentially.
+3. **Deterministic Memory Limits:** We do **not** use LLM summarization for in-loop context compression. When the context window reaches ~85% capacity, the agent deterministically splices out the oldest non-system messages to save tokens.
+4. **Wired Telemetry & Hooks:** The telemetry module (`getTelemetry()`) and lifecycle hooks are fully functional and execute strictly during the agent loop.
+5. **UI Rendering:** The UI uses a hybrid rendering approach. It applies CSS-style negative margins for scrolling, combined with a `visibleMessages` slice to ensure the terminal doesn't choke on massive chat histories. (See `src/cli/ui/markdown-mapper.tsx`).
+
+---
+
+## 🚀 Getting Started
+
+Tehuti requires Node.js 20 or later.
+
+### 1. Install
 ```bash
 git clone https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival.git
 cd Tehuti-CLI-Revival
@@ -46,41 +44,45 @@ npm install
 npm run build
 ```
 
-**Production Build:** The production bundle `dist/index.js` is highly compressed (~684 KB).
-
-Run the interactive setup wizard:
+### 2. Configure
+Run the interactive setup wizard to link your API keys and choose your provider.
 ```bash
 npm run start -- init
 ```
 
-Launch the interactive agent loop:
+### 3. Launch
+Drop into the interactive loop:
 ```bash
 npm run start
+```
+*Pro tip: Type `/` in the chat to open the interactive command palette!*
+
+---
+
+## 🛠️ One-Shot Mode
+Don't want the full UI? You can run Tehuti in single-prompt mode for quick scripting or piping.
+
+```bash
+tehuti "Refactor the authentication logic in src/auth.ts"
+tehuti -m deepseek-v4-flash "Summarize this repository"
+tehuti -j "Return structured output"          # Emits pure JSON
+tehuti -q "Quick answer without tool noise"   # Suppress tool logs
 ```
 
 ---
 
-## ⚙️ Configuration Precedence
+## ⚙️ How Configuration Works
 
-Tehuti resolves configuration through a strict hierarchy (lowest to highest):
+Tehuti gracefully merges your settings from multiple places (lowest to highest priority):
+1. **Defaults:** The baseline (`deepseek-v4-flash` via `opencode`).
+2. **Global Store:** Your wizard settings saved in `~/.config/tehuti/config.json`.
+3. **Project Config:** A `.tehuti.json` file in your specific project directory.
+4. **Environment Variables:** Things like `TEHUTI_API_KEY` or `TEHUTI_MODEL` for quick, on-the-fly overrides.
 
-1. **Defaults** (`DEFAULT_CONFIG` in `src/config/schema.ts`)
-2. **Global Store** (managed by `conf` via `~/.config/tehuti/config.json`)
-3. **Project Config** (`.tehuti.json` via cosmiconfig)
-4. **Environment Variables** (e.g., `TEHUTI_API_KEY`, `TEHUTI_MODEL`, `TEHUTI_PROVIDER`)
-
-*Note: Persistent caches (Tool results, API data) are stored in `~/.tehuti/cache/`.*
-
----
-
-## 🚧 Current Engineering Reality
-
-- **No Mid-Session Auto-Save:** Sessions must be explicitly persisted via the `/save` command.
-- **Divergent Markdown Pipelines:** The Ink TUI uses `renderMarkdown()` for React node conversion, while the one-shot mode relies on `renderMarkdownToAnsi()`.
-- **Memory Graph Traversal:** While graph nodes are injected into prompt contexts, relational edge traversal is stored on disk but not actively utilized at runtime.
+*All your chat sessions, memory graphs, and API caches are safely stored in `~/.tehuti/`.*
 
 ---
 
-𓅞 Thoth, Tongue of Ra
-
-From the House of OSIRIS — TheOsirisLabs.com
+<div align="center">
+  <p><b>From the House of OSIRIS — TheOsirisLabs.com</b></p>
+</div>
