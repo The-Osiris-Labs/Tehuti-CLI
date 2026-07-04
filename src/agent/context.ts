@@ -177,7 +177,6 @@ export interface AgentContext {
 	diffPreview?: DiffPreviewOptions;
 	readFilesThisSession: Set<string>;
 	isSleeping?: boolean;
-	wakeupCallback?: (message?: string) => void;
 	metadata: {
 		startTime: Date;
 		toolCalls: number;

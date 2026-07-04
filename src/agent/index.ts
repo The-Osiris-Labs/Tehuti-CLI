@@ -38,8 +38,6 @@ import {
 	warnOnContextLimit,
 } from "./context.js";
 import {
-	compressContext,
-	createContextSummarizer,
 	estimateTokens,
 } from "./context-compressor.js";
 import {

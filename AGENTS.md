@@ -6,7 +6,7 @@ Sacred instructions for AI agents working in this codebase. This document reflec
 
 Tehuti CLI is a **TypeScript-only**, **Node.js 20+** terminal coding agent. It connects to LLM providers through custom HTTP clients in `src/api/` (native `fetch` + hand-rolled SSE parsing). The default provider is **OpenCode Go** (`opencode` → `https://opencode.ai/zen/go/v1`).
 
-**Runtime reality:** The shipped binary is pure Node/TS. A `rust-core/` directory exists in the repo but is **not linked into the runtime** — do not assume Rust is active.
+**Runtime reality:** The shipped binary is pure Node/TS. A `rust-core/` directory exists in the repo and **is compiled to a `.node` binary** which is actively used in production for `parallelGrep`.
 
 **Core responsibilities:**
 - Interactive TUI chat (`src/cli/commands/chat.ts`) and one-shot CLI prompts
@@ -63,7 +63,7 @@ Tehuti-CLI-Revival/
 │   │   ├── providers.ts            # Provider registry + base URLs
 │   │   └── wizard.ts               # First-run setup wizard
 │   ├── mcp/                        # MCP client + dynamic tool adapter
-│   ├── hooks/                      # Hook executor (code exists, config unwired)
+│   ├── hooks/                      # Hook executor
 │   ├── permissions/                # Permission prompts and rules
 │   ├── session/                    # Session save/load
 │   ├── terminal/                   # Markdown, buffering, highlighting
@@ -81,7 +81,7 @@ Tehuti-CLI-Revival/
 
 | Component | Reality |
 |-----------|---------|
-| `chat.ts` | Monolithic: CLI routing, Ink TUI, slash commands, agent invocation, config editor — all in one file |
+| `chat.ts` | Monolithic: CLI routing, Ink TUI, slash commands, agent invocation (config editor extracted to `ConfigEditor.tsx`) |
 | `agent/index.ts` | Registers tools, exposes `runAgentLoop` / `runOneShot`; delegates loop to `loop/runner.ts` |
 | `api/openrouter.ts` | Singleton client used for OpenRouter, OpenCode, and other OpenAI-compatible providers |
 | MCP tools | Static prompt tools registered at startup; server tools registered dynamically via `syncMCPToolRegistry()` |
@@ -113,7 +113,7 @@ Tehuti-CLI-Revival/
 
 ```bash
 npm install          # Install dependencies
-npm run build        # Production bundle → dist/index.js (~650 KB)
+npm run build        # Production bundle → dist/index.js (~684 KB)
 npm test             # 570 unit tests (2 skipped)
 npm run test:e2e     # 106 e2e tests (1 known failure in tier1.test.ts)
 npm run typecheck    # tsc --noEmit (clean)
@@ -125,7 +125,7 @@ npm start            # tsx src/index.ts (dev)
 - Unit: **570 passed**, 2 skipped
 - E2E: **105 passed**, 1 failed (known: `tests/e2e/tier1.test.ts` line-count assertion)
 - TypeScript: **clean**
-- Build output: **~668 KB** (`dist/index.js`)
+- Build output: **~684 KB** (700,312 bytes) (`dist/index.js`)
 
 ---
 
@@ -175,7 +175,7 @@ Entry: `runAgentLoop()` in `src/agent/index.ts` → `src/agent/loop/runner.ts`
 4. Model routing (keyword classifyTask → selectModelForClassification) — once
 5. syncMCPToolRegistry() — register dynamic mcp_* tools
 6. LOOP (maxIterations, default 50):
-   a. manageContextWindow() — LLM compression if >85% context (compression.ts)
+   a. manageContextWindow() — deterministic array truncation (splicing out oldest messages) if >85% context (compression.ts)
    b. normalizeToolMessageHistory()
    c. client.streamChat() — SSE stream via fetch
    d. processStreamChunk() — tokens, thinking, tool_calls
@@ -190,7 +190,7 @@ Entry: `runAgentLoop()` in `src/agent/index.ts` → `src/agent/loop/runner.ts`
 
 | System | Trigger | Method | File |
 |--------|---------|--------|------|
-| In-loop compression | Auto at ~85% of `maxContextLength` during agent loop | LLM summarization via `compressContext()` | `loop/compression.ts`, `context-compressor.ts` |
+| In-loop compression | Auto at ~85% of `maxContextLength` during agent loop | Deterministic array truncation (splicing out oldest messages), does NOT use LLM summarization | `loop/compression.ts` |
 | `/compact` command | User-initiated slash command | Simple placeholder summary, keeps system + last 6 messages | `context.ts` → `compactContext()` |
 
 ---
@@ -253,10 +253,10 @@ What actually works vs. what marketing might imply:
 | **Parallel execution** | Only when the model returns **multiple tool calls in a single turn**. Safe read-only tools run in parallel (max 5 concurrency). Writes and `question` force sequential. |
 | **Prefetching** | `prefetcher.predict()` runs on the **first tool call only** in each batch (`runner.ts` line ~220). Rule-based (read → file_info/list_dir, git_status → git_diff). Max 10 queued prefetches. |
 | **Model routing** | Keyword heuristics (`DEEP_KEYWORDS`, `FAST_KEYWORDS`) applied **once at session start**, not per message or per tool. |
-| **Tool cache** | LRU with mtime invalidation; persists to `~/.config/tehuti/` cache dir. Helps repeated identical reads. |
+| **Tool cache** | LRU with mtime invalidation; persists to `~/.tehuti/cache/` cache dir. Helps repeated identical reads. |
 | **Connection pooling** | undici Agent in `http-agent.ts` — reduces TLS overhead for repeated API calls. |
-| **Context compression** | Two separate systems (see above). In-loop uses an extra LLM call. `/compact` is cheap but lossy. |
-| **Telemetry** | `getTelemetry()` always collects in-memory metrics for `/stats`. The `telemetry: true` config flag is **not wired** — collection happens regardless. |
+| **Context compression** | Two separate systems (see above). In-loop uses deterministic array truncation (no LLM call). `/compact` is cheap but lossy. |
+| **Telemetry** | `getTelemetry()` always collects in-memory metrics for `/stats`. The `telemetry: true` config flag is fully wired and functional. |
 
 ---
 
@@ -301,7 +301,6 @@ This is intentional: negative margin handles scroll position; slicing limits wha
 | Feature | Status |
 |---------|--------|
 | **grepai standalone tools** | Full tool suite in `grepai*.ts` files — dead code; use `semantic` tools instead |
-| **rust-core** | Present in repo, not in Node runtime |
 
 ---
 
@@ -312,10 +311,10 @@ Egyptian-inspired palette (see `src/branding/`):
 | Color | Hex | Usage |
 |-------|-----|-------|
 | Gold | `#D4AF37` | Primary accent, Tehuti brand |
-| Sand | `#C2B280` | Secondary text |
-| Coral | `#D97757` | User messages |
-| Green | `#10B981` | Assistant responses |
-| Nile | `#2E5A6B` | Subtle accents |
+| Sand | `#8B7355` | Secondary text |
+| Coral | `#FF6B35` | User messages |
+| Green | `#22C55E` | Assistant responses |
+| Nile | `#165DFF` | Subtle accents |
 | Obsidian | `#1A1A2E` | Backgrounds |
 
 Key symbols: 𓆣 (ibis/Tehuti), 𓁹 (visibility), 𓂀 (errors), 𓋹 (success), 𓏛 (input), 𓊖 (lists)

@@ -24,6 +24,7 @@ import type { AgentContext } from "../context.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
 import { processToolCalls } from "./tool-processing.js";
+import { wakeupQueue } from "../events.js";
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -126,11 +127,8 @@ export async function runAgentLoop(
 			if (ctx.isSleeping) {
 				debug.log("agent", "Agent is sleeping, waiting for event...");
 				onProgress?.(50, "Sleeping... waiting for background task or subagent to complete");
-				const message = await new Promise<string | undefined>(resolve => {
-					ctx.wakeupCallback = resolve;
-				});
+				const message = await wakeupQueue.consume();
 				ctx.isSleeping = false;
-				ctx.wakeupCallback = undefined;
 				if (message) {
 					ctx.messages.push({
 						role: "system",

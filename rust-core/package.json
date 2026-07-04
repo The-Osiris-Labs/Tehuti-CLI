@@ -1,0 +1,11 @@
+{
+  "name": "tehuti-core",
+  "version": "0.1.0",
+  "main": "index.js",
+  "napi": {
+    "name": "tehuti-core"
+  },
+  "scripts": {
+    "build": "napi build --platform --release"
+  }
+}

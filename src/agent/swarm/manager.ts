@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { runAgentLoop, createAgentContext, type AgentLoopResult } from "../index.js";
 import { loadConfig } from "../../config/index.js";
 import { debug } from "../../utils/debug.js";
+import { agentEventBus } from "../events.js";
 
 export interface SubagentTask {
 	id: string;
@@ -78,12 +79,7 @@ export class SwarmManager extends EventEmitter {
 				}
 				if (parentContext) {
 					const msg = `[Task Completed] Subagent ${id} completed`;
-					if (typeof parentContext.wakeupCallback === "function") {
-						parentContext.wakeupCallback(msg);
-					} else {
-						parentContext.messages.push({ role: "system", content: msg });
-						parentContext.isSleeping = false;
-					}
+					agentEventBus.emit("wakeup", msg);
 				}
 			})
 			.catch((error) => {
@@ -95,12 +91,7 @@ export class SwarmManager extends EventEmitter {
 				}
 				if (parentContext) {
 					const msg = `[Task Completed] Subagent ${id} failed: ${error instanceof Error ? error.message : String(error)}`;
-					if (typeof parentContext.wakeupCallback === "function") {
-						parentContext.wakeupCallback(msg);
-					} else {
-						parentContext.messages.push({ role: "system", content: msg });
-						parentContext.isSleeping = false;
-					}
+					agentEventBus.emit("wakeup", msg);
 				}
 			});
 

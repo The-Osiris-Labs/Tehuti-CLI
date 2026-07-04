@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentContext } from "../context.js";
 import { createAgentContext } from "../context.js";
-import type { AgentLoopOptions, AgentLoopResult } from "../index.js";
+import type { AgentLoopOptions, AgentLoopResult } from "../loop/runner.js";
 import { runAgentLoop } from "../index.js";
 
 export type SubagentType = "general" | "explore" | "code" | "debug";

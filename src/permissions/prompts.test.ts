@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkPermission } from "./prompts.js";
+import { checkPermission, setPermissionResolver } from "./prompts.js";
 import { isToolSafe, requiresPermission, permissionManager, matchesPattern } from "./rules.js";
 import type { PermissionsConfig } from "../config/schema.js";
 
@@ -61,6 +61,12 @@ describe("Permissions and Rules System", () => {
 	});
 
 	describe("checkPermission validation", () => {
+		beforeEach(() => {
+			setPermissionResolver(async () => {
+				return await confirm({ message: "Allow?" });
+			});
+		});
+
 		const baseConfig: PermissionsConfig = {
 			defaultMode: "interactive",
 			alwaysAllow: ["read", "glob", "git_*"],

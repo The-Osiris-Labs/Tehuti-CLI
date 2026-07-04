@@ -133,6 +133,8 @@ import { SessionList } from "../ui/components/SessionList.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
+import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
+import { renderMarkdown } from "../ui/markdown-mapper.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
@@ -470,357 +472,6 @@ export function normalizeBlocks(
 	return normalized;
 }
 
-function renderMarkdown(text: string, maxWidth?: number, keyPrefix: string = "md"): React.ReactNode[] {
-	const elements: React.ReactNode[] = [];
-	const tokens = marked.lexer(text);
-	let keyCounter = 0;
-	const getKey = () => `${keyPrefix}-${keyCounter++}`;
-
-	for (const token of tokens) {
-		const rendered = renderToken(token, getKey, maxWidth);
-		if (rendered) {
-			if (Array.isArray(rendered)) {
-				elements.push(...rendered);
-			} else {
-				elements.push(rendered);
-			}
-		}
-	}
-
-	return elements;
-}
-
-function renderToken(
-	token: Token,
-	getKey: () => string,
-	maxWidth?: number,
-): React.ReactNode | React.ReactNode[] | null {
-	switch (token.type) {
-		case "code": {
-			const lang = token.lang || "text";
-			const code = token.text.trim();
-			const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
-
-			if (isPlain) {
-				return React.createElement(
-					Box,
-					{
-						key: getKey(),
-						flexDirection: "column",
-						marginTop: 0.5,
-						marginBottom: 0.5,
-						paddingLeft: 0,
-						paddingRight: 0,
-					},
-					React.createElement(Text, { wrap: "wrap" }, code),
-				);
-			}
-
-			const highlighted = highlightSyntax(code, lang);
-			const codeWidth = maxWidth ? Math.min(maxWidth - 4, 100) : 100;
-			
-			// Render code with line numbers for consistency
-			const lines = highlighted.split("\n");
-			const lineNumWidth = Math.max(2, String(lines.length).length);
-			const formattedCode = lines
-				.map((line, i) => {
-					const lineNum = String(i + 1).padStart(lineNumWidth);
-					return `${lineNum} │ ${line}`;
-				})
-				.join("\n");
-
-			return React.createElement(
-				Box,
-				{
-					key: getKey(),
-					flexDirection: "column",
-					marginTop: 1,
-					marginBottom: 1,
-					paddingLeft: 1,
-					paddingRight: 1,
-					borderStyle: "round",
-					borderColor: GRAY,
-					width: codeWidth,
-				},
-				React.createElement(Text, { dimColor: true }, lang),
-				React.createElement(Text, { wrap: "wrap", dimColor: true }, formattedCode),
-			);
-		}
-
-		case "heading": {
-			const level = token.depth;
-			const color = level === 1 ? GOLD : level === 2 ? CORAL : GREEN;
-			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
-			const prefix = "=".repeat(Math.max(1, 7 - level));
-			
-			const heading = React.createElement(
-				Text,
-				{ key: getKey(), bold: true, color, wrap: "wrap" },
-				...inlineElements,
-			);
-			
-			if (level <= 2) {
-				const underlineLength = maxWidth ? Math.min(maxWidth - 4, 80) : 80;
-				const underline = React.createElement(
-					Text,
-					{ key: getKey(), dimColor: true },
-					prefix.repeat(Math.floor(underlineLength / prefix.length)),
-				);
-				return [heading, React.createElement(Text, { key: getKey() }, "\n"), underline];
-			}
-			
-			return heading;
-		}
-
-		case "paragraph": {
-			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Text,
-				{ key: getKey(), wrap: "wrap" },
-				...inlineElements,
-			);
-		}
-
-		case "list": {
-			const items: React.ReactNode[] = [];
-			for (let i = 0; i < token.items.length; i++) {
-				const item = token.items[i];
-				const inlineElements = renderInlineTokens(item.tokens || [], getKey);
-				const bullet = token.ordered ? `${i + 1}.` : "•";
-				items.push(
-					React.createElement(
-						Text,
-						{ key: getKey(), wrap: "wrap" },
-						React.createElement(Text, { color: CORAL }, `${bullet} `),
-						...inlineElements,
-					),
-				);
-			}
-			return items;
-		}
-
-		case "blockquote": {
-			const innerElements = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Box,
-				{
-					key: getKey(),
-					paddingLeft: 2,
-					borderStyle: "single" as const,
-					borderColor: GRAY,
-				},
-				React.createElement(
-					Text,
-					{ dimColor: true, italic: true, wrap: "wrap" },
-					...innerElements,
-				),
-			);
-		}
-
-		case "hr": {
-			const lineLen = maxWidth ? Math.min(maxWidth - 4, 50) : 50;
-			return React.createElement(
-				Text,
-				{ key: getKey(), dimColor: true, color: GRAY },
-				"─".repeat(lineLen),
-			);
-		}
-
-		case "table": {
-			const header = token.header || [];
-			const rows = token.rows || [];
-
-			const widths: number[] = header.map((h: Token, i: number) => {
-				const headerLen =
-					"text" in h && typeof h.text === "string" ? stringWidth(h.text) : 0;
-				const rowLens = rows.map((r: Token[]) => {
-					const cell = r[i];
-					return cell && "text" in cell && typeof cell.text === "string"
-						? stringWidth(cell.text)
-						: 0;
-				});
-				return Math.max(headerLen, ...rowLens);
-			});
-
-			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
-
-			const padEndWidth = (text: string, width: number): string => {
-				const visibleWidth = stringWidth(text);
-				if (visibleWidth >= width) return text;
-				return text + " ".repeat(width - visibleWidth);
-			};
-
-			let result = "\n";
-			result += `┌${border.join("┬")}┐\n`;
-
-			const headerCells: string[] = header.map((h: Token, i: number) => {
-				const text = "text" in h && typeof h.text === "string" ? h.text : "";
-				const width = widths[i];
-				return `│ ${padEndWidth(text, width)} `;
-			});
-			result += headerCells.join("") + "│\n";
-
-			result += `├${border.join("┼")}┤\n`;
-
-			for (const row of rows) {
-				const cells: string[] = row.map((cell: Token, i: number) => {
-					const text =
-						cell && "text" in cell && typeof cell.text === "string"
-							? cell.text
-							: "";
-					const width = widths[i];
-					return `│ ${padEndWidth(text, width)} `;
-				});
-				result += cells.join("") + "│\n";
-			}
-
-			result += `└${border.join("┴")}┘\n`;
-
-			return React.createElement(Text, { key: getKey(), wrap: "wrap" }, result);
-		}
-
-		case "space": {
-			return React.createElement(Text, { key: getKey() }, "\n");
-		}
-
-		default:
-			return null;
-	}
-}
-
-function renderInlineTokens(
-	tokens: Token[],
-	getKey: () => string,
-): React.ReactNode[] {
-	const elements: React.ReactNode[] = [];
-
-	for (const token of tokens) {
-		const rendered = renderInlineToken(token, getKey);
-		if (rendered) {
-			if (Array.isArray(rendered)) {
-				elements.push(...rendered);
-			} else {
-				elements.push(rendered);
-			}
-		}
-	}
-
-	return elements;
-}
-
-function renderInlineToken(
-	token: Token,
-	getKey: () => string,
-): React.ReactNode | React.ReactNode[] | null {
-	switch (token.type) {
-		case "image": {
-			return React.createElement(MediaViewer, {
-				key: getKey(),
-				src: token.href,
-				alt: token.text,
-			});
-		}
-
-		case "text": {
-			return token.text;
-		}
-
-		case "codespan": {
-			return React.createElement(
-				Text,
-				{ key: getKey(), color: CYAN, backgroundColor: "#1e293b" },
-				` ${token.text} `,
-			);
-		}
-
-		case "strong": {
-			const inner = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(Text, { key: getKey(), bold: true }, ...inner);
-		}
-
-		case "em": {
-			const inner = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Text,
-				{ key: getKey(), italic: true },
-				...inner,
-			);
-		}
-
-		case "link": {
-			const inner = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Text,
-				{ key: getKey(), color: CYAN, underline: true },
-				...inner,
-			);
-		}
-
-		case "br": {
-			return React.createElement(Text, { key: getKey() }, "\n");
-		}
-
-		case "del": {
-			const inner = renderInlineTokens(token.tokens || [], getKey);
-			return React.createElement(
-				Text,
-				{ key: getKey(), strikethrough: true },
-				...inner,
-			);
-		}
-
-		case "escape": {
-			return token.text;
-		}
-
-		default:
-			if ("text" in token && typeof token.text === "string") {
-				return token.text;
-			}
-			if ("tokens" in token && Array.isArray(token.tokens)) {
-				return renderInlineTokens(token.tokens, getKey);
-			}
-			return null;
-	}
-}
-
-interface TehutiConfig {
-	apiKey?: string;
-	model?: string;
-	initialized?: boolean;
-	provider?: string;
-	baseUrl?: string;
-}
-
-interface OpenRouterErrorResponse {
-	error?: { message: string };
-}
-
-function loadTehutiConfig(): TehutiConfig {
-	const persisted = getGlobalConfig();
-	return {
-		apiKey: persisted.apiKey,
-		model: persisted.model,
-		initialized: persisted.initialized,
-		provider: persisted.provider,
-		baseUrl: persisted.baseUrl,
-	};
-}
-
-function saveTehutiConfig(data: Record<string, unknown>) {
-	saveGlobalConfig({
-		apiKey: typeof data.apiKey === "string" ? data.apiKey : undefined,
-		model: typeof data.model === "string" ? data.model : undefined,
-		provider: typeof data.provider === "string" ? data.provider : undefined,
-		baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : undefined,
-		temperature:
-			typeof data.temperature === "number" ? data.temperature : undefined,
-		maxTokens: typeof data.maxTokens === "number" ? data.maxTokens : undefined,
-	});
-}
-
-
-
 function _PermissionPrompt({
 	request,
 	isDangerous,
@@ -1057,12 +708,14 @@ function ChatUI({
 	model,
 	diffPreview,
 	cfg,
+	continueSession,
 	onExit,
 }: {
 	apiKey: string;
 	model: string;
 	diffPreview?: { showPreview: boolean; autoConfirm?: boolean };
 	cfg: typeof DEFAULT_CONFIG;
+	continueSession?: boolean;
 	onExit: () => void;
 }) {
 	const {
@@ -2082,7 +1735,7 @@ function ChatUI({
 
 		async function initSession() {
 			try {
-				const recentId = await sessionManager.getRecentSession(process.cwd());
+				const recentId = continueSession ? await sessionManager.getRecentSession(process.cwd()) : null;
 				if (recentId && mounted && !controller.signal.aborted) {
 					const data = await sessionManager.loadSession(recentId);
 					if (data && data.messages.length > 0 && mounted && !controller.signal.aborted) {
@@ -3461,12 +3114,14 @@ function App({
 	model,
 	diffPreview,
 	cfg,
+	continueSession,
 	onExit,
 }: {
 	apiKey: string;
 	model: string;
 	diffPreview?: { showPreview: boolean; autoConfirm?: boolean };
 	cfg: typeof DEFAULT_CONFIG;
+	continueSession?: boolean;
 	onExit: () => void;
 }) {
 	return React.createElement(
@@ -3477,6 +3132,7 @@ function App({
 			model,
 			diffPreview,
 			cfg,
+			continueSession,
 			onExit,
 		})
 	);
@@ -3505,111 +3161,11 @@ export function createProgram(): Command {
 		.option("--diff-auto", "Show diff preview and auto-approve", false)
 		.option("--no-mcp", "Disable MCP")
 		.option("--reset-key", "Reset API key and re-prompt")
+		.option("-c, --continue", "Continue the previous session automatically")
 		.argument("[prompt]", "One-shot prompt")
-		.action(async (prompt, opts) => {
-			if (opts.debug) {
-				setDebugMode(true);
-				debug.enable();
-			}
-			setupErrorHandlers(opts.debug);
-
-			let provider = opts.provider || process.env.TEHUTI_PROVIDER;
-
-			const cfg = await loadConfig();
-			getTelemetry().setEnabled(cfg.telemetry ?? false);
-			if (cfg.http) {
-				updateHttpAgentConfig(cfg.http);
-			}
-			const tehuti = loadTehutiConfig();
-
-			if (opts.resetKey) {
-				fs.rmSync(CONFIG_PATH, { force: true });
-				console.log("\x1b[38;5;214m  Config reset\x1b[0m\n");
-			}
-
-			provider =
-				opts.provider ||
-				process.env.TEHUTI_PROVIDER ||
-				cfg.provider ||
-				tehuti.provider ||
-				"openrouter";
-
-			const envApiKey = getEnvApiKeyForProvider(provider);
-			const envModel = process.env.TEHUTI_MODEL;
-
-			let apiKey = envApiKey || cfg.apiKey || tehuti.apiKey;
-			let model =
-				opts.model || envModel || cfg.model || tehuti.model || DEFAULT_CONFIG.model;
-
-			const info = getProviderInfo(provider);
-			const needsKey = info ? info.requiresApiKey : true;
-
-			if (!tehuti.initialized || (needsKey && !apiKey)) {
-				if (prompt || !process.stdout.isTTY) {
-					// In one-shot mode or non-interactive terminal, do not prompt for key.
-					// Let the API client throw the missing API key error.
-				} else {
-					const wizardResult = await runSetupWizard();
-					apiKey = wizardResult.apiKey;
-					model = wizardResult.model;
-					provider = wizardResult.provider;
-					if (wizardResult.permissions) {
-						cfg.permissions = wizardResult.permissions;
-					}
-					if (wizardResult.mcp) {
-						cfg.mcp = wizardResult.mcp;
-					}
-				}
-			}
-
-			cfg.apiKey = apiKey;
-			cfg.model = model;
-			cfg.provider = provider as any;
-			configureHooks(cfg);
-
-			const diffPreview = opts.diff
-				? { showPreview: true, autoConfirm: false }
-				: opts.diffAuto
-					? { showPreview: true, autoConfirm: true }
-					: undefined;
-
-			if (cfg.mcp?.enabled && !opts.noMcp) {
-				mcpManager.setSamplingHandler(async (request) => {
-					const client = OpenRouterClient.getInstance(cfg);
-					
-					const messages: OpenRouterMessage[] = request.messages.map((m) => {
-						const textContent = Array.isArray(m.content) 
-							? m.content.find(c => c.type === 'text')?.text || '' 
-							: (m.content.type === 'text' ? m.content.text : '');
-							
-						return {
-							role: m.role,
-							content: textContent,
-						};
-					});
-
-					if (request.systemPrompt) {
-						messages.unshift({ role: "system", content: request.systemPrompt });
-					}
-
-					const response = await client.completeChat(messages, undefined, undefined);
-
-					const responseContent = response.choices[0]?.message.content || "";
-					const text = typeof responseContent === "string" 
-						? responseContent 
-						: JSON.stringify(responseContent);
-
-					return {
-						model: request.modelPreferences?.hints?.[0]?.name || cfg.model || "deepseek-v4-flash",
-						role: "assistant",
-						content: {
-							type: "text",
-							text,
-						},
-					};
-				});
-				await mcpManager.connectAll(cfg);
-			}
+		.action(async (prompt?: string, options?: any) => {
+			const opts = options;
+			const { cfg, apiKey, model, diffPreview } = await bootstrapCLI(prompt, opts);
 
 			if (!prompt && !process.stdout.isTTY) {
 				consola.error(
@@ -3718,6 +3274,7 @@ export function createProgram(): Command {
 						model,
 						diffPreview,
 						cfg,
+						continueSession: opts.continue,
 						onExit: async () => {
 							await mcpManager.disconnectAll();
 						},

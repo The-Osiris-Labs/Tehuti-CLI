@@ -8,7 +8,7 @@ import { execSync } from "node:child_process";
 
 let isDockerAvailable = false;
 try {
-	execSync("docker --version", { stdio: "ignore" });
+	execSync("docker info", { stdio: "ignore" });
 	isDockerAvailable = true;
 } catch {
 	isDockerAvailable = false;

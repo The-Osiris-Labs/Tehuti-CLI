@@ -1,8 +1,23 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
 import path from "node:path";
+import url from "node:url";
+import { createRequire } from "node:module";
 import fs from "fs-extra";
 import { glob } from "tinyglobby";
+
+const require = createRequire(import.meta.url);
+let tehutiCore: any = null;
+try {
+	const currentDir = url.fileURLToPath(new URL(".", import.meta.url));
+	const isDist = currentDir.includes("dist") || currentDir.endsWith("dist/");
+	const nodePath = isDist
+		? path.resolve(currentDir, "tehuti-core.darwin-arm64.node")
+		: path.resolve(currentDir, "../../../dist/tehuti-core.darwin-arm64.node");
+	tehutiCore = require(nodePath);
+} catch (e) {
+	// console.error("Failed to load rust parallel_grep", e);
+}
 import { z } from "zod";
 import { mcpManager } from "../../mcp/client.js";
 import type {
@@ -331,6 +346,35 @@ async function grepFiles(
 	}
 
 	try {
+		if (
+			tehutiCore &&
+			tehutiCore.parallelGrep &&
+			args.ignore_case === false &&
+			!args.multiline &&
+			!args.context &&
+			!args.include
+		) {
+			// Fast path using Rust native extension
+			const results = await tehutiCore.parallelGrep(searchPath, args.pattern);
+			if (!results || results.length === 0) {
+				return { success: true, output: "No matches found." };
+			}
+			const maxResults = args.max_results || 50;
+			const outputLines = results
+				.slice(0, maxResults)
+				.map((r: any) => `${r.filePath}:${r.lineNumber}: ${r.content}`);
+			
+			const truncationMsg =
+				results.length > maxResults
+					? `\n... (truncated, ${results.length} total matches)`
+					: "";
+
+			return {
+				success: true,
+				output: outputLines.join("\n") + truncationMsg,
+			};
+		}
+
 		const rgArgs = [
 			"--json",
 			"--line-number",

@@ -1,4 +1,4 @@
-import { compressContext, estimateTokens, createContextSummarizer } from "../context-compressor.js";
+import { estimateTokens } from "../context-compressor.js";
 import type { AgentContext } from "../context.js";
 import type { OpenRouterClient, KiloCodeClient, CustomProviderClient } from "../../api/index.js";
 import { debug } from "../../utils/debug.js";
@@ -15,38 +15,22 @@ export async function manageContextWindow(
 	const targetTokens = Math.floor(maxContext * 0.80);
 
 	if (currentTokens > triggerThreshold) {
-		const modelId = ctx.config.model;
-		if (supportsPromptCaching(modelId)) {
-			debug.log(
-				"agent",
-				`Context limit reached (${currentTokens} > ${triggerThreshold}). Model ${modelId} supports native prompt caching. Relying on sliding window instead of LLM compression.`
-			);
-			
-			// Sliding window: keep system prompt, then remove oldest messages until under target
-			// messages[0] is typically the system prompt
-			while (currentTokens > targetTokens && ctx.messages.length > 2) {
-				// Remove the second message (oldest after system prompt)
-				ctx.messages.splice(1, 1);
-				currentTokens = estimateTokens(ctx.messages);
-			}
-			return;
-		}
-
 		debug.log(
 			"agent",
-			`Context compression triggered (${currentTokens} > ${triggerThreshold} tokens)`,
+			`Context compression triggered (${currentTokens} > ${triggerThreshold} tokens). Relying on deterministic head/tail truncation.`,
 		);
 		
-		const summarizer = createContextSummarizer(async (prompt: string) => {
-			const result = await client.completeChat(
-				[{ role: "user", content: prompt }],
-				[],
-			);
-			return typeof result.choices[0].message.content === "string"
-				? result.choices[0].message.content
-				: "";
-		});
-		
-		ctx.messages = await compressContext(ctx.messages, summarizer, targetTokens, {});
+		// Deterministic truncation: keep head (system prompts) and tail (recent messages)
+		// We remove the oldest non-system messages until under target
+		while (currentTokens > targetTokens && ctx.messages.length > 2) {
+			const nonSystemIndex = ctx.messages.findIndex(m => m.role !== "system");
+			if (nonSystemIndex !== -1) {
+				ctx.messages.splice(nonSystemIndex, 1);
+			} else {
+				// Fallback if all are system messages (unlikely)
+				ctx.messages.splice(1, 1);
+			}
+			currentTokens = estimateTokens(ctx.messages);
+		}
 	}
 }

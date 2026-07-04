@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
+import { agentEventBus } from "../events.js";
 import { isDangerousCommand } from "./bash.js";
 import type {
 	AnyToolExecutor,
@@ -98,6 +99,8 @@ process.on("SIGTERM", () => {
 	process.exit(143);
 });
 
+const errorDebouncers = new Map<number, NodeJS.Timeout>();
+
 function addOutput(pid: number, type: "stdout" | "stderr", data: string): void {
 	const proc = backgroundProcesses.get(pid);
 	if (!proc) return;
@@ -110,6 +113,18 @@ function addOutput(pid: number, type: "stdout" | "stderr", data: string): void {
 			target.push(line);
 			if (target.length > 10000) {
 				target.shift();
+			}
+
+			if (type === "stderr" && /(error|fail|exception|ERR_)/i.test(line)) {
+				if (errorDebouncers.has(pid)) {
+					clearTimeout(errorDebouncers.get(pid)!);
+				}
+				const timer = setTimeout(() => {
+					const msg = `[Task Error] Background process PID ${pid} ('${proc.command}') emitted potential error: ${line.trim()}`;
+					agentEventBus.emit("wakeup", msg);
+					errorDebouncers.delete(pid);
+				}, 1500);
+				errorDebouncers.set(pid, timer);
 			}
 		}
 	}
@@ -196,12 +211,7 @@ async function startBackground(
 			
 			if (ctx.agentContext) {
 				const msg = `[Task Completed] Background process PID ${pid} exited with code ${code}`;
-				if (typeof ctx.agentContext.wakeupCallback === "function") {
-					ctx.agentContext.wakeupCallback(msg);
-				} else {
-					ctx.agentContext.messages.push({ role: "system", content: msg });
-					ctx.agentContext.isSleeping = false;
-				}
+				agentEventBus.emit("wakeup", msg);
 			}
 		});
 
@@ -214,12 +224,7 @@ async function startBackground(
 			
 			if (ctx.agentContext) {
 				const msg = `[Task Completed] Background process PID ${pid} failed with error: ${error.message}`;
-				if (typeof ctx.agentContext.wakeupCallback === "function") {
-					ctx.agentContext.wakeupCallback(msg);
-				} else {
-					ctx.agentContext.messages.push({ role: "system", content: msg });
-					ctx.agentContext.isSleeping = false;
-				}
+				agentEventBus.emit("wakeup", msg);
 			}
 		});
 

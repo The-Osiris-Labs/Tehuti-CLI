@@ -370,10 +370,11 @@ async function webSearch(
 			},
 		};
 	} catch (error) {
+		const errorMessage = `Web search failed: ${error instanceof Error ? error.message : String(error)}`;
 		return {
 			success: false,
-			output: "",
-			error: `Web search failed: ${error instanceof Error ? error.message : String(error)}`,
+			output: errorMessage,
+			error: errorMessage,
 			metadata: { query, num_results },
 		};
 	}
@@ -427,10 +428,11 @@ ${result.text ?? ""}
 			},
 		};
 	} catch (error) {
+		const errorMessage = `Code search failed: ${error instanceof Error ? error.message : String(error)}`;
 		return {
 			success: false,
-			output: "",
-			error: `Code search failed: ${error instanceof Error ? error.message : String(error)}`,
+			output: errorMessage,
+			error: errorMessage,
 			metadata: { query },
 		};
 	}

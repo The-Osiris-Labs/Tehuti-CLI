@@ -1,57 +1,96 @@
-import path from "node:path";
-import os from "node:os";
-
-// This is a boilerplate/stub implementation for SQLite-VSS or a similar vector database.
 export interface VectorStore {
 	init(): Promise<void>;
 	addEmbedding(id: string, text: string, metadata: Record<string, any>): Promise<void>;
 	search(query: string, limit?: number): Promise<Array<{ id: string, score: number, metadata: Record<string, any> }>>;
 }
 
-export class SQLiteVSSStub implements VectorStore {
-	private embeddings: Map<string, { vector: number[], metadata: Record<string, any> }> = new Map();
+/**
+ * A production-grade local Okapi BM25 Vector Store.
+ * Replaces fragile dense mocks with a robust sparse vector space model (classic NLP).
+ * BM25 improves upon standard TF-IDF by adding term saturation and document length normalization.
+ * Requires zero native bindings, no API keys, and no network dependencies.
+ */
+export class BM25VectorStore implements VectorStore {
+	private documents: Map<string, { tokens: string[], metadata: Record<string, any> }> = new Map();
+	private documentCount = 0;
+	// document frequency per term
+	private df: Map<string, number> = new Map();
+	// average document length
+	private avgdl = 0;
+	private totalTokens = 0;
+
+	// BM25 parameters
+	private k1 = 1.5;
+	private b = 0.75;
 
 	async init(): Promise<void> {
-		// Boilerplate for initializing sqlite-vss
-		// Example: db.exec(`CREATE VIRTUAL TABLE vss_memory USING vss0(vector(1536))`);
+		// Ready instantly
 	}
 
-	private getEmbedding(text: string): number[] {
-		// Lightweight deterministic mock embedding for local stub
-		const vec = new Array(1536).fill(0);
-		for (let i = 0; i < text.length; i++) {
-			vec[i % 1536] += text.charCodeAt(i);
-		}
-		const mag = Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0)) || 1;
-		return vec.map(v => v / mag);
-	}
-
-	private cosineSimilarity(vecA: number[], vecB: number[]): number {
-		let dotProduct = 0;
-		for (let i = 0; i < vecA.length; i++) {
-			dotProduct += vecA[i] * vecB[i];
-		}
-		return dotProduct;
+	private tokenize(text: string): string[] {
+		// Simple word tokenizer
+		return text.toLowerCase()
+			.replace(/[^a-z0-9]/g, ' ')
+			.split(/\s+/)
+			.filter(t => t.length >= 2);
 	}
 
 	async addEmbedding(id: string, text: string, metadata: Record<string, any>): Promise<void> {
-		const vector = this.getEmbedding(text);
-		this.embeddings.set(id, { vector, metadata });
-		// In a real implementation with sqlite-vss:
-		// db.run(`INSERT INTO vss_memory(rowid, vector) VALUES (?, ?)`, [id, JSON.stringify(vector)])
+		const tokens = this.tokenize(text);
+		if (tokens.length === 0) return;
+
+		this.documents.set(id, { tokens, metadata });
+		this.documentCount++;
+		this.totalTokens += tokens.length;
+		this.avgdl = this.totalTokens / this.documentCount;
+
+		// Unique tokens in this document
+		const uniqueTokens = new Set(tokens);
+		for (const token of uniqueTokens) {
+			this.df.set(token, (this.df.get(token) || 0) + 1);
+		}
 	}
 
-	async search(query: string, limit: number = 10): Promise<Array<{ id: string, score: number, metadata: Record<string, any> }>> {
-		const queryVec = this.getEmbedding(query);
-		const results = [];
-		for (const [id, data] of this.embeddings.entries()) {
-			const score = this.cosineSimilarity(queryVec, data.vector);
-			results.push({ id, score, metadata: data.metadata });
+	async search(query: string, limit = 5): Promise<Array<{ id: string, score: number, metadata: Record<string, any> }>> {
+		const queryTokens = this.tokenize(query);
+		if (queryTokens.length === 0 || this.documentCount === 0) return [];
+
+		const results: Array<{ id: string, score: number, metadata: Record<string, any> }> = [];
+
+		for (const [id, doc] of this.documents.entries()) {
+			let score = 0;
+			const docLength = doc.tokens.length;
+
+			// Count term frequencies in this document
+			const tf = new Map<string, number>();
+			for (const token of doc.tokens) {
+				tf.set(token, (tf.get(token) || 0) + 1);
+			}
+
+			// Calculate BM25 score
+			for (const token of queryTokens) {
+				const termFreq = tf.get(token) || 0;
+				if (termFreq === 0) continue;
+
+				const docFreq = this.df.get(token) || 0;
+				
+				// IDF calculation with floor to prevent negative IDFs
+				const idf = Math.max(0, Math.log((this.documentCount - docFreq + 0.5) / (docFreq + 0.5) + 1));
+				
+				// Term frequency saturation & length normalization
+				const numerator = termFreq * (this.k1 + 1);
+				const denominator = termFreq + this.k1 * (1 - this.b + this.b * (docLength / this.avgdl));
+				
+				score += idf * (numerator / denominator);
+			}
+
+			if (score > 0) {
+				results.push({ id, score, metadata: doc.metadata });
+			}
 		}
-		// Sort descending by score
-		results.sort((a, b) => b.score - a.score);
-		return results.slice(0, limit);
+
+		return results.sort((a, b) => b.score - a.score).slice(0, limit);
 	}
 }
 
-export const vectorStore = new SQLiteVSSStub();
+export const vectorStore = new BM25VectorStore();
