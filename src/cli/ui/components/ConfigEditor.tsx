@@ -1,6 +1,5 @@
 import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-import TextInput from "ink-text-input";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
@@ -112,15 +111,16 @@ function ConfigFieldRow({
 				</Text>
 				{isEditing ? (
 					<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
-						<TextInput
-							value={editValue}
-							onChange={(val: string) => {
-								const cleanVal = val.replace(/\[<\d+;\d+;\d+[Mm]/g, "");
-								onEditValueChange(cleanVal);
-							}}
-							onSubmit={onEditCommit}
-							focus={isEditing}
-						/>
+						{isEditing ? (
+							<Text>
+								{editValue.length === 0 ? (
+									<Text color="gray">type a value...</Text>
+								) : (
+									<Text color={CORAL}>{editValue}</Text>
+								)}
+								<Text backgroundColor="white" color="black"> </Text>
+							</Text>
+						) : null}
 					</Box>
 				) : (
 					<Text color={isSelected ? CORAL : SAND}>{fieldValue}</Text>
@@ -271,6 +271,32 @@ export function ConfigEditor({
 				setEditingField(null);
 				setEditValue("");
 				setValidationError(null);
+			} else if (key.backspace || key.delete) {
+				if (editValue.length > 0) {
+					setEditValue((prev) => prev.slice(0, -1));
+				}
+			} else if (
+				char &&
+				!key.ctrl &&
+				!key.meta &&
+				!char.startsWith("\x1b") &&
+				char !== "\r" &&
+				char !== "\n" &&
+				char !== "\t"
+			) {
+				if (
+					isMouseSequence(char) ||
+					char === "[" ||
+					char === "<" ||
+					char === "[[ " ||
+					/^(?:\d+;)+\d+[Mm]?$/.test(char) ||
+					/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(char) ||
+					char.includes("[<") ||
+					char.includes("[M")
+				) {
+					return;
+				}
+				setEditValue((prev) => prev + char);
 			}
 		} else {
 			if (key.ctrl && (char === "s" || char === "S")) {

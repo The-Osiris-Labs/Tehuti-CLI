@@ -79,7 +79,6 @@
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^4.0.1",
     "ink-spinner": "^5.0.0",
-    "ink-text-input": "^6.0.0",
     "is-ci": "^4.1.0",
     "is-interactive": "^2.0.0",
     "is-unicode-supported": "^2.1.0",

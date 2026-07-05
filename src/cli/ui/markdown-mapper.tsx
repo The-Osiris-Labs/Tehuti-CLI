@@ -76,7 +76,7 @@ export function renderToken(
 			}
 
 			const highlighted = highlightSyntax(code, lang);
-			const codeWidth = maxWidth ? Math.min(maxWidth - 4, 100) : 100;
+			const codeWidth = maxWidth ? Math.max(10, maxWidth - 4) : 100;
 
 			// Render code with line numbers for consistency
 			const lines = highlighted.split("\n");
@@ -123,7 +123,7 @@ export function renderToken(
 			);
 
 			if (level <= 2) {
-				const underlineLength = maxWidth ? Math.min(maxWidth - 4, 80) : 80;
+				const underlineLength = maxWidth ? Math.max(10, maxWidth - 4) : 80;
 				const underline = React.createElement(
 					Text,
 					{ key: getKey(), dimColor: true },
@@ -185,7 +185,7 @@ export function renderToken(
 		}
 
 		case "hr": {
-			const lineLen = maxWidth ? Math.min(maxWidth - 4, 50) : 50;
+			const lineLen = maxWidth ? Math.max(10, maxWidth - 4) : 50;
 			return React.createElement(
 				Text,
 				{ key: getKey(), dimColor: true, color: GRAY },
