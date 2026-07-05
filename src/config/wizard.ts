@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { confirm, input, search, select } from "@inquirer/prompts";
 import { listModelsForProvider } from "../api/models.js";
-import { saveGlobalConfig } from "./loader.js";
+import { loadConfig, saveGlobalConfig } from "./loader.js";
 import {
 	getApiKeyEnvVarsForProvider,
 	getEnvApiKeyForProvider,
@@ -17,6 +17,8 @@ const SAND = "\x1b[38;5;137m";
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 const GREEN = "\x1b[32m";
+const NILE = "\x1b[38;5;27m";
+const RED = "\x1b[31m";
 
 const IBIS = "\u{131A3}";
 const ANKH = "\u{13269}";
@@ -30,6 +32,8 @@ const c = {
 	dim: (text: string) => `${DIM}${text}${RESET}`,
 	green: (text: string) => `${GREEN}${text}${RESET}`,
 	cyan: (text: string) => `\x1b[36m${text}${RESET}`,
+	nile: (text: string) => `${NILE}${text}${RESET}`,
+	red: (text: string) => `${RED}${text}${RESET}`,
 };
 
 const egyptianTheme = {
@@ -124,7 +128,50 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	const requiresKey = info ? info.requiresApiKey : true;
 	let apiKey: string | undefined;
 
-	if (requiresKey) {
+	if (provider === "google") {
+		const authMethod = await select({
+			message: `How do you want to authenticate with Google Gemini?`,
+			choices: [
+				{
+					name: "Log in with Google (OAuth 2.0 - Recommended)",
+					value: "oauth",
+				},
+				{ name: "Enter API Key (AI Studio / Legacy)", value: "apikey" },
+			],
+			theme: egyptianTheme,
+		});
+
+		if (authMethod === "oauth") {
+			const { authenticateGoogleOAuth } = await import("../api/oauth.js");
+			try {
+				console.log(
+					c.nile("\n  Launching browser for Google Authentication...\n"),
+				);
+				await authenticateGoogleOAuth();
+				apiKey = undefined;
+			} catch (err) {
+				console.log(
+					c.red(
+						`  OAuth failed: ${err instanceof Error ? err.message : String(err)}`,
+					),
+				);
+				const fallback = await confirm({
+					message: "Do you want to enter an API key instead?",
+					default: true,
+					theme: egyptianTheme,
+				});
+				if (!fallback) throw err;
+			}
+		}
+	}
+
+	const currentConfig = await loadConfig();
+	if (
+		requiresKey &&
+		apiKey === undefined &&
+		(provider !== "google" ||
+			(provider === "google" && !currentConfig?.oauth?.google?.refreshToken))
+	) {
 		const envKey = getEnvApiKeyForProvider(provider);
 		if (envKey) {
 			const useEnv = await confirm({

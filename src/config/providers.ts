@@ -294,11 +294,21 @@ export function resolveBaseUrlForProvider(
 	return normalizedBaseUrl;
 }
 
-export function getProviderAuthHeaders(
+export async function getProviderAuthHeaders(
 	providerId: string,
 	apiKey?: string,
 	customHeaders?: Record<string, string>,
-): Record<string, string> {
+): Promise<Record<string, string>> {
+	if (providerId === "google" && !apiKey) {
+		const { getValidGoogleAccessToken } = await import("../api/oauth.js");
+		const token = await getValidGoogleAccessToken();
+		if (token) {
+			return {
+				Authorization: `Bearer ${token}`,
+			};
+		}
+	}
+
 	if (!apiKey) {
 		return {};
 	}

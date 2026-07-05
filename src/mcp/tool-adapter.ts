@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { z } from "zod";
 import { getToolCache } from "../agent/cache/tool-cache.js";
 import type {
@@ -8,8 +9,6 @@ import type {
 import type { StandardTool } from "../api/base-client.js";
 import type { MCPTool } from "./client.js";
 
-import crypto from "crypto";
-
 function safeNamePart(
 	value: string,
 	fallback: string,
@@ -17,22 +16,24 @@ function safeNamePart(
 	hashInput?: string,
 	isServer?: boolean,
 ): string {
-	let safe = value
-		.replace(/[^a-zA-Z0-9_-]+/g, "_")
-		.replace(/^_+|_+$/g, "");
-	
+	let safe = value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+
 	if (isServer) {
 		safe = safe.replace(/_/g, "-");
 	}
-	
+
 	if (hashInput && (value !== safe || safe.length > maxLength)) {
-		const hash = crypto.createHash("md5").update(hashInput).digest("hex").slice(0, 4);
+		const hash = crypto
+			.createHash("md5")
+			.update(hashInput)
+			.digest("hex")
+			.slice(0, 4);
 		const availableLength = Math.max(1, maxLength - 5);
 		safe = `${safe.slice(0, availableLength)}${isServer ? "-" : "_"}${hash}`;
 	} else if (safe.length > maxLength) {
 		safe = safe.slice(0, maxLength);
 	}
-	
+
 	return safe || fallback;
 }
 

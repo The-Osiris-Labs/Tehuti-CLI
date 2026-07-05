@@ -292,13 +292,13 @@ describe("OpenRouterClient", () => {
 	});
 
 	describe("provider-specific headers", () => {
-		it("should only send OpenRouter attribution headers for OpenRouter", () => {
+		it("should only send OpenRouter attribution headers for OpenRouter", async () => {
 			const opencodeClient = new OpenRouterClient({
 				...validConfig,
 				provider: "opencode",
 			} as any);
 
-			const headers = (opencodeClient as any).buildHeaders();
+			const headers = await (opencodeClient as any).buildHeaders();
 			expect(headers["HTTP-Referer"]).toBeUndefined();
 			expect(headers["X-Title"]).toBeUndefined();
 			expect(headers.Authorization).toBe("Bearer sk-or-test123456789");

@@ -31,6 +31,7 @@ const globalConfig = new Conf<{
 	maxTokens?: number;
 	initialized?: boolean;
 	recentCommands?: string[];
+	oauth?: Record<string, any>;
 }>({
 	projectName: MODULE_NAME,
 	...(CONFIG_CWD ? { cwd: CONFIG_CWD } : {}),
@@ -192,6 +193,9 @@ export async function loadConfig(
 		...(globalConfig.get("maxTokens") !== undefined && {
 			maxTokens: globalConfig.get("maxTokens"),
 		}),
+		...(globalConfig.get("oauth") && {
+			oauth: globalConfig.get("oauth"),
+		}),
 		...resolvedFileConfig,
 		...(envModel && { model: envModel }),
 		provider,
@@ -284,6 +288,7 @@ export function saveGlobalConfig(updates: {
 	customProvider?: Record<string, unknown> | null;
 	temperature?: number | null;
 	maxTokens?: number | null;
+	oauth?: Record<string, any> | null;
 }): void {
 	if ("apiKey" in updates) {
 		if (updates.apiKey) {

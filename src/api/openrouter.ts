@@ -233,7 +233,7 @@ export class OpenRouterClient extends BaseAPIClient {
 		}
 	}
 
-	protected override buildHeaders(): Record<string, string> {
+	protected override async buildHeaders(): Promise<Record<string, string>> {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 		};
@@ -245,7 +245,7 @@ export class OpenRouterClient extends BaseAPIClient {
 
 		Object.assign(
 			headers,
-			getProviderAuthHeaders(this.providerId, this.apiKey),
+			await getProviderAuthHeaders(this.providerId, this.apiKey),
 		);
 
 		return headers;

@@ -112,7 +112,12 @@ export async function checkPermission(
 	}
 
 	// 0. Check ephemeral capabilities first
-	if (permissionManager.consumeCapability(toolName, (args ?? {}) as Record<string, unknown>)) {
+	if (
+		permissionManager.consumeCapability(
+			toolName,
+			(args ?? {}) as Record<string, unknown>,
+		)
+	) {
 		return { allowed: true, reason: "Allowed by JIT capability" };
 	}
 

@@ -91,7 +91,7 @@ export class KiloCodeClient extends BaseAPIClient {
 		};
 	}
 
-	protected override buildHeaders(): Record<string, string> {
+	protected override async buildHeaders(): Promise<Record<string, string>> {
 		return {
 			Authorization: `Bearer ${this.apiKey}`,
 			"Content-Type": "application/json",

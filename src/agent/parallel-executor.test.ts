@@ -14,13 +14,25 @@ vi.mock("./tools/registry.js", () => ({
 		return { success: true, output: `${name} result` };
 	}),
 	getTool: vi.fn().mockImplementation((name: string) => {
-		if (["read", "read_file", "glob", "grep", "list_dir", "web_fetch", "git_status"].includes(name)) {
+		if (
+			[
+				"read",
+				"read_file",
+				"glob",
+				"grep",
+				"list_dir",
+				"web_fetch",
+				"git_status",
+			].includes(name)
+		) {
 			return { intent: "read-only" };
 		}
 		if (["question"].includes(name)) {
 			return { intent: "interactive" };
 		}
-		if (["write", "write_file", "edit", "edit_file", "delete_file"].includes(name)) {
+		if (
+			["write", "write_file", "edit", "edit_file", "delete_file"].includes(name)
+		) {
 			return { intent: "destructive" };
 		}
 		return null;

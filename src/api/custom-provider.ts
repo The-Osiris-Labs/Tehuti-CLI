@@ -130,7 +130,7 @@ export class CustomProviderClient extends BaseAPIClient {
 		);
 	}
 
-	protected override buildHeaders(): Record<string, string> {
+	protected override async buildHeaders(): Promise<Record<string, string>> {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			...this.customHeaders,

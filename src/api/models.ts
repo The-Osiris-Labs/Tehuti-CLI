@@ -141,7 +141,7 @@ export async function listModelsForProvider(
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			...getProviderAuthHeaders(provider, key, customHeaders),
+			...(await getProviderAuthHeaders(provider, key, customHeaders)),
 		};
 
 		let res = await fetch(url, { headers });

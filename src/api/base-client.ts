@@ -190,7 +190,7 @@ export abstract class BaseAPIClient {
 		this.validateMaxTokens(this.maxTokens);
 	}
 
-	protected abstract buildHeaders(): Record<string, string>;
+	protected abstract buildHeaders(): Promise<Record<string, string>>;
 	protected abstract getProviderErrorSubject(): string;
 	protected abstract getProviderAuthHints(): string[];
 
@@ -606,7 +606,7 @@ export abstract class BaseAPIClient {
 				async () => {
 					const res = await fetch(this.getChatCompletionsUrl(), {
 						method: "POST",
-						headers: this.buildHeaders(),
+						headers: await this.buildHeaders(),
 						body: JSON.stringify(body),
 						signal: combinedSignal,
 					});
@@ -726,7 +726,7 @@ export abstract class BaseAPIClient {
 			async () => {
 				const res = await fetch(this.getChatCompletionsUrl(), {
 					method: "POST",
-					headers: this.buildHeaders(),
+					headers: await this.buildHeaders(),
 					body: JSON.stringify(body),
 					signal: combinedSignal,
 				});
@@ -772,7 +772,7 @@ export abstract class BaseAPIClient {
 		const response = await this.withRetry(
 			async () => {
 				const res = await fetch(modelsUrl, {
-					headers: this.buildHeaders(),
+					headers: await this.buildHeaders(),
 					signal: combinedSignal,
 				});
 				if (!res.ok) {
@@ -797,7 +797,7 @@ export abstract class BaseAPIClient {
 
 		try {
 			const response = await fetch(validateUrl, {
-				headers: this.buildHeaders(),
+				headers: await this.buildHeaders(),
 				signal: timeoutSignal,
 			});
 

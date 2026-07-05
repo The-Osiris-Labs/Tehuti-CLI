@@ -2037,6 +2037,42 @@ function ChatUI({
 				return;
 			}
 
+			if (text.toLowerCase() === "/auth gemini") {
+				try {
+					const { authenticateGoogleOAuth } = await import(
+						"../../api/oauth.js"
+					);
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Launching browser for Google Authentication...",
+						},
+					]);
+					await authenticateGoogleOAuth();
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content:
+								"Google Authentication successful! You can now use Gemini models.",
+						},
+					]);
+				} catch (err) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Google Authentication failed: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					]);
+				}
+				return;
+			}
+
 			if (cmd === "/reset-key") {
 				fs.rmSync(CONFIG_PATH, { force: true });
 				setMessages((m) => [

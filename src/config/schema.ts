@@ -180,6 +180,18 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	baseUrl: z.string().url().optional(),
 	provider: PROVIDER_SCHEMA,
 	customProvider: CUSTOM_PROVIDER_SCHEMA.optional(),
+	oauth: z
+		.object({
+			google: z
+				.object({
+					accessToken: z.string().optional(),
+					refreshToken: z.string().optional(),
+					expiry: z.number().optional(),
+				})
+				.optional(),
+		})
+		.optional()
+		.default({}),
 	maxTokens: z.number().int().positive().default(32000),
 	maxIterations: z.number().int().positive().default(50),
 	temperature: z.number().min(0).max(2).default(0.7),
@@ -246,6 +258,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		enabled: true,
 		servers: {},
 	},
+	oauth: {},
 	branding: undefined,
 	debug: false,
 	telemetry: false,
