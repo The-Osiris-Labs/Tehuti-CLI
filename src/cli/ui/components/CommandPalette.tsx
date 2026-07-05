@@ -1,7 +1,6 @@
 import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
-import InkTextInput from "ink-text-input";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
@@ -359,6 +358,35 @@ export function CommandPalette({
 					setError(null);
 					return;
 				}
+				if (query.length > 0) {
+					setQuery((prev) => prev.slice(0, -1));
+					return;
+				}
+			}
+
+			// Handle normal character input
+			if (
+				char &&
+				!key.ctrl &&
+				!key.meta &&
+				!char.startsWith("\x1b") &&
+				char !== "\r" &&
+				char !== "\n" &&
+				char !== "\t"
+			) {
+				if (
+					isMouseSequence(char) ||
+					char === "[" ||
+					char === "<" ||
+					char === "[[ " ||
+					/^(?:\d+;)+\d+[Mm]?$/.test(char) ||
+					/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(char) ||
+					char.includes("[<") ||
+					char.includes("[M")
+				) {
+					return;
+				}
+				setQuery((prev) => prev + char);
 			}
 
 			// Vim navigation (j/k) when query is empty, or standard arrows
@@ -387,7 +415,7 @@ export function CommandPalette({
 
 	if (!visible) return null;
 
-	const paletteWidth = Math.max(40, terminalWidth - 6);
+	const paletteWidth = "100%";
 	const MAX_DISPLAY = 9;
 	const windowStart = Math.max(
 		0,
@@ -465,19 +493,14 @@ export function CommandPalette({
 						React.createElement(Spinner, { type: "dots" }),
 						" Loading...",
 					)
-				: React.createElement(InkTextInput, {
-						value: query,
-						onChange: (val: string) => {
-							const cleanVal = val.replace(/\[<\d+;\d+;\d+[Mm]/g, "");
-							if (query === "" && (cleanVal === "j" || cleanVal === "k")) {
-								return;
-							}
-							setQuery(cleanVal);
-						},
-						placeholder:
-							menuStack.length > 0 ? "filter options..." : "type a command...",
-						focus: visible,
-					}),
+				: React.createElement(
+						Text,
+						null,
+						query.length === 0
+							? React.createElement(Text, { color: "gray" }, menuStack.length > 0 ? "filter options..." : "type a command...")
+							: React.createElement(Text, { color: "cyan" }, query),
+						React.createElement(Text, { backgroundColor: "white", color: "black" }, " ")
+					),
 		),
 		!isLoading && filteredCommands.length === 0
 			? React.createElement(

@@ -1685,7 +1685,7 @@ function ChatUI({
 			suggestionsCount -
 			paletteHeight,
 	);
-	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
+	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
 	const totalMessageLines = useMemo(() => {
 		let lines = messages.reduce(
