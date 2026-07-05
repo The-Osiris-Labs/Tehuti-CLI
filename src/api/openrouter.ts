@@ -114,6 +114,7 @@ const OpenRouterStreamChunkSchema = z
 				cache_creation_input_tokens: z.number().optional(),
 			})
 			.passthrough()
+			.nullable()
 			.optional(),
 	})
 	.passthrough();
@@ -821,7 +822,7 @@ export class OpenRouterClient {
 						parseErrorCount++;
 						debug.log(
 							"stream",
-							`Failed to parse chunk (${parseErrorCount}/${MAX_PARSE_ERRORS}): ${trimmed.slice(0, 100)}`,
+							`Failed to parse chunk (${parseErrorCount}/${MAX_PARSE_ERRORS}): ${trimmed.slice(0, 100)} - Error: ${e instanceof Error ? e.message : String(e)}`,
 						);
 						if (parseErrorCount >= MAX_PARSE_ERRORS) {
 							throw new APIError(
