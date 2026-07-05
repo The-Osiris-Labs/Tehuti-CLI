@@ -1,23 +1,48 @@
 <div align="center">
   <h1>𓆣 Tehuti CLI</h1>
   <p><i>Halls of Records • Balance of Ma'at • Architect of Truth</i></p>
-  <p><b>A beautifully crafted, high-performance terminal coding agent optimized for AI workflows.</b></p>
+  <p><b>An advanced, high-performance terminal coding agent optimized for autonomous AI workflows.</b></p>
 </div>
 
 ---
 
-Tehuti is an advanced Node.js 20+ terminal agent designed to integrate directly into your workflow. It runs natively in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to help you write, refactor, and understand code. 
+Tehuti is a specialized Node.js 20+ terminal agent designed to integrate directly into your local development workflow. It runs natively in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to execute autonomous coding tasks, orchestrate multi-agent swarms, and securely manage system interactions.
 
-Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it combines a highly polished Egyptian-themed TUI with a high-performance, native-speed engine under the hood.
+Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI combines a meticulously crafted Egyptian-themed Terminal User Interface (TUI) with a highly concurrent execution engine.
 
-## 🌟 Key Features
+---
 
-- **Terminal UI:** We built a custom React 19 and Ink 6 terminal UI featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming. It delivers a fluid, immersive experience.
-- **High-Performance Networking:** Tehuti utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3 with `undici` connection pooling, establishing raw, direct HTTP communication for low-latency streaming.
-- **Native Semantic Capabilities:** Tehuti leverages a native Rust `.node` binary (`tehuti-core`) for parallel, fast semantic `grep` operations. 
-- **Extensive Model Support:** Works out of the box with OpenCode Go (`deepseek-v4-flash` by default), and natively supports over 18 providers including OpenRouter, KiloCode, Anthropic, and local Ollama instances.
-- **Extensibility:** Ships with around 68 built-in tools (filesystem, bash sandboxes, git, AST parsing) and fully supports the **Model Context Protocol (MCP)** via stdio, HTTP, SSE, or WebSocket to plug in any external capability.
-- **Secure Access Control:** Integrates modern Identity-Based Access Control (IBAC) for fine-grained, secure tool permissions.
+## 🌟 Core Architecture
+
+- **Interactive Terminal UI:** Built on React 19 and Ink 6, featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming.
+- **High-Performance Networking:** Utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3. It features `undici` connection pooling to establish direct, low-latency communication with LLM providers while seamlessly handling automated network backpressure and QUIC fallback retries.
+- **Native Semantic Engine:** Leverages a native Rust `.node` binary (`tehuti-core`) to bypass JavaScript overhead, enabling ultra-fast, parallel semantic `grep` operations directly against the filesystem.
+- **Context & Memory Graph:** Replaces naive array slicing with deterministic `semantic compaction`. Tehuti maps conversation histories into an asynchronous SQLite graph, isolating long-term insights and dynamically compressing context to stay rigorously within model token limits.
+
+---
+
+## 🛡️ Security & Access Control
+
+Security is treated as a foundational primitive. Tehuti does not blindly execute LLM tool requests.
+
+- **Identity-Based Access Control (IBAC):** All capabilities are gated by a strict IBAC layer. Read-only actions run dynamically in parallel, while destructive actions (writes, bash commands) pause execution to enforce explicit interactive prompts.
+- **JIT Ephemeral Tokens:** Destructive tasks can be granted single-use, argument-bound ephemeral tokens. This enables multi-step autonomous workflows without sacrificing security against payload substitution attacks.
+- **Deterministic MCP Namespacing:** Mitigates 64-character tool collision spoofing by automatically injecting MD5 hashes into truncated Model Context Protocol (MCP) bounds, ensuring untrusted external servers cannot hijack native system permissions.
+
+---
+
+## 🤖 Capabilities & Tools
+
+Tehuti ships with **68 native built-in tools** designed for comprehensive repository manipulation:
+
+- **Filesystem & AST:** Read, write, manipulate directories, and parse native Abstract Syntax Trees (AST) using Tree-Sitter.
+- **Sandboxed Execution:** Securely execute bash commands to run tests, formatters, and builds.
+- **Git Integration:** Full programmatic access to read history, stage, commit, and manage branches.
+- **Web Intelligence:** Built-in web scraping, headless browser integration, and code-specific search tools.
+- **Multi-Agent Swarm Orchestration:** Tehuti can dynamically spawn background subagents via `invoke_subagent`, delegating concurrent tasks (like research or QA) while continuing main-thread execution. Bidirectional communication is fully supported.
+
+### Model Context Protocol (MCP) Support
+Tehuti is fully extensible via the open **Model Context Protocol (MCP)**. You can dynamically attach external capabilities via standard IO, HTTP, SSE, or WebSocket. Tehuti automatically reads, maps, and registers MCP tool schemas directly into the agent's inference loop.
 
 ---
 
@@ -34,7 +59,7 @@ npm run build
 ```
 
 ### 2. Configure
-Run the interactive setup wizard to link your API keys and choose your provider.
+Run the interactive setup wizard to link your API keys and configure your default provider.
 ```bash
 npm run start -- init
 ```
@@ -48,38 +73,41 @@ npm run start
 
 ---
 
-## 🛠️ One-Shot Mode
-Tehuti can also be used in single-prompt mode for quick scripting or piping.
+## 🛠️ Execution Modes
+
+### Interactive Mode
+The default mode. Features deep workflow persistence, expandable tool outputs, reasoning spinners, and full command palette support.
+
+### One-Shot & Scripting Mode
+Tehuti can be utilized as a standard UNIX utility for single-prompt automation.
 
 ```bash
 tehuti "Refactor the authentication logic in src/auth.ts"
 tehuti -m deepseek-v4-flash "Summarize this repository"
 tehuti -j "Return structured output"          # Emits pure JSON
-tehuti -q "Quick answer without tool noise"   # Suppress tool logs
+tehuti -q "Quick answer without tool noise"   # Suppresses intermediate tool logs
 ```
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Providers & Configuration
 
-Tehuti gracefully merges settings from multiple sources (lowest to highest priority):
-1. **Defaults:** The baseline (`deepseek-v4-flash` via `opencode`).
-2. **Global Store:** Your wizard settings saved in `~/.config/tehuti/config.json`.
-3. **Project Config:** A `.tehuti.json` file in your specific project directory.
-4. **Environment Variables:** Things like `TEHUTI_API_KEY` or `TEHUTI_MODEL` for quick, on-the-fly overrides.
+Tehuti natively supports 18+ providers including **OpenCode Go** (default), **OpenRouter**, **Anthropic**, **KiloCode**, and local **Ollama** instances. It dynamically routes models based on keyword heuristics to optimize for speed, depth, or balanced capabilities.
 
-All chat sessions, memory graphs, and API caches are safely stored in `~/.tehuti/`.
+Settings gracefully cascade and merge from multiple sources (lowest to highest priority):
+1. **Defaults:** `deepseek-v4-flash` via `opencode`.
+2. **Global Store:** Wizard configurations stored in `~/.config/tehuti/config.json`.
+3. **Project Config:** Local `.tehuti.json` project-overrides.
+4. **Environment Variables:** `TEHUTI_API_KEY` or `TEHUTI_MODEL` for CI/CD pipelines and hot-swaps.
 
 ### Terminal Accessibility
 
-The interactive UI supports mouse-aware panes and command palettes. For environments where mouse tracking is unavailable or undesired, set either environment variable below to launch in keyboard-only mode:
+The interactive UI fully supports mouse-aware panes and scrolling. For environments like SSH or tmux where mouse tracking is unavailable, set either environment variable below to launch in strict keyboard-only mode:
 
 ```bash
 TEHUTI_DISABLE_MOUSE=1 npm run start
 NO_MOUSE=1 npm run start
 ```
-
-If the terminal is left in a strange state after an interruption, start a new shell or run `reset`. Tehuti attempts to restore cursor, style, and mouse tracking modes during shutdown and fatal error handling.
 
 ---
 
