@@ -98,11 +98,13 @@ const OpenRouterStreamChunkSchema = z
 							thinking: z.string().nullable().optional(),
 							tool_calls: z.array(OpenRouterToolCallSchema).optional(),
 						})
-						.passthrough(),
+						.passthrough()
+						.optional()
+						.default({}),
 					finish_reason: z.string().nullable().optional(),
 				})
 				.passthrough(),
-		),
+		).optional().default([]),
 		usage: z
 			.object({
 				prompt_tokens: z.number(),
@@ -802,12 +804,20 @@ export class OpenRouterClient {
 					try {
 						const json = trimmed.slice(6);
 						const parsedJson = JSON.parse(json);
+						
+						if (parsedJson.error) {
+							const errMsg = parsedJson.error.message || JSON.stringify(parsedJson.error);
+							throw new APIError(`API Error in stream: ${errMsg}`);
+						}
+						
 						const result = OpenRouterStreamChunkSchema.safeParse(parsedJson);
 						if (!result.success) {
 							throw new Error(`Zod validation failed: ${result.error.message}`);
 						}
 						yield result.data as unknown as OpenRouterStreamChunk;
-					} catch (_e) {
+					} catch (e) {
+						if (e instanceof APIError) throw e;
+						
 						parseErrorCount++;
 						debug.log(
 							"stream",
