@@ -25,3 +25,6 @@ dist/
 private_research/
 tests/e2e/.tmp-home*
 scratch/
+
+# AI Agent Layer
+.agents/
