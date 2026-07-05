@@ -16,7 +16,8 @@ type DebugCategory =
 	| "hooks"
 	| "chat"
 	| "prefetch"
-	| "memory";
+	| "memory"
+	| "daemon";
 
 class Debugger {
 	private enabled: boolean;
