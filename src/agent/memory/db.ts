@@ -41,6 +41,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
   CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
   CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+
+  CREATE TABLE IF NOT EXISTS messaging_sessions (
+    id TEXT PRIMARY KEY,
+    session_data TEXT,
+    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer)),
+    last_active INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
+
+  CREATE TABLE IF NOT EXISTS user_preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
+
+  CREATE TABLE IF NOT EXISTS project_profiles (
+    id TEXT PRIMARY KEY,
+    project_path TEXT NOT NULL UNIQUE,
+    settings TEXT,
+    last_analyzed INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
 `);
 
 export default db;
