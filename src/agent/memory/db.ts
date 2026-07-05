@@ -38,9 +38,17 @@ db.exec(`
     FOREIGN KEY(target_id) REFERENCES nodes(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS messaging_sessions (
+    platform_sender_id TEXT PRIMARY KEY,
+    tehuti_session_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer)),
+    last_active INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
   CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
   CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+  CREATE INDEX IF NOT EXISTS idx_messaging_sessions_session_id ON messaging_sessions(tehuti_session_id);
 `);
 
 export default db;
