@@ -143,6 +143,26 @@ export const COLLABORATION_SCHEMA = z.object({
 	realTime: z.boolean().default(true),
 });
 
+export const DAEMON_CONFIG_SCHEMA = z.object({
+	enabled: z.boolean().default(false),
+	port: z.number().int().positive().default(9090),
+});
+
+export const MESSAGING_CONFIG_SCHEMA = z.object({
+	enabled: z.boolean().default(true),
+	historySize: z.number().int().positive().default(100),
+});
+
+export const SELF_HEALING_CONFIG_SCHEMA = z.object({
+	enabled: z.boolean().default(true),
+	maxRetries: z.number().int().min(0).max(10).default(3),
+});
+
+export const PERSONALITY_CONFIG_SCHEMA = z.object({
+	style: z.enum(["professional", "casual", "strict", "helpful"]).default("helpful"),
+	verbosity: z.enum(["low", "medium", "high"]).default("medium"),
+});
+
 export const HTTP_CONFIG_SCHEMA = z.object({
 	keepAliveTimeout: z.number().int().positive().default(60000),
 	keepAliveMaxTimeout: z.number().int().positive().default(600000),
@@ -224,6 +244,10 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	grepai: GREPAI_ADVANCED_SCHEMA.optional(),
 	collaboration: COLLABORATION_SCHEMA.optional(),
 	http: HTTP_CONFIG_SCHEMA.optional().default({}),
+	daemon: DAEMON_CONFIG_SCHEMA.optional(),
+	messaging: MESSAGING_CONFIG_SCHEMA.optional(),
+	selfHealing: SELF_HEALING_CONFIG_SCHEMA.optional(),
+	personality: PERSONALITY_CONFIG_SCHEMA.optional(),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -305,5 +329,21 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		connectTimeout: 10000,
 		tcpKeepAlive: true,
 		tcpKeepAliveInitialDelay: 30000,
+	},
+	daemon: {
+		enabled: false,
+		port: 9090,
+	},
+	messaging: {
+		enabled: true,
+		historySize: 100,
+	},
+	selfHealing: {
+		enabled: true,
+		maxRetries: 3,
+	},
+	personality: {
+		style: "helpful",
+		verbosity: "medium",
 	},
 };
