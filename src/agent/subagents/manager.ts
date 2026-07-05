@@ -183,3 +183,33 @@ export function sendMessageToTask(
 	}
 	return { success: false, error: "no_context" };
 }
+
+export function exportState(): any {
+	const state: any = {};
+	for (const [id, task] of activeTasks.entries()) {
+		state[id] = {
+			id: task.id,
+			type: task.type,
+			description: task.description,
+			prompt: task.prompt,
+			status: task.status,
+			result: task.result,
+			startTime: task.startTime,
+			endTime: task.endTime,
+		};
+	}
+	return state;
+}
+
+export function importState(state: any): void {
+	if (!state) return;
+	for (const [id, taskData] of Object.entries(state)) {
+		const status = (taskData as any).status === "running" ? "failed" : (taskData as any).status;
+		activeTasks.set(id, {
+			...(taskData as any),
+			status,
+			startTime: (taskData as any).startTime ? new Date((taskData as any).startTime) : undefined,
+			endTime: (taskData as any).endTime ? new Date((taskData as any).endTime) : undefined,
+		} as SubagentTask);
+	}
+}

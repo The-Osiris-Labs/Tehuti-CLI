@@ -35,8 +35,8 @@ describe("Config Loader", () => {
 			expect(config.maxTokens).toBeGreaterThan(0);
 		});
 
-		it("should use OPENROUTER_API_KEY environment variable", async () => {
-			process.env.OPENROUTER_API_KEY = "test-api-key";
+		it("should use OPENCODE_API_KEY environment variable", async () => {
+			process.env.OPENCODE_API_KEY = "test-api-key";
 
 			const config = await loadConfig(testDir);
 
@@ -60,7 +60,7 @@ describe("Config Loader", () => {
 		});
 
 		it("should prioritize env vars over file config", async () => {
-			process.env.OPENROUTER_API_KEY = "env-key";
+			process.env.OPENCODE_API_KEY = "env-key";
 
 			const config = await loadConfig(testDir);
 

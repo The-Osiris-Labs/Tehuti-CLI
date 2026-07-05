@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { OpenRouterClient } from "./openrouter.js";
+import { StandardAPIClient } from "./standard-client.js";
 
-describe("OpenRouterClient", () => {
+describe("StandardAPIClient", () => {
 	const validConfig = {
 		apiKey: "sk-or-test123456789",
 		model: "test/model",
@@ -12,20 +12,20 @@ describe("OpenRouterClient", () => {
 	describe("constructor validation", () => {
 		it("should reject missing API key", () => {
 			expect(
-				() => new OpenRouterClient({ ...validConfig, apiKey: "" }),
+				() => new StandardAPIClient({ ...validConfig, apiKey: "" }),
 			).toThrow("OPENROUTER_API_KEY");
 		});
 
 		it("should reject invalid API key format", () => {
 			expect(
-				() => new OpenRouterClient({ ...validConfig, apiKey: "invalid" }),
+				() => new StandardAPIClient({ ...validConfig, apiKey: "invalid" }),
 			).toThrow("Invalid API key format");
 		});
 
 		it("should reject non-HTTPS baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "http://api.example.com",
 					}),
@@ -35,7 +35,7 @@ describe("OpenRouterClient", () => {
 		it("should reject localhost baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://localhost:8080",
 					}),
@@ -45,7 +45,7 @@ describe("OpenRouterClient", () => {
 		it("should reject 127.0.0.1 baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://127.0.0.1:8080",
 					}),
@@ -55,7 +55,7 @@ describe("OpenRouterClient", () => {
 		it("should reject private IP 10.x.x.x baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://10.0.0.1:8080",
 					}),
@@ -65,7 +65,7 @@ describe("OpenRouterClient", () => {
 		it("should reject private IP 172.16-31.x.x baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://172.16.0.1:8080",
 					}),
@@ -75,7 +75,7 @@ describe("OpenRouterClient", () => {
 		it("should reject private IP 192.168.x.x baseUrl", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://192.168.1.1:8080",
 					}),
@@ -85,7 +85,7 @@ describe("OpenRouterClient", () => {
 		it("should reject .local domains", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						baseUrl: "https://test.local",
 					}),
@@ -95,7 +95,7 @@ describe("OpenRouterClient", () => {
 		it("should allow local HTTP baseUrl for Ollama", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						apiKey: "",
 						provider: "ollama",
@@ -107,7 +107,7 @@ describe("OpenRouterClient", () => {
 		it("should allow local provider without API key when the provider does not require one", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						apiKey: "",
 						provider: "lmstudio",
@@ -119,7 +119,7 @@ describe("OpenRouterClient", () => {
 		it("should reject invalid model names", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						model: "",
 					}),
@@ -129,7 +129,7 @@ describe("OpenRouterClient", () => {
 		it("should reject model names with invalid characters", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						model: "test/model with spaces",
 					}),
@@ -139,7 +139,7 @@ describe("OpenRouterClient", () => {
 		it("should reject temperature outside 0-2", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						temperature: 3,
 					}),
@@ -149,7 +149,7 @@ describe("OpenRouterClient", () => {
 		it("should reject negative temperature", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						temperature: -0.5,
 					}),
@@ -159,7 +159,7 @@ describe("OpenRouterClient", () => {
 		it("should reject maxTokens outside valid range", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						maxTokens: 0,
 					}),
@@ -169,7 +169,7 @@ describe("OpenRouterClient", () => {
 		it("should reject maxTokens exceeding limit", () => {
 			expect(
 				() =>
-					new OpenRouterClient({
+					new StandardAPIClient({
 						...validConfig,
 						maxTokens: 2000000,
 					}),
@@ -177,7 +177,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should use the provider default baseUrl for opencode", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				provider: "opencode",
 			} as any);
@@ -186,7 +186,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should replace a stale known-provider default baseUrl when provider changes", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				provider: "openrouter",
 				baseUrl: "https://opencode.ai/zen/go/v1",
@@ -197,10 +197,10 @@ describe("OpenRouterClient", () => {
 	});
 
 	describe("validateMessages", () => {
-		let client: OpenRouterClient;
+		let client: StandardAPIClient;
 
 		beforeEach(() => {
-			client = new OpenRouterClient(validConfig);
+			client = new StandardAPIClient(validConfig);
 		});
 
 		it("should reject empty messages array", () => {
@@ -240,7 +240,7 @@ describe("OpenRouterClient", () => {
 
 	describe("caching support detection", () => {
 		it("should detect Claude models as caching-capable", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				model: "anthropic/claude-sonnet-4",
 			});
@@ -248,7 +248,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should detect DeepSeek models as caching-capable", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				model: "deepseek/deepseek-chat",
 			});
@@ -256,7 +256,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should detect Gemini models as caching-capable", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				model: "google/gemini-pro",
 			});
@@ -266,7 +266,7 @@ describe("OpenRouterClient", () => {
 
 	describe("model switching", () => {
 		it("should allow model changes", () => {
-			const client = new OpenRouterClient(validConfig);
+			const client = new StandardAPIClient(validConfig);
 			expect(client.getModel()).toBe("test/model");
 			client.setModel("new/model");
 			expect(client.getModel()).toBe("new/model");
@@ -275,7 +275,7 @@ describe("OpenRouterClient", () => {
 
 	describe("timeout clamping", () => {
 		it("should clamp timeout to minimum", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				requestTimeout: 1000,
 			});
@@ -283,7 +283,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should clamp timeout to maximum", () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				requestTimeout: 1000000,
 			});
@@ -293,7 +293,7 @@ describe("OpenRouterClient", () => {
 
 	describe("provider-specific headers", () => {
 		it("should only send OpenRouter attribution headers for OpenRouter", async () => {
-			const opencodeClient = new OpenRouterClient({
+			const opencodeClient = new StandardAPIClient({
 				...validConfig,
 				provider: "opencode",
 			} as any);
@@ -307,7 +307,7 @@ describe("OpenRouterClient", () => {
 
 	describe("withRetry and backoff logic", () => {
 		it("should retry on retryable HTTP error codes", async () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				maxRetries: 2,
 			});
@@ -337,7 +337,7 @@ describe("OpenRouterClient", () => {
 		});
 
 		it("should respect Retry-After header with seconds", async () => {
-			const client = new OpenRouterClient({
+			const client = new StandardAPIClient({
 				...validConfig,
 				maxRetries: 1,
 			});

@@ -153,6 +153,36 @@ export class SwarmManager extends EventEmitter {
 		}
 		return { success: false, error: "no_context" };
 	}
+
+	public exportState(): any {
+		const state: any = {};
+		for (const [id, task] of this.tasks.entries()) {
+			state[id] = {
+				id: task.id,
+				prompt: task.prompt,
+				status: task.status,
+				result: task.result,
+				error: task.error,
+				createdAt: task.createdAt,
+				tokensUsed: task.tokensUsed,
+			};
+		}
+		return state;
+	}
+
+	public importState(state: any): void {
+		if (!state) return;
+		for (const [id, taskData] of Object.entries(state)) {
+			const status = (taskData as any).status === "running" ? "killed" : (taskData as any).status;
+			this.tasks.set(id, {
+				...(taskData as any),
+				status,
+				createdAt: new Date((taskData as any).createdAt),
+				abortController: new AbortController(),
+			} as SubagentTask);
+		}
+		this.emitUpdate();
+	}
 }
 
 export const swarmManager = SwarmManager.getInstance();

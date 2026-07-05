@@ -1,7 +1,7 @@
 import type {
 	CustomProviderClient,
 	KiloCodeClient,
-	OpenRouterClient,
+	StandardAPIClient,
 } from "../../api/index.js";
 import { debug } from "../../utils/debug.js";
 import type { AgentContext } from "../context.js";
@@ -9,7 +9,7 @@ import { estimateTokens } from "../context-compressor.js";
 
 export async function manageContextWindow(
 	ctx: AgentContext,
-	_client: OpenRouterClient | KiloCodeClient | CustomProviderClient,
+	_client: StandardAPIClient | KiloCodeClient | CustomProviderClient,
 ): Promise<void> {
 	let currentTokens = estimateTokens(ctx.messages);
 	const maxContext =

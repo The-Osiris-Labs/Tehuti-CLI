@@ -373,7 +373,7 @@ export function getApiKeyEnvVarsForProvider(providerId: string): string[] {
 		case "openrouter":
 			return ["OPENROUTER_API_KEY", "TEHUTI_API_KEY"];
 		case "opencode":
-			return ["OPENCODE_API_KEY", "TEHUTI_API_KEY", "OPENROUTER_API_KEY"];
+			return ["OPENCODE_API_KEY", "TEHUTI_API_KEY"];
 		case "xai":
 			return ["XAI_API_KEY", "GROK_API_KEY", "TEHUTI_API_KEY"];
 		case "anthropic":

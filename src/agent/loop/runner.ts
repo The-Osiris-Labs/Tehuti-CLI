@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { StandardTool } from "../../api/base-client.js";
 import type { CustomProviderClient, KiloCodeClient } from "../../api/index.js";
 import {
@@ -7,7 +8,7 @@ import {
 	processStreamChunk,
 } from "../../api/index.js";
 import { isReasoningModel } from "../../api/model-capabilities.js";
-import type { OpenRouterClient } from "../../api/openrouter.js";
+import type { StandardAPIClient } from "../../api/standard-client.js";
 
 import { debug } from "../../utils/debug.js";
 
@@ -69,7 +70,7 @@ export interface AgentLoopResult {
 export async function runAgentLoop(
 	ctx: AgentContext,
 	userMessage: string,
-	client: OpenRouterClient | KiloCodeClient | CustomProviderClient,
+	client: StandardAPIClient | KiloCodeClient | CustomProviderClient,
 	syncMCPToolRegistry: () => void,
 	options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
@@ -89,7 +90,11 @@ export async function runAgentLoop(
 			ctx.messages.push({
 				role: "system",
 				content: buildSystemPrompt(ctx, userMessage),
+				timestamp: Date.now(),
+				internalId: randomUUID(),
 			});
+		} else if (ctx.messages[0]?.role === "system") {
+			ctx.messages[0].content = buildSystemPrompt(ctx, userMessage);
 		}
 
 		addUserMessage(ctx, userMessage);
@@ -153,6 +158,8 @@ export async function runAgentLoop(
 						ctx.messages.push({
 							role: "system",
 							content: message,
+							timestamp: Date.now(),
+							internalId: randomUUID(),
 						});
 						debug.log("agent", `Agent woke up with message: ${message}`);
 					}

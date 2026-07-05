@@ -8,6 +8,8 @@ import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
+import { exportState, importState } from "../agent/subagents/manager.js";
+import { swarmManager } from "../agent/swarm/manager.js";
 
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,11 +46,15 @@ type SessionSeed = Pick<
 export interface SessionData {
 	metadata: SessionMetadata;
 	messages: StandardMessage[];
+	appendOnlyLog: StandardMessage[];
 	context: {
 		cwd: string;
 		workingDir: string;
 		metadata: AgentContext["metadata"];
+		readFilesThisSession: string[];
 	};
+	subagentsState?: any;
+	swarmState?: any;
 }
 
 function normalizeStartTime(value: unknown): Date {
@@ -215,11 +221,15 @@ class SessionManager {
 		const sessionData: SessionData = {
 			metadata,
 			messages: ctx.messages,
+			appendOnlyLog: ctx.appendOnlyLog || ctx.messages,
 			context: {
 				cwd: ctx.cwd,
 				workingDir: ctx.workingDir,
 				metadata: ctx.metadata,
+				readFilesThisSession: Array.from(ctx.readFilesThisSession || []),
 			},
+			subagentsState: exportState(),
+			swarmState: swarmManager.exportState(),
 		};
 
 		const sessionFile = path.join(sessionDir, "session.json");
@@ -258,6 +268,8 @@ class SessionManager {
 		try {
 			const rawData = (await fs.readJson(sessionFile)) as SessionData;
 			const data = normalizeSessionData(rawData);
+			if (data.subagentsState) importState(data.subagentsState);
+			if (data.swarmState) swarmManager.importState(data.swarmState);
 			this.currentSessionId = id;
 			debug.log("session", `Loaded session: ${id}`);
 			return data;

@@ -70,10 +70,10 @@ describe("chat UI memory compaction", () => {
 		expect(compacted[0].id).toBe(100);
 
 		const oldMessage = compacted[0];
-		expect(oldMessage.toolCalls?.[0].result).toBeNull();
+		expect(oldMessage.toolCalls?.[0].result).toEqual("[Compacted]");
 		expect(
 			oldMessage.blocks?.find((block) => block.type === "tool")?.result,
-		).toBeNull();
+		).toEqual("[Compacted]");
 		expect(oldMessage.content.length).toBeLessThan(1400);
 
 		const recentMessage = compacted[compacted.length - 1];

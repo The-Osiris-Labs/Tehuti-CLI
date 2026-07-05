@@ -387,7 +387,7 @@ export function CommandPalette({
 
 	if (!visible) return null;
 
-	const paletteWidth = Math.min(64, Math.max(40, terminalWidth - 6));
+	const paletteWidth = Math.max(40, terminalWidth - 6);
 	const MAX_DISPLAY = 9;
 	const windowStart = Math.max(
 		0,
@@ -468,10 +468,11 @@ export function CommandPalette({
 				: React.createElement(InkTextInput, {
 						value: query,
 						onChange: (val: string) => {
-							if (query === "" && (val === "j" || val === "k")) {
+							const cleanVal = val.replace(/\[<\d+;\d+;\d+[Mm]/g, "");
+							if (query === "" && (cleanVal === "j" || cleanVal === "k")) {
 								return;
 							}
-							setQuery(val);
+							setQuery(cleanVal);
 						},
 						placeholder:
 							menuStack.length > 0 ? "filter options..." : "type a command...",

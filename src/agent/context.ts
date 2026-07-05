@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "fs-extra";
 import type { StandardMessage, StandardToolCall } from "../api/base-client.js";
@@ -9,6 +10,7 @@ import {
 	estimateTokens as tiktokenEstimateTokens,
 } from "./context-compressor.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
+import { initMemory } from "./memory/index.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
 
@@ -169,6 +171,7 @@ export interface AgentContext {
 	cwd: string;
 	workingDir: string;
 	messages: StandardMessage[];
+	appendOnlyLog: StandardMessage[];
 	config: TehutiConfig;
 	projectInstructions?: string;
 	systemMemory?: string;
@@ -177,6 +180,7 @@ export interface AgentContext {
 	isSleeping?: boolean;
 	metadata: {
 		startTime: Date;
+		sessionCost?: number;
 		toolCalls: number;
 		tokensUsed: number;
 		cacheReadTokens: number;
@@ -212,10 +216,13 @@ export async function createAgentContext(
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
 	const systemMemory = await getSystemPromptMemory(resolvedCwd);
 
+	await initMemory();
+
 	return {
 		cwd: resolvedCwd,
 		workingDir: resolvedCwd,
 		messages: [],
+		appendOnlyLog: [],
 		config,
 		projectInstructions,
 		systemMemory,
@@ -223,6 +230,7 @@ export async function createAgentContext(
 		readFilesThisSession: new Set(),
 		metadata: {
 			startTime: new Date(),
+			sessionCost: 0,
 			toolCalls: 0,
 			tokensUsed: 0,
 			cacheReadTokens: 0,
@@ -310,7 +318,7 @@ ${projectInstructionsSection}${systemMemorySection}${skillsSection}
 - Use tools safely - never run destructive commands without confirmation.
 - Follow the project's coding conventions and best practices.
 - Write clean, well-documented code.
-- Be concise in explanations but thorough in execution.
+- **CRITICAL:** Be extremely concise. Avoid "wordy" explanations, excessive bolding, or walls of text. Get straight to the point.
 - When unsure, ask clarifying questions.
 
 ## Working Directory
@@ -379,18 +387,26 @@ When you complete a task, summarize what was done and any follow-up actions need
 }
 
 export function addUserMessage(ctx: AgentContext, content: string): void {
-	ctx.messages.push({
+	const msg: StandardMessage = {
 		role: "user",
 		content,
-	});
+		timestamp: Date.now(),
+		internalId: randomUUID(),
+	};
+	ctx.messages.push(msg);
+	ctx.appendOnlyLog.push(msg);
 	debug.log("context", `Added user message (${content.length} chars)`);
 }
 
 export function addAssistantMessage(ctx: AgentContext, content: string): void {
-	ctx.messages.push({
+	const msg: StandardMessage = {
 		role: "assistant",
 		content,
-	});
+		timestamp: Date.now(),
+		internalId: randomUUID(),
+	};
+	ctx.messages.push(msg);
+	ctx.appendOnlyLog.push(msg);
 	debug.log("context", `Added assistant message (${content.length} chars)`);
 }
 
@@ -402,6 +418,8 @@ export function addAssistantMessageWithTools(
 	const message: StandardMessage = {
 		role: "assistant",
 		content,
+		timestamp: Date.now(),
+		internalId: randomUUID(),
 	};
 
 	if (toolCalls && toolCalls.length > 0) {
@@ -409,6 +427,7 @@ export function addAssistantMessageWithTools(
 	}
 
 	ctx.messages.push(message);
+	ctx.appendOnlyLog.push(message);
 	debug.log(
 		"context",
 		`Added assistant message (${content.length} chars, ${toolCalls?.length ?? 0} tool calls)`,
@@ -421,12 +440,16 @@ export function addToolResult(
 	toolName: string,
 	result: string,
 ): void {
-	ctx.messages.push({
+	const msg: StandardMessage = {
 		role: "tool",
 		tool_call_id: toolCallId,
 		name: toolName,
 		content: result,
-	});
+		timestamp: Date.now(),
+		internalId: randomUUID(),
+	};
+	ctx.messages.push(msg);
+	ctx.appendOnlyLog.push(msg);
 	debug.log("context", `Added tool result for ${toolName}`);
 }
 

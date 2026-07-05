@@ -11,6 +11,8 @@ export interface ContentBlock {
 	type: "text";
 	text: string;
 	cache_control?: CacheControl;
+	timestamp?: number;
+	internalId?: string;
 }
 
 export interface StandardMessage {
@@ -20,6 +22,8 @@ export interface StandardMessage {
 	tool_call_id?: string;
 	tool_calls?: StandardToolCall[];
 	cache_control?: CacheControl;
+	timestamp?: number;
+	internalId?: string;
 }
 
 export interface StandardToolCall {
@@ -559,9 +563,14 @@ export abstract class BaseAPIClient {
 		const cachedMessages = this.prepareMessagesWithCaching(messages, tools);
 		const cachedTools = this.prepareToolsWithCaching(tools);
 
+		const strippedMessages = cachedMessages.map((msg) => {
+			const { timestamp, internalId, ...rest } = msg;
+			return rest;
+		});
+
 		const body: Record<string, unknown> = {
 			model,
-			messages: cachedMessages,
+			messages: strippedMessages,
 			max_tokens: this.maxTokens,
 			temperature: this.temperature,
 			stream: isStream,

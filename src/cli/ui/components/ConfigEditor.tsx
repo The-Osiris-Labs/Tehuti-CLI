@@ -114,7 +114,10 @@ function ConfigFieldRow({
 					<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
 						<TextInput
 							value={editValue}
-							onChange={onEditValueChange}
+							onChange={(val: string) => {
+								const cleanVal = val.replace(/\[<\d+;\d+;\d+[Mm]/g, "");
+								onEditValueChange(cleanVal);
+							}}
 							onSubmit={onEditCommit}
 							focus={isEditing}
 						/>
@@ -309,7 +312,7 @@ export function ConfigEditor({
 	};
 
 	const terminalWidth = width || stdout?.columns || 80;
-	const editorWidth = Math.min(80, terminalWidth - 4);
+	const editorWidth = Math.max(40, terminalWidth - 4);
 
 	return (
 		<Box

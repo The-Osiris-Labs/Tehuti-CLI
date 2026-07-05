@@ -1,7 +1,7 @@
 import {
 	CustomProviderClient,
 	KiloCodeClient,
-	OpenRouterClient,
+	StandardAPIClient,
 } from "../api/index.js";
 import { supportsOpenAICompatibleRuntime } from "../config/providers.js";
 import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
@@ -74,7 +74,7 @@ loadCacheFromDisk();
 
 function createProviderClient(
 	ctx: AgentContext,
-): OpenRouterClient | KiloCodeClient | CustomProviderClient {
+): StandardAPIClient | KiloCodeClient | CustomProviderClient {
 	if (
 		ctx.config.provider !== "kilocode" &&
 		ctx.config.provider !== "custom" &&
@@ -92,7 +92,7 @@ function createProviderClient(
 		if (ctx.config.provider === "custom") {
 			return CustomProviderClient.getInstance(ctx.config);
 		}
-		return OpenRouterClient.getInstance(ctx.config);
+		return StandardAPIClient.getInstance(ctx.config);
 	} catch {
 		if (ctx.config.provider === "kilocode") {
 			return new KiloCodeClient(ctx.config);
@@ -100,7 +100,7 @@ function createProviderClient(
 		if (ctx.config.provider === "custom") {
 			return new CustomProviderClient(ctx.config);
 		}
-		return new OpenRouterClient(ctx.config);
+		return new StandardAPIClient(ctx.config);
 	}
 }
 

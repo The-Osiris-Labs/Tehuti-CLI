@@ -9,14 +9,14 @@ import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
 import { BaseAPIClient } from "./base-client.js";
 
-export class OpenRouterClient extends BaseAPIClient {
-	private static instance: OpenRouterClient | null = null;
+export class StandardAPIClient extends BaseAPIClient {
+	private static instance: StandardAPIClient | null = null;
 	private static lastConfigKey: string | null = null;
 
-	private fallbackClient: OpenRouterClient | null = null;
+	private fallbackClient: StandardAPIClient | null = null;
 	private originalConfig: TehutiConfig;
 
-	static getInstance(config: TehutiConfig): OpenRouterClient {
+	static getInstance(config: TehutiConfig): StandardAPIClient {
 		const resolvedBaseUrl =
 			resolveBaseUrlForProvider(
 				config.provider || "openrouter",
@@ -24,18 +24,18 @@ export class OpenRouterClient extends BaseAPIClient {
 			) || "";
 		const configKey = `${config.provider || "openrouter"}:${config.apiKey}:${resolvedBaseUrl}:${config.model}`;
 		if (
-			!OpenRouterClient.instance ||
-			OpenRouterClient.lastConfigKey !== configKey
+			!StandardAPIClient.instance ||
+			StandardAPIClient.lastConfigKey !== configKey
 		) {
-			OpenRouterClient.instance = new OpenRouterClient(config);
-			OpenRouterClient.lastConfigKey = configKey;
+			StandardAPIClient.instance = new StandardAPIClient(config);
+			StandardAPIClient.lastConfigKey = configKey;
 		}
-		return OpenRouterClient.instance;
+		return StandardAPIClient.instance;
 	}
 
 	static resetInstance(): void {
-		OpenRouterClient.instance = null;
-		OpenRouterClient.lastConfigKey = null;
+		StandardAPIClient.instance = null;
+		StandardAPIClient.lastConfigKey = null;
 	}
 
 	constructor(config: TehutiConfig) {
@@ -120,7 +120,7 @@ export class OpenRouterClient extends BaseAPIClient {
 			thinkingBudgetTokens: config.thinkingBudgetTokens,
 			requestTimeout: config.requestTimeout,
 			maxRetries: config.maxRetries,
-			supportsCaching: OpenRouterClient.checkCachingSupport(config.model),
+			supportsCaching: StandardAPIClient.checkCachingSupport(config.model),
 		});
 
 		this.originalConfig = config;
@@ -156,14 +156,14 @@ export class OpenRouterClient extends BaseAPIClient {
 		return thinkingModels.some((m) => model.includes(m));
 	}
 
-	private getFallbackClient(): OpenRouterClient {
+	private getFallbackClient(): StandardAPIClient {
 		if (!this.fallbackClient) {
 			const fallbackConfig = { ...this.originalConfig };
 			fallbackConfig.provider = "opencode";
 			// Clear custom URLs and keys to let the default opencode config take over
 			fallbackConfig.baseUrl = undefined;
 			fallbackConfig.apiKey = undefined;
-			this.fallbackClient = new OpenRouterClient(fallbackConfig);
+			this.fallbackClient = new StandardAPIClient(fallbackConfig);
 		}
 		return this.fallbackClient;
 	}

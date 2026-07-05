@@ -102,7 +102,7 @@ export function compactBlockForUi(block: UiBlock, keepFull: boolean): UiBlock {
 	if (block.type === "tool") {
 		return {
 			...block,
-			result: keepFull ? compactToolResultForUi(block.result) : null,
+			result: keepFull ? compactToolResultForUi(block.result) : "[Compacted]",
 		};
 	}
 	const limit =
@@ -144,7 +144,7 @@ export function compactMessageForUi(
 		result:
 			keepFull && !blocksContainToolResult
 				? compactToolResultForUi(toolCall.result)
-				: null,
+				: "[Compacted]",
 	}));
 
 	return {

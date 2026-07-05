@@ -3,8 +3,8 @@ import type { TehutiConfig } from "../config/schema.js";
 import type { AgentContext } from "./context.js";
 import { configureHooks, createAgentContext, runAgentLoop } from "./index.js";
 
-vi.mock("../api/openrouter.js", () => ({
-	OpenRouterClient: vi.fn().mockImplementation(() => ({
+vi.mock("../api/standard-client.js", () => ({
+	StandardAPIClient: vi.fn().mockImplementation(() => ({
 		streamChat: vi.fn().mockImplementation(async function* () {
 			yield {
 				choices: [

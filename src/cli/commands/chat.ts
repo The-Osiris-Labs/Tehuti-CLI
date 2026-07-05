@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
+import clipboardy from "clipboardy";
 import { Command } from "commander";
 import { consola } from "consola";
 import { Box, render, Text, useApp, useStdout } from "ink";
@@ -476,6 +477,7 @@ function getEnhancedToolName(name: string, description?: string): string {
 }
 
 function getToolRenderStatus(result: unknown): "pending" | "success" | "error" {
+	if (result === "[Compacted]") return "success";
 	if (result === null) return "pending";
 	if (result && typeof result === "object" && "success" in result) {
 		return (result as { success?: unknown }).success === false
@@ -492,6 +494,8 @@ function ChatUI({
 	cfg,
 	continueSession,
 	onExit,
+	mouseEnabled,
+	onToggleMouse,
 }: {
 	apiKey: string;
 	model: string;
@@ -499,6 +503,8 @@ function ChatUI({
 	cfg: typeof DEFAULT_CONFIG;
 	continueSession?: boolean;
 	onExit: () => void;
+	mouseEnabled?: boolean;
+	onToggleMouse?: () => void;
 }) {
 	const {
 		messages,
@@ -1330,16 +1336,71 @@ function ChatUI({
 					applyRuntimeProviderState(resolvedState);
 					persistRuntimeProviderState(resolvedState, { model: resolvedModel });
 
-					const loadedMsgs = data.messages
-						.filter((m) => m.role === "user" || m.role === "assistant")
-						.map((m, i) => ({
-							id: i,
+					const loadedMsgs: UiMessage[] = [];
+					let uiMsgId = 0;
+
+					for (let i = 0; i < data.messages.length; i++) {
+						const m = data.messages[i];
+						if (m.role === "system" || m.role === "tool") continue;
+
+						const contentStr =
+							typeof m.content === "string"
+								? m.content
+								: JSON.stringify(m.content);
+
+						const uiMsg: UiMessage = {
+							id: uiMsgId++,
 							role: m.role,
-							content:
-								typeof m.content === "string"
-									? m.content
-									: JSON.stringify(m.content),
-						}));
+							content: contentStr,
+						};
+
+						if (m.role === "assistant") {
+							uiMsg.toolCalls = [];
+							uiMsg.blocks = [];
+
+							if (contentStr) {
+								uiMsg.blocks.push({ type: "text", content: contentStr });
+							}
+
+							if (m.tool_calls && m.tool_calls.length > 0) {
+								for (const tc of m.tool_calls) {
+									const toolMsg = data.messages.find(
+										(msg) => msg.role === "tool" && msg.tool_call_id === tc.id
+									);
+									let toolResultStr: string | null = null;
+									if (toolMsg) {
+										toolResultStr =
+											typeof toolMsg.content === "string"
+												? toolMsg.content
+												: JSON.stringify(toolMsg.content);
+									}
+
+									let parsedResult: unknown = toolResultStr;
+									if (toolResultStr) {
+										try {
+											parsedResult = JSON.parse(toolResultStr);
+										} catch {}
+									}
+
+									const toolData = {
+										id: tc.id,
+										name: tc.function.name,
+										description: tc.function.arguments,
+										result: parsedResult,
+										isExpanded: false,
+									};
+
+									uiMsg.toolCalls.push(toolData);
+									uiMsg.blocks.push({
+										type: "tool",
+										...toolData,
+									});
+								}
+							}
+						}
+
+						loadedMsgs.push(uiMsg);
+					}
 					setMessages(loadedMsgs);
 					msgIdRef.current = loadedMsgs.length;
 					setSessionId(id);
@@ -1395,6 +1456,16 @@ function ChatUI({
 					ctxRef.current.messages = data.messages;
 					// Seed context with the loaded historical messages
 					ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
+					ctxRef.current.appendOnlyLog = JSON.parse(JSON.stringify(data.appendOnlyLog || data.messages));
+					
+					if (data.context) {
+						ctxRef.current.workingDir = data.context.workingDir || process.cwd();
+						ctxRef.current.metadata = {
+							...ctxRef.current.metadata,
+							...data.context.metadata
+						};
+						ctxRef.current.readFilesThisSession = new Set(data.context.readFilesThisSession || []);
+					}
 
 					if (data.metadata.model) {
 						setCtxModel(resolvedModel);
@@ -1952,6 +2023,67 @@ function ChatUI({
 
 			if (cmd === "/clear") {
 				await resetConversation();
+				return;
+			}
+
+			if (cmd === "/mouse") {
+				if (onToggleMouse) {
+					onToggleMouse();
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Mouse tracking is now ${mouseEnabled ? "DISABLED" : "ENABLED"}. ${mouseEnabled ? "You can now use your terminal's native selection to copy text." : ""}`,
+						},
+					]);
+				} else {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Mouse toggle is not supported in this environment.",
+						},
+					]);
+				}
+				return;
+			}
+
+			if (cmd === "/copy") {
+				// Find the last assistant message
+				const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant");
+				if (lastAssistantMsg) {
+					try {
+						clipboardy.writeSync(lastAssistantMsg.content);
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: "Copied the last assistant response to your clipboard! 📋",
+							},
+						]);
+					} catch (err) {
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: `Failed to copy to clipboard: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						]);
+					}
+				} else {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "No assistant messages found to copy.",
+						},
+					]);
+				}
 				return;
 			}
 
@@ -2852,7 +2984,7 @@ function ChatUI({
 					borderColor:
 						m.role === "assistant" ? GOLD : m.role === "user" ? CORAL : "gray",
 					width: contentMaxWidth,
-					flexShrink: 0,
+					flexShrink: 1,
 				},
 				header,
 				React.createElement(
@@ -2861,7 +2993,6 @@ function ChatUI({
 						paddingLeft: 0,
 						marginTop: 0,
 						flexDirection: "column",
-						flexWrap: "wrap",
 					},
 					...content,
 				),
@@ -3302,11 +3433,15 @@ function App({
 	cfg: typeof DEFAULT_CONFIG;
 	continueSession?: boolean;
 	onExit: () => void;
+	mouseEnabled?: boolean;
+	onToggleMouse?: () => void;
 }) {
-	const mouseEnabled =
+	const initialMouseEnabled =
 		process.env.TEHUTI_DISABLE_MOUSE !== "1" &&
 		process.env.NO_MOUSE !== "1" &&
 		Boolean(process.stdout.isTTY);
+
+	const [mouseEnabled, setMouseEnabled] = useState(initialMouseEnabled);
 
 	return React.createElement(
 		MouseProvider,
@@ -3318,6 +3453,8 @@ function App({
 			cfg,
 			continueSession,
 			onExit,
+			mouseEnabled,
+			onToggleMouse: () => setMouseEnabled(!mouseEnabled),
 		}),
 	);
 }

@@ -136,7 +136,7 @@ describe("Agent Context", () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
 			addUserMessage(ctx, "Hello");
 			expect(ctx.messages.length).toBe(1);
-			expect(ctx.messages[0]).toEqual({ role: "user", content: "Hello" });
+			expect(ctx.messages[0]).toMatchObject({ role: "user", content: "Hello" });
 		});
 
 		it("should append multiple messages", async () => {
@@ -152,7 +152,7 @@ describe("Agent Context", () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
 			addAssistantMessage(ctx, "Response");
 			expect(ctx.messages.length).toBe(1);
-			expect(ctx.messages[0]).toEqual({
+			expect(ctx.messages[0]).toMatchObject({
 				role: "assistant",
 				content: "Response",
 			});
@@ -185,7 +185,7 @@ describe("Agent Context", () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
 			addToolResult(ctx, "call_1", "test_tool", "result");
 			expect(ctx.messages.length).toBe(1);
-			expect(ctx.messages[0]).toEqual({
+			expect(ctx.messages[0]).toMatchObject({
 				role: "tool",
 				tool_call_id: "call_1",
 				name: "test_tool",
