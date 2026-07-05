@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { OpenRouterTool } from "../../api/openrouter.js";
+import type { StandardTool } from "../../api/base-client.js";
 import { debug } from "../../utils/debug.js";
 
 export interface ToolResult {
@@ -248,7 +248,7 @@ export class ToolRegistryManager {
 		this.tools.clear();
 	}
 
-	getToolDefinitions(): OpenRouterTool[] {
+	getToolDefinitions(): StandardTool[] {
 		return this.getAllTools().map((tool) => {
 			const schema =
 				tool.jsonSchema ??
@@ -382,7 +382,7 @@ export function clearTools(): void {
 	globalRegistry.clearTools();
 }
 
-export function getToolDefinitions(): OpenRouterTool[] {
+export function getToolDefinitions(): StandardTool[] {
 	return globalRegistry.getToolDefinitions();
 }
 

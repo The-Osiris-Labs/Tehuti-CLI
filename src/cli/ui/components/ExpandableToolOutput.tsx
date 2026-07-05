@@ -217,11 +217,14 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			? `${cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3))}...`
 			: cleanToolName;
 
-	const footerLabel = summary.isTruncated
-		? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand)`
-		: expanded
-			? `completed (click to collapse)`
-			: `completed`;
+	const footerLabel =
+		status === "pending"
+			? "running..."
+			: summary.isTruncated
+				? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand)`
+				: expanded
+					? `completed (click to collapse)`
+					: `completed`;
 
 	const borderTextColor = isHovered ? "coral" : "gray";
 
@@ -240,37 +243,43 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		return highlightToAnsi(summary.displayContent, isJson ? "json" : "text");
 	}, [expanded, summary.displayContent, isJson]);
 
+	const expandedIcon = expanded ? "▼" : "▶";
+
 	return (
 		<Box
 			ref={boxRef}
 			flexDirection="column"
 			marginTop={0}
 			marginBottom={1}
-			paddingX={1}
-			borderStyle="round"
+			paddingLeft={1}
+			borderStyle="single"
+			borderLeft={true}
+			borderTop={false}
+			borderRight={false}
+			borderBottom={false}
 			borderColor={borderTextColor}
 		>
 			<Box flexDirection="row" justifyContent="space-between">
-				<Box>
-					<Text color={headerColor}>{headerIcon} </Text>
+				<Box gap={1}>
+					<Text color={headerColor}>{headerIcon}</Text>
 					<Text bold color={headerColor}>
-						{truncatedToolName}
+						{expandedIcon} {truncatedToolName}
 					</Text>
 				</Box>
 				<Box>
-					<Text bold color={headerColor}>
+					<Text bold dimColor={status === "success"} color={status === "success" ? undefined : headerColor}>
 						{headerStatusText}
 					</Text>
 				</Box>
 			</Box>
 
-			<Box flexDirection="column" marginY={1}>
+			<Box flexDirection="column" marginY={1} paddingLeft={2}>
 				<Text dimColor={!expanded} wrap="wrap">
 					{displayContent}
 				</Text>
 			</Box>
 
-			<Box flexDirection="row">
+			<Box flexDirection="row" paddingLeft={2}>
 				<Text dimColor>{footerLabel}</Text>
 			</Box>
 		</Box>

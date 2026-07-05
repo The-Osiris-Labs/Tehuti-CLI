@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterClient } from "./openrouter.js";
+;
+;
+;
 
 describe("OpenRouterClient", () => {
 	const validConfig = {

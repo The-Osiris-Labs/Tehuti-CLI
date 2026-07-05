@@ -1392,6 +1392,9 @@ function ChatUI({
 						delete ctxRef.current.config.customProvider;
 					}
 					ctxRef.current.messages = data.messages;
+					// Seed context with the loaded historical messages
+					ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
+					
 					if (data.metadata.model) {
 						setCtxModel(resolvedModel);
 					}
@@ -1687,6 +1690,34 @@ function ChatUI({
 							if (data.metadata.model) {
 								setCtxModel(data.metadata.model);
 							}
+
+							// Seed the AgentContext behind the scenes
+							ctxRef.current = await createAgentContext(
+								process.cwd(),
+								{
+									...getActiveConfig(),
+									provider: nextState.provider,
+									baseUrl: nextState.baseUrl,
+									apiKey: nextState.apiKey,
+									customProvider:
+										nextState.provider === "custom" &&
+										nextState.customProvider?.baseUrl
+											? nextState.customProvider
+											: undefined,
+									model: data.metadata.model || ctxModel,
+									maxIterations: 50,
+									maxTokens: 4096,
+									permissions: {
+										defaultMode: "trust",
+										alwaysAllow: [],
+										alwaysDeny: [],
+										trustedMode: true,
+									},
+								},
+								diffPreview,
+							);
+							ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
+							
 							return;
 						}
 					}
@@ -1844,12 +1875,12 @@ function ChatUI({
 	const scrollLineUp = useCallback(() => {
 		messagesEndRef.current = false;
 		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
-		setScrollOffset((off) => Math.min(maxOff, off + 1));
+		setScrollOffset((off) => Math.min(maxOff, off + 3)); // Scroll by 3 for smoothness
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollLineDown = useCallback(() => {
 		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - 1);
+			const newOff = Math.max(0, off - 3); // Scroll by 3 for smoothness
 			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
@@ -2868,35 +2899,7 @@ function ChatUI({
 		loading,
 	]);
 
-	const scrollIndicator = useMemo(() => {
-		if (totalMessageLines <= chatViewportHeight) return null;
-
-		const currentPosition = messagesEndRef.current ? 0 : scrollOffset;
-
-		// In our inverted setup, offset 0 means bottom, offset max means top
-		const maxOff = Math.max(1, totalMessageLines - chatViewportHeight);
-		const scrollPercent = 100 - Math.round((currentPosition / maxOff) * 100);
-		const barWidth = 10;
-		const filledWidth = Math.round((scrollPercent / 100) * barWidth);
-		const filled = "█".repeat(filledWidth);
-		const empty = "░".repeat(barWidth - filledWidth);
-
-		const positionText =
-			messagesEndRef.current || scrollOffset === 0
-				? "end"
-				: `${Math.round(scrollPercent)}%`;
-
-		return React.createElement(
-			Box,
-			{ flexDirection: "row", alignItems: "center", gap: 1 },
-			React.createElement(
-				Text,
-				{ dimColor: true },
-				`${DECORATIVE.eye} ${positionText}`,
-			),
-			React.createElement(Text, { color: GOLD }, `[${filled}${empty}]`),
-		);
-	}, [totalMessageLines, chatViewportHeight, scrollOffset]);
+	const scrollIndicator = null;
 
 	return showConfigEditor
 		? React.createElement(ConfigEditor, {

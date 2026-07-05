@@ -5,7 +5,7 @@ import type {
 	ToolDefinition,
 	ToolResult,
 } from "../agent/tools/registry.js";
-import type { OpenRouterTool } from "../api/openrouter.js";
+import type { StandardTool } from "../api/base-client.js";
 import type { MCPTool } from "./client.js";
 
 function stableHash(input: string): string {
@@ -58,7 +58,7 @@ export function normalizeMCPInputSchema(
 export function convertMCPToolToOpenRouter(
 	serverName: string,
 	tool: MCPTool,
-): OpenRouterTool {
+): StandardTool {
 	return {
 		type: "function",
 		function: {
@@ -72,7 +72,7 @@ export function convertMCPToolToOpenRouter(
 
 export function convertMCPToolsToOpenRouter(
 	tools: Array<{ serverName: string; tool: MCPTool }>,
-): OpenRouterTool[] {
+): StandardTool[] {
 	return tools.map(({ serverName, tool }) =>
 		convertMCPToolToOpenRouter(serverName, tool),
 	);

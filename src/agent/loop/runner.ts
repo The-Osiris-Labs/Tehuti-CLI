@@ -6,7 +6,8 @@ import {
 	processStreamChunk,
 } from "../../api/index.js";
 import { isReasoningModel } from "../../api/model-capabilities.js";
-import type { OpenRouterClient, OpenRouterTool } from "../../api/openrouter.js";
+import type { OpenRouterClient } from "../../api/openrouter.js";
+import type { StandardTool } from "../../api/base-client.js";;
 import { debug } from "../../utils/debug.js";
 
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
@@ -116,7 +117,7 @@ export async function runAgentLoop(
 		}
 
 		syncMCPToolRegistry();
-		const tools = getToolDefinitions() as OpenRouterTool[];
+		const tools = getToolDefinitions() as StandardTool[];
 
 		let iteration = 0;
 		const maxIterations = ctx.config.maxIterations;

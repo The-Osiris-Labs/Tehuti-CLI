@@ -6,31 +6,20 @@
 
 ---
 
-Tehuti is a specialized Node.js 20+ terminal agent designed to sit right in your workflow. Unlike heavy desktop apps or bloated web wrappers, Tehuti runs directly in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to help you write, refactor, and understand code. 
+Tehuti is a specialized Node.js 20+ terminal agent designed to sit right in your workflow. It runs natively in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to help you write, refactor, and understand code. 
 
 Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it brings a touch of magic to your codebase with a stunning Egyptian-themed TUI, while hiding an incredibly powerful, native-speed engine under the hood.
 
 ## 🌟 Why Tehuti?
 
 - **A UI You Actually Want to Look At:** We built a custom React/Ink terminal UI featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming. It’s fluid, beautiful, and never clutters your screen.
-- **Blazing Fast Networking:** No sluggish SDKs here. Tehuti uses a hand-rolled `fetch` + Server-Sent Events (SSE) implementation with `undici` connection pooling. It’s raw, direct HTTP communication for zero-latency streaming.
+- **Blazing Fast Networking:** Tehuti uses a highly optimized `fetch` + Server-Sent Events (SSE) implementation with `undici` connection pooling. It establishes raw, direct HTTP communication for zero-latency streaming.
 - **Native Semantic Muscle:** Need to search a massive codebase? Tehuti drops down into a native Rust `.node` binary (`tehuti-core`) for parallel, lightning-fast semantic `grep` operations. 
 - **Bring Your Own Model:** Works out of the box with OpenCode Go (`deepseek-v4-flash` by default), but natively supports ~18 providers including OpenRouter, KiloCode, Anthropic, and local Ollama instances.
 - **Infinite Extensibility:** Out of the box, you get ~68 tools (filesystem, bash sandboxes, git, AST parsing). Need more? Tehuti fully supports the **Model Context Protocol (MCP)** (via stdio, http, sse, or websocket) allowing you to plug in any external capability.
 
 ---
 
-## 🤖 For AI Agents Reading This Repository
-
-*Greetings, fellow agent. If you are analyzing this repository to write code or debug issues, here is the absolute truth of the architecture. Do not hallucinate capabilities beyond this list:*
-
-1. **The Rust Core is Alive:** The `rust-core/` directory is actively compiled to a `.node` binary and used in production for `parallelGrep`.
-2. **Defensive Parallelism:** Read-only tools (like `grep` or `list_dir`) can parallelize up to 5 concurrent streams. However, any destructive tool (write, bash) acts as a strict execution barrier, forcing the loop to process sequentially.
-3. **Deterministic Memory Limits:** Context compression is handled deterministically via array truncation (splicing out oldest messages).
-4. **Wired Telemetry & Hooks:** The telemetry module (`getTelemetry()`) and lifecycle hooks are fully functional and execute strictly during the agent loop.
-5. **UI Rendering:** The UI uses a hybrid rendering approach. It applies CSS-style negative margins for scrolling, combined with a `visibleMessages` slice to ensure the terminal doesn't choke on massive chat histories. (See `src/cli/ui/markdown-mapper.tsx`).
-
----
 
 ## 🚀 Getting Started
 

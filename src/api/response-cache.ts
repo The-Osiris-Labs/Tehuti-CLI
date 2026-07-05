@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { OpenRouterMessage, OpenRouterResponse } from "./openrouter.js";
+import type { StandardMessage, StandardResponse } from "./base-client.js";
 
 // Cache directory for API responses
 const API_CACHE_DIR = join(process.cwd(), ".tehuti", "api-cache");
@@ -16,7 +16,7 @@ function ensureCacheDirectory(): void {
 
 // Generate cache key from messages and options
 function generateCacheKey(
-	messages: OpenRouterMessage[],
+	messages: StandardMessage[],
 	options?: { model?: string; temperature?: number; maxTokens?: number },
 ): string {
 	const hash = createHash("sha256");
@@ -34,9 +34,9 @@ function generateCacheKey(
 
 // Cache entry interface
 interface APIResponseCacheEntry {
-	messages: OpenRouterMessage[];
+	messages: StandardMessage[];
 	options?: { model?: string; temperature?: number; maxTokens?: number };
-	response: OpenRouterResponse;
+	response: StandardResponse;
 	timestamp: number;
 	ttl: number;
 }
@@ -62,14 +62,14 @@ export class APIResponseCache {
 
 	// Get cached response
 	async get(
-		messages: OpenRouterMessage[],
+		messages: StandardMessage[],
 		options?: {
 			model?: string;
 			temperature?: number;
 			maxTokens?: number;
 			ttl?: number;
 		},
-	): Promise<OpenRouterResponse | null> {
+	): Promise<StandardResponse | null> {
 		const cacheKey = generateCacheKey(messages, options);
 		const cachePath = join(this.cacheDirectory, `${cacheKey}.json`);
 
@@ -94,8 +94,8 @@ export class APIResponseCache {
 
 	// Set cached response
 	async set(
-		messages: OpenRouterMessage[],
-		response: OpenRouterResponse,
+		messages: StandardMessage[],
+		response: StandardResponse,
 		options?: {
 			model?: string;
 			temperature?: number;

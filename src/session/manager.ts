@@ -4,7 +4,7 @@ import fs from "fs-extra";
 import Fuse from "fuse.js";
 import { v4 as uuidv4 } from "uuid";
 import type { AgentContext } from "../agent/context.js";
-import type { OpenRouterMessage } from "../api/openrouter.js";
+import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
@@ -43,7 +43,7 @@ type SessionSeed = Pick<
 
 export interface SessionData {
 	metadata: SessionMetadata;
-	messages: OpenRouterMessage[];
+	messages: StandardMessage[];
 	context: {
 		cwd: string;
 		workingDir: string;
@@ -104,7 +104,7 @@ class SessionManager {
 	generateAutoName(
 		cwd: string,
 		_model: string,
-		messages?: OpenRouterMessage[],
+		messages?: StandardMessage[],
 	): string {
 		// Try to get name from first user message
 		if (messages && messages.length > 0) {

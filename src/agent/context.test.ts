@@ -12,7 +12,7 @@ vi.mock("./memory/graph.js", () => ({
 	searchGraph: vi.fn().mockResolvedValue([]),
 }));
 
-import type { OpenRouterMessage } from "../api/openrouter.js";
+import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import {
 	addAssistantMessage,
@@ -196,7 +196,7 @@ describe("Agent Context", () => {
 
 	describe("normalizeToolMessageHistory", () => {
 		it("should remove orphan tool messages", () => {
-			const messages: OpenRouterMessage[] = [
+			const messages: StandardMessage[] = [
 				{ role: "user", content: "hello" },
 				{
 					role: "tool",
@@ -212,7 +212,7 @@ describe("Agent Context", () => {
 		});
 
 		it("should strip unresolved assistant tool calls", () => {
-			const messages: OpenRouterMessage[] = [
+			const messages: StandardMessage[] = [
 				{
 					role: "assistant",
 					content: "checking",
@@ -234,7 +234,7 @@ describe("Agent Context", () => {
 
 	describe("estimateTokens", () => {
 		it("should estimate tokens using tiktoken base", () => {
-			const messages: OpenRouterMessage[] = [
+			const messages: StandardMessage[] = [
 				{ role: "user", content: "12345678" },
 			];
 			const tokens = estimateTokens(messages);
@@ -242,13 +242,13 @@ describe("Agent Context", () => {
 		});
 
 		it("should handle string content", () => {
-			const messages: OpenRouterMessage[] = [{ role: "user", content: "test" }];
+			const messages: StandardMessage[] = [{ role: "user", content: "test" }];
 			const tokens = estimateTokens(messages);
 			expect(tokens).toBe(11);
 		});
 
 		it("should handle array content", () => {
-			const messages: OpenRouterMessage[] = [
+			const messages: StandardMessage[] = [
 				{
 					role: "user",
 					content: [{ type: "text", text: "test" }],
@@ -259,7 +259,7 @@ describe("Agent Context", () => {
 		});
 
 		it("should include tool_calls in estimation", () => {
-			const messages: OpenRouterMessage[] = [
+			const messages: StandardMessage[] = [
 				{
 					role: "assistant",
 					content: "test",

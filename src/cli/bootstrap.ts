@@ -3,7 +3,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { configureHooks, initializeAgent } from "../agent/index.js";
 import { updateHttpAgentConfig } from "../api/http-agent.js";
-import { OpenRouterClient, type OpenRouterMessage } from "../api/openrouter.js";
+import { OpenRouterClient } from "../api/openrouter.js";
+;
+;
+import { type StandardMessage } from "../api/base-client.js";;
 import {
 	DEFAULT_CONFIG,
 	getGlobalConfig,
@@ -121,7 +124,7 @@ export async function bootstrapCLI(
 		mcpManager.setSamplingHandler(async (request: any) => {
 			const client = OpenRouterClient.getInstance(cfg);
 
-			const messages: OpenRouterMessage[] = request.messages.map((m: any) => {
+			const messages: StandardMessage[] = request.messages.map((m: any) => {
 				const textContent = Array.isArray(m.content)
 					? m.content.find((c: any) => c.type === "text")?.text || ""
 					: m.content.type === "text"

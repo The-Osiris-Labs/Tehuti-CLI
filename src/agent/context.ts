@@ -1,9 +1,9 @@
 import path from "node:path";
 import fs from "fs-extra";
 import type {
-	OpenRouterMessage,
-	OpenRouterToolCall,
-} from "../api/openrouter.js";
+	StandardMessage,
+	StandardToolCall,
+} from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
@@ -23,7 +23,7 @@ const _MAX_CONTEXT_TOKENS = 100000;
 const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
-export function estimateTokens(messages: OpenRouterMessage[]): number {
+export function estimateTokens(messages: StandardMessage[]): number {
 	return tiktokenEstimateTokens(messages);
 }
 
@@ -97,10 +97,10 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 }
 
 export function normalizeToolMessageHistory(
-	messages: OpenRouterMessage[],
-): OpenRouterMessage[] {
+	messages: StandardMessage[],
+): StandardMessage[] {
 	const unresolvedToolCallIds = new Set<string>();
-	const normalized: OpenRouterMessage[] = [];
+	const normalized: StandardMessage[] = [];
 
 	for (const message of messages) {
 		if (message.role === "assistant" && message.tool_calls?.length) {
@@ -174,7 +174,7 @@ export function normalizeToolMessageHistory(
 export interface AgentContext {
 	cwd: string;
 	workingDir: string;
-	messages: OpenRouterMessage[];
+	messages: StandardMessage[];
 	config: TehutiConfig;
 	projectInstructions?: string;
 	systemMemory?: string;
@@ -403,9 +403,9 @@ export function addAssistantMessage(ctx: AgentContext, content: string): void {
 export function addAssistantMessageWithTools(
 	ctx: AgentContext,
 	content: string,
-	toolCalls?: OpenRouterToolCall[],
+	toolCalls?: StandardToolCall[],
 ): void {
-	const message: OpenRouterMessage = {
+	const message: StandardMessage = {
 		role: "assistant",
 		content,
 	};

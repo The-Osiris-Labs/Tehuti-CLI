@@ -1,5 +1,5 @@
 import { getEncoding } from "js-tiktoken";
-import type { OpenRouterMessage } from "../api/openrouter.js";
+import type { StandardMessage } from "../api/base-client.js";
 
 const tokenizer = getEncoding("cl100k_base");
 
@@ -16,7 +16,7 @@ export interface CompressionOptions {
 }
 
 export interface CompressionResult {
-	messages: OpenRouterMessage[];
+	messages: StandardMessage[];
 	removedCount: number;
 	compressedCount: number;
 	originalTokens: number;
@@ -45,7 +45,7 @@ function encodeStringSafely(str: string): number {
 	return Math.ceil((sampleTokens / 4000) * str.length);
 }
 
-function estimateTokens(messages: OpenRouterMessage[]): number {
+function estimateTokens(messages: StandardMessage[]): number {
 	let total = 0;
 	for (const msg of messages) {
 		let content = "";
