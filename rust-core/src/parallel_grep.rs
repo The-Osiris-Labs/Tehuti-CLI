@@ -2,7 +2,6 @@ use napi::bindgen_prelude::*;
 use ignore::WalkBuilder;
 use std::sync::{Arc, Mutex};
 use std::fs;
-use std::path::Path;
 
 #[napi(object)]
 #[derive(Clone)]

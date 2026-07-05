@@ -1,7 +1,11 @@
+import {
+	useOnClick,
+	useOnMouseEnter,
+	useOnMouseLeave,
+} from "@ink-tools/ink-mouse";
 import { Box, Text } from "ink";
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
-import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
 
 interface ExpandableToolOutputProps {
@@ -20,15 +24,32 @@ export interface ToolOutputSummary {
 	hiddenLineCount: number;
 }
 
+const MAX_RENDERED_OUTPUT_CHARS = 8000;
+// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
+const ANSI_SEQUENCE_REGEX = new RegExp("^\\x1b\\[[0-9;]*[a-zA-Z]");
+// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
+const ANSI_STRIP_REGEX = new RegExp(
+	"[\\x1b\\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]",
+	"g",
+);
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function safeStringify(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
 function sliceAnsi(str: string, limit: number): string {
 	let visibleWidth = 0;
 	let output = "";
 	let i = 0;
-	const ansiRegex = /^\u001b\[[0-9;]*[a-zA-Z]/;
 
 	while (i < str.length) {
 		const remaining = str.slice(i);
-		const match = remaining.match(ansiRegex);
+		const match = remaining.match(ANSI_SEQUENCE_REGEX);
 		if (match) {
 			output += match[0];
 			i += match[0].length;
@@ -71,14 +92,14 @@ export function summarizeToolOutput(
 		output = String(
 			(result as { full?: unknown; preview?: unknown }).full ||
 				(result as { full?: unknown; preview?: unknown }).preview ||
-				JSON.stringify(result),
+				safeStringify(result),
 		);
 	} else {
-		output = JSON.stringify(result, null, 2);
+		output = safeStringify(result);
 	}
 
-	if (output.length > 8000) {
-		output = `${output.slice(0, 8000)}\n... [truncated]`;
+	if (output.length > MAX_RENDERED_OUTPUT_CHARS) {
+		output = `${output.slice(0, MAX_RENDERED_OUTPUT_CHARS)}\n... [truncated]`;
 	}
 
 	const lines = output.split("\n").filter(Boolean);
@@ -87,14 +108,17 @@ export function summarizeToolOutput(
 		lineArray
 			.map((line) => {
 				const truncated =
-					stringWidth(line) > maxWidth - 4 ? `${sliceAnsi(line, maxWidth - 7)}...` : line;
+					stringWidth(line) > maxWidth - 4
+						? `${sliceAnsi(line, maxWidth - 7)}...`
+						: line;
 				return truncated;
 			})
 			.join("\n");
 
-
 	return {
-		displayContent: formatLines(isTruncated ? lines.slice(0, previewLines) : lines),
+		displayContent: formatLines(
+			isTruncated ? lines.slice(0, previewLines) : lines,
+		),
 		isTruncated,
 		lineCount: lines.length,
 		hiddenLineCount: isTruncated ? lines.length - previewLines : 0,
@@ -102,7 +126,7 @@ export function summarizeToolOutput(
 }
 
 function stripAnsi(str: string): string {
-	return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
+	return str.replace(ANSI_STRIP_REGEX, "");
 }
 
 export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
@@ -111,14 +135,13 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	maxWidth,
 	status,
 	defaultExpanded = false,
-	isParallel = false,
 }: ExpandableToolOutputProps): React.ReactElement {
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	const startTimeRef = useRef<number>(Date.now());
 	const [duration, setDuration] = useState<number | null>(null);
 	const [spinnerFrame, setSpinnerFrame] = useState(0);
 	const [isHovered, setIsHovered] = useState(false);
-	const boxRef = useRef<any>(null);
+	const boxRef = useRef(null);
 
 	useOnClick(boxRef, () => {
 		setExpanded((prev) => !prev);
@@ -127,7 +150,6 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	useOnMouseEnter(boxRef, () => setIsHovered(true));
 	useOnMouseLeave(boxRef, () => setIsHovered(false));
 
-	const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	const DECORATIVE = {
 		eye_ra: "𓁹",
 		eye_horus: "𓂀",
@@ -154,9 +176,15 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [status]);
 
 	const width = Math.max(40, maxWidth);
-	const summary = useMemo(() => 
-		summarizeToolOutput(result, expanded ? 10000 : width - 4, expanded ? 10000 : 4),
-	[result, expanded, width]);
+	const summary = useMemo(
+		() =>
+			summarizeToolOutput(
+				result,
+				expanded ? 10000 : width - 4,
+				expanded ? 10000 : 4,
+			),
+		[result, expanded, width],
+	);
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
@@ -179,13 +207,17 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}
 
 	const cleanToolName = stripAnsi(toolName);
-	
-	const maxToolNameWidth = Math.max(10, width - 20 - stringWidth(headerStatusText));
-	const truncatedToolName = cleanToolName.length > maxToolNameWidth
-		? (cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3)) + "...")
-		: cleanToolName;
 
-	let footerLabel = summary.isTruncated
+	const maxToolNameWidth = Math.max(
+		10,
+		width - 20 - stringWidth(headerStatusText),
+	);
+	const truncatedToolName =
+		cleanToolName.length > maxToolNameWidth
+			? `${cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3))}...`
+			: cleanToolName;
+
+	const footerLabel = summary.isTruncated
 		? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand)`
 		: expanded
 			? `completed (click to collapse)`
@@ -209,19 +241,33 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [expanded, summary.displayContent, isJson]);
 
 	return (
-		<Box ref={boxRef} flexDirection="column" marginTop={0} marginBottom={1} paddingX={1} borderStyle="round" borderColor={borderTextColor}>
+		<Box
+			ref={boxRef}
+			flexDirection="column"
+			marginTop={0}
+			marginBottom={1}
+			paddingX={1}
+			borderStyle="round"
+			borderColor={borderTextColor}
+		>
 			<Box flexDirection="row" justifyContent="space-between">
 				<Box>
 					<Text color={headerColor}>{headerIcon} </Text>
-					<Text bold color={headerColor}>{truncatedToolName}</Text>
+					<Text bold color={headerColor}>
+						{truncatedToolName}
+					</Text>
 				</Box>
 				<Box>
-					<Text bold color={headerColor}>{headerStatusText}</Text>
+					<Text bold color={headerColor}>
+						{headerStatusText}
+					</Text>
 				</Box>
 			</Box>
 
 			<Box flexDirection="column" marginY={1}>
-				<Text dimColor={!expanded} wrap="wrap">{displayContent}</Text>
+				<Text dimColor={!expanded} wrap="wrap">
+					{displayContent}
+				</Text>
 			</Box>
 
 			<Box flexDirection="row">
@@ -230,4 +276,3 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		</Box>
 	);
 });
-

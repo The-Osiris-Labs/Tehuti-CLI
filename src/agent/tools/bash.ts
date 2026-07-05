@@ -1,10 +1,9 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
 import { debug } from "../../utils/debug.js";
 import type { ToolContext, ToolDefinition, ToolResult } from "./registry.js";
-import { execSync } from "node:child_process";
 
 let isDockerAvailable = false;
 try {
@@ -14,8 +13,12 @@ try {
 	isDockerAvailable = false;
 }
 
-function getSpawnArgs(command: string, cwd: string): { cmd: string; args: string[] } {
-	const useDocker = isDockerAvailable && process.env.DISABLE_DOCKER_SANDBOX !== "true";
+function getSpawnArgs(
+	command: string,
+	cwd: string,
+): { cmd: string; args: string[] } {
+	const useDocker =
+		isDockerAvailable && process.env.DISABLE_DOCKER_SANDBOX !== "true";
 	if (useDocker) {
 		return {
 			cmd: "docker",
@@ -119,6 +122,11 @@ const DANGEROUS_PATTERNS = [
 	/\bfind\s+.*-exec\s+/,
 ];
 
+const NATIVE_DANGEROUS_PATTERNS = [
+	/(^|[\s="'])\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+	/\.\.[/\\]/,
+];
+
 const _SAFE_COMMAND_PREFIXES = [
 	"git ",
 	"git",
@@ -146,13 +154,23 @@ const _SAFE_COMMAND_PREFIXES = [
 	"touch ",
 ];
 
-function isDangerousCommand(command: string): {
+function isDangerousCommand(
+	command: string,
+	isNativeFallback?: boolean,
+): {
 	dangerous: boolean;
 	reason?: string;
 } {
 	const trimmedCommand = command.trim();
+	const useDocker =
+		isDockerAvailable && process.env.DISABLE_DOCKER_SANDBOX !== "true";
+	const applyNativeChecks = isNativeFallback ?? !useDocker;
 
-	for (const pattern of DANGEROUS_PATTERNS) {
+	const activePatterns = applyNativeChecks
+		? [...DANGEROUS_PATTERNS, ...NATIVE_DANGEROUS_PATTERNS]
+		: DANGEROUS_PATTERNS;
+
+	for (const pattern of activePatterns) {
 		if (pattern.test(trimmedCommand)) {
 			return {
 				dangerous: true,
@@ -175,7 +193,7 @@ function isDangerousCommand(command: string): {
 		for (const part of parts) {
 			const trimmedPart = part.trim();
 			if (!trimmedPart) continue;
-			for (const pattern of DANGEROUS_PATTERNS) {
+			for (const pattern of activePatterns) {
 				if (pattern.test(trimmedPart)) {
 					return {
 						dangerous: true,
@@ -237,7 +255,7 @@ interface BackgroundProcessInfo {
 }
 
 const backgroundProcesses = new Map<number, BackgroundProcessInfo>();
-const MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
+const MAX_OUTPUT_SIZE = 1024 * 1024;
 const MAX_TOTAL_BACKGROUND_MEMORY = 100 * 1024 * 1024;
 const MAX_BACKGROUND_PROCESSES = 50;
 const MAX_BACKGROUND_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -566,7 +584,14 @@ async function executeBash(
 		};
 	}
 
-	const cwd = dirValidation.resolvedPath!;
+	const cwd = dirValidation.resolvedPath;
+	if (!cwd) {
+		return {
+			success: false,
+			output: "",
+			error: "Unable to resolve working directory",
+		};
+	}
 	const timeoutMs = Math.max(1000, timeout ?? ctx.timeout ?? 120000);
 
 	debug.log(
@@ -631,16 +656,17 @@ async function executeBash(
 			if (resolved) return;
 			stdoutChunks.push(data);
 			stdoutLength += data.length;
-			if (stdoutLength > MAX_OUTPUT_SIZE) {
+			if (stdoutLength + stderrLength > MAX_OUTPUT_SIZE) {
 				cleanup();
 				resolved = true;
 				try {
-					process.kill(-proc.pid!);
+					if (proc.pid) process.kill(-proc.pid);
 				} catch {}
 				resolve({
 					success: false,
 					output: "",
-					error: "Output exceeded 10MB limit",
+					error:
+						"Command output exceeded 1MB limit. Narrow the command, pipe through head/tail, or write large output to a file.",
 				});
 			}
 		});
@@ -649,6 +675,19 @@ async function executeBash(
 			if (resolved) return;
 			stderrChunks.push(data);
 			stderrLength += data.length;
+			if (stdoutLength + stderrLength > MAX_OUTPUT_SIZE) {
+				cleanup();
+				resolved = true;
+				try {
+					if (proc.pid) process.kill(-proc.pid);
+				} catch {}
+				resolve({
+					success: false,
+					output: "",
+					error:
+						"Command output exceeded 1MB limit. Narrow the command, pipe through head/tail, or write large output to a file.",
+				});
+			}
 		});
 
 		timeoutId = setTimeout(() => {
@@ -656,7 +695,7 @@ async function executeBash(
 			cleanup();
 			resolved = true;
 			try {
-				process.kill(-proc.pid!);
+				if (proc.pid) process.kill(-proc.pid);
 			} catch {}
 			resolve({
 				success: false,

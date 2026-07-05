@@ -26,7 +26,7 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it brings 
 
 1. **The Rust Core is Alive:** The `rust-core/` directory is actively compiled to a `.node` binary and used in production for `parallelGrep`.
 2. **Defensive Parallelism:** Read-only tools (like `grep` or `list_dir`) can parallelize up to 5 concurrent streams. However, any destructive tool (write, bash) acts as a strict execution barrier, forcing the loop to process sequentially.
-3. **Deterministic Memory Limits:** We do **not** use LLM summarization for in-loop context compression. When the context window reaches ~85% capacity, the agent deterministically splices out the oldest non-system messages to save tokens.
+3. **Deterministic Memory Limits:** Context compression is handled deterministically via array truncation (splicing out oldest messages).
 4. **Wired Telemetry & Hooks:** The telemetry module (`getTelemetry()`) and lifecycle hooks are fully functional and execute strictly during the agent loop.
 5. **UI Rendering:** The UI uses a hybrid rendering approach. It applies CSS-style negative margins for scrolling, combined with a `visibleMessages` slice to ensure the terminal doesn't choke on massive chat histories. (See `src/cli/ui/markdown-mapper.tsx`).
 
@@ -80,6 +80,17 @@ Tehuti gracefully merges your settings from multiple places (lowest to highest p
 4. **Environment Variables:** Things like `TEHUTI_API_KEY` or `TEHUTI_MODEL` for quick, on-the-fly overrides.
 
 *All your chat sessions, memory graphs, and API caches are safely stored in `~/.tehuti/`.*
+
+### Terminal Accessibility
+
+The interactive UI supports mouse-aware panes and command palettes, but some terminals, multiplexers, or accessibility tools handle mouse tracking poorly. Set either environment variable below to launch Tehuti in keyboard-only mode:
+
+```bash
+TEHUTI_DISABLE_MOUSE=1 npm run start
+NO_MOUSE=1 npm run start
+```
+
+If the terminal is left in a strange state after an interruption, start a new shell or run `reset`. Tehuti also attempts to restore cursor, style, and mouse tracking modes during shutdown and fatal error handling.
 
 ---
 

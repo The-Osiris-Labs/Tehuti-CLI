@@ -5,7 +5,6 @@ import { consola } from "./logger.js";
 const GOLD = "\x1b[38;5;178m";
 const RESET = "\x1b[0m";
 const EYE_OF_HORUS = "\u{13080}";
-const IBIS = "\u{131A3}";
 
 export class TehutiError extends Error {
 	constructor(
@@ -156,7 +155,7 @@ export function toJSON(error: unknown): Record<string, unknown> {
 	return { error: String(error) };
 }
 
-function restoreTerminal(): void {
+export function restoreTerminal(): void {
 	if (process.stdin.isTTY && process.stdin.setRawMode) {
 		try {
 			process.stdin.setRawMode(false);
@@ -164,8 +163,18 @@ function restoreTerminal(): void {
 	}
 	if (process.stdout.isTTY) {
 		try {
-			process.stdout.write("\x1b[?25h");
-			process.stdout.write("\x1b[0m");
+			process.stdout.write(
+				[
+					"\x1b[?1000l",
+					"\x1b[?1002l",
+					"\x1b[?1003l",
+					"\x1b[?1006l",
+					"\x1b[?1015l",
+					"\x1b[?1016l",
+					"\x1b[?25h",
+					"\x1b[0m",
+				].join(""),
+			);
 		} catch {}
 	}
 }
@@ -186,7 +195,7 @@ async function runCleanupHandlers(): Promise<void> {
 		for (const handler of cleanupHandlers) {
 			try {
 				await handler();
-			} catch (err) {
+			} catch (_err) {
 				// Ignore cleanup errors to ensure other handlers run
 			}
 		}

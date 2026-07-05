@@ -7,9 +7,18 @@ import {
 	shouldCacheTool,
 } from "./cache/index.js";
 import type { AgentContext } from "./context.js";
+import { getPrefetcher } from "./prefetcher.js";
 import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
-import { getPrefetcher } from "./prefetcher.js";
+
+const MODEL_TOOL_RESULT_MAX_CHARS = 20000;
+
+function truncateToolResultForModel(result: string): string {
+	if (result.length <= MODEL_TOOL_RESULT_MAX_CHARS) {
+		return result;
+	}
+	return `${result.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... (truncated due to excessive size)`;
+}
 
 export const SAFE_PARALLEL_TOOLS = new Set([
 	"read",
@@ -82,8 +91,6 @@ export function classifyToolCalls(toolCalls: ToolCall[]): ClassifiedToolCalls {
 	for (const tc of toolCalls) {
 		const toolName = tc.function.name;
 
-		const toolDef = getTool(toolName);
-
 		if (INTERACTIVE_TOOLS.has(toolName)) {
 			interactive.push(tc);
 		} else if (SAFE_PARALLEL_TOOLS.has(toolName)) {
@@ -110,7 +117,7 @@ export function canRunInParallel(toolCalls: ToolCall[]): boolean {
 
 async function executeToolCall(
 	tc: ToolCall,
-	ctx: AgentContext,
+	_ctx: AgentContext,
 	toolContext: Parameters<typeof executeTool>[2],
 	cache: ReturnType<typeof getToolCache>,
 	telemetry: ReturnType<typeof getTelemetry>,
@@ -159,7 +166,10 @@ async function executeToolCall(
 	}
 
 	if (toolName === "bash") {
-		const command = (args as any)?.command;
+		const command =
+			args && typeof args === "object"
+				? (args as Record<string, unknown>).command
+				: undefined;
 		if (typeof command === "string") {
 			invalidateOnBash(command);
 		}
@@ -193,7 +203,10 @@ export async function executeToolsParallel(
 		try {
 			onToolCall?.(tc.function.name, JSON.parse(tc.function.arguments));
 		} catch (e) {
-			onToolCall?.(tc.function.name, { __parseError: String(e), __rawArguments: tc.function.arguments });
+			onToolCall?.(tc.function.name, {
+				__parseError: String(e),
+				__rawArguments: tc.function.arguments,
+			});
 		}
 	}
 
@@ -207,7 +220,8 @@ export async function executeToolsParallel(
 
 	for (const tc of toolCalls) {
 		const toolName = tc.function.name;
-		const isSafe = SAFE_PARALLEL_TOOLS.has(toolName) && !INTERACTIVE_TOOLS.has(toolName);
+		const isSafe =
+			SAFE_PARALLEL_TOOLS.has(toolName) && !INTERACTIVE_TOOLS.has(toolName);
 
 		if (isSafe) {
 			currentParallelBatch.push(tc);
@@ -283,9 +297,7 @@ export async function executeToolsParallel(
 									typeof result.output === "string"
 										? result.output
 										: JSON.stringify(result.output ?? "");
-								if (resultStr.length > 50000) {
-									resultStr = resultStr.slice(0, 50000) + "\n... (truncated due to excessive size)";
-								}
+								resultStr = truncateToolResultForModel(resultStr);
 								addToolResult(ctx, tc.id, tc.function.name, resultStr);
 							});
 
@@ -344,9 +356,7 @@ export async function executeToolsParallel(
 					typeof result.output === "string"
 						? result.output
 						: JSON.stringify(result.output ?? "");
-				if (resultStr.length > 50000) {
-					resultStr = resultStr.slice(0, 50000) + "\n... (truncated due to excessive size)";
-				}
+				resultStr = truncateToolResultForModel(resultStr);
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 				onToolResult?.(tc.function.name, result);
@@ -374,7 +384,8 @@ export async function executeToolsParallel(
 }
 
 export function getParallelizableCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name)).length;
+	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name))
+		.length;
 }
 
 export function getSequentialCount(toolCalls: ToolCall[]): number {

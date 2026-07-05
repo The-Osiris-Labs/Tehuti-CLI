@@ -1,17 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as readline from "node:readline";
+import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
 import { Command } from "commander";
-import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { consola } from "consola";
-import { Box, render, Text, useApp, useInput, useStdout } from "ink";
+import { Box, render, Text, useApp, useStdout } from "ink";
 import Spinner from "ink-spinner";
-import type { Token } from "marked";
-import { marked } from "marked";
-import stringWidth from "string-width";
-import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import React, {
 	useCallback,
 	useEffect,
@@ -19,60 +14,10 @@ import React, {
 	useRef,
 	useState,
 } from "react";
-
-// Progress Bar Component
-const ProgressBar = ({ value, label, width = 40 }: { value: number; label?: string; width?: number }) => {
-	const filledWidth = Math.round((value / 100) * width);
-	const filled = "━".repeat(filledWidth);
-	const empty = "─".repeat(width - filledWidth);
-
-	return React.createElement(
-		Box,
-		{ flexDirection: "column", marginY: 0.5 },
-		label &&
-			React.createElement(
-				Box,
-				{
-					flexDirection: "row",
-					justifyContent: "space-between",
-					marginBottom: 0.25,
-				},
-				React.createElement(Text, { color: SAND, dimColor: true }, label),
-				React.createElement(Text, { color: GOLD }, `${Math.round(value)}%`),
-			),
-		React.createElement(
-			Box,
-			{ flexDirection: "row" },
-			React.createElement(Text, { color: GOLD }, filled),
-			React.createElement(Text, { dimColor: true }, empty),
-		),
-	);
-};
-
-// Status Indicator Component
-const StatusIndicator = ({
-	status,
-}: {
-	status: "success" | "error" | "loading";
-}) => {
-	if (status === "success") {
-		return React.createElement(Text, { color: GREEN }, "✅");
-	}
-	if (status === "error") {
-		return React.createElement(Text, { color: RED }, "❌");
-	}
-	return React.createElement(
-		Text,
-		{ color: GOLD },
-		React.createElement(Spinner, { type: "dots" }),
-	);
-};
-
 import { saveCacheToDisk } from "../../agent/cache/index.js";
 import { compactContext, estimateTokens } from "../../agent/context.js";
 import {
 	type AgentContext,
-	configureHooks,
 	createAgentContext,
 	isPlanMode,
 	runAgentLoop,
@@ -83,16 +28,18 @@ import {
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
-import { setPermissionResolver, type PermissionRequest, buildPromptMessage } from "../../permissions/prompts.js";
+import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { costTracker } from "../../api/index.js";
+import { listModelsForProvider } from "../../api/models.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../branding/index.js";
 import {
-	ASCII_ART,
-	BRANDING,
-	DECORATIVE,
-	HIEROGLYPHS,
-	WELCOME_MESSAGE,
-} from "../../branding/index.js";
-import { DEFAULT_CONFIG, loadConfig, getGlobalConfig, saveGlobalConfig, runSetupWizard, configWarnings } from "../../config/index.js";
+	configWarnings,
+	type DEFAULT_CONFIG,
+	getGlobalConfig,
+	loadConfig,
+	runSetupWizard,
+	saveGlobalConfig,
+} from "../../config/index.js";
 import {
 	getAllProviders,
 	getEnvApiKeyForProvider,
@@ -100,26 +47,36 @@ import {
 	resolveBaseUrlForProvider,
 } from "../../config/providers.js";
 import { mcpManager } from "../../mcp/index.js";
+import { setPermissionResolver } from "../../permissions/prompts.js";
 import { sessionManager } from "../../session/manager.js";
-import { OpenRouterClient, type OpenRouterMessage } from "../../api/openrouter.js";
-import { listModelsForProvider } from "../../api/models.js";
 import {
 	createStreamingOutputManager,
 	type StreamingOutputManager,
 } from "../../terminal/buffered-writer.js";
-import {
-	highlightToAnsi,
-	isHighlighterReady,
-	initHighlighter,
-} from "../../terminal/highlighter.js";
-import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
-import { MediaViewer } from "../ui/components/MediaViewer.js";
+import { initHighlighter } from "../../terminal/highlighter.js";
 import { computeMessageLines } from "../../terminal/output.js";
 import { debug } from "../../utils/debug.js";
-import { setupErrorHandlers, APIError, AgentError, ConfigError } from "../../utils/errors.js";
-import { setDebugMode } from "../../utils/logger.js";
+import {
+	AgentError,
+	APIError,
+	ConfigError,
+	registerCleanupHandler,
+} from "../../utils/errors.js";
 import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
-import { isMouseSequence } from "../../utils/mouse.js";
+import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
+import {
+	compactBlockForUi,
+	compactMessagesForUi,
+	compactToolResultForUi,
+	needsUiCompaction,
+	safeStringify,
+	TOOL_RESULT_PREVIEW_CHARS,
+	truncateMiddle,
+	UI_MAX_REASONING_CHARS,
+	UI_MAX_TEXT_CHARS,
+	type UiBlock,
+	type UiMessage,
+} from "../ui/chat-memory.js";
 import {
 	type CommandItem,
 	CommandPalette,
@@ -128,12 +85,16 @@ import {
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
-import { TehutiHeader } from "../ui/components/TehutiHeader.js";
+import { HieroglyphSpinner } from "../ui/components/HieroglyphSpinner.js";
+import { PermissionPrompt } from "../ui/components/PermissionPrompt.js";
+import { ProgressBar } from "../ui/components/ProgressBar.js";
+import { QuestionPrompt } from "../ui/components/QuestionPrompt.js";
 import { SessionList } from "../ui/components/SessionList.js";
+import { StatusIndicator } from "../ui/components/StatusIndicator.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
+import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
-import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
@@ -141,12 +102,8 @@ const CORAL = BRANDING.colors?.accent || "#FF6B35";
 const GREEN = BRANDING.colors?.green || "#22C55E";
 const GRAY = BRANDING.colors?.gray || "#9CA3AF";
 const RED = BRANDING.colors?.red || "#EF4444";
-const OBSIDIAN = BRANDING.colors?.obsidian || "#1A1A2E";
 const CYAN = BRANDING.colors?.cyan || "#06B6D4";
 const SAND = BRANDING.colors?.sand || "#8B7355";
-const NILE = BRANDING.colors?.nile || "#165DFF";
-const PAPYRUS = BRANDING.colors?.papyrus || "#F5E6C8";
-const BLUE = BRANDING.colors?.blue || "#3B82F6";
 const PURPLE = BRANDING.colors?.purple || "#A855F7";
 
 const TOOL_ICONS: Record<string, string> = {
@@ -180,6 +137,13 @@ type RuntimeProviderState = {
 	customProvider?: RuntimeCustomProvider;
 };
 
+type ChatCommandOptions = {
+	json?: boolean;
+	quiet?: boolean;
+	continue?: boolean;
+	[key: string]: unknown;
+};
+
 function normalizeCustomProvider(
 	value: unknown,
 ): RuntimeCustomProvider | undefined {
@@ -189,7 +153,8 @@ function normalizeCustomProvider(
 
 	const record = value as Record<string, unknown>;
 	const name = typeof record.name === "string" ? record.name.trim() : "";
-	const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
+	const baseUrl =
+		typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
 
 	if (!name || !baseUrl) {
 		return undefined;
@@ -208,11 +173,11 @@ function normalizeCustomProvider(
 		rawHeaders &&
 		Object.entries(rawHeaders).every(([, value]) => typeof value === "string")
 			? (Object.fromEntries(
-				Object.entries(rawHeaders).map(([key, value]) => [
-					key,
-					String(value),
-				]),
-			) as Record<string, string>)
+					Object.entries(rawHeaders).map(([key, value]) => [
+						key,
+						String(value),
+					]),
+				) as Record<string, string>)
 			: undefined;
 
 	return {
@@ -304,7 +269,11 @@ interface FormattedToolResult {
 	truncatedLinesCount: number;
 }
 
-function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCount: number = 5): FormattedToolResult {
+function formatToolResult(
+	result: unknown,
+	maxWidth: number = 80,
+	previewLinesCount: number = 5,
+): FormattedToolResult {
 	if (!result) {
 		return {
 			preview: "",
@@ -325,8 +294,13 @@ function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCo
 	) {
 		output = String((result as Record<string, unknown>).output);
 	} else {
-		output = JSON.stringify(result);
+		output = safeStringify(result);
 	}
+	output = truncateMiddle(
+		output,
+		TOOL_RESULT_PREVIEW_CHARS,
+		"truncated for display",
+	);
 
 	const lines = output.split("\n");
 	const isTruncated = lines.length > previewLinesCount;
@@ -336,19 +310,21 @@ function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCo
 		return lineArray
 			.map((line) => {
 				const truncated =
-					line.length > maxWidth - 4 ? line.slice(0, maxWidth - 7) + "..." : line;
+					line.length > maxWidth - 4
+						? `${line.slice(0, maxWidth - 7)}...`
+						: line;
 				return `  │ ${truncated}`;
 			})
 			.join("\n");
 	};
 
-	const preview = isTruncated 
+	const preview = isTruncated
 		? `${formatLines(displayLines)}\n  │ ... (${lines.length - previewLinesCount} more lines)`
 		: formatLines(displayLines);
 
 	return {
 		preview,
-		full: formatLines(lines),
+		full: preview,
 		isTruncated,
 		linesCount: lines.length,
 		truncatedLinesCount: isTruncated ? lines.length - previewLinesCount : 0,
@@ -357,20 +333,9 @@ function formatToolResult(result: unknown, maxWidth: number = 80, previewLinesCo
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
 
-function formatSessionsTable(sessions: any[]): string {
+function formatSessionsTable(sessions: unknown[]): string {
 	if (!sessions || sessions.length === 0) return "No saved sessions";
 	return `[SESSION_LIST]${JSON.stringify(sessions)}`;
-}
-
-function HieroglyphSpinner() {
-	const [frame, setFrame] = useState(0);
-	useEffect(() => {
-		const interval = setInterval(() => {
-			setFrame(f => (f + 1) % HIEROGLYPHS.thinking.length);
-		}, 150);
-		return () => clearInterval(interval);
-	}, []);
-	return React.createElement(Text, { color: BRANDING.colors.gold }, HIEROGLYPHS.thinking[frame]);
 }
 
 const HISTORY_PATH = path.join(os.homedir(), ".tehuti", "history.json");
@@ -409,19 +374,14 @@ const _ANSI = {
 	coral: "\x1b[38;5;174m",
 };
 
-function highlightSyntax(code: string, language?: string): string {
-	if (isHighlighterReady()) {
-		return highlightToAnsi(code, language);
-	}
-	return code;
-}
-
 // Initialize highlighter early
 initHighlighter().catch((err) => {
 	console.error("Failed to initialize syntax highlighter:", err);
 });
 
-export function parseContentBlocks(content: string): Array<{ type: "text" | "reasoning"; content: string }> {
+export function parseContentBlocks(
+	content: string,
+): Array<{ type: "text" | "reasoning"; content: string }> {
 	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
 	let remaining = content;
 
@@ -438,11 +398,17 @@ export function parseContentBlocks(content: string): Array<{ type: "text" | "rea
 
 		const thinkEnd = remaining.indexOf("</think>", thinkStart + 7);
 		if (thinkEnd === -1) {
-			blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7) });
+			blocks.push({
+				type: "reasoning",
+				content: remaining.slice(thinkStart + 7),
+			});
 			break;
 		}
 
-		blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7, thinkEnd) });
+		blocks.push({
+			type: "reasoning",
+			content: remaining.slice(thinkStart + 7, thinkEnd),
+		});
 		remaining = remaining.slice(thinkEnd + 8);
 	}
 
@@ -453,12 +419,24 @@ export function normalizeBlocks(
 	blocks: Array<
 		| { type: "text"; content: string }
 		| { type: "reasoning"; content: string }
-		| { type: "tool"; id: string; name: string; description: string; result: unknown }
-	>
+		| {
+				type: "tool";
+				id: string;
+				name: string;
+				description: string;
+				result: unknown;
+		  }
+	>,
 ): Array<
 	| { type: "text"; content: string }
 	| { type: "reasoning"; content: string }
-	| { type: "tool"; id: string; name: string; description: string; result: unknown }
+	| {
+			type: "tool";
+			id: string;
+			name: string;
+			description: string;
+			result: unknown;
+	  }
 > {
 	const normalized: typeof blocks = [];
 	for (const block of blocks) {
@@ -472,235 +450,38 @@ export function normalizeBlocks(
 	return normalized;
 }
 
-function _PermissionPrompt({
-	request,
-	isDangerous,
-	onAnswer,
-}: {
-	request: PermissionRequest;
-	isDangerous: boolean;
-	onAnswer: (allowed: boolean) => void;
-}) {
-	useInput((k, key) => {
-		if (key.return) {
-			onAnswer(!isDangerous);
-		} else if (k.toLowerCase() === "y") {
-			onAnswer(true);
-		} else if (k.toLowerCase() === "n") {
-			onAnswer(false);
-		}
-	});
-
-	const messageLines = buildPromptMessage(request.toolName, request.args, isDangerous).split("\n");
-
-	return React.createElement(
-		Box,
-		{ flexDirection: "column", marginY: 1 },
-		messageLines.map((line, index) =>
-			React.createElement(Text, { key: index }, line)
-		),
-		React.createElement(
-			Box,
-			{ marginTop: 1, flexDirection: "row" },
-			React.createElement(Text, { color: GOLD }, "Allow execution? "),
-			React.createElement(Text, { color: SAND }, isDangerous ? "(y/N)" : "(Y/n)"),
-			React.createElement(Text, { dimColor: true }, "  Press Enter for default"),
-		)
-	);
-}
-
-function _QuestionPrompt({
-	question,
-	onAnswer,
-	onCancel,
-}: {
-	question: QuestionData;
-	onAnswer: (answer: string | string[]) => void;
-	onCancel: () => void;
-}) {
-	const [selectedIndex, setSelectedIndex] = useState(0);
-	const [customMode, setCustomMode] = useState(false);
-	const [customInput, setCustomInput] = useState("");
-	const [selectedMultiple, setSelectedMultiple] = useState<Set<number>>(
-		new Set(),
-	);
-	const { stdout } = useStdout();
-
-	useInput((k, key) => {
-		if (isMouseSequence(k)) {
-			return;
-		}
-		if (customMode) {
-			if (key.return) {
-				onAnswer(customInput);
-				return;
-			}
-			if (key.escape) {
-				setCustomMode(false);
-				setCustomInput("");
-				return;
-			}
-			if (key.backspace || key.delete || k === "\x7f" || k === "\b") {
-				setCustomInput((prev) => prev.slice(0, -1));
-				return;
-			}
-			if (k && k.length === 1 && !key.ctrl && !key.meta) {
-				setCustomInput((prev) => prev + k);
-			}
-			return;
-		}
-
-		if (key.upArrow) {
-			const maxIdx = question.options.length;
-			setSelectedIndex((prev) => (prev - 1 + maxIdx + 1) % (maxIdx + 1));
-			return;
-		}
-
-		if (key.downArrow) {
-			const maxIdx = question.options.length;
-			setSelectedIndex((prev) => (prev + 1) % (maxIdx + 1));
-			return;
-		}
-
-		if (key.return) {
-			if (selectedIndex === question.options.length) {
-				setCustomMode(true);
-				return;
-			}
-
-			if (question.multiple) {
-				const answers = Array.from(selectedMultiple).map(
-					(i) => question.options[i].label,
-				);
-				if (answers.length === 0) {
-					const current = selectedIndex;
-					if (!selectedMultiple.has(current)) {
-						onAnswer([question.options[current].label]);
-					} else {
-						onAnswer(answers);
-					}
-				} else {
-					onAnswer(answers);
-				}
-			} else {
-				onAnswer(question.options[selectedIndex].label);
-			}
-			return;
-		}
-
-		if (key.escape) {
-			onCancel();
-			return;
-		}
-
-		if (
-			question.multiple &&
-			k === " " &&
-			selectedIndex < question.options.length
-		) {
-			setSelectedMultiple((prev) => {
-				const next = new Set(prev);
-				if (next.has(selectedIndex)) {
-					next.delete(selectedIndex);
-				} else {
-					next.add(selectedIndex);
-				}
-				return next;
-			});
-		}
-	});
-
-	if (customMode) {
-		return React.createElement(
-			Box,
-			{
-				flexDirection: "column",
-				paddingX: 1,
-				borderStyle: "round",
-				borderColor: GOLD,
-			},
-			React.createElement(Text, { bold: true, color: GOLD }, question.header),
-			React.createElement(Text, { color: GRAY }, "Type your answer:"),
-			React.createElement(Text, { color: CORAL }, `> ${customInput}\u2588`),
-			React.createElement(
-				Text,
-				{ dimColor: true },
-				"Enter to confirm | Esc to cancel",
-			),
-		);
-	}
-
-	return React.createElement(
-		Box,
-		{
-			flexDirection: "column",
-			paddingX: 1,
-			borderStyle: "round",
-			borderColor: GOLD,
-		},
-		React.createElement(Text, { bold: true, color: GOLD }, question.header),
-		React.createElement(Text, null, question.question),
-		React.createElement(Text, null, ""),
-		...question.options.map((opt, idx) =>
-			React.createElement(
-				Box,
-				{ key: idx },
-				React.createElement(
-					Text,
-					{
-						color: selectedIndex === idx ? CORAL : GRAY,
-						bold: selectedIndex === idx,
-					},
-					question.multiple
-						? `${selectedMultiple.has(idx) ? "[x]" : "[ ]"} ${selectedIndex === idx ? "> " : "  "}${opt.label}`
-						: `${selectedIndex === idx ? "> " : "  "}${opt.label}`,
-				),
-				opt.description &&
-					React.createElement(
-						Text,
-						{ dimColor: true, color: GRAY },
-						` - ${opt.description}`,
-					),
-			),
-		),
-		React.createElement(
-			Box,
-			{ key: "custom" },
-			React.createElement(
-				Text,
-				{
-					color: selectedIndex === question.options.length ? CORAL : GRAY,
-					bold: selectedIndex === question.options.length,
-				},
-				`${selectedIndex === question.options.length ? "> " : "  "}Type custom answer`,
-			),
-		),
-		React.createElement(
-			Text,
-			{ dimColor: true },
-			`\n↑↓ navigate | Enter select${question.multiple ? " | Space toggle" : ""} | Esc cancel`,
-		),
-	);
-}
-
 function getEnhancedToolName(name: string, description?: string): string {
 	const base = description || name || "unknown_tool";
-	
+
 	if (!name) return base;
 
 	if (name === "store_insight" || name === "query_memory") {
 		return `${base} 𓂀 [Deep Memory]`;
 	}
-	
-	if (name.includes("aci_") || name.includes("sandbox") || name.includes("speculative")) {
+
+	if (
+		name.includes("aci_") ||
+		name.includes("sandbox") ||
+		name.includes("speculative")
+	) {
 		return `${base} 𓋹 [Sandbox/ACI]`;
 	}
-	
+
 	if (name.includes("shadow_workspace")) {
 		return `${base} 𓂝 [Shadow Workspace]`;
 	}
-	
+
 	return base;
+}
+
+function getToolRenderStatus(result: unknown): "pending" | "success" | "error" {
+	if (result === null) return "pending";
+	if (result && typeof result === "object" && "success" in result) {
+		return (result as { success?: unknown }).success === false
+			? "error"
+			: "success";
+	}
+	return "success";
 }
 
 function ChatUI({
@@ -719,37 +500,65 @@ function ChatUI({
 	onExit: () => void;
 }) {
 	const {
-		messages, setMessages,
-		input, setInput,
-		cursorPos, setCursorPos,
-		selectionStart, setSelectionStart,
-		selectionEnd, setSelectionEnd,
-		loading, setLoading,
-		error, setError,
-		ctxModel, setCtxModel,
-		runtimeProvider, setRuntimeProvider,
-		runtimeBaseUrl, setRuntimeBaseUrl,
-		runtimeApiKey, setRuntimeApiKey,
-		runtimeCustomProvider, setRuntimeCustomProvider,
-		scrollOffset, setScrollOffset,
-		history, setHistory,
-		historyIndex, setHistoryIndex,
-		sessionId, setSessionId,
-		showWelcome, setShowWelcome,
-		sessionCost, setSessionCost,
-		thinking, setThinking,
-		showThinking, setShowThinking,
-		showCommandPalette, setShowCommandPalette,
-		showDashboard, setShowDashboard,
-		pendingQuestion, setPendingQuestion,
-		progress, setProgress,
-		operationLabel, setOperationLabel,
-		showConfigEditor, setShowConfigEditor,
+		messages,
+		setMessages,
+		input,
+		setInput,
+		cursorPos,
+		setCursorPos,
+		selectionStart,
+		setSelectionStart,
+		selectionEnd,
+		setSelectionEnd,
+		loading,
+		setLoading,
+		error,
+		setError,
+		ctxModel,
+		setCtxModel,
+		runtimeProvider,
+		setRuntimeProvider,
+		runtimeBaseUrl,
+		setRuntimeBaseUrl,
+		runtimeApiKey,
+		setRuntimeApiKey,
+		runtimeCustomProvider,
+		setRuntimeCustomProvider,
+		scrollOffset,
+		setScrollOffset,
+		history,
+		setHistory,
+		historyIndex,
+		setHistoryIndex,
+		sessionId,
+		setSessionId,
+		showWelcome,
+		setShowWelcome,
+		sessionCost,
+		setSessionCost,
+		thinking,
+		setThinking,
+		showThinking,
+		setShowThinking,
+		showCommandPalette,
+		setShowCommandPalette,
+		showDashboard,
+		setShowDashboard,
+		pendingQuestion,
+		setPendingQuestion,
+		progress,
+		setProgress,
+		operationLabel,
+		setOperationLabel,
+		showConfigEditor,
+		setShowConfigEditor,
 		questionResolverRef,
-		pendingPermission, setPendingPermission,
+		pendingPermission,
+		setPendingPermission,
 		permissionResolverRef,
 	} = useChatState(model, apiKey, cfg);
-	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = React.useState("");
+	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] =
+		React.useState("");
 
 	const normalizedProvider = useMemo(
 		() => runtimeProvider.trim().toLowerCase() || "openrouter",
@@ -761,7 +570,8 @@ function ChatUI({
 			explicitKey?: string,
 			overrideCustomProvider?: RuntimeCustomProvider,
 		) => {
-			const provider = targetProvider.trim().toLowerCase() || normalizedProvider;
+			const provider =
+				targetProvider.trim().toLowerCase() || normalizedProvider;
 			const trimmedExplicit = explicitKey?.trim();
 			if (trimmedExplicit) {
 				return trimmedExplicit;
@@ -777,10 +587,7 @@ function ChatUI({
 			}
 
 			if (provider === "custom") {
-				return (
-					overrideCustomProvider?.apiKey ||
-					runtimeCustomProvider?.apiKey
-				);
+				return overrideCustomProvider?.apiKey || runtimeCustomProvider?.apiKey;
 			}
 
 			if (provider === (cfg.provider || "openrouter")) {
@@ -789,7 +596,13 @@ function ChatUI({
 
 			return undefined;
 		},
-		[cfg.provider, cfg.apiKey, normalizedProvider, runtimeApiKey, runtimeCustomProvider],
+		[
+			cfg.provider,
+			cfg.apiKey,
+			normalizedProvider,
+			runtimeApiKey,
+			runtimeCustomProvider,
+		],
 	);
 
 	const resolveRuntimeProviderState = useCallback(
@@ -817,7 +630,7 @@ function ChatUI({
 				targetProvider,
 				targetProvider === "custom"
 					? explicitBaseUrl || requestedCustomProvider?.baseUrl
-					: explicitBaseUrl ?? runtimeBaseUrl,
+					: (explicitBaseUrl ?? runtimeBaseUrl),
 			);
 
 			const resolvedCustomProvider =
@@ -826,7 +639,7 @@ function ChatUI({
 							...requestedCustomProvider,
 							name: requestedCustomProvider.name || "custom",
 							...(resolvedBaseUrl ? { baseUrl: resolvedBaseUrl } : {}),
-					  }
+						}
 					: undefined;
 
 			return {
@@ -849,49 +662,60 @@ function ChatUI({
 		],
 	);
 
-	const applyRuntimeProviderState = useCallback((next: RuntimeProviderState) => {
-		setRuntimeProvider(next.provider);
-		setRuntimeBaseUrl(next.baseUrl);
-		setRuntimeApiKey(next.apiKey || "");
-		setRuntimeCustomProvider(
-			next.provider === "custom" ? next.customProvider : undefined,
-		);
-
-		if (ctxRef.current) {
-			ctxRef.current.config.provider = next.provider;
-			if (next.baseUrl) {
-				ctxRef.current.config.baseUrl = next.baseUrl;
-			} else {
-				delete ctxRef.current.config.baseUrl;
-			}
-			if (next.apiKey) {
-				ctxRef.current.config.apiKey = next.apiKey;
-			} else {
-				delete ctxRef.current.config.apiKey;
-			}
-			if (next.provider === "custom" && next.customProvider?.baseUrl) {
-				ctxRef.current.config.customProvider = next.customProvider;
-			} else {
-				delete ctxRef.current.config.customProvider;
-			}
-		}
-	}, []);
-
-	const persistRuntimeProviderState = useCallback((
-		next: RuntimeProviderState,
-		overrides?: {
-			model?: string;
-		},
-	) => {
-		saveGlobalConfig({
-			provider: next.provider,
-			baseUrl: next.baseUrl,
-			apiKey: next.apiKey,
-			customProvider:
+	const applyRuntimeProviderState = useCallback(
+		(next: RuntimeProviderState) => {
+			setRuntimeProvider(next.provider);
+			setRuntimeBaseUrl(next.baseUrl);
+			setRuntimeApiKey(next.apiKey || "");
+			setRuntimeCustomProvider(
 				next.provider === "custom" ? next.customProvider : undefined,
-			model: overrides?.model ?? ctxModel,
-		});
-	}, [ctxModel]);
+			);
+
+			if (ctxRef.current) {
+				ctxRef.current.config.provider = next.provider;
+				if (next.baseUrl) {
+					ctxRef.current.config.baseUrl = next.baseUrl;
+				} else {
+					delete ctxRef.current.config.baseUrl;
+				}
+				if (next.apiKey) {
+					ctxRef.current.config.apiKey = next.apiKey;
+				} else {
+					delete ctxRef.current.config.apiKey;
+				}
+				if (next.provider === "custom" && next.customProvider?.baseUrl) {
+					ctxRef.current.config.customProvider = next.customProvider;
+				} else {
+					delete ctxRef.current.config.customProvider;
+				}
+			}
+		},
+		[
+			setRuntimeProvider,
+			setRuntimeBaseUrl,
+			setRuntimeApiKey,
+			setRuntimeCustomProvider,
+		],
+	);
+
+	const persistRuntimeProviderState = useCallback(
+		(
+			next: RuntimeProviderState,
+			overrides?: {
+				model?: string;
+			},
+		) => {
+			saveGlobalConfig({
+				provider: next.provider,
+				baseUrl: next.baseUrl,
+				apiKey: next.apiKey,
+				customProvider:
+					next.provider === "custom" ? next.customProvider : undefined,
+				model: overrides?.model ?? ctxModel,
+			});
+		},
+		[ctxModel],
+	);
 
 	const getActiveConfig = useCallback(() => {
 		const resolved = resolveRuntimeProviderState();
@@ -903,18 +727,18 @@ function ChatUI({
 			customProvider: resolved.customProvider,
 			apiKey: resolved.apiKey,
 		};
-	}, [
-		cfg,
-		ctxModel,
-		resolveRuntimeProviderState,
-	]);
+	}, [cfg, ctxModel, resolveRuntimeProviderState]);
 
 	const ensureContext = useCallback(async () => {
 		if (ctxRef.current) {
 			return ctxRef.current;
 		}
 
-		const ctx = await createAgentContext(process.cwd(), getActiveConfig(), diffPreview);
+		const ctx = await createAgentContext(
+			process.cwd(),
+			getActiveConfig(),
+			diffPreview,
+		);
 		ctxRef.current = ctx;
 		return ctx;
 	}, [diffPreview, getActiveConfig]);
@@ -946,50 +770,75 @@ function ChatUI({
 		[],
 	);
 
-	const resetConversation = useCallback(async (createNewSession = true) => {
-		setLoading(true);
-		try {
-			abortActiveRequest();
-			if (pendingQuestion) {
-				pendingQuestion.reject(new Error("Question cancelled by reset"));
-				setPendingQuestion(null);
-			}
+	const resetConversation = useCallback(
+		async (createNewSession = true) => {
+			setLoading(true);
+			try {
+				abortActiveRequest();
+				if (pendingQuestion) {
+					pendingQuestion.reject(new Error("Question cancelled by reset"));
+					setPendingQuestion(null);
+				}
 
-			setMessages([]);
-			setThinking("");
-			setShowThinking(false);
-			setSessionCost(0);
-			setShowWelcome(true);
-			setHistoryIndex(-1);
-			setInput("");
-			setCursorPos(0);
-			setScrollOffset(0);
-			setError("");
-			setProgress(0);
-			setOperationLabel("");
-			costTracker.reset();
-			resetTelemetry();
-			ctxRef.current = null;
-			if (createNewSession) {
-				const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
-					provider: normalizedProvider,
-					baseUrl: runtimeBaseUrl,
-					customProvider:
-						normalizedProvider === "custom" ? runtimeCustomProvider : undefined,
-				});
-				setSessionId(id);
+				setMessages([]);
+				setThinking("");
+				setShowThinking(false);
+				setSessionCost(0);
+				setShowWelcome(true);
+				setHistoryIndex(-1);
+				setInput("");
+				setCursorPos(0);
+				setScrollOffset(0);
+				setError("");
+				setProgress(0);
+				setOperationLabel("");
+				costTracker.reset();
+				resetTelemetry();
+				ctxRef.current = null;
+				if (createNewSession) {
+					const id = await sessionManager.createSession(
+						process.cwd(),
+						ctxModel,
+						undefined,
+						{
+							provider: normalizedProvider,
+							baseUrl: runtimeBaseUrl,
+							customProvider:
+								normalizedProvider === "custom"
+									? runtimeCustomProvider
+									: undefined,
+						},
+					);
+					setSessionId(id);
+				}
+			} finally {
+				setLoading(false);
 			}
-		} finally {
-			setLoading(false);
-		}
-	}, [
-		ctxModel,
-		pendingQuestion,
-		normalizedProvider,
-		runtimeBaseUrl,
-		runtimeCustomProvider,
-		abortActiveRequest,
-	]);
+		},
+		[
+			ctxModel,
+			pendingQuestion,
+			normalizedProvider,
+			runtimeBaseUrl,
+			runtimeCustomProvider,
+			abortActiveRequest,
+			setMessages,
+			setThinking,
+			setShowThinking,
+			setSessionCost,
+			setShowWelcome,
+			setHistoryIndex,
+			setInput,
+			setCursorPos,
+			setScrollOffset,
+			setError,
+			setProgress,
+			setOperationLabel,
+			setSessionId,
+			setLoading,
+			setPendingQuestion,
+		],
+	);
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 	const ctxRef = useRef<AgentContext | null>(null);
@@ -1020,14 +869,14 @@ function ChatUI({
 		};
 
 		stdout?.on("resize", handleResize);
-		
+
 		return () => {
 			if (timer) clearTimeout(timer);
 			stdout?.off("resize", handleResize);
 		};
 	}, [stdout]);
 
-	const scrollContainerRef = useRef<any>(null);
+	const scrollContainerRef = useRef(null);
 	useOnWheel(scrollContainerRef, (event) => {
 		if (event.button === "wheel-up") {
 			scrollLineUp();
@@ -1040,11 +889,20 @@ function ChatUI({
 	const terminalWidth = terminalSize.columns;
 	const headerHeight = 3;
 	const inputHeight = 3;
-	const shouldShowHeader = showWelcome && scrollOffset === 0 && messages.length > 0;
+	const shouldShowHeader =
+		showWelcome && scrollOffset === 0 && messages.length > 0;
 	const headerScrollHeight = shouldShowHeader ? 14 : 0;
 	const warningsHeight = configWarnings.length * 4;
 
 	messagesRef.current = messages;
+
+	useEffect(() => {
+		if (!needsUiCompaction(messages as UiMessage[])) return;
+		setMessages((current) => {
+			if (!needsUiCompaction(current as UiMessage[])) return current;
+			return compactMessagesForUi(current as UiMessage[]) as typeof current;
+		});
+	}, [messages, setMessages]);
 
 	// Cleanup batch timer on unmount
 	useEffect(() => {
@@ -1066,7 +924,11 @@ function ChatUI({
 
 		const tokens = batchedTokensRef.current;
 		batchedTokensRef.current = "";
-		streamingContentRef.current += tokens;
+		streamingContentRef.current = truncateMiddle(
+			streamingContentRef.current + tokens,
+			UI_MAX_TEXT_CHARS,
+			"truncated for UI memory",
+		);
 
 		if (streamingMsgIdRef.current !== null) {
 			setMessages((m) =>
@@ -1077,7 +939,7 @@ function ChatUI({
 				),
 			);
 		}
-	}, []);
+	}, [setMessages]);
 
 	const batchToken = useCallback(
 		(token: string) => {
@@ -1097,16 +959,19 @@ function ChatUI({
 		[flushBatchedTokens],
 	);
 
-	const handleCommandPaletteSelect = useCallback((cmd: CommandItem) => {
-		setShowCommandPalette(false);
-		setCommandPaletteInitialQuery("");
-		if (cmd.action) cmd.action();
-	}, []);
+	const handleCommandPaletteSelect = useCallback(
+		(cmd: CommandItem) => {
+			setShowCommandPalette(false);
+			setCommandPaletteInitialQuery("");
+			if (cmd.action) cmd.action();
+		},
+		[setShowCommandPalette],
+	);
 
 	const handleCommandPaletteClose = useCallback(() => {
 		setShowCommandPalette(false);
 		setCommandPaletteInitialQuery("");
-	}, []);
+	}, [setShowCommandPalette]);
 
 	const handleModelSwitch = useCallback(() => {
 		setMessages((m) => [
@@ -1118,7 +983,7 @@ function ChatUI({
 					"Use: /model <model-name> to switch models.\nExample: /model deepseek-v4-flash\n\nUse /models to see available free models.",
 			},
 		]);
-	}, []);
+	}, [setMessages]);
 
 	const handleShowCost = useCallback(() => {
 		const stats = costTracker.getSessionStats();
@@ -1130,7 +995,7 @@ function ChatUI({
 				content: `Session Cost:\n  Requests: ${stats.requestCount}\n  Tokens: ${(stats.totalPromptTokens + stats.totalCompletionTokens).toLocaleString()}\n  Cost: $${stats.totalCost.toFixed(4)}${stats.totalCacheReadTokens > 0 ? `\n  Cache savings: ${stats.totalCacheReadTokens.toLocaleString()} tokens` : ""}`,
 			},
 		]);
-	}, []);
+	}, [setMessages]);
 
 	const handleClear = useCallback(async () => {
 		await resetConversation();
@@ -1162,7 +1027,7 @@ function ChatUI({
 				]);
 			}
 		}
-	}, []);
+	}, [setMessages]);
 
 	const handleThinking = useCallback(() => {
 		const ctx = ctxRef.current;
@@ -1177,7 +1042,7 @@ function ChatUI({
 				},
 			]);
 		}
-	}, []);
+	}, [setMessages]);
 
 	const handlePlan = useCallback(() => {
 		const ctx = ctxRef.current;
@@ -1195,7 +1060,7 @@ function ChatUI({
 				},
 			]);
 		}
-	}, []);
+	}, [setMessages]);
 
 	const handleShowHelp = useCallback(() => {
 		setMessages((m) => [
@@ -1206,7 +1071,7 @@ function ChatUI({
 				content: formatHelpOutput(),
 			},
 		]);
-	}, []);
+	}, [setMessages]);
 
 	const handleShowStats = useCallback(() => {
 		const telemetry = getTelemetry();
@@ -1219,13 +1084,13 @@ function ChatUI({
 				content: stats,
 			},
 		]);
-	}, []);
+	}, [setMessages]);
 
-  const handleConfig = useCallback(() => {
+	const handleConfig = useCallback(() => {
 		setShowConfigEditor(true);
-	}, []);
+	}, [setShowConfigEditor]);
 
-  const handleShowSessions = useCallback(async () => {
+	const handleShowSessions = useCallback(async () => {
 		setLoading(true);
 		const sessions = await sessionManager.listSessions();
 		const table = formatSessionsTable(sessions);
@@ -1238,89 +1103,81 @@ function ChatUI({
 			},
 		]);
 		setLoading(false);
-	}, []);
-
+	}, [setLoading, setMessages]);
 
 	const handleShowModels = useCallback(
-		async (opts?: {
-			provider?: string;
-			apiKey?: string;
-			baseUrl?: string;
-		}) => {
-		setLoading(true);
-			const provider = opts?.provider?.trim().toLowerCase() || normalizedProvider;
+		async (opts?: { provider?: string; apiKey?: string; baseUrl?: string }) => {
+			setLoading(true);
+			const provider =
+				opts?.provider?.trim().toLowerCase() || normalizedProvider;
 			const resolved = resolveRuntimeProviderState(provider, {
 				baseUrl: opts?.baseUrl,
 				apiKey: opts?.apiKey,
 			});
-			const base = resolveBaseUrlForProvider(
-				provider,
-				resolved.baseUrl,
-			);
-		setMessages((m) => [
-			...m,
-			{
-				id: msgIdRef.current++,
-				role: "system",
-				content: `Fetching live models + accurate specs for ${provider || "current"}...`,
-			},
-		]);
-
-		try {
-			const rich = await listModelsForProvider(
-				provider || "openrouter",
+			const base = resolveBaseUrlForProvider(provider, resolved.baseUrl);
+			setMessages((m) => [
+				...m,
 				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Fetching live models + accurate specs for ${provider || "current"}...`,
+				},
+			]);
+
+			try {
+				const rich = await listModelsForProvider(provider || "openrouter", {
 					apiKey: resolved.apiKey,
 					baseUrl: base,
 					headers: resolved.customProvider?.headers,
-				},
-			);
+				});
 
-			const models = [...rich].sort(
-				(a, b) => (b.contextLength ?? 0) - (a.contextLength ?? 0),
-			);
+				const models = [...rich].sort(
+					(a, b) => (b.contextLength ?? 0) - (a.contextLength ?? 0),
+				);
 
-			const list = models.length
-				? models
-						.slice(0, 40)
-						.map((m) => {
-							const ctx = m.contextLength
-								? ` ctx:${Math.round(m.contextLength / 1000)}k`
-								: "";
-							const pr =
-								m.pricing && (m.pricing.input || m.pricing.output)
-									? ` in:$${((m.pricing.input || 0) / 1e6).toFixed(4)}/M`
+				const list = models.length
+					? models
+							.slice(0, 40)
+							.map((m) => {
+								const ctx = m.contextLength
+									? ` ctx:${Math.round(m.contextLength / 1000)}k`
 									: "";
-							return `  ${m.id}${ctx}${pr}`;
-						})
-						.join("\n")
-				: "  (no data from endpoint; verify key/base via /config)";
+								const pr =
+									m.pricing && (m.pricing.input || m.pricing.output)
+										? ` in:$${((m.pricing.input || 0) / 1e6).toFixed(4)}/M`
+										: "";
+								return `  ${m.id}${ctx}${pr}`;
+							})
+							.join("\n")
+					: "  (no data from endpoint; verify key/base via /config)";
 
-			setMessages((msgs) => [
+				setMessages((msgs) => [
 					...msgs.slice(0, -1),
-				{
-					id: msgIdRef.current++,
-					role: "system",
-					content: `Live models for ${
-						provider || "provider"
-					} (fetched accurate context/pricing when provided):\n${list}\n\nUse: /model <full-id>\nContext shown is from provider endpoint.`,
-				},
-			]);
-		} catch (e) {
-			setMessages((msgs) => [
-				...msgs.slice(0, -1),
-				{
-					id: msgIdRef.current++,
-					role: "system",
-					content: `Failed to fetch models: ${
-						e instanceof Error ? e.message : String(e)
-					} \nCheck /config for key/base for ${provider || "provider"}.`,
-				},
-			]);
-		} finally {
-			setLoading(false);
-		}
-		}, [normalizedProvider, resolveRuntimeProviderState]);
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Live models for ${
+							provider || "provider"
+						} (fetched accurate context/pricing when provided):\n${list}\n\nUse: /model <full-id>\nContext shown is from provider endpoint.`,
+					},
+				]);
+			} catch (e) {
+				setMessages((msgs) => [
+					...msgs.slice(0, -1),
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Failed to fetch models: ${
+							e instanceof Error ? e.message : String(e)
+						} \nCheck /config for key/base for ${provider || "provider"}.`,
+					},
+				]);
+			} finally {
+				setLoading(false);
+			}
+		},
+		[normalizedProvider, resolveRuntimeProviderState, setLoading, setMessages],
+	);
 
 	const describeProvider = useCallback((providerId: string) => {
 		const info = getProviderInfo(providerId.toLowerCase());
@@ -1343,8 +1200,7 @@ function ChatUI({
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content:
-							`Supported providers:\n${list}\n\nUse: /provider <id>   Then /models for current provider's catalog.`,
+						content: `Supported providers:\n${list}\n\nUse: /provider <id>   Then /models for current provider's catalog.`,
 					},
 				]);
 				return;
@@ -1379,7 +1235,8 @@ function ChatUI({
 			const nextState = resolveRuntimeProviderState(normalized, {
 				customProvider:
 					normalized === "custom"
-						? runtimeCustomProvider || normalizeCustomProvider(cfg.customProvider)
+						? runtimeCustomProvider ||
+							normalizeCustomProvider(cfg.customProvider)
 						: undefined,
 			});
 
@@ -1400,13 +1257,13 @@ function ChatUI({
 			persistRuntimeProviderState(nextState);
 
 			setMessages((m) => [
-						...m,
-					{
-						id: msgIdRef.current++,
-						role: "system",
-						content: `Provider switched to ${normalized}. Base URL: ${nextState.baseUrl || "auto"}. Use /models for live catalog.`,
-					},
-				]);
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Provider switched to ${normalized}. Base URL: ${nextState.baseUrl || "auto"}. Use /models for live catalog.`,
+				},
+			]);
 			await handleShowModels({
 				provider: normalized,
 				apiKey: nextState.apiKey,
@@ -1414,7 +1271,7 @@ function ChatUI({
 			});
 		},
 		[
-			ctxModel,
+			setMessages,
 			describeProvider,
 			handleShowModels,
 			cfg.customProvider,
@@ -1423,7 +1280,7 @@ function ChatUI({
 			persistRuntimeProviderState,
 			resolveRuntimeProviderState,
 		],
-		);
+	);
 
 	const handleSave = useCallback(async () => {
 		if (sessionId && ctxRef.current) {
@@ -1446,177 +1303,211 @@ function ChatUI({
 				},
 			]);
 		}
-	}, [sessionId]);
-	const loadSessionById = useCallback(async (id: string) => {
-		setLoading(true);
-		try {
-			const data = await sessionManager.loadSession(id);
-			if (data && data.messages.length > 0) {
-				const loadedProvider = data.metadata.provider?.trim().toLowerCase();
-				const loadedBaseUrl = data.metadata.baseUrl?.trim();
-				const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
-				const resolvedProvider = loadedProvider || runtimeProvider;
-				const sourceCustomProvider =
-					loadedCustomProvider ||
-					runtimeCustomProvider ||
-					normalizeCustomProvider(cfg.customProvider);
-				const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
-					baseUrl: loadedBaseUrl || "",
-					customProvider: sourceCustomProvider,
-				});
-				const resolvedModel = data.metadata.model || ctxModel;
+	}, [sessionId, setMessages]);
+	const loadSessionById = useCallback(
+		async (id: string) => {
+			setLoading(true);
+			try {
+				const data = await sessionManager.loadSession(id);
+				if (data && data.messages.length > 0) {
+					const loadedProvider = data.metadata.provider?.trim().toLowerCase();
+					const loadedBaseUrl = data.metadata.baseUrl?.trim();
+					const loadedCustomProvider = normalizeCustomProvider(
+						data.metadata.customProvider,
+					);
+					const resolvedProvider = loadedProvider || runtimeProvider;
+					const sourceCustomProvider =
+						loadedCustomProvider ||
+						runtimeCustomProvider ||
+						normalizeCustomProvider(cfg.customProvider);
+					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+						baseUrl: loadedBaseUrl || "",
+						customProvider: sourceCustomProvider,
+					});
+					const resolvedModel = data.metadata.model || ctxModel;
 
-				applyRuntimeProviderState(resolvedState);
-				persistRuntimeProviderState(resolvedState, { model: resolvedModel });
+					applyRuntimeProviderState(resolvedState);
+					persistRuntimeProviderState(resolvedState, { model: resolvedModel });
 
-				const loadedMsgs = data.messages
-					.filter((m) => m.role === "user" || m.role === "assistant")
-					.map((m, i) => ({
-						id: i,
-						role: m.role,
-						content:
-							typeof m.content === "string"
-								? m.content
-								: JSON.stringify(m.content),
-					}));
-				setMessages(loadedMsgs);
-				msgIdRef.current = loadedMsgs.length;
-				setSessionId(id);
-				setShowWelcome(false);
-				setThinking("");
-				setShowThinking(false);
-				costTracker.reset();
-				setSessionCost(0);
+					const loadedMsgs = data.messages
+						.filter((m) => m.role === "user" || m.role === "assistant")
+						.map((m, i) => ({
+							id: i,
+							role: m.role,
+							content:
+								typeof m.content === "string"
+									? m.content
+									: JSON.stringify(m.content),
+						}));
+					setMessages(loadedMsgs);
+					msgIdRef.current = loadedMsgs.length;
+					setSessionId(id);
+					setShowWelcome(false);
+					setThinking("");
+					setShowThinking(false);
+					costTracker.reset();
+					setSessionCost(0);
 
-				ctxRef.current = await createAgentContext(
-					process.cwd(),
-					{
-						...getActiveConfig(),
-						provider: resolvedState.provider,
-						baseUrl: resolvedState.baseUrl,
-						apiKey: resolvedState.apiKey,
-						customProvider:
-							resolvedState.provider === "custom" &&
-							resolvedState.customProvider?.baseUrl
-								? resolvedState.customProvider
-								: undefined,
-						model: resolvedModel,
-						maxIterations: 50,
-						maxTokens: 4096,
-						permissions: {
-							defaultMode: "trust",
-							alwaysAllow: [],
-							alwaysDeny: [],
-							trustedMode: true,
+					ctxRef.current = await createAgentContext(
+						process.cwd(),
+						{
+							...getActiveConfig(),
+							provider: resolvedState.provider,
+							baseUrl: resolvedState.baseUrl,
+							apiKey: resolvedState.apiKey,
+							customProvider:
+								resolvedState.provider === "custom" &&
+								resolvedState.customProvider?.baseUrl
+									? resolvedState.customProvider
+									: undefined,
+							model: resolvedModel,
+							maxIterations: 50,
+							maxTokens: 4096,
+							permissions: {
+								defaultMode: "trust",
+								alwaysAllow: [],
+								alwaysDeny: [],
+								trustedMode: true,
+							},
 						},
-					},
-					diffPreview,
-				);
-				ctxRef.current.config.provider = resolvedState.provider;
-				if (resolvedState.baseUrl) {
-					ctxRef.current.config.baseUrl = resolvedState.baseUrl;
+						diffPreview,
+					);
+					ctxRef.current.config.provider = resolvedState.provider;
+					if (resolvedState.baseUrl) {
+						ctxRef.current.config.baseUrl = resolvedState.baseUrl;
+					} else {
+						delete ctxRef.current.config.baseUrl;
+					}
+					if (resolvedState.apiKey) {
+						ctxRef.current.config.apiKey = resolvedState.apiKey;
+					} else {
+						delete ctxRef.current.config.apiKey;
+					}
+					if (
+						resolvedState.provider === "custom" &&
+						resolvedState.customProvider?.baseUrl
+					) {
+						ctxRef.current.config.customProvider = resolvedState.customProvider;
+					} else {
+						delete ctxRef.current.config.customProvider;
+					}
+					ctxRef.current.messages = data.messages;
+					if (data.metadata.model) {
+						setCtxModel(resolvedModel);
+					}
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Loaded session: ${data.metadata.name || id.slice(0, 8)} (${loadedMsgs.length} messages)`,
+						},
+					]);
 				} else {
-					delete ctxRef.current.config.baseUrl;
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Session not found or empty: ${id}`,
+						},
+					]);
 				}
-				if (resolvedState.apiKey) {
-					ctxRef.current.config.apiKey = resolvedState.apiKey;
-				} else {
-					delete ctxRef.current.config.apiKey;
-				}
-				if (
-					resolvedState.provider === "custom" &&
-					resolvedState.customProvider?.baseUrl
-				) {
-					ctxRef.current.config.customProvider = resolvedState.customProvider;
-				} else {
-					delete ctxRef.current.config.customProvider;
-				}
-				ctxRef.current.messages = data.messages;
-				if (data.metadata.model) {
-					setCtxModel(resolvedModel);
-				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
 				setMessages((m) => [
 					...m,
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: `Loaded session: ${data.metadata.name || id.slice(0, 8)} (${loadedMsgs.length} messages)`,
+						content: `Error loading session ${id}: ${message}`,
+					},
+				]);
+			} finally {
+				setLoading(false);
+			}
+		},
+		[
+			runtimeProvider,
+			runtimeCustomProvider,
+			cfg.customProvider,
+			ctxModel,
+			applyRuntimeProviderState,
+			persistRuntimeProviderState,
+			resolveRuntimeProviderState,
+			getActiveConfig,
+			setMessages,
+			setSessionId,
+			setShowWelcome,
+			setThinking,
+			setShowThinking,
+			setSessionCost,
+			setLoading,
+			setCtxModel,
+			diffPreview,
+		],
+	);
+
+	const handleLoad = useCallback(
+		async (targetSessionId?: string) => {
+			if (typeof targetSessionId === "string" && targetSessionId.trim()) {
+				await loadSessionById(targetSessionId.trim());
+				return;
+			}
+			setLoading(true);
+			const sessions = await sessionManager.listSessions();
+			if (sessions.length === 0) {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: "No saved sessions. Use /save to save current session.",
 					},
 				]);
 			} else {
+				const limit = 30;
+				const displaySessions = sessions.slice(0, limit);
+				const list = displaySessions
+					.map(
+						(s, i) =>
+							`${i + 1}. ${s.name || s.id.slice(0, 8)} (${s.messageCount} msgs)`,
+					)
+					.join("\n");
 				setMessages((m) => [
 					...m,
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: `Session not found or empty: ${id}`,
+						content: `Saved sessions (showing recent ${displaySessions.length} of ${sessions.length}):\n${list}\n\nUse: /load <id> | /search <query>`,
 					},
 				]);
 			}
-		} catch (error: any) {
-			setMessages((m) => [
-				...m,
-				{
-					id: msgIdRef.current++,
-					role: "system",
-					content: `Error loading session ${id}: ${error.message || error}`,
-				},
-			]);
-		} finally {
 			setLoading(false);
-		}
-	}, [runtimeProvider, runtimeBaseUrl, runtimeCustomProvider, cfg.customProvider, ctxModel, applyRuntimeProviderState, persistRuntimeProviderState, setMessages, setSessionId, setShowWelcome, setThinking, setShowThinking, costTracker, setSessionCost, diffPreview]);
+		},
+		[loadSessionById, setLoading, setMessages],
+	);
 
-	const handleLoad = useCallback(async (targetSessionId?: string) => {
-		if (typeof targetSessionId === "string" && targetSessionId.trim()) {
-			await loadSessionById(targetSessionId.trim());
-			return;
-		}
-		setLoading(true);
-		const sessions = await sessionManager.listSessions();
-		if (sessions.length === 0) {
-			setMessages((m) => [
-				...m,
-				{
-					id: msgIdRef.current++,
-					role: "system",
-					content: "No saved sessions. Use /save to save current session.",
-				},
-			]);
-		} else {
+	const handleSearchSessions = useCallback(
+		async (query: string) => {
+			setLoading(true);
+			const results = await sessionManager.searchSessions(query);
 			const limit = 30;
-			const displaySessions = sessions.slice(0, limit);
-			const list = displaySessions
-				.map((s, i) => `${i + 1}. ${s.name || s.id.slice(0, 8)} (${s.messageCount} msgs)`)
-				.join("\n");
+			const displaySessions = results.slice(0, limit);
+			const table = formatSessionsTable(displaySessions);
 			setMessages((m) => [
 				...m,
 				{
 					id: msgIdRef.current++,
 					role: "system",
-					content: `Saved sessions (showing recent ${displaySessions.length} of ${sessions.length}):\n${list}\n\nUse: /load <id> | /search <query>`,
+					content:
+						results.length > 0 ? table : `No sessions found for "${query}"`,
 				},
 			]);
-		}
-		setLoading(false);
-	}, [loadSessionById, sessionManager]);
-
-  const handleSearchSessions = useCallback(async (query: string) => {
-		setLoading(true);
-		const results = await sessionManager.searchSessions(query);
-		const limit = 30;
-		const displaySessions = results.slice(0, limit);
-		const table = formatSessionsTable(displaySessions);
-		setMessages((m) => [
-			...m,
-			{
-				id: msgIdRef.current++,
-				role: "system",
-				content: results.length > 0 ? table : `No sessions found for "${query}"`,
-			},
-		]);
-		setLoading(false);
-	}, []);
+			setLoading(false);
+		},
+		[setLoading, setMessages],
+	);
 
 	const commands = useMemo(
 		() =>
@@ -1659,20 +1550,25 @@ function ChatUI({
 					const { globalConfig } = await import("../../config/index.js");
 					const provider = globalConfig.get("provider") || "openrouter";
 					const apiKeys = globalConfig.get("apiKeys") || {};
-					const apiKey = apiKeys[provider as keyof typeof apiKeys] as string | undefined;
-					
-					const liveModels = await listModelsForProvider(provider, { apiKey, baseUrl: globalConfig.get("apiBaseUrl") });
-					return liveModels.map(m => ({ id: m.id, name: m.name || m.id }));
+					const apiKey = apiKeys[provider as keyof typeof apiKeys] as
+						| string
+						| undefined;
+
+					const liveModels = await listModelsForProvider(provider, {
+						apiKey,
+						baseUrl: globalConfig.get("apiBaseUrl"),
+					});
+					return liveModels.map((m) => ({ id: m.id, name: m.name || m.id }));
 				},
 				getSavedSessions: async () => {
 					const { sessionManager } = await import("../../session/manager.js");
 					const sessions = await sessionManager.listSessions();
-					return sessions.map(s => ({
+					return sessions.map((s) => ({
 						id: s.id,
 						name: s.name || s.id,
-						date: new Date(s.updatedAt).toLocaleString()
+						date: new Date(s.updatedAt).toLocaleString(),
 					}));
-				}
+				},
 			}),
 		[
 			handleShowCost,
@@ -1690,8 +1586,10 @@ function ChatUI({
 			handleCompact,
 			handleThinking,
 			handlePlan,
+			handleConfig,
 			ensureContext,
-			resetConversation,
+			setMessages,
+			setShowDashboard,
 		],
 	);
 
@@ -1703,12 +1601,22 @@ function ChatUI({
 
 	const chatViewportHeight = Math.max(
 		3,
-		terminalHeight - headerHeight - inputHeight - 4 - headerScrollHeight - warningsHeight - suggestionsCount - paletteHeight,
+		terminalHeight -
+			headerHeight -
+			inputHeight -
+			4 -
+			headerScrollHeight -
+			warningsHeight -
+			suggestionsCount -
+			paletteHeight,
 	);
 	const contentMaxWidth = Math.min(terminalWidth - 4, 120);
 
 	const totalMessageLines = useMemo(() => {
-		let lines = messages.reduce((acc, msg) => acc + computeMessageLines(msg, contentMaxWidth), 0);
+		let lines = messages.reduce(
+			(acc, msg) => acc + computeMessageLines(msg, contentMaxWidth),
+			0,
+		);
 		if (showWelcome) {
 			lines += messages.length > 0 ? 3 : 12; // Approximate height of the TehutiHeader (compact or full)
 		}
@@ -1725,23 +1633,32 @@ function ChatUI({
 				return Math.min(prev, maxOff);
 			});
 		}
-	}, [totalMessageLines, chatViewportHeight]);
+	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	useEffect(() => {
 		setHistory(loadHistory());
 
 		let mounted = true;
-		let controller = new AbortController();
+		const controller = new AbortController();
 
 		async function initSession() {
 			try {
-				const recentId = continueSession ? await sessionManager.getRecentSession(process.cwd()) : null;
+				const recentId = continueSession
+					? await sessionManager.getRecentSession(process.cwd())
+					: null;
 				if (recentId && mounted && !controller.signal.aborted) {
 					const data = await sessionManager.loadSession(recentId);
-					if (data && data.messages.length > 0 && mounted && !controller.signal.aborted) {
+					if (
+						data &&
+						data.messages.length > 0 &&
+						mounted &&
+						!controller.signal.aborted
+					) {
 						const loadedProvider = data.metadata.provider?.trim().toLowerCase();
 						const loadedBaseUrl = data.metadata.baseUrl?.trim();
-						const loadedCustomProvider = normalizeCustomProvider(data.metadata.customProvider);
+						const loadedCustomProvider = normalizeCustomProvider(
+							data.metadata.customProvider,
+						);
 						const nextProvider = loadedProvider || runtimeProvider;
 						const nextState = resolveRuntimeProviderState(nextProvider, {
 							baseUrl: loadedBaseUrl || "",
@@ -1777,14 +1694,19 @@ function ChatUI({
 
 				if (mounted && !controller.signal.aborted) {
 					const bootstrap = resolveRuntimeProviderState();
-					const id = await sessionManager.createSession(process.cwd(), ctxModel, undefined, {
-						provider: bootstrap.provider,
-						baseUrl: bootstrap.baseUrl,
-						customProvider:
-							bootstrap.provider === "custom"
-								? bootstrap.customProvider
-								: undefined,
-					});
+					const id = await sessionManager.createSession(
+						process.cwd(),
+						ctxModel,
+						undefined,
+						{
+							provider: bootstrap.provider,
+							baseUrl: bootstrap.baseUrl,
+							customProvider:
+								bootstrap.provider === "custom"
+									? bootstrap.customProvider
+									: undefined,
+						},
+					);
 					setSessionId(id);
 				}
 			} catch (error) {
@@ -1804,28 +1726,46 @@ function ChatUI({
 				batchTimerRef.current = null;
 			}
 		};
-	}, []);
+	}, [
+		continueSession,
+		runtimeProvider,
+		runtimeCustomProvider,
+		cfg.customProvider,
+		resolveRuntimeProviderState,
+		applyRuntimeProviderState,
+		ctxModel,
+		setHistory,
+		setMessages,
+		setShowWelcome,
+		setSessionId,
+		setCtxModel,
+		abortActiveRequest,
+	]);
 
 	useEffect(() => {
-		questionResolverRef.current = async (
+		const questionResolver = async (
 			questions: QuestionData[],
 		): Promise<string[]> => {
 			return new Promise((resolve, reject) => {
 				setPendingQuestion({ questions, resolve, reject });
 			});
 		};
-		setQuestionResolver(questionResolverRef.current);
-		setPermissionResolver(permissionResolverRef.current!);
+		questionResolverRef.current = questionResolver;
+		setQuestionResolver(questionResolver);
+		const permissionResolver = permissionResolverRef.current;
+		if (permissionResolver) {
+			setPermissionResolver(permissionResolver);
+		}
 
 		return () => {
 			setQuestionResolver(async () => {
 				throw new Error("UI disconnected.");
 			});
-			setPermissionResolver(async (req, isDangerous) => {
+			setPermissionResolver(async (_req, isDangerous) => {
 				return !isDangerous; // Default fallback if UI unmounts
 			});
 		};
-	}, []);
+	}, [questionResolverRef, permissionResolverRef, setPendingQuestion]);
 
 	const _handleQuestionAnswer = useCallback(
 		async (questionIdx: number, answer: string | string[]) => {
@@ -1847,14 +1787,14 @@ function ChatUI({
 			setPendingQuestion(null);
 			resolve(answers);
 		},
-		[pendingQuestion],
+		[pendingQuestion, setPendingQuestion],
 	);
 
 	const _handleQuestionCancel = useCallback(() => {
 		if (!pendingQuestion) return;
 		pendingQuestion.reject(new Error("Question cancelled"));
 		setPendingQuestion(null);
-	}, [pendingQuestion]);
+	}, [pendingQuestion, setPendingQuestion]);
 
 	// For performance, we only render the messages that intersect the viewport plus a buffer
 	// (we rely on Ink's overflow="hidden" + negative margin for the actual virtualization slice)
@@ -1862,7 +1802,7 @@ function ChatUI({
 		const linesNeeded = chatViewportHeight + scrollOffset + 20; // 20 lines buffer
 		let accumulatedLines = 0;
 		let sliceIndex = messages.length;
-		
+
 		for (let i = messages.length - 1; i >= 0; i--) {
 			accumulatedLines += computeMessageLines(messages[i], contentMaxWidth);
 			sliceIndex = i;
@@ -1870,26 +1810,28 @@ function ChatUI({
 				break;
 			}
 		}
-		
+
 		// Always render at least 50 messages as a baseline
-		return messages.slice(Math.min(sliceIndex, Math.max(0, messages.length - 50)));
+		return messages.slice(
+			Math.min(sliceIndex, Math.max(0, messages.length - 50)),
+		);
 	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
 
 	const scrollToBottom = useCallback(() => {
 		messagesEndRef.current = true;
 		setScrollOffset(0);
-	}, []);
+	}, [setScrollOffset]);
 
 	const scrollToTop = useCallback(() => {
 		messagesEndRef.current = false;
 		setScrollOffset(Math.max(0, totalMessageLines - chatViewportHeight));
-	}, [totalMessageLines, chatViewportHeight]);
+	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollPageUp = useCallback(() => {
 		messagesEndRef.current = false;
 		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
 		setScrollOffset((off) => Math.min(maxOff, off + chatViewportHeight));
-	}, [totalMessageLines, chatViewportHeight]);
+	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollPageDown = useCallback(() => {
 		setScrollOffset((off) => {
@@ -1897,13 +1839,13 @@ function ChatUI({
 			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
-	}, [chatViewportHeight]);
+	}, [chatViewportHeight, setScrollOffset]);
 
 	const scrollLineUp = useCallback(() => {
 		messagesEndRef.current = false;
 		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
 		setScrollOffset((off) => Math.min(maxOff, off + 1));
-	}, [totalMessageLines, chatViewportHeight]);
+	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollLineDown = useCallback(() => {
 		setScrollOffset((off) => {
@@ -1911,7 +1853,7 @@ function ChatUI({
 			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
-	}, []);
+	}, [setScrollOffset]);
 
 	useEffect(() => {
 		if (messagesEndRef.current) {
@@ -2032,7 +1974,7 @@ function ChatUI({
 				return;
 			}
 
- 			if (cmd === "/sessions") {
+			if (cmd === "/sessions") {
 				setLoading(true);
 				const sessions = await sessionManager.listSessions();
 				const limit = 30;
@@ -2059,7 +2001,7 @@ function ChatUI({
 				return;
 			}
 
- 			if (cmd === "/reset-key") {
+			if (cmd === "/reset-key") {
 				fs.rmSync(CONFIG_PATH, { force: true });
 				setMessages((m) => [
 					...m,
@@ -2157,7 +2099,7 @@ function ChatUI({
 		setError("");
 		setThinking("");
 		setShowThinking(false);
- 		setOperationLabel("Tehuti is thinking...");
+		setOperationLabel("Tehuti is thinking...");
 		setProgress(0);
 
 		streamingContentRef.current = "";
@@ -2191,14 +2133,18 @@ function ChatUI({
 				result: unknown;
 				isExpanded: boolean;
 			}> = [];
-			let currentToolName = "";
-
 			setMessages((m) => [
 				...m.filter((msg) => msg.id !== assistantMsgId),
-				{ id: assistantMsgId, role: "assistant", content: "", toolCalls: [], blocks: [] },
+				{
+					id: assistantMsgId,
+					role: "assistant",
+					content: "",
+					toolCalls: [],
+					blocks: [],
+				},
 			]);
 
- 			const result = await runAgentLoop(ctxRef.current, text, {
+			const result = await runAgentLoop(ctxRef.current, text, {
 				onToken: (t) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
@@ -2217,13 +2163,17 @@ function ChatUI({
 							if (lastBlock && lastBlock.type === "text") {
 								blocks[blocks.length - 1] = {
 									...lastBlock,
-									content: lastBlock.content + t,
+									content: truncateMiddle(
+										lastBlock.content + t,
+										UI_MAX_TEXT_CHARS,
+										"truncated for UI memory",
+									),
 								};
 							} else {
 								blocks.push({ type: "text", content: t });
 							}
 							return { ...msg, blocks };
-						})
+						}),
 					);
 				},
 				onToolCall: (name, args) => {
@@ -2234,7 +2184,6 @@ function ChatUI({
 						return;
 					}
 					flushBatchedTokens();
-					currentToolName = name;
 					const toolDesc = formatToolCall(name, args);
 					const toolCallId = `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 					toolCallsInfo.push({
@@ -2257,13 +2206,13 @@ function ChatUI({
 								result: null,
 							});
 							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
-						})
+						}),
 					);
 
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
-				onToolResult: (name, result) => {
+				onToolResult: (_name, result) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2271,35 +2220,16 @@ function ChatUI({
 						return;
 					}
 					flushBatchedTokens();
-					
-					// Fix memory leak: Truncate massive string outputs before storing in React state indefinitely
-					const truncateDeep = (obj: any): any => {
-						if (typeof obj === "string") return obj.length > 15000 ? obj.slice(0, 15000) + "\n... [truncated for UI memory]" : obj;
-						if (Array.isArray(obj)) return obj.map(truncateDeep);
-						if (obj && typeof obj === "object") {
-							const newObj: any = {};
-							for (const key in obj) newObj[key] = truncateDeep(obj[key]);
-							return newObj;
-						}
-						return obj;
-					};
-					const safeResult = truncateDeep(result);
 
-					const success =
-						safeResult && typeof safeResult === "object" && "success" in safeResult
-							? safeResult.success
-							: true;
-					const formattedResult = formatToolResult(safeResult, terminalWidth - 10);
-
-					if (toolCallsInfo.length > 0) {
-						toolCallsInfo[toolCallsInfo.length - 1].result = safeResult;
-					}
+					const safeResult = compactToolResultForUi(result);
 
 					setMessages((m) =>
 						m.map((msg) => {
 							if (msg.id !== assistantMsgId) return msg;
 							const blocks = msg.blocks ? [...msg.blocks] : [];
-							const lastToolIdx = [...blocks].reverse().findIndex((b) => b.type === "tool");
+							const lastToolIdx = [...blocks]
+								.reverse()
+								.findIndex((b) => b.type === "tool");
 							if (lastToolIdx !== -1) {
 								const idx = blocks.length - 1 - lastToolIdx;
 								const toolBlock = blocks[idx];
@@ -2308,12 +2238,11 @@ function ChatUI({
 								}
 							}
 							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
-						})
+						}),
 					);
 
 					setThinking("");
 					setShowThinking(false);
-					currentToolName = "";
 				},
 				onThinking: (content) => {
 					if (
@@ -2334,13 +2263,24 @@ function ChatUI({
 								if (lastBlock && lastBlock.type === "reasoning") {
 									blocks[blocks.length - 1] = {
 										...lastBlock,
-										content: lastBlock.content + content,
+										content: truncateMiddle(
+											lastBlock.content + content,
+											UI_MAX_REASONING_CHARS,
+											"truncated for UI memory",
+										),
 									};
 								} else {
-									blocks.push({ type: "reasoning", content: content });
+									blocks.push({
+										type: "reasoning",
+										content: truncateMiddle(
+											content,
+											UI_MAX_REASONING_CHARS,
+											"truncated for UI memory",
+										),
+									});
 								}
 								return { ...msg, blocks };
-							})
+							}),
 						);
 					}
 				},
@@ -2364,14 +2304,27 @@ function ChatUI({
 			}
 			flushBatchedTokens();
 
-			const finalContent = result.content || response;
-			if ((!finalContent && !response) || (result.success === false && (result as any).error)) {
+			const finalContent = truncateMiddle(
+				result.content || response,
+				UI_MAX_TEXT_CHARS,
+				"truncated for UI memory",
+			);
+			const resultError =
+				result && typeof result === "object" && "error" in result
+					? String((result as Record<string, unknown>).error)
+					: "";
+			if (
+				(!finalContent && !response) ||
+				(result.success === false && resultError)
+			) {
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === assistantMsgId
 							? {
 									...msg,
-									content: (result as any).error ? `Error: ${(result as any).error}` : `No response received. Check your API key with /reset-key or verify network connectivity.`,
+									content: resultError
+										? `Error: ${resultError}`
+										: `No response received. Check your API key with /reset-key or verify network connectivity.`,
 								}
 							: msg,
 					),
@@ -2384,10 +2337,16 @@ function ChatUI({
 						if (blocks.length === 0 && finalContent) {
 							blocks = [{ type: "text", content: finalContent }];
 						}
+						blocks = blocks.map((block) =>
+							compactBlockForUi(block as UiBlock, true),
+						);
 						return {
 							...msg,
 							content: finalContent || `Task completed.`,
-							toolCalls: [...toolCallsInfo],
+							toolCalls: toolCallsInfo.map((toolCall) => ({
+								...toolCall,
+								result: null,
+							})),
 							blocks,
 						};
 					}),
@@ -2408,12 +2367,12 @@ function ChatUI({
 			}
 			debug.log("chat", "Agent error:", error);
 			debug.log("chat", "Error stack:", error.stack);
-			
+
 			flushBatchedTokens();
-			
+
 			let errorContent = "An unexpected error occurred";
 			let suggestions: string[] = [];
-			
+
 			if (error instanceof APIError) {
 				errorContent = error.message;
 				if (error.suggestions) {
@@ -2434,10 +2393,10 @@ function ChatUI({
 				suggestions = [
 					"Check your internet connection",
 					"Try again later",
-					"Run with --debug for more details"
+					"Run with --debug for more details",
 				];
 			}
-			
+
 			let fullContent = `Error: ${errorContent}`;
 			if (suggestions.length > 0) {
 				fullContent += "\n\nSuggestions:";
@@ -2445,7 +2404,7 @@ function ChatUI({
 					fullContent += `\n  ${index + 1}. ${suggestion}`;
 				});
 			}
-			
+
 			setMessages((m) =>
 				m.map((msg) =>
 					msg.id === assistantMsgId
@@ -2459,7 +2418,8 @@ function ChatUI({
 		const shouldFinalizeRequest =
 			isCurrentRequest(requestId, requestController.signal) ||
 			requestControllerRef.current === requestController ||
-			(requestController.signal.aborted && requestControllerRef.current === null);
+			(requestController.signal.aborted &&
+				requestControllerRef.current === null);
 		if (shouldFinalizeRequest) {
 			setProgress(100);
 			setLoading(false);
@@ -2469,9 +2429,11 @@ function ChatUI({
 		}
 
 		if (sessionId && ctxRef.current) {
-			void sessionManager.saveSession(sessionId, ctxRef.current).catch((err) => {
-				debug.log("chat", "Auto-save failed:", err);
-			});
+			void sessionManager
+				.saveSession(sessionId, ctxRef.current)
+				.catch((err) => {
+					debug.log("chat", "Auto-save failed:", err);
+				});
 		}
 	}
 
@@ -2487,16 +2449,8 @@ function ChatUI({
 				header = React.createElement(
 					Box,
 					{ flexDirection: "row", alignItems: "center", marginBottom: 0.5 },
-					React.createElement(
-						Text,
-						{ bold: true, color: CORAL },
-						`${label} `,
-					),
-					React.createElement(
-						Text,
-						{ color: CORAL, dimColor: true },
-						divider,
-					),
+					React.createElement(Text, { bold: true, color: CORAL }, `${label} `),
+					React.createElement(Text, { color: CORAL, dimColor: true }, divider),
 				);
 				content = [
 					React.createElement(
@@ -2507,7 +2461,10 @@ function ChatUI({
 				];
 			} else if (m.role === "system") {
 				const label = `${DECORATIVE.scroll} System`;
-				const padLen = Math.max(10, contentMaxWidth - label.length - 2 - (m.status ? 10 : 0));
+				const padLen = Math.max(
+					10,
+					contentMaxWidth - label.length - 2 - (m.status ? 10 : 0),
+				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
@@ -2525,13 +2482,9 @@ function ChatUI({
 						React.createElement(
 							Box,
 							{ marginRight: 1 },
-							React.createElement(StatusIndicator, { status: m.status })
+							React.createElement(StatusIndicator, { status: m.status }),
 						),
-					React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						divider,
-					),
+					React.createElement(Text, { color: SAND, dimColor: true }, divider),
 				);
 				if (m.content.startsWith("[SESSION_LIST]")) {
 					try {
@@ -2542,10 +2495,16 @@ function ChatUI({
 								key: `session-list-${m.id}`,
 								sessions,
 								onLoadSession: (id) => loadSessionById(id),
-							})
+							}),
 						];
-					} catch (e) {
-						content = [React.createElement(Text, { key: 0, dimColor: true, wrap: "wrap" }, "Error parsing session list")];
+					} catch (_e) {
+						content = [
+							React.createElement(
+								Text,
+								{ key: 0, dimColor: true, wrap: "wrap" },
+								"Error parsing session list",
+							),
+						];
 					}
 				} else {
 					content = [
@@ -2558,7 +2517,10 @@ function ChatUI({
 				}
 			} else {
 				const label = `${DECORATIVE.ibis} Tehuti`;
-				const padLen = Math.max(10, contentMaxWidth - label.length - 2 - (m.status ? 10 : 0));
+				const padLen = Math.max(
+					10,
+					contentMaxWidth - label.length - 2 - (m.status ? 10 : 0),
+				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
@@ -2567,22 +2529,14 @@ function ChatUI({
 						alignItems: "center",
 						marginBottom: 0.5,
 					},
-					React.createElement(
-						Text,
-						{ bold: true, color: GREEN },
-						`${label} `,
-					),
+					React.createElement(Text, { bold: true, color: GREEN }, `${label} `),
 					m.status &&
 						React.createElement(
 							Box,
 							{ marginRight: 1 },
-							React.createElement(StatusIndicator, { status: m.status })
+							React.createElement(StatusIndicator, { status: m.status }),
 						),
-					React.createElement(
-						Text,
-						{ color: GREEN, dimColor: true },
-						divider,
-					),
+					React.createElement(Text, { color: GREEN, dimColor: true }, divider),
 				);
 
 				if (m.blocks && m.blocks.length > 0) {
@@ -2592,31 +2546,60 @@ function ChatUI({
 							const subBlocks = parseContentBlocks(block.content);
 							subBlocks.forEach((subBlock, sbIdx) => {
 								if (subBlock.type === "text") {
-									content.push(...renderMarkdown(subBlock.content, contentMaxWidth, `msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`));
+									content.push(
+										...renderMarkdown(
+											subBlock.content,
+											contentMaxWidth,
+											`msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`,
+										),
+									);
 								} else if (subBlock.type === "reasoning") {
-									const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
+									const borderLine = "─".repeat(
+										Math.max(10, contentMaxWidth - 22),
+									);
 									content.push(
 										React.createElement(
 											Box,
-											{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-${bIdx}-${sbIdx}` },
+											{
+												flexDirection: "column",
+												marginTop: 0.5,
+												marginBottom: 0.5,
+												key: `msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
+											},
 											React.createElement(
 												Box,
 												{ flexDirection: "row", alignItems: "center" },
 												React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-												React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
-												React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+												React.createElement(
+													Text,
+													{ color: "cyan" },
+													`${DECORATIVE.eye} Reasoning`,
+												),
+												React.createElement(
+													Text,
+													{ color: "gray" },
+													` ]${borderLine}`,
+												),
 											),
 											React.createElement(
 												Box,
 												{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-												...renderMarkdown(subBlock.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-${bIdx}-${sbIdx}-md`)
+												...renderMarkdown(
+													subBlock.content,
+													contentMaxWidth - 4,
+													`msg-${m.id}-reasoning-${bIdx}-${sbIdx}-md`,
+												),
 											),
 											React.createElement(
 												Box,
 												{ flexDirection: "row" },
-												React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+												React.createElement(
+													Text,
+													{ color: "gray" },
+													`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+												),
 											),
-										)
+										),
 									);
 								}
 							});
@@ -2625,38 +2608,67 @@ function ChatUI({
 							content.push(
 								React.createElement(
 									Box,
-									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-${bIdx}` },
+									{
+										flexDirection: "column",
+										marginTop: 0.5,
+										marginBottom: 0.5,
+										key: `msg-${m.id}-reasoning-${bIdx}`,
+									},
 									React.createElement(
 										Box,
 										{ flexDirection: "row", alignItems: "center" },
 										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-										React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
-										React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+										React.createElement(
+											Text,
+											{ color: "cyan" },
+											`${DECORATIVE.eye} Reasoning`,
+										),
+										React.createElement(
+											Text,
+											{ color: "gray" },
+											` ]${borderLine}`,
+										),
 									),
 									React.createElement(
 										Box,
 										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(block.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-${bIdx}-md`)
+										...renderMarkdown(
+											block.content,
+											contentMaxWidth - 4,
+											`msg-${m.id}-reasoning-${bIdx}-md`,
+										),
 									),
 									React.createElement(
 										Box,
 										{ flexDirection: "row" },
-										React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+										React.createElement(
+											Text,
+											{ color: "gray" },
+											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+										),
 									),
-								)
+								),
 							);
 						} else if (block.type === "tool") {
 							content.push(
 								React.createElement(
 									Box,
-									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: block.id || `tool-${bIdx}` },
+									{
+										flexDirection: "column",
+										marginTop: 0.5,
+										marginBottom: 0.5,
+										key: block.id || `tool-${bIdx}`,
+									},
 									React.createElement(ExpandableToolOutput, {
-										toolName: getEnhancedToolName(block.name || "", block.description || ""),
+										toolName: getEnhancedToolName(
+											block.name || "",
+											block.description || "",
+										),
 										result: block.result,
 										maxWidth: contentMaxWidth,
-										status: block.result === null ? "pending" : block.result && typeof block.result === 'object' && 'success' in block.result && !(block.result as any).success ? "error" : "success"
-									})
-								)
+										status: getToolRenderStatus(block.result),
+									}),
+								),
 							);
 						}
 					});
@@ -2665,31 +2677,58 @@ function ChatUI({
 					content = [];
 					subBlocks.forEach((subBlock, sbIdx) => {
 						if (subBlock.type === "text") {
-							content.push(...renderMarkdown(subBlock.content, contentMaxWidth, `msg-${m.id}-sub-${sbIdx}`));
+							content.push(
+								...renderMarkdown(
+									subBlock.content,
+									contentMaxWidth,
+									`msg-${m.id}-sub-${sbIdx}`,
+								),
+							);
 						} else if (subBlock.type === "reasoning") {
 							const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
 							content.push(
 								React.createElement(
 									Box,
-									{ flexDirection: "column", marginTop: 0.5, marginBottom: 0.5, key: `msg-${m.id}-reasoning-fallback-${sbIdx}` },
+									{
+										flexDirection: "column",
+										marginTop: 0.5,
+										marginBottom: 0.5,
+										key: `msg-${m.id}-reasoning-fallback-${sbIdx}`,
+									},
 									React.createElement(
 										Box,
 										{ flexDirection: "row", alignItems: "center" },
 										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-										React.createElement(Text, { color: "cyan" }, `${DECORATIVE.eye} Reasoning`),
-										React.createElement(Text, { color: "gray" }, ` ]${borderLine}`),
+										React.createElement(
+											Text,
+											{ color: "cyan" },
+											`${DECORATIVE.eye} Reasoning`,
+										),
+										React.createElement(
+											Text,
+											{ color: "gray" },
+											` ]${borderLine}`,
+										),
 									),
 									React.createElement(
 										Box,
 										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(subBlock.content, contentMaxWidth - 4, `msg-${m.id}-reasoning-fallback-${sbIdx}-md`)
+										...renderMarkdown(
+											subBlock.content,
+											contentMaxWidth - 4,
+											`msg-${m.id}-reasoning-fallback-${sbIdx}-md`,
+										),
 									),
 									React.createElement(
 										Box,
 										{ flexDirection: "row" },
-										React.createElement(Text, { color: "gray" }, `  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`),
+										React.createElement(
+											Text,
+											{ color: "gray" },
+											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+										),
 									),
-								)
+								),
 							);
 						}
 					});
@@ -2697,16 +2736,23 @@ function ChatUI({
 					if (m.toolCalls && m.toolCalls.length > 0) {
 						const toolElements = React.createElement(
 							Box,
-							{ flexDirection: "column", marginTop: 1, key: `tool-calls-${m.id}` },
+							{
+								flexDirection: "column",
+								marginTop: 1,
+								key: `tool-calls-${m.id}`,
+							},
 							...m.toolCalls.map((tc, idx) =>
 								React.createElement(ExpandableToolOutput, {
 									key: tc.id || `tool-${idx}`,
-									toolName: getEnhancedToolName(tc.name || "", tc.description || ""),
+									toolName: getEnhancedToolName(
+										tc.name || "",
+										tc.description || "",
+									),
 									result: tc.result,
 									maxWidth: contentMaxWidth,
-									status: tc.result === null ? "pending" : tc.result && typeof tc.result === 'object' && 'success' in tc.result && !(tc.result as any).success ? "error" : "success"
-								})
-							)
+									status: getToolRenderStatus(tc.result),
+								}),
+							),
 						);
 						content.push(toolElements);
 					}
@@ -2726,7 +2772,8 @@ function ChatUI({
 					borderRight: false,
 					borderBottom: false,
 					borderLeft: true,
-					borderColor: m.role === "assistant" ? GOLD : m.role === "user" ? CORAL : "gray",
+					borderColor:
+						m.role === "assistant" ? GOLD : m.role === "user" ? CORAL : "gray",
 					width: contentMaxWidth,
 					flexShrink: 0,
 				},
@@ -2743,19 +2790,30 @@ function ChatUI({
 				),
 			);
 		});
-	}, [visibleMessages, contentMaxWidth]);
+	}, [visibleMessages, contentMaxWidth, loadSessionById]);
 
 	const commandSuggestions = null;
 
 	const renderInput = useMemo(() => {
-		const historyIndicator = historyIndex >= 0 
-			? React.createElement(Text, { color: SAND, dimColor: true }, ` [${historyIndex + 1}/${history.length}] `)
-			: '';
+		const historyIndicator =
+			historyIndex >= 0
+				? React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						` [${historyIndex + 1}/${history.length}] `,
+					)
+				: "";
 
-		const indicatorText = loading ? HIEROGLYPHS.loading[0] : `${DECORATIVE.feather} >`;
+		const indicatorText = loading
+			? HIEROGLYPHS.loading[0]
+			: `${DECORATIVE.feather} >`;
 		const indicatorColor = loading ? GOLD : CORAL;
 
-		if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) {
+		if (
+			selectionStart !== null &&
+			selectionEnd !== null &&
+			selectionStart !== selectionEnd
+		) {
 			const start = Math.min(selectionStart, selectionEnd);
 			const end = Math.max(selectionStart, selectionEnd);
 			const before = input.slice(0, start);
@@ -2769,16 +2827,25 @@ function ChatUI({
 				historyIndicator,
 				" ",
 				before,
-				React.createElement(Text, { backgroundColor: "gray", color: "black" }, selected),
-				after
+				React.createElement(
+					Text,
+					{ backgroundColor: "gray", color: "black" },
+					selected,
+				),
+				after,
 			);
 		}
 
 		const before = input.slice(0, cursorPos);
 		const after = input.slice(cursorPos);
-		const hint = (!loading && input.length === 0) 
-			? React.createElement(Text, { color: "gray", dimColor: true }, " Type a message, or /help for commands...")
-			: null;
+		const hint =
+			!loading && input.length === 0
+				? React.createElement(
+						Text,
+						{ color: "gray", dimColor: true },
+						" Type a message, or /help for commands...",
+					)
+				: null;
 
 		return React.createElement(
 			Text,
@@ -2789,17 +2856,23 @@ function ChatUI({
 			before,
 			loading ? null : "\u2588",
 			after,
-			hint
+			hint,
 		);
-	}, [input, cursorPos, historyIndex, history.length, selectionStart, selectionEnd, loading]);
+	}, [
+		input,
+		cursorPos,
+		historyIndex,
+		history.length,
+		selectionStart,
+		selectionEnd,
+		loading,
+	]);
 
 	const scrollIndicator = useMemo(() => {
 		if (totalMessageLines <= chatViewportHeight) return null;
-		
-		const currentPosition = messagesEndRef.current 
-			? 0 
-			: scrollOffset;
-		
+
+		const currentPosition = messagesEndRef.current ? 0 : scrollOffset;
+
 		// In our inverted setup, offset 0 means bottom, offset max means top
 		const maxOff = Math.max(1, totalMessageLines - chatViewportHeight);
 		const scrollPercent = 100 - Math.round((currentPosition / maxOff) * 100);
@@ -2807,11 +2880,12 @@ function ChatUI({
 		const filledWidth = Math.round((scrollPercent / 100) * barWidth);
 		const filled = "█".repeat(filledWidth);
 		const empty = "░".repeat(barWidth - filledWidth);
-		
-		const positionText = messagesEndRef.current || scrollOffset === 0
-			? "end"
-			: `${Math.round(scrollPercent)}%`;
-		
+
+		const positionText =
+			messagesEndRef.current || scrollOffset === 0
+				? "end"
+				: `${Math.round(scrollPercent)}%`;
+
 		return React.createElement(
 			Box,
 			{ flexDirection: "row", alignItems: "center", gap: 1 },
@@ -2820,98 +2894,88 @@ function ChatUI({
 				{ dimColor: true },
 				`${DECORATIVE.eye} ${positionText}`,
 			),
-			React.createElement(
-				Text,
-				{ color: GOLD },
-				`[${filled}${empty}]`,
-			),
+			React.createElement(Text, { color: GOLD }, `[${filled}${empty}]`),
 		);
 	}, [totalMessageLines, chatViewportHeight, scrollOffset]);
 
-		return showConfigEditor ? (
-			React.createElement(
-			ConfigEditor,
-				{
-					config: {
-						apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
-						model: ctxModel,
-						provider: runtimeProvider,
-						baseUrl: runtimeBaseUrl,
-						temperature: getGlobalConfig().temperature,
-						maxTokens: getGlobalConfig().maxTokens,
-					},
-					width: terminalWidth,
-					onSave: (updates) => {
-						const normalizedProvider = updates.provider
-							? updates.provider.trim().toLowerCase()
-							: runtimeProvider;
-						const resolvedProvider = normalizedProvider || runtimeProvider;
+	return showConfigEditor
+		? React.createElement(ConfigEditor, {
+				config: {
+					apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
+					model: ctxModel,
+					provider: runtimeProvider,
+					baseUrl: runtimeBaseUrl,
+					temperature: getGlobalConfig().temperature,
+					maxTokens: getGlobalConfig().maxTokens,
+				},
+				width: terminalWidth,
+				onSave: (updates) => {
+					const normalizedProvider = updates.provider
+						? updates.provider.trim().toLowerCase()
+						: runtimeProvider;
+					const resolvedProvider = normalizedProvider || runtimeProvider;
 
-						const rawBaseUrl =
-							updates.baseUrl !== undefined ? updates.baseUrl?.trim() : runtimeBaseUrl;
-						const nextApiKey =
-							updates.apiKey !== undefined
-								? updates.apiKey.trim()
-								: resolveRuntimeApiKey(resolvedProvider);
-						const resolvedCustomSource =
-							resolvedProvider === "custom"
-								? runtimeCustomProvider ||
-									normalizeCustomProvider(cfg.customProvider)
-								: undefined;
-						const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
-							baseUrl: rawBaseUrl,
-							apiKey: nextApiKey,
-							customProvider: resolvedCustomSource,
-						});
-						if (
-							resolvedProvider === "custom" &&
-							!resolvedState.customProvider?.baseUrl
-						) {
-							setMessages((m) => [
-								...m,
-								{
-									id: msgIdRef.current++,
-									role: "system",
-									content:
-										"Custom provider settings are incomplete. Set provider + baseUrl first.",
-								},
-							]);
-							return;
-						}
-
-						applyRuntimeProviderState(resolvedState);
-
-						if (updates.model !== undefined && updates.model.trim()) {
-							setCtxModel(updates.model);
-							if (ctxRef.current) {
-								ctxRef.current.config.model = updates.model;
-							}
-						}
-						const nextModel =
-							updates.model && updates.model.trim()
-								? updates.model.trim()
-								: ctxModel;
-						persistRuntimeProviderState(
-							resolvedState,
-							{ model: nextModel },
-						);
+					const rawBaseUrl =
+						updates.baseUrl !== undefined
+							? updates.baseUrl?.trim()
+							: runtimeBaseUrl;
+					const nextApiKey =
+						updates.apiKey !== undefined
+							? updates.apiKey.trim()
+							: resolveRuntimeApiKey(resolvedProvider);
+					const resolvedCustomSource =
+						resolvedProvider === "custom"
+							? runtimeCustomProvider ||
+								normalizeCustomProvider(cfg.customProvider)
+							: undefined;
+					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+						baseUrl: rawBaseUrl,
+						apiKey: nextApiKey,
+						customProvider: resolvedCustomSource,
+					});
+					if (
+						resolvedProvider === "custom" &&
+						!resolvedState.customProvider?.baseUrl
+					) {
 						setMessages((m) => [
 							...m,
 							{
 								id: msgIdRef.current++,
 								role: "system",
-								content: "Configuration saved successfully",
+								content:
+									"Custom provider settings are incomplete. Set provider + baseUrl first.",
 							},
 						]);
-						setShowConfigEditor(false);
-					},
-					onCancel: () => {
-						setShowConfigEditor(false);
-					},
+						return;
+					}
+
+					applyRuntimeProviderState(resolvedState);
+
+					if (updates.model?.trim()) {
+						setCtxModel(updates.model);
+						if (ctxRef.current) {
+							ctxRef.current.config.model = updates.model;
+						}
+					}
+					const nextModel = updates.model?.trim()
+						? updates.model.trim()
+						: ctxModel;
+					persistRuntimeProviderState(resolvedState, { model: nextModel });
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Configuration saved successfully",
+						},
+					]);
+					setShowConfigEditor(false);
 				},
-			)
-		) : (
-			React.createElement(
+				onCancel: () => {
+					setShowConfigEditor(false);
+				},
+			})
+		: React.createElement(
 				Box,
 				{ flexDirection: "column", width: "100%", height: "100%" },
 				React.createElement(
@@ -2924,7 +2988,7 @@ function ChatUI({
 						borderBottom: true,
 						borderStyle: "single",
 						borderColor: GOLD,
-						marginBottom: 1
+						marginBottom: 1,
 					},
 					React.createElement(
 						Text,
@@ -2951,62 +3015,120 @@ function ChatUI({
 				),
 				React.createElement(
 					Box,
-					{ flexDirection: "column", flexGrow: 1, paddingX: 1, overflow: "hidden" },
+					{
+						flexDirection: "column",
+						flexGrow: 1,
+						paddingX: 1,
+						overflow: "hidden",
+					},
 					...configWarnings.map((warn, idx) =>
 						React.createElement(
 							Box,
-							{ key: idx, paddingY: 0, paddingX: 1, marginBottom: 1, borderStyle: "single", borderColor: "yellow" },
-							React.createElement(Text, { color: "yellow", bold: true }, `𓂀  Warning: ${warn}`)
-						)
+							{
+								key: idx,
+								paddingY: 0,
+								paddingX: 1,
+								marginBottom: 1,
+								borderStyle: "single",
+								borderColor: "yellow",
+							},
+							React.createElement(
+								Text,
+								{ color: "yellow", bold: true },
+								`𓂀  Warning: ${warn}`,
+							),
+						),
 					),
 					showDashboard && React.createElement(SwarmVisualizer, null),
 					messages.length === 0
 						? React.createElement(
 								Box,
-								{ flexGrow: 1, flexDirection: "column", justifyContent: "center", alignItems: "center" },
-								showWelcome && React.createElement(TehutiHeader, {
-									model: ctxModel,
-									provider: normalizedProvider,
-									onModelClick: () => {
-										setCommandPaletteInitialQuery("/model ");
-										setShowCommandPalette(true);
-									},
-									onConfigClick: () => setShowConfigEditor(true),
-									onCommandClick: (cmd) => {
-										if (cmd === "/clear") setMessages([]);
-										else if (cmd === "/exit") process.exit(0);
-										else if (cmd === "/help") setMessages((prev) => [...prev, { id: msgIdRef.current++, role: "system", content: formatHelpOutput() }]);
-									}
-								}),
-								!showWelcome && React.createElement(Text, { color: SAND, dimColor: true }, "Type a message to begin")
+								{
+									flexGrow: 1,
+									flexDirection: "column",
+									justifyContent: "center",
+									alignItems: "center",
+								},
+								showWelcome &&
+									React.createElement(TehutiHeader, {
+										model: ctxModel,
+										provider: normalizedProvider,
+										onModelClick: () => {
+											setCommandPaletteInitialQuery("/model ");
+											setShowCommandPalette(true);
+										},
+										onConfigClick: () => setShowConfigEditor(true),
+										onCommandClick: (cmd) => {
+											if (cmd === "/clear") setMessages([]);
+											else if (cmd === "/exit") {
+												void onExit();
+												exit();
+											} else if (cmd === "/help")
+												setMessages((prev) => [
+													...prev,
+													{
+														id: msgIdRef.current++,
+														role: "system",
+														content: formatHelpOutput(),
+													},
+												]);
+										},
+									}),
+								!showWelcome &&
+									React.createElement(
+										Text,
+										{ color: SAND, dimColor: true },
+										"Type a message to begin",
+									),
 							)
 						: React.createElement(
 								Box,
-								{ ref: scrollContainerRef, flexDirection: "column", flexGrow: 1, overflow: "hidden", justifyContent: "flex-end" },
+								{
+									ref: scrollContainerRef,
+									flexDirection: "column",
+									flexGrow: 1,
+									overflow: "hidden",
+									justifyContent: "flex-end",
+								},
 								React.createElement(
 									Box,
 									{ flexDirection: "column", marginBottom: -scrollOffset },
-									showWelcome && React.createElement(
-										Box,
-										{ flexDirection: "column", alignItems: "center", marginBottom: 1 },
-										React.createElement(TehutiHeader, {
-											compact: true,
-											model: ctxModel,
-											provider: normalizedProvider,
-											onModelClick: () => {
-												setCommandPaletteInitialQuery("/model ");
-												setShowCommandPalette(true);
+									showWelcome &&
+										React.createElement(
+											Box,
+											{
+												flexDirection: "column",
+												alignItems: "center",
+												marginBottom: 1,
 											},
-											onConfigClick: () => setShowConfigEditor(true),
-											onCommandClick: (cmd) => {
-												if (cmd === "/clear") setMessages([]);
-												else if (cmd === "/exit") process.exit(0);
-												else if (cmd === "/help") setMessages((prev) => [...prev, { id: msgIdRef.current++, role: "system", content: formatHelpOutput() }]);
-											}
-										})
-									),
+											React.createElement(TehutiHeader, {
+												compact: true,
+												model: ctxModel,
+												provider: normalizedProvider,
+												onModelClick: () => {
+													setCommandPaletteInitialQuery("/model ");
+													setShowCommandPalette(true);
+												},
+												onConfigClick: () => setShowConfigEditor(true),
+												onCommandClick: (cmd) => {
+													if (cmd === "/clear") setMessages([]);
+													else if (cmd === "/exit") {
+														void onExit();
+														exit();
+													} else if (cmd === "/help")
+														setMessages((prev) => [
+															...prev,
+															{
+																id: msgIdRef.current++,
+																role: "system",
+																content: formatHelpOutput(),
+															},
+														]);
+												},
+											}),
+										),
 									...messageElements,
-								)
+								),
 							),
 					showThinking &&
 						React.createElement(
@@ -3027,15 +3149,24 @@ function ChatUI({
 							React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
-								`${thinking.length > 150 ? "..." + thinking.slice(-150) : thinking}`,
+								`${thinking.length > 150 ? `...${thinking.slice(-150)}` : thinking}`,
 							),
 						),
 					scrollIndicator &&
-						React.createElement(Box, { justifyContent: "center" }, scrollIndicator),
+						React.createElement(
+							Box,
+							{ justifyContent: "center" },
+							scrollIndicator,
+						),
 					error &&
 						React.createElement(
 							Box,
-							{ marginTop: 1, paddingX: 1, borderStyle: "round", borderColor: RED },
+							{
+								marginTop: 1,
+								paddingX: 1,
+								borderStyle: "round",
+								borderColor: RED,
+							},
 							React.createElement(
 								Text,
 								{ color: RED },
@@ -3065,9 +3196,9 @@ function ChatUI({
 									operationLabel,
 								),
 							),
-							React.createElement(ProgressBar, { 
-								value: progress, 
-								width: Math.min(contentMaxWidth - 10, 40) 
+							React.createElement(ProgressBar, {
+								value: progress,
+								width: Math.min(contentMaxWidth - 10, 40),
 							}),
 						),
 				),
@@ -3078,25 +3209,25 @@ function ChatUI({
 						paddingTop: 1,
 						flexDirection: "column",
 					},
-					(showCommandPalette || showConfigEditor)
+					showCommandPalette || showConfigEditor
 						? null
 						: pendingPermission
-						? React.createElement(_PermissionPrompt, {
-								request: pendingPermission.request,
-								isDangerous: pendingPermission.isDangerous,
-								onAnswer: (allowed: boolean) => {
-									pendingPermission.resolve(allowed);
-									setPendingPermission(null);
-								},
-							})
-						: pendingQuestion
-						? React.createElement(_QuestionPrompt, {
-								question: pendingQuestion.questions[0],
-								onAnswer: (ans) => _handleQuestionAnswer(0, ans),
-								onCancel: _handleQuestionCancel,
-							})
-						: renderInput,
-					(showCommandPalette || showConfigEditor) ? null : commandSuggestions,
+							? React.createElement(PermissionPrompt, {
+									request: pendingPermission.request,
+									isDangerous: pendingPermission.isDangerous,
+									onAnswer: (allowed: boolean) => {
+										pendingPermission.resolve(allowed);
+										setPendingPermission(null);
+									},
+								})
+							: pendingQuestion
+								? React.createElement(QuestionPrompt, {
+										question: pendingQuestion.questions[0],
+										onAnswer: (ans) => _handleQuestionAnswer(0, ans),
+										onCancel: _handleQuestionCancel,
+									})
+								: renderInput,
+					showCommandPalette || showConfigEditor ? null : commandSuggestions,
 				),
 				React.createElement(CommandPalette, {
 					commands,
@@ -3105,8 +3236,7 @@ function ChatUI({
 					visible: showCommandPalette,
 					initialQuery: commandPaletteInitialQuery,
 				}),
-			)
-		);
+			);
 }
 
 function App({
@@ -3124,9 +3254,14 @@ function App({
 	continueSession?: boolean;
 	onExit: () => void;
 }) {
+	const mouseEnabled =
+		process.env.TEHUTI_DISABLE_MOUSE !== "1" &&
+		process.env.NO_MOUSE !== "1" &&
+		Boolean(process.stdout.isTTY);
+
 	return React.createElement(
 		MouseProvider,
-		{ autoEnable: true },
+		{ autoEnable: mouseEnabled },
 		React.createElement(ChatUI, {
 			apiKey,
 			model,
@@ -3134,7 +3269,7 @@ function App({
 			cfg,
 			continueSession,
 			onExit,
-		})
+		}),
 	);
 }
 
@@ -3163,9 +3298,12 @@ export function createProgram(): Command {
 		.option("--reset-key", "Reset API key and re-prompt")
 		.option("-c, --continue", "Continue the previous session automatically")
 		.argument("[prompt]", "One-shot prompt")
-		.action(async (prompt?: string, options?: any) => {
-			const opts = options;
-			const { cfg, apiKey, model, diffPreview } = await bootstrapCLI(prompt, opts);
+		.action(async (prompt?: string, options?: ChatCommandOptions) => {
+			const opts = options ?? {};
+			const { cfg, apiKey, model, diffPreview } = await bootstrapCLI(
+				prompt,
+				opts,
+			);
 
 			if (!prompt && !process.stdout.isTTY) {
 				consola.error(
@@ -3198,7 +3336,9 @@ export function createProgram(): Command {
 										const toolDesc = formatToolCall(name, args);
 										const enhancedDesc = getEnhancedToolName(name, toolDesc);
 										outputManager?.writeLine("");
-										outputManager?.writeLine(chalk.hex(CYAN)(`  ${enhancedDesc}`));
+										outputManager?.writeLine(
+											chalk.hex(CYAN)(`  ${enhancedDesc}`),
+										);
 									},
 						onToolResult:
 							opts.json || opts.quiet
@@ -3223,7 +3363,9 @@ export function createProgram(): Command {
 											outputManager?.writeLine(
 												chalk.dim(`  ┌─ ${name} result:`),
 											);
-											outputManager?.writeLine(chalk.dim(formattedResult.preview));
+											outputManager?.writeLine(
+												chalk.dim(formattedResult.preview),
+											);
 											outputManager?.writeLine(chalk.dim("  └─"));
 										} else {
 											outputManager?.writeLine(
@@ -3268,7 +3410,7 @@ export function createProgram(): Command {
 					await mcpManager.disconnectAll();
 				}
 			} else {
-				const { waitUntilExit } = render(
+				const { waitUntilExit, unmount } = render(
 					React.createElement(App, {
 						apiKey: apiKey || "",
 						model,
@@ -3280,6 +3422,9 @@ export function createProgram(): Command {
 						},
 					}),
 				);
+				registerCleanupHandler(() => {
+					unmount();
+				});
 				await waitUntilExit();
 			}
 		});

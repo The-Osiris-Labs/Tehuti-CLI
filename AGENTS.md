@@ -36,10 +36,10 @@ Tehuti-CLI-Revival/
 │   │   ├── loop/
 │   │   │   ├── runner.ts           # ★ Agent loop (stream → tools → repeat)
 │   │   │   ├── tool-processing.ts  # Permission checks, cache, parallel dispatch
-│   │   │   ├── compression.ts      # LLM-based context compression in loop
+│   │   │   ├── compression.ts      # Context compression is handled deterministically via array truncation (splicing out oldest messages).
 │   │   │   └── retry.ts            # API retry wrapper
 │   │   ├── context.ts              # Messages, system prompt, compactContext()
-│   │   ├── context-compressor.ts   # LLM summarization for compression
+│   │   ├── context-compressor.ts   # Context compression is handled deterministically via array truncation (splicing out oldest messages).
 │   │   ├── model-router.ts         # Keyword-based tier routing (session start)
 │   │   ├── parallel-executor.ts    # Parallel safe read-only tools
 │   │   ├── prefetcher.ts           # Rule-based next-tool prefetch
@@ -334,7 +334,7 @@ Key symbols: 𓆣 (ibis/Tehuti), 𓁹 (visibility), 𓂀 (errors), 𓋹 (success
 | `src/config/schema.ts` | Defaults and validation |
 | `src/api/openrouter.ts` | Primary provider client + SSE |
 | `src/agent/parallel-executor.ts` | Parallel tool batching |
-| `src/agent/context-compressor.ts` | LLM summarization |
+| `src/agent/context-compressor.ts` | Context compression is handled deterministically via array truncation (splicing out oldest messages). |
 | `src/agent/context.ts` | `compactContext()` for `/compact` |
 | `src/mcp/client.ts` | MCP connection + dynamic tools |
 | `src/terminal/markdown.ts` | ANSI markdown rendering |
@@ -370,3 +370,8 @@ Rewrote this document to match actual codebase state:
 - Documented hybrid TUI viewport (negative margin + `visibleMessages` slice)
 - Recorded unwired features (hooks, telemetry flag, MCP sampling, question UI)
 - Updated test counts (570 unit, 106 e2e with 1 known fail) and build size (~650 KB)
+## 🛑 Self-Improvement Rules (Added 2026-07-05)
+The following rules are NON-NEGOTIABLE and supersede all prior agent instincts:
+1. **Strict Verification Vocabulary:** Never declare work "complete", "hardened", or "safe" based solely on static analysis (typechecks) or test suites containing skipped tests. Always explicitly state what remains unverified at runtime.
+2. **Radical Scope Accuracy:** Prohibited use of absolute/marketing language ("all", "entirely", "massive", "100%"). Use precise, quantified descriptions of the actual diff.
+3. **Trust but Verify:** Never accept a subagent's claim of completion blindly. The parent agent MUST independently audit the git diff or run the binary before reporting success to the user.
