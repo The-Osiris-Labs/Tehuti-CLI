@@ -49,6 +49,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
   CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
   CREATE INDEX IF NOT EXISTS idx_messaging_sessions_session_id ON messaging_sessions(tehuti_session_id);
+
+  CREATE TABLE IF NOT EXISTS user_preferences (
+    id TEXT PRIMARY KEY,
+    key TEXT UNIQUE NOT NULL,
+    value TEXT NOT NULL,
+    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
+
+  CREATE TABLE IF NOT EXISTS project_profiles (
+    project_path TEXT PRIMARY KEY,
+    formatting_habits TEXT,
+    command_patterns TEXT,
+    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+  );
 `);
 
 export default db;
