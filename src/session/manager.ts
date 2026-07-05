@@ -214,7 +214,17 @@ class SessionManager {
 		const sessionFile = path.join(sessionDir, "session.json");
 		const tempFile = path.join(sessionDir, "session.json.tmp");
 		await fs.writeJson(tempFile, sessionData, { spaces: 2 });
-		await fs.rename(tempFile, sessionFile);
+		
+		try {
+			await fs.rename(tempFile, sessionFile);
+		} catch (error: any) {
+			if (error?.code === "EXDEV") {
+				fs.copyFileSync(tempFile, sessionFile);
+				fs.unlinkSync(tempFile);
+			} else {
+				throw error;
+			}
+		}
 
 		debug.log(
 			"session",

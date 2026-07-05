@@ -13,7 +13,7 @@ export const MCP_SERVER_CONFIG_SCHEMA = z.object({
 	env: z.record(z.string()).optional().default({}),
 	disabled: z.boolean().optional().default(false),
 	transport: MCPTransportTypeSchema.optional().default("stdio"),
-	url: z.string().optional(),
+	url: z.string().url().optional(),
 	headers: z.record(z.string()).optional().default({}),
 	timeout: z.number().int().positive().optional().default(30000),
 	reconnect: z
@@ -88,12 +88,13 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 
 export const PROVIDER_SCHEMA = z
 	.string()
+	.min(1)
 	.default("opencode");
 
 export const CUSTOM_PROVIDER_SCHEMA = z.object({
-	name: z.string().describe("Name of custom provider"),
-	baseUrl: z.string().describe("API endpoint base URL"),
-	apiKey: z.string().optional().describe("API key for custom provider"),
+	name: z.string().min(1).describe("Name of custom provider"),
+	baseUrl: z.string().url().describe("API endpoint base URL"),
+	apiKey: z.string().min(1).optional().describe("API key for custom provider"),
 	headers: z
 		.record(z.string())
 		.optional()
@@ -176,10 +177,10 @@ export const HOOKS_CONFIG_SCHEMA = z.object({
 
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z.string().optional(),
-	model: z.string().default("deepseek-v4-flash"),
-	fallbackModel: z.string().default("deepseek-v4-flash"),
-	apiKey: z.string().optional(),
-	baseUrl: z.string().optional(),
+	model: z.string().min(1).default("deepseek-v4-flash"),
+	fallbackModel: z.string().min(1).default("deepseek-v4-flash"),
+	apiKey: z.string().min(1).optional(),
+	baseUrl: z.string().url().optional(),
 	provider: PROVIDER_SCHEMA,
 	customProvider: CUSTOM_PROVIDER_SCHEMA.optional(),
 	maxTokens: z.number().int().positive().default(32000),

@@ -5,6 +5,7 @@ import type {
 	OpenRouterToolCall,
 } from "../api/openrouter.js";
 import type { TehutiConfig } from "../config/schema.js";
+import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
 
 import { getSkillsManager } from "./skills/manager.js";
@@ -323,6 +324,29 @@ ${projectInstructionsSection}${systemMemorySection}${skillsSection}
 - Platform: ${process.platform}
 - Node.js: ${process.version}
 - Shell: ${process.env.SHELL ?? "unknown"}
+- Terminal: ${(() => {
+		try {
+			const c = getCapabilities();
+			const g = c.graphics;
+			const graphicsList = [
+				g.sixel ? "Sixel" : null,
+				g.kitty ? "Kitty" : null,
+				g.iterm ? "iTerm2" : null,
+			]
+				.filter(Boolean)
+				.join("/") || "none";
+			const colorLabel = c.colors.has16m
+				? "TrueColor"
+				: c.colors.has256
+					? "256"
+					: c.colors.hasBasic
+						? "16"
+						: "none";
+			return `${c.emulator} (${c.size.columns}x${c.size.rows}, ${colorLabel}, graphics: ${graphicsList})`;
+		} catch {
+			return "unknown";
+		}
+	})()}
 
 ## Temporal Context
 - Current date: ${_dayOfWeek}, ${_monthName} ${_day}, ${_year}

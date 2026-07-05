@@ -13,7 +13,7 @@ import type {
 // KiloCode specific features
 export interface KiloCodeOptions {
 	memoryBank?: {
-		enabled: boolean;
+		enabled?: boolean;
 		sessionId?: string;
 		persistence?: "memory" | "disk";
 	};

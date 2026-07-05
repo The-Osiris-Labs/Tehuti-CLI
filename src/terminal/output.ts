@@ -290,10 +290,30 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	if (blocks && blocks.length > 0) {
 		blocks.forEach((block: any) => {
 			if (block.type === 'text') {
-				lines += computeMarkdownLines(block.content, contentMaxWidth - 1); // -1 for paddingLeft
+				let textContent = "";
+				if (Array.isArray(block.content)) {
+					textContent = block.content.map((c: any) => c.text || (typeof c === 'string' ? c : JSON.stringify(c))).join("");
+				} else if (typeof block.content === "string") {
+					textContent = block.content;
+				} else if (typeof block.text === "string") {
+					textContent = block.text;
+				} else {
+					textContent = String(block.content || block.text || "");
+				}
+				lines += computeMarkdownLines(textContent, contentMaxWidth - 1); // -1 for paddingLeft
 			} else if (block.type === 'reasoning') {
 				lines += 2; // Borders
-				lines += wrap(block.content, Math.max(10, contentMaxWidth - 5)).split('\n').length;
+				let reasoningContent = "";
+				if (Array.isArray(block.content)) {
+					reasoningContent = block.content.map((c: any) => c.text || (typeof c === 'string' ? c : JSON.stringify(c))).join("");
+				} else if (typeof block.content === "string") {
+					reasoningContent = block.content;
+				} else if (typeof block.text === "string") {
+					reasoningContent = block.text;
+				} else {
+					reasoningContent = String(block.content || block.text || "");
+				}
+				lines += wrap(reasoningContent, Math.max(10, contentMaxWidth - 5)).split('\n').length;
 			} else if (block.type === 'tool') {
 				lines += computeToolHeight(block.result, contentMaxWidth, block.isExpanded);
 			}

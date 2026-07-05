@@ -76,6 +76,10 @@ function containsTraversal(pattern: string): boolean {
 	return normalized.startsWith("..") || path.isAbsolute(normalized);
 }
 
+function isRegexPattern(pattern: string): boolean {
+	return /[.*+?^${}()|[\\]\\\\]/.test(pattern);
+}
+
 async function validateSearchPath(
 	resolvedPath: string,
 	cwd: string,
@@ -352,7 +356,8 @@ async function grepFiles(
 			args.ignore_case === false &&
 			!args.multiline &&
 			!args.context &&
-			!args.include
+			!args.include &&
+			!isRegexPattern(args.pattern)
 		) {
 			// Fast path using Rust native extension
 			const results = await tehutiCore.parallelGrep(searchPath, args.pattern);

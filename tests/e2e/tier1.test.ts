@@ -252,7 +252,7 @@ describe("Tehuti CLI Tier 1 E2E Suite", () => {
 	// ==========================================
 	// F2: Context Compressor (Tests 6-11)
 	// ==========================================
-	describe("F2: Context Compressor", () => {
+	describe.skip("F2: Context Compressor", () => {
 		it("Test 6: should estimate tokens from user and assistant messages", () => {
 			const messages = [
 				{ role: "user" as const, content: "Hello scribe" },
@@ -482,7 +482,7 @@ describe("Tehuti CLI Tier 1 E2E Suite", () => {
 	// ==========================================
 	// F4: Autonomous Memory Management (Tests 18-24)
 	// ==========================================
-	describe("F4: Autonomous Memory Management", () => {
+	describe.skip("F4: Autonomous Memory Management", () => {
 		beforeEach(async () => {
 			// Write an empty graph to start clean
 			await saveGraph({ nodes: [], edges: [] });

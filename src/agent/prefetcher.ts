@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { getToolCache, shouldCacheTool, stableStringify } from "./cache/index.js";
 import type { ToolContext } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
+import { debug } from "../utils/debug.js";
 
 export interface PrefetchRule {
 	currentTool: string;
@@ -13,7 +14,22 @@ export interface PrefetchRule {
 	}>;
 }
 
-
+const EXTRA_PREFETCH_RULES: Record<string, PrefetchRule["nextTools"]> = {
+	git_status: [
+		{
+			tool: "git_diff",
+			argMapper: () => ({}),
+			priority: "high",
+		},
+	],
+	git_log: [
+		{
+			tool: "git_status",
+			argMapper: () => ({}),
+			priority: "medium",
+		},
+	],
+};
 
 const MAX_PREFETCH_QUEUE = 10;
 
@@ -47,6 +63,7 @@ export class Prefetcher {
 		ctx: ToolContext,
 		key: string,
 	): void {
+		debug.log("prefetch", `Queueing prefetch for ${toolName}`, args);
 		const controller = new AbortController();
 		this.abortControllers.set(key, controller);
 		
@@ -64,13 +81,19 @@ export class Prefetcher {
 		])
 			.then((result) => {
 				if (timeoutId) clearTimeout(timeoutId);
-				if (controller.signal.aborted) return null;
-				if (result && result.success && shouldCacheTool(getTool(toolName), toolName, args)) {
+				if (controller.signal.aborted) {
+					debug.log("prefetch", `Prefetch aborted for ${toolName}`);
+					return null;
+				}
+				if (result && (result as any).success && shouldCacheTool(getTool(toolName), toolName, args)) {
+					debug.log("prefetch", `Caching prefetched result for ${toolName}`);
 					getToolCache().set(toolName, args, result);
+				} else if (result) {
+					debug.log("prefetch", `Prefetch completed for ${toolName}, but not cached (success=${(result as any).success})`);
 				}
 				return result;
 			})
-			.catch(() => {
+			.catch((err) => {
 				if (timeoutId) clearTimeout(timeoutId);
 				return null;
 			});
@@ -88,6 +111,7 @@ export class Prefetcher {
 	}
 
 	private abortPrefetchIfMatches(toolName: string, args: unknown): void {
+		debug.log("prefetch", `Checking abort conditions for ${toolName}`);
 		const tool = getTool(toolName);
 		if (!tool) return;
 
@@ -115,12 +139,14 @@ export class Prefetcher {
 								const relative = path.relative(resolvedReadPath, resolvedFilePath);
 								const isSubPath = !relative.startsWith("..") && !path.isAbsolute(relative);
 								if (isSubPath) {
+									debug.log("prefetch", `Aborting list_dir prefetch due to modification in subpath ${resolvedFilePath}`);
 									controller.abort();
 									this.pending.delete(key);
 									this.abortControllers.delete(key);
 								}
 							} else {
 								if (resolvedReadPath === resolvedFilePath) {
+									debug.log("prefetch", `Aborting read prefetch due to modification in ${resolvedFilePath}`);
 									controller.abort();
 									this.pending.delete(key);
 									this.abortControllers.delete(key);
@@ -137,6 +163,7 @@ export class Prefetcher {
 				if (colonIndex < 0) continue;
 				const prefetchTool = key.slice(0, colonIndex);
 				if (["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(prefetchTool)) {
+					debug.log("prefetch", `Aborting read/list prefetch due to broad modification tool: ${toolName}`);
 					controller.abort();
 					this.pending.delete(key);
 					this.abortControllers.delete(key);
@@ -202,11 +229,15 @@ export class Prefetcher {
 		this.recordPattern(toolName, args);
 
 		if (this.pending.size >= MAX_PREFETCH_QUEUE) {
+			debug.log("prefetch", `Prefetch queue full (size=${this.pending.size})`);
 			return;
 		}
 
 		const currentToolDef = getTool(toolName);
-		const prefetchRules = currentToolDef?.prefetchRules || [];
+		const prefetchRules = [
+			...(currentToolDef?.prefetchRules || []),
+			...(EXTRA_PREFETCH_RULES[toolName] || []),
+		];
 
 		const priorityWeights = { high: 3, medium: 2, low: 1 };
 		const sortedRules = [...prefetchRules].sort((a, b) => {
@@ -268,6 +299,7 @@ export class Prefetcher {
 		const pending = this.pending.get(key);
 
 		if (pending) {
+			debug.log("prefetch", `Cache hit successfully anticipated for ${toolName}`);
 			this.pending.delete(key);
 			return pending;
 		}

@@ -1,4 +1,4 @@
-import Exa from "exa-js";
+import { Exa } from "exa-js";
 import TurndownService from "turndown";
 import { z } from "zod";
 import type {
@@ -102,7 +102,17 @@ const PRIVATE_IP_RANGES = [
 	/^192\.168\./,
 	/^169\.254\./,
 	/^0\.0\.0\.0$/,
+	/^0$/,
+	/^::$/,
 	/^::1$/,
+	/^(0{1,4}:){7}0{1,3}1$/,
+	/^(0{1,4}:){7}0{1,4}$/,
+	/^::ffff:(0:0:)?127\./i,
+	/^::ffff:(0:0:)?10\./i,
+	/^::ffff:(0:0:)?172\.(1[6-9]|2[0-9]|3[0-1])\./i,
+	/^::ffff:(0:0:)?192\.168\./i,
+	/^::ffff:(0:0:)?169\.254\./i,
+	/^::ffff:(0:0:)?0\.0\.0\.0/i,
 	/^fc[0-9a-f]{2}(:|$)/i,
 	/^fd[0-9a-f]{2}(:|$)/i,
 	/^fe80(:|$)/i,
@@ -114,10 +124,11 @@ const PRIVATE_IP_RANGES = [
 const CLOUD_METADATA_IPS = ["169.254.169.254", "100.100.100.200"];
 
 function isPrivateIP(ip: string): boolean {
-	if (CLOUD_METADATA_IPS.includes(ip)) {
+	const cleanIp = ip.replace(/^\[|\]$/g, "");
+	if (CLOUD_METADATA_IPS.includes(cleanIp)) {
 		return true;
 	}
-	return PRIVATE_IP_RANGES.some((range) => range.test(ip));
+	return PRIVATE_IP_RANGES.some((range) => range.test(cleanIp));
 }
 
 async function resolveDNS(hostname: string): Promise<string[]> {

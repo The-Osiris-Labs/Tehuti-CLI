@@ -14,7 +14,9 @@ type DebugCategory =
 	| "context"
 	| "session"
 	| "hooks"
-	| "chat";
+	| "chat"
+	| "prefetch"
+	| "memory";
 
 class Debugger {
 	private enabled: boolean;

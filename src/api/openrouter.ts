@@ -1,5 +1,6 @@
 import type { TehutiConfig } from "../config/schema.js";
 import fs from "fs";
+import { z } from "zod";
 import {
 	getApiKeyEnvVarsForProvider,
 	getProviderAuthHeaders,
@@ -69,6 +70,39 @@ export interface OpenRouterStreamChunk {
 		cache_creation_input_tokens?: number;
 	};
 }
+
+const OpenRouterToolCallSchema = z.object({
+	id: z.string().optional(),
+	type: z.literal("function").optional(),
+	function: z.object({
+		name: z.string().optional(),
+		arguments: z.string().optional(),
+	}).optional(),
+}).passthrough();
+
+const OpenRouterStreamChunkSchema = z.object({
+	id: z.string().optional().default(""),
+	choices: z.array(
+		z.object({
+			index: z.number().optional().default(0),
+			delta: z.object({
+				role: z.string().optional(),
+				content: z.string().nullable().optional(),
+				reasoning: z.string().nullable().optional(),
+				thinking: z.string().nullable().optional(),
+				tool_calls: z.array(OpenRouterToolCallSchema).optional(),
+			}).passthrough(),
+			finish_reason: z.string().nullable().optional(),
+		}).passthrough()
+	),
+	usage: z.object({
+		prompt_tokens: z.number(),
+		completion_tokens: z.number(),
+		total_tokens: z.number(),
+		cache_read_input_tokens: z.number().optional(),
+		cache_creation_input_tokens: z.number().optional(),
+	}).passthrough().optional(),
+}).passthrough();
 
 export interface OpenRouterResponse {
 	id: string;
@@ -736,8 +770,12 @@ export class OpenRouterClient {
 
 					try {
 						const json = trimmed.slice(6);
-						const chunk = JSON.parse(json) as OpenRouterStreamChunk;
-						yield chunk;
+						const parsedJson = JSON.parse(json);
+						const result = OpenRouterStreamChunkSchema.safeParse(parsedJson);
+						if (!result.success) {
+							throw new Error(`Zod validation failed: ${result.error.message}`);
+						}
+						yield result.data as unknown as OpenRouterStreamChunk;
 					} catch (_e) {
 						parseErrorCount++;
 						debug.log(

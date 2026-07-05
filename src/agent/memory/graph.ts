@@ -189,3 +189,110 @@ export async function getSystemPromptMemory(cwd: string = process.cwd()): Promis
 	}
 	return memoryStr;
 }
+
+/**
+ * Iterates through stored nodes and removes or merges insights that are semantically identical or exact duplicates.
+ */
+export async function optimizeInsights(cwd: string = process.cwd()): Promise<{removed: number, merged: number}> {
+	const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
+	
+	const stmt = db.prepare(`SELECT * FROM nodes`);
+	const allNodesRows = stmt.all() as any[];
+	let nodes = allNodesRows.map(mapRowToNode);
+	
+	if (resolvedCwd && resolvedCwd !== "global") {
+		nodes = nodes.filter(n => !n.cwd || n.cwd === "global" || path.resolve(n.cwd) === resolvedCwd);
+	}
+	
+	let removedCount = 0;
+	let mergedCount = 0;
+	
+	const toRemove = new Set<string>();
+	
+	const getTokens = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(x => x.length >= 2));
+
+	for (let i = 0; i < nodes.length; i++) {
+		if (toRemove.has(nodes[i].id)) continue;
+		
+		for (let j = i + 1; j < nodes.length; j++) {
+			if (toRemove.has(nodes[j].id)) continue;
+			
+			const nodeA = nodes[i];
+			const nodeB = nodes[j];
+			
+			if (nodeA.type !== nodeB.type) continue;
+			
+			const contentA = nodeA.content.trim().toLowerCase();
+			const contentB = nodeB.content.trim().toLowerCase();
+			
+			const isExactMatch = contentA === contentB;
+			
+			const tokensA = getTokens(contentA);
+			const tokensB = getTokens(contentB);
+			
+			let intersectionSize = 0;
+			for (const t of tokensA) {
+				if (tokensB.has(t)) intersectionSize++;
+			}
+			
+			const unionSize = tokensA.size + tokensB.size - intersectionSize;
+			const similarity = unionSize === 0 ? 0 : intersectionSize / unionSize;
+			
+			const isSemanticMatch = similarity > 0.85;
+			
+			if (isExactMatch || isSemanticMatch) {
+				toRemove.add(nodeB.id);
+				
+				const newPriority = Math.max(nodeA.priority ?? 0, nodeB.priority ?? 0);
+				const newImportance = Math.max(nodeA.importance ?? 0, nodeB.importance ?? 0);
+				const newAccessCount = (nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
+				
+				const updateStmt = db.prepare(`
+					UPDATE nodes 
+					SET metadata = @metadata
+					WHERE id = @id
+				`);
+				
+				const newMeta = {
+					cwd: nodeA.cwd,
+					priority: newPriority,
+					importance: newImportance,
+					accessCount: newAccessCount
+				};
+				
+				updateStmt.run({
+					metadata: JSON.stringify(newMeta),
+					id: nodeA.id
+				});
+				
+				// Re-route edges from B to A
+				const edgesStmt = db.prepare(`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`);
+				const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
+				
+				for (const edge of oldEdges) {
+					const newSource = edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
+					const newTarget = edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
+					
+					// Avoid self-loops if the edge was between A and B
+					if (newSource !== newTarget) {
+						await addEdge(newSource, newTarget, edge.relation_type, edge.weight);
+					}
+					
+					const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
+					delEdgeStmt.run(edge.id);
+				}
+				
+				mergedCount++;
+			}
+		}
+	}
+	
+	if (toRemove.size > 0) {
+		const placeholders = Array.from(toRemove).map(() => '?').join(',');
+		const deleteStmt = db.prepare(`DELETE FROM nodes WHERE id IN (${placeholders})`);
+		deleteStmt.run(...Array.from(toRemove));
+		removedCount = toRemove.size;
+	}
+	
+	return { removed: removedCount, merged: mergedCount };
+}

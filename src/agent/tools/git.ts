@@ -132,6 +132,20 @@ async function runGit(
 	});
 }
 
+async function isGitRepo(startPath: string): Promise<boolean> {
+	let current = startPath;
+	while (true) {
+		if (await fs.pathExists(path.join(current, ".git"))) {
+			return true;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) {
+			return false;
+		}
+		current = parent;
+	}
+}
+
 async function gitStatus(
 	args: z.infer<typeof GIT_STATUS_SCHEMA>,
 	ctx: ToolContext,
@@ -140,7 +154,7 @@ async function gitStatus(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -173,7 +187,7 @@ async function gitDiff(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -212,7 +226,7 @@ async function gitLog(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -247,7 +261,7 @@ async function gitAdd(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -277,7 +291,7 @@ async function gitCommit(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -316,7 +330,7 @@ async function gitBranch(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -393,7 +407,7 @@ async function gitRemote(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -425,7 +439,7 @@ async function gitPull(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -458,7 +472,7 @@ async function gitPush(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await fs.pathExists(path.join(repoPath, ".git")))) {
+	if (!(await isGitRepo(repoPath))) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 

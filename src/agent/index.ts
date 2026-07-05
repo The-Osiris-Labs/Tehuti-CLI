@@ -59,6 +59,7 @@ import { bashTool } from "./tools/bash.js";
 import { collaborationTools } from "./tools/collaboration.js";
 import { customProviderTools } from "./tools/custom-provider.js";
 import { applyDiffTool } from "./tools/apply-diff.js";
+import { envTools } from "./tools/env.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
 import {
@@ -71,6 +72,7 @@ import { kiloCodeTools } from "./tools/kilocode.js";
 import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
 import { memoryTools } from "./tools/memory.js";
+import { networkTools } from "./tools/network.js";
 import {
 	isPlanMode,
 	isToolAllowedInPlanMode,
@@ -80,6 +82,7 @@ import {
 import { repoMapTool } from "./tools/repo-map.js";
 import { searchTools } from "./tools/search.js";
 import { semanticTools } from "./tools/semantic.js";
+import { serviceTools } from "./tools/service.js";
 import { swarmTools } from "./tools/swarm.js";
 import { setParentContext, systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
@@ -94,6 +97,9 @@ registerTools([
 	bashTool,
 	...webTools,
 	...systemTools,
+	...envTools,
+	...networkTools,
+	...serviceTools,
 	...mcpPromptTools,
 	...memoryTools,
 	...backgroundTools,
@@ -175,6 +181,11 @@ function syncMCPToolRegistry(): void {
 
 export function initializeAgent(): void {
 	loadCacheFromDisk();
+	// Bootstrap environment memory asynchronously; failure is non-fatal.
+	import("./memory/env-bootstrap.js")
+		.then(({ bootstrapEnvironmentMemory }) => bootstrapEnvironmentMemory(process.cwd()))
+		.then((r) => debug.log("memory", `Env bootstrap wrote ${r.written} facts`))
+		.catch((err) => debug.log("memory", `Env bootstrap failed: ${err}`));
 }
 
 export function shutdownAgent(): void {

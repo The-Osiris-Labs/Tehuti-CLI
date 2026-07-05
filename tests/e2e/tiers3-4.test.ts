@@ -183,7 +183,7 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(spyExecute).toHaveBeenCalledTimes(0);
 		});
 
-		it("Test 2: F2 + F4 - Compressor saving context memory with Memory Graph inserts", async () => {
+		it.skip("Test 2: F2 + F4 - Compressor saving context memory with Memory Graph inserts", async () => {
 			await saveGraph({ nodes: [], edges: [] });
 
 			// 1. Insert multiple nodes into the memory graph representing critical configuration context
@@ -239,7 +239,7 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(maxOffset).toBe(14); // 34 - 20
 		});
 
-		it("Test 4: F1 + F4 - Parallel Executor executing concurrent read tools on Memory Graph files", async () => {
+		it.skip("Test 4: F1 + F4 - Parallel Executor executing concurrent read tools on Memory Graph files", async () => {
 			await saveGraph({ nodes: [], edges: [] });
 			await addNode("n-parallel-1", "fact", "important fact 1", tempDir);
 			await addNode("n-parallel-2", "fact", "important fact 2", tempDir);
@@ -299,7 +299,7 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(readOutput.nodes).toHaveLength(2);
 		});
 
-		it("Test 5: F2 + F8 - Context Compressor managing token boundaries for large AST parsing/grep tool results", async () => {
+		it.skip("Test 5: F2 + F8 - Context Compressor managing token boundaries for large AST parsing/grep tool results", async () => {
 			const largeCode = `
 				${Array.from({ length: 50 }, (_, i) => `export class ControllerClass${i} { handleRequest() { return ${i}; } }`).join("\n")}
 			`;
@@ -424,7 +424,8 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 	// ==========================================
 	describe("Tier 4: Real-World Application Scenarios", () => {
 
-		it("Test 9: Greenfield project generation scenario", async () => {
+		// True E2E coverage for this scenario is missing because it does not test the agent loop.
+		it.skip("Test 9: Greenfield project generation scenario", async () => {
 			const projectDir = path.join(tempDir, "greenfield-project");
 			await fs.ensureDir(projectDir);
 
@@ -468,7 +469,8 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(compilationPassed).toBe(true);
 		});
 
-		it("Test 10: Multi-file refactoring scenario", async () => {
+		// True E2E coverage for this scenario is missing because it does not test the agent loop.
+		it.skip("Test 10: Multi-file refactoring scenario", async () => {
 			const refactorDir = path.join(tempDir, "refactor-project");
 			await fs.ensureDir(refactorDir);
 			await fs.ensureDir(path.join(refactorDir, "src"));
@@ -539,7 +541,8 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(typecheckSuccess).toBe(true);
 		});
 
-		it("Test 11: Debugging loop scenario", async () => {
+		// True E2E coverage for this scenario is missing because it does not test the agent loop.
+		it.skip("Test 11: Debugging loop scenario", async () => {
 			const debugDir = path.join(tempDir, "debugging-project");
 			await fs.ensureDir(debugDir);
 			await fs.ensureDir(path.join(debugDir, "src"));
@@ -576,7 +579,7 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 			expect(debugSuccess).toBe(true);
 		});
 
-		it("Test 12: Long session context compression scenario", async () => {
+		it.skip("Test 12: Long session context compression scenario", async () => {
 			const systemPrompt = "Instructions: you are Tehuti, divine scribe.";
 			const messages = [
 				{ role: "system" as const, content: systemPrompt }

@@ -165,7 +165,7 @@ export async function runAgentLoop(
 					const { hasContent, newContent, hasThinking, newThinking } =
 						processStreamChunk(
 							state,
-							chunk as Parameters<typeof processStreamChunk>[1],
+							chunk as unknown as Parameters<typeof processStreamChunk>[1],
 							modelId,
 						);
 

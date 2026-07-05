@@ -8,7 +8,7 @@ import { setupErrorHandlers } from "../utils/errors.js";
 import { loadConfig, runSetupWizard, getGlobalConfig, DEFAULT_CONFIG } from "../config/index.js";
 import { getTelemetry } from "../utils/telemetry.js";
 import { getProviderInfo, getEnvApiKeyForProvider } from "../config/providers.js";
-import { configureHooks } from "../agent/index.js";
+import { configureHooks, initializeAgent } from "../agent/index.js";
 import { mcpManager } from "../mcp/index.js";
 import { OpenRouterClient, type OpenRouterMessage } from "../api/openrouter.js";
 
@@ -98,6 +98,7 @@ export async function bootstrapCLI(prompt: string | undefined, opts: any): Promi
 	cfg.model = model;
 	cfg.provider = provider as any;
 	configureHooks(cfg);
+	initializeAgent();
 
 	const diffPreview = opts.diff
 		? { showPreview: true, autoConfirm: false }
