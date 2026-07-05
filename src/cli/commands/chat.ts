@@ -2212,7 +2212,7 @@ function ChatUI({
 						}),
 					);
 				},
-				onToolCall: (name, args) => {
+				onToolCall: (id, name, args) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2221,9 +2221,8 @@ function ChatUI({
 					}
 					flushBatchedTokens();
 					const toolDesc = formatToolCall(name, args);
-					const toolCallId = `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 					toolCallsInfo.push({
-						id: toolCallId,
+						id,
 						name,
 						description: toolDesc,
 						result: null,
@@ -2236,7 +2235,7 @@ function ChatUI({
 							const blocks = msg.blocks ? [...msg.blocks] : [];
 							blocks.push({
 								type: "tool",
-								id: toolCallId,
+								id,
 								name,
 								description: toolDesc,
 								result: null,
@@ -2248,7 +2247,7 @@ function ChatUI({
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
-				onToolResult: (_name, result) => {
+				onToolResult: (id, _name, result) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2259,15 +2258,19 @@ function ChatUI({
 
 					const safeResult = compactToolResultForUi(result);
 
+					const tcInfo = toolCallsInfo.find((t) => t.id === id);
+					if (tcInfo) {
+						tcInfo.result = safeResult;
+					}
+
 					setMessages((m) =>
 						m.map((msg) => {
 							if (msg.id !== assistantMsgId) return msg;
 							const blocks = msg.blocks ? [...msg.blocks] : [];
-							const lastToolIdx = [...blocks]
-								.reverse()
-								.findIndex((b) => b.type === "tool");
-							if (lastToolIdx !== -1) {
-								const idx = blocks.length - 1 - lastToolIdx;
+							const idx = blocks.findIndex(
+								(b) => b.type === "tool" && b.id === id,
+							);
+							if (idx !== -1) {
 								const toolBlock = blocks[idx];
 								if (toolBlock.type === "tool") {
 									blocks[idx] = { ...toolBlock, result: safeResult };

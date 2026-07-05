@@ -100,7 +100,7 @@ ${options.prompt}
 
 		const loopOptions: AgentLoopOptions = {
 			onToken: () => {},
-			onToolCall: () => {},
+			onToolCall: (_id, _name, _args) => {},
 			onToolResult: () => {},
 			onThinking: () => {},
 			signal: abortController.signal,

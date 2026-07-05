@@ -31,7 +31,7 @@ export interface ToolCall {
 export interface ParallelExecutionOptions {
 	maxConcurrency?: number;
 	onToolCall?: (name: string, args: unknown) => void;
-	onToolResult?: (name: string, result: ToolResult) => void;
+	onToolResult?: (id: string, name: string, result: ToolResult) => void;
 	addToolResult: (
 		ctx: AgentContext,
 		toolCallId: string,
@@ -262,7 +262,7 @@ export async function executeToolsParallel(
 								addToolResult(ctx, tc.id, tc.function.name, resultStr);
 							});
 
-							onToolResult?.(tc.function.name, result);
+							onToolResult?.(tc.id, tc.function.name, result);
 							return result;
 						} catch (error) {
 							const result = {
@@ -270,7 +270,7 @@ export async function executeToolsParallel(
 								output: "",
 								error: `Parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
 							};
-							onToolResult?.(tc.function.name, result);
+							onToolResult?.(tc.id, tc.function.name, result);
 							return result;
 						}
 					}),
@@ -320,7 +320,7 @@ export async function executeToolsParallel(
 				resultStr = truncateToolResultForModel(resultStr);
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
-				onToolResult?.(tc.function.name, result);
+				onToolResult?.(tc.id, tc.function.name, result);
 
 				const globalIndex = toolCalls.indexOf(tc);
 				if (globalIndex >= 0) {
@@ -332,7 +332,7 @@ export async function executeToolsParallel(
 					output: "",
 					error: `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
 				};
-				onToolResult?.(tc.function.name, result);
+				onToolResult?.(tc.id, tc.function.name, result);
 				const globalIndex = toolCalls.indexOf(tc);
 				if (globalIndex >= 0) {
 					results[globalIndex] = result;

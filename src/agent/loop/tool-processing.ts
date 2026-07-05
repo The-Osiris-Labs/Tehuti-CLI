@@ -36,8 +36,8 @@ function stringifyToolResult(result: unknown): string {
 }
 
 export interface ToolProcessingOptions {
-	onToolCall?: (name: string, args: unknown) => void;
-	onToolResult?: (name: string, result: unknown) => void;
+	onToolCall?: (id: string, name: string, args: unknown) => void;
+	onToolResult?: (id: string, name: string, result: unknown) => void;
 	onProgress?: (progress: number, label: string) => void;
 }
 
@@ -152,8 +152,8 @@ export async function processToolCalls(
 		for (const { tc, reason } of blockedCalls) {
 			processedCount++;
 			trackToolCall(ctx, tc.function.name);
-			onToolCall?.(tc.function.name, {});
-			onToolResult?.(tc.function.name, { error: reason });
+			onToolCall?.(tc.id, tc.function.name, {});
+			onToolResult?.(tc.id, tc.function.name, { error: reason });
 			addToolResult(
 				ctx,
 				tc.id,
@@ -172,7 +172,7 @@ export async function processToolCalls(
 				} catch {
 					args = {};
 				}
-				onToolCall?.(tc.function.name, args);
+				onToolCall?.(tc.id, tc.function.name, args);
 				onProgress?.(50, `Executing ${tc.function.name}...`);
 			}
 
@@ -182,8 +182,8 @@ export async function processToolCalls(
 				{
 					ctx,
 					toolContext: contextForTools,
-					onToolResult: (name, result) => {
-						onToolResult?.(name, result);
+					onToolResult: (id, name, result) => {
+						onToolResult?.(id, name, result);
 						const duration = Date.now() - toolStartTime;
 						onProgress?.(
 							70,
@@ -231,7 +231,7 @@ export async function processToolCalls(
 		for (const tc of toolCallsTyped) {
 			if (signal?.aborted) {
 				const errorMsg = "Execution aborted by user";
-				onToolResult?.(tc.function.name, { error: errorMsg });
+				onToolResult?.(tc.id, tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,
 					tc.id,
@@ -249,7 +249,7 @@ export async function processToolCalls(
 				args = JSON.parse(tc.function.arguments);
 			} catch (err) {
 				const errorMsg = `Invalid JSON arguments for tool "${tc.function.name}": ${(err as Error).message}. Please fix the JSON and try again.`;
-				onToolResult?.(tc.function.name, { error: errorMsg });
+				onToolResult?.(tc.id, tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,
 					tc.id,
@@ -259,13 +259,13 @@ export async function processToolCalls(
 				continue;
 			}
 
-			onToolCall?.(tc.function.name, args);
+			onToolCall?.(tc.id, tc.function.name, args);
 			onProgress?.(50, `Executing ${tc.function.name}...`);
 			debug.log("agent", `Tool call: ${tc.function.name}`, args);
 
 			if (isPlanMode() && !isToolAllowedInPlanMode(tc.function.name)) {
 				const errorMsg = `Tool "${tc.function.name}" is not allowed in plan mode. Use read-only tools for exploration.`;
-				onToolResult?.(tc.function.name, { error: errorMsg });
+				onToolResult?.(tc.id, tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,
 					tc.id,
@@ -278,7 +278,7 @@ export async function processToolCalls(
 			const policyCheck = checkFirewallPolicy(tc.function.name, args);
 			if (!policyCheck.allowed) {
 				const errorMsg = `Policy Violation: ${policyCheck.reason}`;
-				onToolResult?.(tc.function.name, { error: errorMsg });
+				onToolResult?.(tc.id, tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,
 					tc.id,
@@ -303,7 +303,7 @@ export async function processToolCalls(
 
 			if (!preHookResult.proceed) {
 				debug.log("agent", `Hook blocked: ${tc.function.name}`);
-				onToolResult?.(tc.function.name, {
+				onToolResult?.(tc.id, tc.function.name, {
 					error: preHookResult.error ?? "Blocked by hook",
 				});
 				addToolResult(
@@ -324,7 +324,7 @@ export async function processToolCalls(
 
 			if (!permission.allowed) {
 				debug.log("agent", `Permission denied for ${tc.function.name}`);
-				onToolResult?.(tc.function.name, {
+				onToolResult?.(tc.id, tc.function.name, {
 					error: "Permission denied",
 					reason: permission.reason,
 				});
@@ -422,7 +422,7 @@ export async function processToolCalls(
 					70,
 					`Executed ${tc.function.name} in ${(duration / 1000).toFixed(2)}s`,
 				);
-				onToolResult?.(tc.function.name, result);
+				onToolResult?.(tc.id, tc.function.name, result);
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
 				debug.log(
@@ -431,7 +431,7 @@ export async function processToolCalls(
 				);
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				onToolResult?.(tc.function.name, { error: errorMsg });
+				onToolResult?.(tc.id, tc.function.name, { error: errorMsg });
 				addToolResult(
 					ctx,
 					tc.id,

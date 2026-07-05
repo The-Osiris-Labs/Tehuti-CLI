@@ -35,8 +35,8 @@ import { processToolCalls } from "./tool-processing.js";
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
-	onToolCall?: (name: string, args: unknown) => void;
-	onToolResult?: (name: string, result: unknown) => void;
+	onToolCall?: (id: string, name: string, args: unknown) => void;
+	onToolResult?: (id: string, name: string, result: unknown) => void;
 	onThinking?: (content: string) => void;
 	onProgress?: (progress: number, label: string) => void;
 	signal?: AbortSignal;

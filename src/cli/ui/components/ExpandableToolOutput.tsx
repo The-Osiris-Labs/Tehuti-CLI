@@ -221,10 +221,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		status === "pending"
 			? "running..."
 			: summary.isTruncated
-				? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden (click to expand)`
-				: expanded
-					? `completed (click to collapse)`
-					: `completed`;
+				? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
+				: `completed`;
 
 	const borderTextColor = isHovered
 		? BRANDING.colors.coral
@@ -265,7 +263,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				<Box gap={1}>
 					<Text color={headerColor}>{headerIcon}</Text>
 					<Text bold color={headerColor}>
-						{expandedIcon} {truncatedToolName}
+						{truncatedToolName}
 					</Text>
 				</Box>
 				<Box>
