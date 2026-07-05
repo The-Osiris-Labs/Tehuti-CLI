@@ -375,3 +375,7 @@ The following rules are NON-NEGOTIABLE and supersede all prior agent instincts:
 1. **Strict Verification Vocabulary:** Never declare work "complete", "hardened", or "safe" based solely on static analysis (typechecks) or test suites containing skipped tests. Always explicitly state what remains unverified at runtime.
 2. **Radical Scope Accuracy:** Prohibited use of absolute/marketing language ("all", "entirely", "massive", "100%"). Use precise, quantified descriptions of the actual diff.
 3. **Trust but Verify:** Never accept a subagent's claim of completion blindly. The parent agent MUST independently audit the git diff or run the binary before reporting success to the user.
+
+## 🛑 Documentation & Copywriting Rules (Added 2026-07-05)
+1. **No Comparative Marketing:** When writing READMEs, descriptions, or marketing copy, project absolute confidence. Describe what the software IS and what it DOES. Never use comparative marketing (e.g., "unlike bloated web apps", "no sluggish SDKs"). Do not punch down or compare the project negatively to other tools to make it look good.
+2. **Keep Internal Docs Internal:** Never place "Instructions for AI Agents" or internal systemic limitations in user-facing documents like `README.md`. Public storefronts are for humans. Internal architectural truths belong exclusively in `AGENTS.md` or developer-specific docs.
