@@ -5,6 +5,8 @@ import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
 import clipboardy from "clipboardy";
 import { Command } from "commander";
+import { registerDaemonCommand } from "./daemon.js";
+import { registerCompanionCommand } from "./companion.js";
 import { consola } from "consola";
 import { Box, render, Text, useApp, useStdout } from "ink";
 import Spinner from "ink-spinner";
@@ -86,6 +88,7 @@ import {
 	formatHelpOutput,
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
+import { CompanionStatusBar } from "../ui/components/CompanionStatusBar.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { HieroglyphSpinner } from "../ui/components/HieroglyphSpinner.js";
 import { PermissionPrompt } from "../ui/components/PermissionPrompt.js";
@@ -490,6 +493,7 @@ function getToolRenderStatus(result: unknown): "pending" | "success" | "error" {
 }
 
 function ChatUI({
+	companionMode,
 	apiKey,
 	model,
 	diffPreview,
@@ -507,6 +511,8 @@ function ChatUI({
 	onExit: () => void;
 	mouseEnabled?: boolean;
 	onToggleMouse?: () => void;
+	companionMode?: boolean;
+	companionMode?: boolean;
 }) {
 	const {
 		messages,
@@ -3418,10 +3424,12 @@ function ChatUI({
 					visible: showCommandPalette,
 					initialQuery: commandPaletteInitialQuery,
 				}),
+				companionMode ? React.createElement(CompanionStatusBar, null) : null
 			);
 }
 
 function App({
+	companionMode,
 	apiKey,
 	model,
 	diffPreview,
@@ -3437,6 +3445,8 @@ function App({
 	onExit: () => void;
 	mouseEnabled?: boolean;
 	onToggleMouse?: () => void;
+	companionMode?: boolean;
+	companionMode?: boolean;
 }) {
 	const initialMouseEnabled =
 		process.env.TEHUTI_DISABLE_MOUSE !== "1" &&
@@ -3457,12 +3467,15 @@ function App({
 			onExit,
 			mouseEnabled,
 			onToggleMouse: () => setMouseEnabled(!mouseEnabled),
+			companionMode,
 		}),
 	);
 }
 
 export function createProgram(): Command {
 	const program = new Command();
+	registerDaemonCommand(program);
+	registerCompanionCommand(program);
 
 	program
 		.name("tehuti")

@@ -11,6 +11,7 @@ import {
 } from "./context-compressor.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
 import { initMemory } from "./memory/index.js";
+import { getPersonalityPromptBlock } from "./memory/personality.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
 
@@ -252,6 +253,9 @@ export function buildSystemPrompt(
 
 	const systemMemorySection = ctx.systemMemory ? `${ctx.systemMemory}\n` : "";
 
+	const personalitySection = getPersonalityPromptBlock();
+	const personalityBlock = personalitySection ? `\n## Personality & Preferences\n${personalitySection}\n` : "";
+
 	let skillsSection = "";
 	if (userQuery) {
 		const skillsManager = getSkillsManager();
@@ -312,7 +316,7 @@ export function buildSystemPrompt(
 - You are an expert software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 - Your goal is to accomplish the user's task efficiently and effectively.
 - You work iteratively, breaking down complex tasks into clear steps.
-${projectInstructionsSection}${systemMemorySection}${skillsSection}
+${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSection}
 ## Operational Rules
 - Always explain what you're doing before doing it.
 - Use tools safely - never run destructive commands without confirmation.

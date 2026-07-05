@@ -39,6 +39,7 @@ export interface ToolProcessingOptions {
 	onToolCall?: (id: string, name: string, args: unknown) => void;
 	onToolResult?: (id: string, name: string, result: unknown) => void;
 	onProgress?: (progress: number, label: string) => void;
+	selfHealer?: any;
 }
 
 function checkFirewallPolicy(
@@ -70,7 +71,7 @@ export async function processToolCalls(
 	options: ToolProcessingOptions,
 	signal?: AbortSignal,
 ): Promise<number> {
-	const { onToolCall, onToolResult, onProgress } = options;
+	const { onToolCall, onToolResult, onProgress, selfHealer } = options;
 	let processedCount = 0;
 
 	const contextForTools = getToolContext(ctx, signal);
@@ -374,6 +375,9 @@ export async function processToolCalls(
 
 				if (!result) {
 					result = await executeTool(tc.function.name, args, contextForTools);
+					if (result && !result.success && selfHealer) {
+						result = await selfHealer.wrapToolFailure(tc.function.name, args, result);
+					}
 					const durationMs = Date.now() - startTime;
 					telemetry.recordToolExecution(
 						tc.function.name,
