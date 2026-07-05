@@ -33,6 +33,7 @@ import { setParentContext } from "../tools/system.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
 import { processToolCalls } from "./tool-processing.js";
+import { SelfHealingManager } from "./self-healing.js";
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -130,6 +131,7 @@ export async function runAgentLoop(
 		const maxIterations = ctx.config.maxIterations;
 		let totalContent = "";
 		let totalToolCalls = 0;
+		const selfHealer = new SelfHealingManager(ctx, client);
 
 		while (iteration < maxIterations) {
 			iteration++;
@@ -261,7 +263,7 @@ export async function runAgentLoop(
 									const p = processToolCalls(
 										ctx,
 										[tcTyped],
-										{ onToolCall, onToolResult, onProgress },
+										{ onToolCall, onToolResult, onProgress, selfHealer },
 										signal,
 									).catch((err) => {
 										debug.log("agent", "Mid-stream tool error:", err);
@@ -371,6 +373,7 @@ export async function runAgentLoop(
 							onToolCall,
 							onToolResult,
 							onProgress,
+							selfHealer,
 						},
 						signal,
 					);
