@@ -23,7 +23,7 @@ Eight integrated features. Descriptions below include **honest limitations**.
 | **F1** | Parallel Executor | Classifies tool calls; runs read-only tools concurrently (max 5); serializes writes/interactive | Heuristic classification; misclassified tools can race; abort propagates but not fully stress-tested in prod |
 | **F2** | Context Compressor | Compresses history near ~85% context; LLM summary or `[Condensed]` structural fallback | LLM path needs live API in some tests (mocked in E2E); may drop non-critical messages; timing-sensitive unit tests |
 | **F3** | Predictive Prefetcher | Rule/history-based prefetch of read-only tools into cache | Predictions are best-effort; invalidated on writes/bash; no ML |
-| **F4** | Memory Graph | JSON graph at `~/.tehuti/memory-graph.json`; scoped nodes; corruption backups | **Edges unused** in prompt retrieval; flat top-N node injection only; not a true knowledge graph |
+| **F4** | Memory Graph | Relational SQLite graph DB at `~/.config/tehuti/memory/graph.db`; scoped nodes | Edges are traversed in `searchGraph` via BFS with decay, but system prompt construction utilizes flat top-N rule injection |
 | **F5** | Chat UI & Viewport | Ink TUI; sliding viewport via negative margins; `computeMessageLines` | Logic split across monolithic `chat.ts` and `output.ts`; array `content` not supported in line counter |
 | **F6** | Command Palette | Slash commands; Fuse fuzzy search; nested submenus; Vim keys | Submenu coverage partial; some React key warnings in E2E |
 | **F7** | Config Editor | In-TUI form for provider, model, temperature, tokens | Validates schema constraints; does not hot-reload all runtime paths without save |

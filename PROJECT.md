@@ -2,7 +2,7 @@
 
 Tehuti CLI is a TypeScript/Node.js terminal coding assistant with an Ink/React TUI, an OpenAI-compatible agent loop, and a large native tool registry. It targets developers who want a local, configurable harness—not a hosted IDE plugin. Default provider is **OpenCode Go** (`opencode`); the HTTP client is OpenAI-compatible and works with OpenRouter, local Ollama/LM Studio, and custom base URLs.
 
-**What it is not:** There is no Rust core in this repo. Subagent/swarm tooling exists but is lightweight. Many grepai-named tool files are present but **not registered**. The README branding is aspirational; this document reflects the code as of June 2026.
+**What it is not:** It is not a hosted IDE plugin. The project runs completely locally. Subagent and swarm delegation features are fully operational. Legacy grepai-named tool files are present in the source tree but not registered, as the primary semantic search functionality is handled by the registered `semantic` tools.
 
 ---
 
@@ -33,7 +33,7 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
               |
    +----------v---------+
    |   Tool Registry    |
-   | ~66 native + MCP   |
+   |  73 native + MCP   |
    | dynamic at runtime |
    +--------------------+
 ```
@@ -75,15 +75,15 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
 | Parallel executor | `parallel-executor.ts` | Batches read-only tools (max 5 concurrent); serializes writes/interactive |
 | Context compressor | `context-compressor.ts` | Triggers ~85% token threshold; LLM summary or `[Condensed]` fallback |
 | Prefetcher | `prefetcher.ts` | Rule/history-based read prefetch; invalidated on writes/bash |
-| Memory graph | `memory/graph.ts` | Flat JSON node store at `~/.tehuti/memory-graph.json` |
+| Memory graph | `memory/graph.ts` | SQLite relational graph DB at `~/.config/tehuti/memory/graph.db` |
 | Caches | `cache/` | LRU + persistent tool result cache |
 | Skills | `skills/manager.ts` | Keyword-matched expertise **injected into system prompt only** |
 
 ### Memory graph
 
-- **Nodes:** `id`, `type`, `content`, optional `cwd` scoping, priority/importance, timestamps.
-- **Edges:** `addEdge` persists `{source, target, relation}` but **`getSystemPromptMemory` never traverses edges**—only top-10 `project_rule` / `critical_fact` nodes by relevance.
-- Corrupted files get timestamped backups; `MAX_NODES` = 1000 with eviction.
+- **Relational Storage:** Managed via `better-sqlite3` under `~/.config/tehuti/memory/graph.db`. It tracks `nodes` (with schema attributes like `id`, `type`, `content`, `metadata` containing `cwd`/importance/priority) and `edges` (mapping `source_id` to `target_id` relations).
+- **Retrieval & Traversal:** Combines Okapi BM25 sparse vector keyword scores with Breadth-First Search (BFS) graph neighbor traversals (decay factor `0.5 ** depth`).
+- **De-duplication & Optimization:** Employs Jaccard token overlap calculations. If node similarity is $> 0.85$, priorities, access counts, and active edge coordinates are merged into a single record, and the duplicate is pruned.
 
 ### Skills
 
@@ -117,7 +117,7 @@ Palette uses Fuse.js fuzzy search. Egyptian palette (gold/obsidian/sand/coral) v
 
 Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`, `web`, `mcp`, `system`, `git`, `search`, `development`.
 
-### Native inventory (~66 registered in `src/agent/index.ts`)
+### Native inventory (73 registered in src/agent/index.ts)
 
 | Category | Count | Examples |
 |----------|------:|----------|
@@ -129,15 +129,16 @@ Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`,
 | Web | 3 | `web_fetch`, `web_search`, `code_search` |
 | Git | 9 | `git_status` … `git_push` |
 | Background | 4 | `start_background`, `list_processes`, … |
-| System | 3 | `todo_write`, `task`, `question` |
+| System | 4 | `todo_write`, `task`, `question`, `wait_for_event` |
 | Memory | 2 | `store_insight`, `query_memory` |
 | Plan mode | 2 | `write_plan`, `exit_plan_mode` |
-| Skills | 5 | `list_skills`, `activate_skill`, … |
+| Skills | 6 | `list_skills`, `activate_skill`, `create_reusable_skill` … |
 | MCP prompts | 2 | `mcp_get_prompt`, `mcp_list_prompts` |
-| Swarm | 2 | `delegate_task`, `check_subagent_status` |
+| Swarm | 4 | `delegate_task`, `check_subagent_status`, `abort_subagent` … |
 | KiloCode / custom | 10 | provider-specific configurators |
 | Collaboration | 3 | collaboration session helpers |
-| **Total native** | **~66** | |
+| Shadow Workspace | 1 | `test_speculatively` |
+| **Total native** | **73** | |
 
 ### MCP (dynamic)
 

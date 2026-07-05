@@ -13,9 +13,9 @@ Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent powered b
 - **Agent loop:** `src/agent/loop/runner.ts` — stream LLM → execute tools → repeat
 - **API:** Custom `fetch` + SSE clients (HTTP/3) in `src/api/` (not Vercel AI SDK)
 - **Default provider:** OpenCode Go (`opencode` → `https://opencode.ai/zen/go/v1`, model `deepseek-v4-flash`)
-- **Tools:** ~66 registered native tools + dynamic MCP tools at runtime
+- **Tools:** 73 registered native tools + dynamic MCP tools at runtime
 
-**Not in the shipped path:** `rust-core/` (artifacts only, not wired), `ai` / `@openrouter/ai-sdk-provider` / `@aiter/core` deps (unused in `src/`).
+**Not in the shipped path:** ai / @openrouter/ai-sdk-provider / @aiter/core deps (unused in src/). (Note: `rust-core/` is actively compiled to a `.node` binary and dynamically loaded in `src/agent/tools/search.ts` for fast case-sensitive pattern grep).
 
 ---
 
@@ -113,7 +113,7 @@ Registered in `src/agent/index.ts` at module load. MCP tools sync each loop iter
 
 **Skills:** Prompt injection only. Three built-in (JS/TS, Python, Git) + user JSON in `~/.tehuti/skills/`. Activation is in-memory; not persisted.
 
-**Memory graph:** Flat nodes at `~/.tehuti/memory-graph.json`. Edges exist in storage but are **not traversed** at runtime.
+**Memory graph:** SQLite DB at `~/.config/tehuti/memory/graph.db`. Merges Okapi BM25 sparse vector queries with Breadth-First search traversal on the relational edges, decaying scores by `0.5 ** depth`. Exposes Jaccard similarity-based optimization.
 
 ---
 

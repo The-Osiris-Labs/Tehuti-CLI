@@ -98,8 +98,8 @@ Caveats noted where behavior is partial.
 ### F4: Memory Graph
 - [x] Atomic writes; corruption backup files
 - [x] Scoped nodes; priority ordering; `MAX_NODES` eviction
-- [ ] **Edges stored but not used** in search or system prompt
-- [ ] Not true graph traversal—flat top-N injection
+- [x] Edges used in `searchGraph` traversal with depth decay factor `0.5 ** depth`
+- [x] BFS graph traversal retrieves neighbors up to depth 2 (flat top-N injection is used for system prompt rule builder only)
 
 ### F5: Chat UI & Viewport
 - [x] `computeMessageLines` for string content and `blocks`
