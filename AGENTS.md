@@ -289,7 +289,7 @@ This is intentional: negative margin handles scroll position; slicing limits wha
 
 ### Other TUI facts
 
-- Mouse support via `@ink-tools/ink-mouse` on Command Palette and Config Editor
+- Mouse support via `@ink-tools/ink-mouse` on Command Palette and Config Editor. (Escape hatches: export `TEHUTI_DISABLE_MOUSE=1` or `NO_MOUSE=1` for accessibility/multiplexer compatibility).
 - Input bar hidden when palette/config editor is open
 - `TehutiHeader` collapses after first message
 - Reasoning models show spinner + truncated thinking text (not bordered blocks)
