@@ -68,7 +68,7 @@ describe("ToolCache", () => {
 			);
 			cache.set("read", { file_path: "/test/other.ts" }, createResult("other"));
 
-			const deleted = cache.invalidateFile("/test/file.ts");
+			const _deleted = cache.invalidateFile("/test/file.ts");
 
 			expect(cache.get("read", { file_path: "/test/file.ts" })).toBeNull();
 			expect(cache.get("read", { file_path: "/test/other.ts" })).not.toBeNull();

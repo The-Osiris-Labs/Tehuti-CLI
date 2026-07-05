@@ -2,18 +2,16 @@ import os from "node:os";
 import path from "node:path";
 import Conf from "conf";
 import { cosmiconfig } from "cosmiconfig";
-import { z } from "zod";
 import { consola } from "../utils/logger.js";
+import {
+	getApiKeyEnvVarsForProvider,
+	resolveBaseUrlForProvider,
+} from "./providers.js";
 import {
 	DEFAULT_CONFIG,
 	TEHUTI_CONFIG_SCHEMA,
 	type TehutiConfig,
 } from "./schema.js";
-import {
-	getEnvApiKeyForProvider,
-	resolveBaseUrlForProvider,
-	getApiKeyEnvVarsForProvider,
-} from "./providers.js";
 
 const MODULE_NAME = "tehuti";
 export const configWarnings: string[] = [];
@@ -161,12 +159,10 @@ export async function loadConfig(
 				? "global"
 				: "default";
 
-	const provider = (
-		envProvider ||
+	const provider = (envProvider ||
 		fileProvider ||
 		persistedProvider ||
-		DEFAULT_CONFIG.provider
-	) as string;
+		DEFAULT_CONFIG.provider) as string;
 
 	let parsedEnvCustomProvider: unknown;
 	if (envCustomProvider) {
@@ -174,22 +170,28 @@ export async function loadConfig(
 			parsedEnvCustomProvider = JSON.parse(envCustomProvider);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			consola.warn(
-				`Ignoring invalid TEHUTI_CUSTOM_PROVIDER JSON: ${message}`,
-			);
+			consola.warn(`Ignoring invalid TEHUTI_CUSTOM_PROVIDER JSON: ${message}`);
 		}
 	}
 
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),
-		...(globalConfig.get("provider") && { provider: globalConfig.get("provider") }),
-		...(globalConfig.get("baseUrl") && { baseUrl: globalConfig.get("baseUrl") }),
+		...(globalConfig.get("provider") && {
+			provider: globalConfig.get("provider"),
+		}),
+		...(globalConfig.get("baseUrl") && {
+			baseUrl: globalConfig.get("baseUrl"),
+		}),
 		...(globalConfig.get("customProvider") && {
 			customProvider: globalConfig.get("customProvider"),
 		}),
-		...(globalConfig.get("temperature") !== undefined && { temperature: globalConfig.get("temperature") }),
-		...(globalConfig.get("maxTokens") !== undefined && { maxTokens: globalConfig.get("maxTokens") }),
+		...(globalConfig.get("temperature") !== undefined && {
+			temperature: globalConfig.get("temperature"),
+		}),
+		...(globalConfig.get("maxTokens") !== undefined && {
+			maxTokens: globalConfig.get("maxTokens"),
+		}),
 		...resolvedFileConfig,
 		...(envModel && { model: envModel }),
 		provider,
@@ -227,16 +229,24 @@ export async function loadConfig(
 	const highPriorityKey =
 		process.env.TEHUTI_API_KEY ||
 		(directEnvVar ? process.env[directEnvVar] : undefined);
-	const lowPriorityKey = envVars.slice(1).reduce<string | undefined>((acc, key) => {
-		if (acc) return acc;
-		if (key === "TEHUTI_API_KEY") return undefined;
-		return process.env[key];
-	}, undefined);
+	const lowPriorityKey = envVars
+		.slice(1)
+		.reduce<string | undefined>((acc, key) => {
+			if (acc) return acc;
+			if (key === "TEHUTI_API_KEY") return undefined;
+			return process.env[key];
+		}, undefined);
 
 	mergedConfig.apiKey = highPriorityKey || configuredApiKey || lowPriorityKey;
 
-	if (highPriorityKey && configuredApiKey && highPriorityKey !== configuredApiKey) {
-		const overriddenBy = process.env.TEHUTI_API_KEY ? "TEHUTI_API_KEY" : (directEnvVar || "provider env var");
+	if (
+		highPriorityKey &&
+		configuredApiKey &&
+		highPriorityKey !== configuredApiKey
+	) {
+		const overriddenBy = process.env.TEHUTI_API_KEY
+			? "TEHUTI_API_KEY"
+			: directEnvVar || "provider env var";
 		const msg = `Using ${overriddenBy} from environment, which overrides the configured API key in ~/.tehuti.json.`;
 		consola.warn(msg);
 		configWarnings.push(msg);
@@ -249,7 +259,9 @@ export async function loadConfig(
 
 	consola.warn(
 		"Config validation errors. Falling back to defaults for invalid fields:",
-		result.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
+		result.error.errors
+			.map((e) => `${e.path.join(".")}: ${e.message}`)
+			.join(", "),
 	);
 
 	const salvagedConfig = { ...mergedConfig };
@@ -288,7 +300,11 @@ export function saveGlobalConfig(updates: {
 		}
 	}
 	if ("temperature" in updates) {
-		if (typeof updates.temperature === "number" && updates.temperature >= 0 && updates.temperature <= 2) {
+		if (
+			typeof updates.temperature === "number" &&
+			updates.temperature >= 0 &&
+			updates.temperature <= 2
+		) {
 			globalConfig.set("temperature", updates.temperature);
 		} else {
 			globalConfig.delete("temperature");

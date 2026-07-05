@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ToolRegistryManager, type ToolDefinition } from "./registry.js";
+import { type ToolDefinition, ToolRegistryManager } from "./registry.js";
 
 describe("ToolRegistryManager Concurrency and Scoping Stress Tests", () => {
 	const mockCtx = {

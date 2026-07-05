@@ -2,8 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolResult } from "../tools/registry.js";
-import type { CacheEntry } from "./lru-cache.js";
-import { getToolCache, ToolCache } from "./tool-cache.js";
+import { getToolCache } from "./tool-cache.js";
 
 const CACHE_DIR = path.join(os.homedir(), ".tehuti", "cache");
 const CACHE_FILE = path.join(CACHE_DIR, "tool-cache.json");
@@ -78,7 +77,7 @@ export function loadCacheFromDisk(): void {
 		}
 
 		const cache = getToolCache();
-		let loaded = 0;
+		let _loaded = 0;
 
 		for (const entry of serialized.entries) {
 			const entryAge = Date.now() - entry.timestamp;
@@ -98,7 +97,7 @@ export function loadCacheFromDisk(): void {
 						mtime: entry.mtime,
 						ttl: entry.ttl,
 					});
-					loaded++;
+					_loaded++;
 				} catch {}
 			}
 		}

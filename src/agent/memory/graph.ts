@@ -32,11 +32,11 @@ export async function addNode(
 	content: string,
 	cwd: string = process.cwd(),
 	priority = 0,
-	importance = 0
+	importance = 0,
 ): Promise<void> {
 	const now = Date.now();
 	const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
-	
+
 	const stmt = db.prepare(`
 		INSERT INTO nodes (id, type, content, metadata, created_at, last_accessed)
 		VALUES (@id, @type, @content, @metadata, @now, @now)
@@ -45,13 +45,18 @@ export async function addNode(
 			metadata = @metadata,
 			last_accessed = @now
 	`);
-	
+
 	stmt.run({
 		id,
 		type,
 		content,
-		metadata: JSON.stringify({ cwd: resolvedCwd, priority, importance, accessCount: 1 }),
-		now
+		metadata: JSON.stringify({
+			cwd: resolvedCwd,
+			priority,
+			importance,
+			accessCount: 1,
+		}),
+		now,
 	});
 
 	await vectorStore.addEmbedding(id, content, {
@@ -63,7 +68,12 @@ export async function addNode(
 	});
 }
 
-export async function addEdge(source: string, target: string, relation: string, weight: number = 1.0): Promise<void> {
+export async function addEdge(
+	source: string,
+	target: string,
+	relation: string,
+	weight: number = 1.0,
+): Promise<void> {
 	const stmt = db.prepare(`
 		INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
 		VALUES (@id, @source, @target, @relation, @weight, @now)
@@ -76,7 +86,7 @@ export async function addEdge(source: string, target: string, relation: string, 
 		target,
 		relation,
 		weight,
-		now: Date.now()
+		now: Date.now(),
 	});
 }
 
@@ -91,92 +101,128 @@ function mapRowToNode(row: any): Node {
 		priority: meta.priority,
 		importance: meta.importance,
 		accessCount: meta.accessCount,
-		timestamp: row.created_at
+		timestamp: row.created_at,
 	};
 }
 
-export async function searchGraph(query: string, cwd: string = process.cwd(), maxDepth: number = 2): Promise<Node[]> {
+export async function searchGraph(
+	query: string,
+	cwd: string = process.cwd(),
+	maxDepth: number = 2,
+): Promise<Node[]> {
 	const lowerQuery = query.toLowerCase();
 	const resolvedCwd = cwd ? path.resolve(cwd) : undefined;
-	
+
 	// RAG retrieval
 	const vectorResults = await vectorStore.search(query, 20);
 	const vectorNodeIds = new Set(vectorResults.map((r: { id: string }) => r.id));
-	
+
 	const allNodesStmt = db.prepare(`SELECT * FROM nodes`);
 	const allNodesRows = allNodesStmt.all() as any[];
-	let nodes = allNodesRows.map(mapRowToNode);
-	
+	const nodes = allNodesRows.map(mapRowToNode);
+
 	const scopedNodes = nodes.filter(
-		(n) => !n.cwd || n.cwd === "global" || (resolvedCwd && path.resolve(n.cwd) === resolvedCwd)
+		(n) =>
+			!n.cwd ||
+			n.cwd === "global" ||
+			(resolvedCwd && path.resolve(n.cwd) === resolvedCwd),
 	);
 
-	let matchedNodes = scopedNodes.filter(
-		(n) => vectorNodeIds.has(n.id) || n.id.toLowerCase().includes(lowerQuery) || n.content.toLowerCase().includes(lowerQuery)
+	const matchedNodes = scopedNodes.filter(
+		(n) =>
+			vectorNodeIds.has(n.id) ||
+			n.id.toLowerCase().includes(lowerQuery) ||
+			n.content.toLowerCase().includes(lowerQuery),
 	);
-	
+
 	// Map matched nodes by depth mapping
-	let currentSet = new Set(matchedNodes.map(n => n.id));
+	let currentSet = new Set(matchedNodes.map((n) => n.id));
 	const visited = new Set(currentSet);
-	const results: Map<string, {node: Node, relevance: number}> = new Map();
-	
-	matchedNodes.forEach(n => {
-		const baseRelevance = ((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 + (n.timestamp ?? 0);
-		results.set(n.id, {node: n, relevance: baseRelevance});
+	const results: Map<string, { node: Node; relevance: number }> = new Map();
+
+	matchedNodes.forEach((n) => {
+		const baseRelevance =
+			((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 + (n.timestamp ?? 0);
+		results.set(n.id, { node: n, relevance: baseRelevance });
 	});
-	
+
 	// Graph Traversal with depth decay (Decay Factor: 0.5 per hop)
 	for (let depth = 1; depth <= maxDepth; depth++) {
 		if (currentSet.size === 0) break;
 		const nextSet = new Set<string>();
-		
-		const placeholders = Array.from(currentSet).map(() => '?').join(',');
-		if(placeholders.length === 0) break;
-		
-		const edgesStmt = db.prepare(`SELECT * FROM edges WHERE source_id IN (${placeholders}) OR target_id IN (${placeholders})`);
+
+		const placeholders = Array.from(currentSet)
+			.map(() => "?")
+			.join(",");
+		if (placeholders.length === 0) break;
+
+		const edgesStmt = db.prepare(
+			`SELECT * FROM edges WHERE source_id IN (${placeholders}) OR target_id IN (${placeholders})`,
+		);
 		const params = Array.from(currentSet);
 		const edges = edgesStmt.all(...params, ...params) as any[];
-		
+
 		for (const edge of edges) {
-			const neighborId = currentSet.has(edge.source_id) ? edge.target_id : edge.source_id;
+			const neighborId = currentSet.has(edge.source_id)
+				? edge.target_id
+				: edge.source_id;
 			if (!visited.has(neighborId)) {
 				visited.add(neighborId);
 				nextSet.add(neighborId);
-				
-				const neighborRow = db.prepare(`SELECT * FROM nodes WHERE id = ?`).get(neighborId) as any;
+
+				const neighborRow = db
+					.prepare(`SELECT * FROM nodes WHERE id = ?`)
+					.get(neighborId) as any;
 				if (neighborRow) {
 					const n = mapRowToNode(neighborRow);
-					const baseRelevance = ((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 + (n.timestamp ?? 0);
-					const decayedRelevance = baseRelevance * Math.pow(0.5, depth);
-					
+					const baseRelevance =
+						((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 +
+						(n.timestamp ?? 0);
+					const decayedRelevance = baseRelevance * 0.5 ** depth;
+
 					// Apply scoped filter for neighbor
-					if (!n.cwd || n.cwd === "global" || (resolvedCwd && path.resolve(n.cwd) === resolvedCwd)) {
-						results.set(n.id, {node: n, relevance: decayedRelevance});
+					if (
+						!n.cwd ||
+						n.cwd === "global" ||
+						(resolvedCwd && path.resolve(n.cwd) === resolvedCwd)
+					) {
+						results.set(n.id, { node: n, relevance: decayedRelevance });
 					}
 				}
 			}
 		}
 		currentSet = nextSet;
 	}
-	
-	const finalResults = Array.from(results.values()).sort((a, b) => b.relevance - a.relevance).map(r => r.node);
+
+	const finalResults = Array.from(results.values())
+		.sort((a, b) => b.relevance - a.relevance)
+		.map((r) => r.node);
 	return finalResults;
 }
 
-export async function getSystemPromptMemory(cwd: string = process.cwd()): Promise<string> {
+export async function getSystemPromptMemory(
+	cwd: string = process.cwd(),
+): Promise<string> {
 	const resolvedCwd = cwd ? path.resolve(cwd) : undefined;
-	
-	const stmt = db.prepare(`SELECT * FROM nodes WHERE type IN ('project_rule', 'critical_fact')`);
+
+	const stmt = db.prepare(
+		`SELECT * FROM nodes WHERE type IN ('project_rule', 'critical_fact')`,
+	);
 	const rows = stmt.all() as any[];
-	let nodes = rows.map(mapRowToNode);
-	
+	const nodes = rows.map(mapRowToNode);
+
 	const scopedNodes = nodes.filter(
-		(n) => !n.cwd || n.cwd === "global" || (resolvedCwd && path.resolve(n.cwd) === resolvedCwd)
+		(n) =>
+			!n.cwd ||
+			n.cwd === "global" ||
+			(resolvedCwd && path.resolve(n.cwd) === resolvedCwd),
 	);
 
 	const sortedNodes = scopedNodes.sort((a, b) => {
-		const relA = ((a.priority ?? 0) + (a.importance ?? 0)) * 1e13 + (a.timestamp ?? 0);
-		const relB = ((b.priority ?? 0) + (b.importance ?? 0)) * 1e13 + (b.timestamp ?? 0);
+		const relA =
+			((a.priority ?? 0) + (a.importance ?? 0)) * 1e13 + (a.timestamp ?? 0);
+		const relB =
+			((b.priority ?? 0) + (b.importance ?? 0)) * 1e13 + (b.timestamp ?? 0);
 		return relB - relA;
 	});
 
@@ -193,106 +239,135 @@ export async function getSystemPromptMemory(cwd: string = process.cwd()): Promis
 /**
  * Iterates through stored nodes and removes or merges insights that are semantically identical or exact duplicates.
  */
-export async function optimizeInsights(cwd: string = process.cwd()): Promise<{removed: number, merged: number}> {
+export async function optimizeInsights(
+	cwd: string = process.cwd(),
+): Promise<{ removed: number; merged: number }> {
 	const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
-	
+
 	const stmt = db.prepare(`SELECT * FROM nodes`);
 	const allNodesRows = stmt.all() as any[];
 	let nodes = allNodesRows.map(mapRowToNode);
-	
+
 	if (resolvedCwd && resolvedCwd !== "global") {
-		nodes = nodes.filter(n => !n.cwd || n.cwd === "global" || path.resolve(n.cwd) === resolvedCwd);
+		nodes = nodes.filter(
+			(n) =>
+				!n.cwd || n.cwd === "global" || path.resolve(n.cwd) === resolvedCwd,
+		);
 	}
-	
+
 	let removedCount = 0;
 	let mergedCount = 0;
-	
+
 	const toRemove = new Set<string>();
-	
-	const getTokens = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(x => x.length >= 2));
+
+	const getTokens = (t: string) =>
+		new Set(
+			t
+				.toLowerCase()
+				.replace(/[^a-z0-9]/g, " ")
+				.split(/\s+/)
+				.filter((x) => x.length >= 2),
+		);
 
 	for (let i = 0; i < nodes.length; i++) {
 		if (toRemove.has(nodes[i].id)) continue;
-		
+
 		for (let j = i + 1; j < nodes.length; j++) {
 			if (toRemove.has(nodes[j].id)) continue;
-			
+
 			const nodeA = nodes[i];
 			const nodeB = nodes[j];
-			
+
 			if (nodeA.type !== nodeB.type) continue;
-			
+
 			const contentA = nodeA.content.trim().toLowerCase();
 			const contentB = nodeB.content.trim().toLowerCase();
-			
+
 			const isExactMatch = contentA === contentB;
-			
+
 			const tokensA = getTokens(contentA);
 			const tokensB = getTokens(contentB);
-			
+
 			let intersectionSize = 0;
 			for (const t of tokensA) {
 				if (tokensB.has(t)) intersectionSize++;
 			}
-			
+
 			const unionSize = tokensA.size + tokensB.size - intersectionSize;
 			const similarity = unionSize === 0 ? 0 : intersectionSize / unionSize;
-			
+
 			const isSemanticMatch = similarity > 0.85;
-			
+
 			if (isExactMatch || isSemanticMatch) {
 				toRemove.add(nodeB.id);
-				
+
 				const newPriority = Math.max(nodeA.priority ?? 0, nodeB.priority ?? 0);
-				const newImportance = Math.max(nodeA.importance ?? 0, nodeB.importance ?? 0);
-				const newAccessCount = (nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
-				
+				const newImportance = Math.max(
+					nodeA.importance ?? 0,
+					nodeB.importance ?? 0,
+				);
+				const newAccessCount =
+					(nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
+
 				const updateStmt = db.prepare(`
 					UPDATE nodes 
 					SET metadata = @metadata
 					WHERE id = @id
 				`);
-				
+
 				const newMeta = {
 					cwd: nodeA.cwd,
 					priority: newPriority,
 					importance: newImportance,
-					accessCount: newAccessCount
+					accessCount: newAccessCount,
 				};
-				
+
 				updateStmt.run({
 					metadata: JSON.stringify(newMeta),
-					id: nodeA.id
+					id: nodeA.id,
 				});
-				
+
 				// Re-route edges from B to A
-				const edgesStmt = db.prepare(`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`);
+				const edgesStmt = db.prepare(
+					`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
+				);
 				const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
-				
+
 				for (const edge of oldEdges) {
-					const newSource = edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
-					const newTarget = edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
-					
+					const newSource =
+						edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
+					const newTarget =
+						edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
+
 					// Avoid self-loops if the edge was between A and B
 					if (newSource !== newTarget) {
-						await addEdge(newSource, newTarget, edge.relation_type, edge.weight);
+						await addEdge(
+							newSource,
+							newTarget,
+							edge.relation_type,
+							edge.weight,
+						);
 					}
-					
+
 					const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
 					delEdgeStmt.run(edge.id);
 				}
-				
+
 				mergedCount++;
 			}
 		}
 	}
-	
+
 	if (toRemove.size > 0) {
-		const placeholders = Array.from(toRemove).map(() => '?').join(',');
-		const deleteStmt = db.prepare(`DELETE FROM nodes WHERE id IN (${placeholders})`);
+		const placeholders = Array.from(toRemove)
+			.map(() => "?")
+			.join(",");
+		const deleteStmt = db.prepare(
+			`DELETE FROM nodes WHERE id IN (${placeholders})`,
+		);
 		deleteStmt.run(...Array.from(toRemove));
 		removedCount = toRemove.size;
 	}
-	
+
 	return { removed: removedCount, merged: mergedCount };
 }

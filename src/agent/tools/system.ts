@@ -72,7 +72,11 @@ const TASK_SCHEMA = z.object({
 });
 
 const WAIT_FOR_EVENT_SCHEMA = z.object({
-	reason: z.string().describe("Reason for waiting (e.g., 'waiting for background process PID 123 to finish')"),
+	reason: z
+		.string()
+		.describe(
+			"Reason for waiting (e.g., 'waiting for background process PID 123 to finish')",
+		),
 });
 
 let currentTodos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"] = [];
@@ -368,7 +372,8 @@ Usage notes:
 	},
 	{
 		name: "wait_for_event",
-		description: "Suspends the agent's execution loop until a background process or subagent finishes. Use this after launching a background task or subagent if you need to wait for its results before proceeding.",
+		description:
+			"Suspends the agent's execution loop until a background process or subagent finishes. Use this after launching a background task or subagent if you need to wait for its results before proceeding.",
 		parameters: WAIT_FOR_EVENT_SCHEMA,
 		execute: waitForEvent as AnyToolExecutor,
 		category: "system",

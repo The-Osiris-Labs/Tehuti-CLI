@@ -13,7 +13,9 @@ const mocks = vi.hoisted(() => {
 		ResourceUpdatedNotificationSchema: Symbol(
 			"ResourceUpdatedNotificationSchema",
 		),
-		ToolListChangedNotificationSchema: Symbol("ToolListChangedNotificationSchema"),
+		ToolListChangedNotificationSchema: Symbol(
+			"ToolListChangedNotificationSchema",
+		),
 		CreateMessageRequestSchema: Symbol("CreateMessageRequestSchema"),
 	};
 
@@ -153,17 +155,14 @@ describe("MCPClientManager", () => {
 	});
 
 	it("clears reconnect and health-check timers on disconnect", async () => {
-		await manager.connectServer(
-			"alpha",
-			{
-				...reconnectingConfig,
-				healthCheck: {
-					enabled: true,
-					intervalMs: 500,
-					timeoutMs: 100,
-				},
-			} as any,
-		);
+		await manager.connectServer("alpha", {
+			...reconnectingConfig,
+			healthCheck: {
+				enabled: true,
+				intervalMs: 500,
+				timeoutMs: 100,
+			},
+		} as any);
 
 		expect(vi.getTimerCount()).toBe(1);
 
@@ -221,7 +220,9 @@ describe("MCPClientManager", () => {
 			await manager.executeTool("alpha", "test-tool", { query: "hello" });
 			expect.fail("Should have thrown");
 		} catch (err: any) {
-			expect(err.message).toContain("MCP Tool \"test-tool\" on server \"alpha\" failed:");
+			expect(err.message).toContain(
+				'MCP Tool "test-tool" on server "alpha" failed:',
+			);
 			expect(err.message).toContain("Internal API Error");
 			expect(err.message).toContain("Arguments:");
 			expect(err.message).toContain("Recent Server Stderr Output:");

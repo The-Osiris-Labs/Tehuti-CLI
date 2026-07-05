@@ -5,21 +5,21 @@
  */
 export function isMouseSequence(k: string): boolean {
 	if (!k) return false;
-	
+
 	// Matches standard SGR mouse sequences starting with \x1b[< or normal mouse tracking starting with \x1b[M
 	if (k.startsWith("\x1b[M") || k.startsWith("\x1b[<")) {
 		return true;
 	}
-	
+
 	// Matches split SGR sequence coordinate chunks like "<35;72;37M", "35;72;37m", etc.
 	if (/^<?\d+;\d+;\d+[Mm]$/.test(k)) {
 		return true;
 	}
-	
+
 	// Fallback check: matches any string containing "<" and numbers/semicolons that ends with M/m
 	if (k.includes("<") && (k.endsWith("M") || k.endsWith("m"))) {
 		return true;
 	}
-	
+
 	return false;
 }

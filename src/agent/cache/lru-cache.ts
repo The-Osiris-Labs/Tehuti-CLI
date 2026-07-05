@@ -33,10 +33,19 @@ export function stableStringify(val: unknown): string {
 		return JSON.stringify(val);
 	}
 	if (Array.isArray(val)) {
-		return "[" + val.map(stableStringify).join(",") + "]";
+		return `[${val.map(stableStringify).join(",")}]`;
 	}
 	const keys = Object.keys(val).sort();
-	return "{" + keys.map(k => `${JSON.stringify(k)}:${stableStringify((val as Record<string, unknown>)[k])}`).join(",") + "}";
+	return (
+		"{" +
+		keys
+			.map(
+				(k) =>
+					`${JSON.stringify(k)}:${stableStringify((val as Record<string, unknown>)[k])}`,
+			)
+			.join(",") +
+		"}"
+	);
 }
 
 export class LRUCache<T = unknown> {

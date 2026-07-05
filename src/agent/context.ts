@@ -7,11 +7,10 @@ import type {
 import type { TehutiConfig } from "../config/schema.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
-
+import { estimateTokens as tiktokenEstimateTokens } from "./context-compressor.js";
+import { getSystemPromptMemory } from "./memory/graph.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
-import { getSystemPromptMemory } from "./memory/graph.js";
-import { estimateTokens as tiktokenEstimateTokens } from "./context-compressor.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -20,7 +19,7 @@ const PROJECT_INSTRUCTION_FILES = [
 	".tehuti.md",
 	"AGENTS.md",
 ];
-const MAX_CONTEXT_TOKENS = 100000;
+const _MAX_CONTEXT_TOKENS = 100000;
 const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
@@ -32,9 +31,9 @@ export function compactContext(
 	ctx: AgentContext,
 	targetTokens?: number,
 ): boolean {
-	const maxContext = ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
-	const target =
-		targetTokens ?? Math.floor(maxContext * COMPACT_THRESHOLD);
+	const maxContext =
+		ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
+	const target = targetTokens ?? Math.floor(maxContext * COMPACT_THRESHOLD);
 	const currentTokens = estimateTokens(ctx.messages);
 
 	if (currentTokens <= target) {
@@ -45,7 +44,10 @@ export function compactContext(
 		"context",
 		`Compacting context: ${currentTokens} tokens -> ${target}`,
 	);
-	debug.log("context", `Context compaction triggered (${currentTokens} tokens)`);
+	debug.log(
+		"context",
+		`Context compaction triggered (${currentTokens} tokens)`,
+	);
 
 	const systemMessage = ctx.messages[0];
 	const recentMessages = ctx.messages.slice(-MIN_MESSAGES_TO_KEEP);
@@ -73,7 +75,8 @@ export function compactContext(
 }
 
 export function warnOnContextLimit(ctx: AgentContext): boolean {
-	const maxContext = ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
+	const maxContext =
+		ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
 	const tokens = estimateTokens(ctx.messages);
 	const ratio = tokens / maxContext;
 
@@ -245,9 +248,7 @@ export function buildSystemPrompt(
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
 		: "";
 
-	const systemMemorySection = ctx.systemMemory
-		? `${ctx.systemMemory}\n`
-		: "";
+	const systemMemorySection = ctx.systemMemory ? `${ctx.systemMemory}\n` : "";
 
 	let skillsSection = "";
 	if (userQuery) {
@@ -299,7 +300,9 @@ export function buildSystemPrompt(
 	);
 	const _tzMM = String(Math.abs(_tzOffsetMin) % 60).padStart(2, "0");
 	const _tzLabel = `UTC${_tzSign}${_tzHH}:${_tzMM}`;
-	const _isoTimestamp = _now.toISOString().replace("Z", `${_tzSign}${_tzHH}:${_tzMM}`);
+	const _isoTimestamp = _now
+		.toISOString()
+		.replace("Z", `${_tzSign}${_tzHH}:${_tzMM}`);
 
 	return `You are Tehuti, the Scribe of Code Transformations - an AI coding assistant.
 
@@ -328,13 +331,14 @@ ${projectInstructionsSection}${systemMemorySection}${skillsSection}
 		try {
 			const c = getCapabilities();
 			const g = c.graphics;
-			const graphicsList = [
-				g.sixel ? "Sixel" : null,
-				g.kitty ? "Kitty" : null,
-				g.iterm ? "iTerm2" : null,
-			]
-				.filter(Boolean)
-				.join("/") || "none";
+			const graphicsList =
+				[
+					g.sixel ? "Sixel" : null,
+					g.kitty ? "Kitty" : null,
+					g.iterm ? "iTerm2" : null,
+				]
+					.filter(Boolean)
+					.join("/") || "none";
 			const colorLabel = c.colors.has16m
 				? "TrueColor"
 				: c.colors.has256

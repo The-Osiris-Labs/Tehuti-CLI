@@ -2,7 +2,7 @@ import { Mutex } from "async-mutex";
 import chalk from "chalk";
 import type { PermissionsConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
-import { permissionManager, matchesPattern } from "./rules.js";
+import { matchesPattern, permissionManager } from "./rules.js";
 
 export interface PermissionRequest {
 	toolName: string;
@@ -23,7 +23,10 @@ let permissionResolver:
 const promptMutex = new Mutex();
 
 export function setPermissionResolver(
-	resolver: (request: PermissionRequest, isDangerous: boolean) => Promise<boolean>,
+	resolver: (
+		request: PermissionRequest,
+		isDangerous: boolean,
+	) => Promise<boolean>,
 ): void {
 	permissionResolver = resolver;
 }
@@ -139,17 +142,13 @@ export async function checkPermission(
 	}
 
 	// 2. Check alwaysDeny with wildcard pattern support
-	if (
-		config.alwaysDeny &&
-		config.alwaysDeny.some((pattern) => matchesPattern(toolName, pattern))
-	) {
+	if (config.alwaysDeny?.some((pattern) => matchesPattern(toolName, pattern))) {
 		return { allowed: false, reason: "Tool in always-deny list" };
 	}
 
 	// 3. Check alwaysAllow with wildcard pattern support
 	if (
-		config.alwaysAllow &&
-		config.alwaysAllow.some((pattern) => matchesPattern(toolName, pattern))
+		config.alwaysAllow?.some((pattern) => matchesPattern(toolName, pattern))
 	) {
 		return { allowed: true, reason: "Tool in always-allow list" };
 	}
@@ -162,8 +161,7 @@ export async function checkPermission(
 
 		// Check deniedCommands first
 		if (
-			config.deniedCommands &&
-			config.deniedCommands.some((pattern) =>
+			config.deniedCommands?.some((pattern) =>
 				matchesPattern(trimmedCmd, pattern),
 			)
 		) {
@@ -172,8 +170,7 @@ export async function checkPermission(
 
 		// Check allowedCommands
 		if (
-			config.allowedCommands &&
-			config.allowedCommands.some((pattern) =>
+			config.allowedCommands?.some((pattern) =>
 				matchesPattern(trimmedCmd, pattern),
 			)
 		) {
@@ -247,7 +244,9 @@ export function buildPromptMessage(
 	// Arguments header
 	const argsHeader = "Arguments:";
 	const argsHeaderPadding = " ".repeat(width - 4 - argsHeader.length);
-	lines.push(`${borderChar.v} ${sand(argsHeader)}${argsHeaderPadding} ${borderChar.v}`);
+	lines.push(
+		`${borderChar.v} ${sand(argsHeader)}${argsHeaderPadding} ${borderChar.v}`,
+	);
 
 	// Format arguments
 	if (args && typeof args === "object") {
@@ -277,11 +276,13 @@ export function buildPromptMessage(
 		lines.push(`${borderChar.v}${" ".repeat(width - 2)}${borderChar.v}`);
 		const styledWarning = `${coral.bold("𓂀")}  ${coral.bold("WARNING: Potentially destructive operation!")}`;
 		const warningPadding = " ".repeat(Math.max(0, width - 4 - 44));
-		lines.push(`${borderChar.v} ${styledWarning}${warningPadding} ${borderChar.v}`);
+		lines.push(
+			`${borderChar.v} ${styledWarning}${warningPadding} ${borderChar.v}`,
+		);
 	}
 
 	lines.push(gold(`${borderChar.bl}${hr}${borderChar.br}`));
-	return lines.join("\n") + "\n\nAllow execution?";
+	return `${lines.join("\n")}\n\nAllow execution?`;
 }
 
 async function interactivePrompt(
@@ -294,7 +295,9 @@ async function interactivePrompt(
 		// Fallback if no UI resolver is mounted: deny dangerous, allow safe
 		return {
 			allowed: !isDangerous,
-			reason: !isDangerous ? "Auto-allowed safe tool (no UI)" : "Auto-denied dangerous tool (no UI)",
+			reason: !isDangerous
+				? "Auto-allowed safe tool (no UI)"
+				: "Auto-denied dangerous tool (no UI)",
 		};
 	}
 

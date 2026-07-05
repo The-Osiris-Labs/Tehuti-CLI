@@ -1,14 +1,14 @@
-import React from "react";
 import { Box, Text } from "ink";
 import type { Token } from "marked";
 import { marked } from "marked";
+import React from "react";
 import stringWidth from "string-width";
 import { BRANDING } from "../../branding/index.js";
-import { MediaViewer } from "./components/MediaViewer.js";
 import {
 	highlightToAnsi,
 	isHighlighterReady,
 } from "../../terminal/highlighter.js";
+import { MediaViewer } from "./components/MediaViewer.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
@@ -23,7 +23,11 @@ function highlightSyntax(code: string, language?: string): string {
 	return code;
 }
 
-export function renderMarkdown(text: string, maxWidth?: number, keyPrefix: string = "md"): React.ReactNode[] {
+export function renderMarkdown(
+	text: string,
+	maxWidth?: number,
+	keyPrefix: string = "md",
+): React.ReactNode[] {
 	const elements: React.ReactNode[] = [];
 	const tokens = marked.lexer(text);
 	let keyCounter = 0;
@@ -52,7 +56,9 @@ export function renderToken(
 		case "code": {
 			const lang = token.lang || "text";
 			const code = token.text.trim();
-			const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+			const isPlain = ["text", "plain", "ascii", "none"].includes(
+				lang.toLowerCase(),
+			);
 
 			if (isPlain) {
 				return React.createElement(
@@ -71,7 +77,7 @@ export function renderToken(
 
 			const highlighted = highlightSyntax(code, lang);
 			const codeWidth = maxWidth ? Math.min(maxWidth - 4, 100) : 100;
-			
+
 			// Render code with line numbers for consistency
 			const lines = highlighted.split("\n");
 			const lineNumWidth = Math.max(2, String(lines.length).length);
@@ -96,7 +102,11 @@ export function renderToken(
 					width: codeWidth,
 				},
 				React.createElement(Text, { dimColor: true }, lang),
-				React.createElement(Text, { wrap: "wrap", dimColor: true }, formattedCode),
+				React.createElement(
+					Text,
+					{ wrap: "wrap", dimColor: true },
+					formattedCode,
+				),
 			);
 		}
 
@@ -105,13 +115,13 @@ export function renderToken(
 			const color = level === 1 ? GOLD : level === 2 ? CORAL : GREEN;
 			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
 			const prefix = "=".repeat(Math.max(1, 7 - level));
-			
+
 			const heading = React.createElement(
 				Text,
 				{ key: getKey(), bold: true, color, wrap: "wrap" },
 				...inlineElements,
 			);
-			
+
 			if (level <= 2) {
 				const underlineLength = maxWidth ? Math.min(maxWidth - 4, 80) : 80;
 				const underline = React.createElement(
@@ -119,9 +129,13 @@ export function renderToken(
 					{ key: getKey(), dimColor: true },
 					prefix.repeat(Math.floor(underlineLength / prefix.length)),
 				);
-				return [heading, React.createElement(Text, { key: getKey() }, "\n"), underline];
+				return [
+					heading,
+					React.createElement(Text, { key: getKey() }, "\n"),
+					underline,
+				];
 			}
-			
+
 			return heading;
 		}
 
@@ -211,7 +225,7 @@ export function renderToken(
 				const width = widths[i];
 				return `│ ${padEndWidth(text, width)} `;
 			});
-			result += headerCells.join("") + "│\n";
+			result += `${headerCells.join("")}│\n`;
 
 			result += `├${border.join("┼")}┤\n`;
 
@@ -224,7 +238,7 @@ export function renderToken(
 					const width = widths[i];
 					return `│ ${padEndWidth(text, width)} `;
 				});
-				result += cells.join("") + "│\n";
+				result += `${cells.join("")}│\n`;
 			}
 
 			result += `└${border.join("┴")}┘\n`;

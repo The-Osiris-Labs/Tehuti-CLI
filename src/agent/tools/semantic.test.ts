@@ -1,14 +1,7 @@
 import { spawn } from "node:child_process";
-import path from "node:path";
 import fs from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	clearSemanticCache,
-	semanticInitTool,
-	semanticSearchTool,
-	semanticStatusTool,
-	semanticTraceTool,
-} from "./semantic.js";
+import { clearSemanticCache, semanticSearchTool } from "./semantic.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
 	const actual: any = await importOriginal();

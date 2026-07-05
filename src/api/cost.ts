@@ -33,10 +33,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 const DEFAULT_PRICING: ModelPricing = { input: 0, output: 0 };
 
 let liveModelPricing: Partial<ModelPricing> | null = null;
-export function setLiveModelPricing(p: Partial<ModelPricing> | null) { liveModelPricing = p; }
-export function getLiveModelPricing() { return liveModelPricing; }
+export function setLiveModelPricing(p: Partial<ModelPricing> | null) {
+	liveModelPricing = p;
+}
+export function getLiveModelPricing() {
+	return liveModelPricing;
+}
 
-export function getModelPricing(modelId: string, livePricing?: Partial<ModelPricing>): ModelPricing {
+export function getModelPricing(
+	modelId: string,
+	livePricing?: Partial<ModelPricing>,
+): ModelPricing {
 	const lp = livePricing || liveModelPricing;
 	if (lp && (lp.input != null || lp.output != null)) {
 		return {
@@ -92,11 +99,16 @@ class CostTracker {
 		requestCount: 0,
 	};
 
-	calculateCost(modelId: string, usage: UsageMetrics, livePricing?: Partial<ModelPricing>): CostBreakdown {
+	calculateCost(
+		modelId: string,
+		usage: UsageMetrics,
+		livePricing?: Partial<ModelPricing>,
+	): CostBreakdown {
 		const pricing = getModelPricing(modelId, livePricing);
 
 		const inputCost = (usage.promptTokens / 1_000_000) * (pricing.input || 0);
-		const outputCost = (usage.completionTokens / 1_000_000) * (pricing.output || 0);
+		const outputCost =
+			(usage.completionTokens / 1_000_000) * (pricing.output || 0);
 		const cacheReadCost =
 			((usage.cacheReadTokens ?? 0) / 1_000_000) *
 			(pricing.cacheRead ?? (pricing.input || 0) * 0.1);
@@ -115,7 +127,11 @@ class CostTracker {
 		};
 	}
 
-	trackRequest(modelId: string, usage: UsageMetrics, livePricing?: Partial<ModelPricing>): CostBreakdown {
+	trackRequest(
+		modelId: string,
+		usage: UsageMetrics,
+		livePricing?: Partial<ModelPricing>,
+	): CostBreakdown {
 		const cost = this.calculateCost(modelId, usage, livePricing);
 
 		this.session.totalPromptTokens += usage.promptTokens;

@@ -312,21 +312,23 @@ describe("OpenRouterClient", () => {
 				maxRetries: 2,
 			});
 			let attempt = 0;
-			const mockFetch = vi.spyOn(global, "fetch").mockImplementation(async () => {
-				attempt++;
-				if (attempt < 3) {
+			const mockFetch = vi
+				.spyOn(global, "fetch")
+				.mockImplementation(async () => {
+					attempt++;
+					if (attempt < 3) {
+						return {
+							ok: false,
+							status: 500,
+							text: async () => "Server Error",
+							headers: new Headers(),
+						} as Response;
+					}
 					return {
-						ok: false,
-						status: 500,
-						text: async () => "Server Error",
-						headers: new Headers(),
+						ok: true,
+						json: async () => ({ choices: [] }),
 					} as Response;
-				}
-				return {
-					ok: true,
-					json: async () => ({ choices: [] }),
-				} as Response;
-			});
+				});
 
 			const promise = client.completeChat([{ role: "user", content: "hello" }]);
 			await expect(promise).resolves.toBeDefined();
@@ -339,16 +341,20 @@ describe("OpenRouterClient", () => {
 				...validConfig,
 				maxRetries: 1,
 			});
-			const mockFetch = vi.spyOn(global, "fetch").mockImplementation(async () => {
-				return {
-					ok: false,
-					status: 429,
-					text: async () => "Rate Limited",
-					headers: new Headers({ "Retry-After": "2" }),
-				} as Response;
-			});
+			const mockFetch = vi
+				.spyOn(global, "fetch")
+				.mockImplementation(async () => {
+					return {
+						ok: false,
+						status: 429,
+						text: async () => "Rate Limited",
+						headers: new Headers({ "Retry-After": "2" }),
+					} as Response;
+				});
 
-			const spySleep = vi.spyOn(client as any, "sleep").mockImplementation(() => Promise.resolve());
+			const spySleep = vi
+				.spyOn(client as any, "sleep")
+				.mockImplementation(() => Promise.resolve());
 
 			const promise = client.completeChat([{ role: "user", content: "hello" }]);
 			await expect(promise).rejects.toThrow("Rate limit exceeded");

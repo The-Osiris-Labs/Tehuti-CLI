@@ -395,7 +395,7 @@ describe("Parallel Executor", () => {
 					toolContext: mockToolContext,
 					addToolResult: vi.fn(),
 				},
-				controller.signal
+				controller.signal,
 			);
 
 			expect(results[0]?.success).toBe(false);
@@ -427,7 +427,9 @@ describe("Parallel Executor", () => {
 			expect(results).toHaveLength(2);
 			expect(results[0]?.success).toBe(true);
 			expect(results[1]?.success).toBe(false);
-			expect(results[1]?.error).toContain("Parallel execution failed: Grep failed unexpectedly");
+			expect(results[1]?.error).toContain(
+				"Parallel execution failed: Grep failed unexpectedly",
+			);
 		});
 	});
 });

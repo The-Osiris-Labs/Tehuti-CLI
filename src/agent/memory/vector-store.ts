@@ -1,7 +1,16 @@
 export interface VectorStore {
 	init(): Promise<void>;
-	addEmbedding(id: string, text: string, metadata: Record<string, any>): Promise<void>;
-	search(query: string, limit?: number): Promise<Array<{ id: string, score: number, metadata: Record<string, any> }>>;
+	addEmbedding(
+		id: string,
+		text: string,
+		metadata: Record<string, any>,
+	): Promise<void>;
+	search(
+		query: string,
+		limit?: number,
+	): Promise<
+		Array<{ id: string; score: number; metadata: Record<string, any> }>
+	>;
 }
 
 /**
@@ -11,7 +20,10 @@ export interface VectorStore {
  * Requires zero native bindings, no API keys, and no network dependencies.
  */
 export class BM25VectorStore implements VectorStore {
-	private documents: Map<string, { tokens: string[], metadata: Record<string, any> }> = new Map();
+	private documents: Map<
+		string,
+		{ tokens: string[]; metadata: Record<string, any> }
+	> = new Map();
 	private documentCount = 0;
 	// document frequency per term
 	private df: Map<string, number> = new Map();
@@ -29,13 +41,18 @@ export class BM25VectorStore implements VectorStore {
 
 	private tokenize(text: string): string[] {
 		// Simple word tokenizer
-		return text.toLowerCase()
-			.replace(/[^a-z0-9]/g, ' ')
+		return text
+			.toLowerCase()
+			.replace(/[^a-z0-9]/g, " ")
 			.split(/\s+/)
-			.filter(t => t.length >= 2);
+			.filter((t) => t.length >= 2);
 	}
 
-	async addEmbedding(id: string, text: string, metadata: Record<string, any>): Promise<void> {
+	async addEmbedding(
+		id: string,
+		text: string,
+		metadata: Record<string, any>,
+	): Promise<void> {
 		const tokens = this.tokenize(text);
 		if (tokens.length === 0) return;
 
@@ -51,11 +68,20 @@ export class BM25VectorStore implements VectorStore {
 		}
 	}
 
-	async search(query: string, limit = 5): Promise<Array<{ id: string, score: number, metadata: Record<string, any> }>> {
+	async search(
+		query: string,
+		limit = 5,
+	): Promise<
+		Array<{ id: string; score: number; metadata: Record<string, any> }>
+	> {
 		const queryTokens = this.tokenize(query);
 		if (queryTokens.length === 0 || this.documentCount === 0) return [];
 
-		const results: Array<{ id: string, score: number, metadata: Record<string, any> }> = [];
+		const results: Array<{
+			id: string;
+			score: number;
+			metadata: Record<string, any>;
+		}> = [];
 
 		for (const [id, doc] of this.documents.entries()) {
 			let score = 0;
@@ -73,14 +99,18 @@ export class BM25VectorStore implements VectorStore {
 				if (termFreq === 0) continue;
 
 				const docFreq = this.df.get(token) || 0;
-				
+
 				// IDF calculation with floor to prevent negative IDFs
-				const idf = Math.max(0, Math.log((this.documentCount - docFreq + 0.5) / (docFreq + 0.5) + 1));
-				
+				const idf = Math.max(
+					0,
+					Math.log((this.documentCount - docFreq + 0.5) / (docFreq + 0.5) + 1),
+				);
+
 				// Term frequency saturation & length normalization
 				const numerator = termFreq * (this.k1 + 1);
-				const denominator = termFreq + this.k1 * (1 - this.b + this.b * (docLength / this.avgdl));
-				
+				const denominator =
+					termFreq + this.k1 * (1 - this.b + this.b * (docLength / this.avgdl));
+
 				score += idf * (numerator / denominator);
 			}
 

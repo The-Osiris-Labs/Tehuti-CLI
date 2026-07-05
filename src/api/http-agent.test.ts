@@ -1,10 +1,10 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-	initializeHttpAgent,
 	getAgent,
-	getPool,
-	resetAgent,
 	getAgentStats,
+	getPool,
+	initializeHttpAgent,
+	resetAgent,
 } from "./http-agent.js";
 
 describe("http-agent", () => {
@@ -23,7 +23,7 @@ describe("http-agent", () => {
 			pipelining: 2,
 		});
 		expect(getAgent()).not.toBeNull();
-		
+
 		const stats = getAgentStats();
 		expect(stats.initialized).toBe(true);
 		expect(stats.pools).toBe(0);

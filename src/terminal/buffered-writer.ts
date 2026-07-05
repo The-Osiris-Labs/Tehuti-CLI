@@ -294,7 +294,6 @@ export class BufferedStreamWriter {
 export class StreamingOutputManager {
 	private writer: BufferedStreamWriter;
 	private currentContent: string = "";
-	private linesWritten: number = 0;
 	private batchedTokens: string = "";
 	private batchTimer: NodeJS.Timeout | null = null;
 	private readonly BATCH_INTERVAL = 50;
@@ -382,8 +381,7 @@ export class StreamingOutputManager {
 	writeLine(text: string): void {
 		if (this.destroyed) return;
 		this.flushBatch();
-		this.writer.write(text + "\n");
-		this.linesWritten++;
+		this.writer.write(`${text}\n`);
 	}
 
 	writeToolCall(toolName: string, args?: unknown): void {
@@ -414,7 +412,7 @@ export class StreamingOutputManager {
 		this.flushBatch();
 
 		if (this.currentContent.length > 0) {
-			const rendered = renderMarkdownToAnsi(this.currentContent);
+			const _rendered = renderMarkdownToAnsi(this.currentContent);
 			this.writer.write("\n");
 		}
 

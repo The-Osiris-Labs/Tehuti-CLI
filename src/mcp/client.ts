@@ -3,17 +3,21 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
+	type CreateMessageRequestParams,
+	CreateMessageRequestSchema,
+	type CreateMessageResult,
 	PromptListChangedNotificationSchema,
 	ResourceListChangedNotificationSchema,
 	ResourceUpdatedNotificationSchema,
 	ToolListChangedNotificationSchema,
-	CreateMessageRequestSchema,
-	type CreateMessageRequestParams,
-	type CreateMessageResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MCPServerConfig, TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
-import { createMCPError, MCPErrorCode, registerCleanupHandler } from "../utils/errors.js";
+import {
+	createMCPError,
+	MCPErrorCode,
+	registerCleanupHandler,
+} from "../utils/errors.js";
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -230,14 +234,21 @@ export class MCPClientManager {
 				);
 				const reconnectOpts = config.reconnect ?? { enabled: true };
 				const initialDelay = reconnectOpts.delayMs ?? 1000;
-				const maxRetries = reconnectOpts.enabled ? (reconnectOpts.maxAttempts ?? 3) : 0;
+				const maxRetries = reconnectOpts.enabled
+					? (reconnectOpts.maxAttempts ?? 3)
+					: 0;
 
 				return new StreamableHTTPClientTransport(new URL(config.url), {
 					requestInit: { headers: config.headers },
 					reconnectionOptions: {
 						initialReconnectionDelay: initialDelay,
-						maxReconnectionDelay: initialDelay * (reconnectOpts.backoff === "exponential" ? Math.pow(1.5, maxRetries) : maxRetries),
-						reconnectionDelayGrowFactor: reconnectOpts.backoff === "exponential" ? 1.5 : 1.0,
+						maxReconnectionDelay:
+							initialDelay *
+							(reconnectOpts.backoff === "exponential"
+								? 1.5 ** maxRetries
+								: maxRetries),
+						reconnectionDelayGrowFactor:
+							reconnectOpts.backoff === "exponential" ? 1.5 : 1.0,
 						maxRetries: maxRetries,
 					},
 				});
@@ -300,7 +311,10 @@ export class MCPClientManager {
 
 			if ((info as any)._stderrStream && (info as any)._stderrListener) {
 				try {
-					(info as any)._stderrStream.off("data", (info as any)._stderrListener);
+					(info as any)._stderrStream.off(
+						"data",
+						(info as any)._stderrListener,
+					);
 				} catch {}
 				(info as any)._stderrListener = undefined;
 				(info as any)._stderrStream = undefined;
@@ -510,7 +524,6 @@ export class MCPClientManager {
 				}
 			}
 		}
-
 	}
 
 	async connectServer(
@@ -848,11 +861,18 @@ export class MCPClientManager {
 			(info as any)._stderrStream = undefined;
 		}
 
-		if (info.transport && "terminateSession" in info.transport && typeof (info.transport as any).terminateSession === "function") {
+		if (
+			info.transport &&
+			"terminateSession" in info.transport &&
+			typeof (info.transport as any).terminateSession === "function"
+		) {
 			try {
 				await (info.transport as any).terminateSession();
 			} catch (error) {
-				debug.log("mcp", `Error terminating HTTP session for ${name}: ${error}`);
+				debug.log(
+					"mcp",
+					`Error terminating HTTP session for ${name}: ${error}`,
+				);
 			}
 		}
 

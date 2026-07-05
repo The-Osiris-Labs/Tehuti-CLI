@@ -1,9 +1,10 @@
+import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-import React, { useEffect, useMemo, useState, useRef } from "react";
 import TextInput from "ink-text-input";
-import { isMouseSequence } from "../../../utils/mouse.js";
-import { useOnMouseEnter, useOnClick } from "@ink-tools/ink-mouse";
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
+import { isMouseSequence } from "../../../utils/mouse.js";
 
 const GOLD = BRANDING.colors.gold;
 const GRAY = "#6B7280";
@@ -33,7 +34,13 @@ interface ConfigEditorProps {
 	width?: number;
 }
 
-type ConfigField = "apiKey" | "model" | "provider" | "baseUrl" | "temperature" | "maxTokens";
+type ConfigField =
+	| "apiKey"
+	| "model"
+	| "provider"
+	| "baseUrl"
+	| "temperature"
+	| "maxTokens";
 type EditorConfig = ConfigEditorProps["config"];
 
 function ConfigTab({
@@ -49,7 +56,13 @@ function ConfigTab({
 	useOnClick(ref, onClick);
 
 	return (
-		<Box ref={ref} paddingX={1} borderStyle="round" borderColor={isActive ? GOLD : GRAY} marginX={1}>
+		<Box
+			ref={ref}
+			paddingX={1}
+			borderStyle="round"
+			borderColor={isActive ? GOLD : GRAY}
+			marginX={1}
+		>
 			<Text color={isActive ? GOLD : GRAY} bold={isActive}>
 				{label}
 			</Text>
@@ -93,7 +106,9 @@ function ConfigFieldRow({
 			backgroundColor={isSelected && !isEditing ? "#1A1A2E" : undefined}
 		>
 			<Box justifyContent="space-between" marginBottom={0.5}>
-				<Text bold color={isSelected ? GOLD : GRAY}>{field.label}</Text>
+				<Text bold color={isSelected ? GOLD : GRAY}>
+					{field.label}
+				</Text>
 				{isEditing ? (
 					<Box borderStyle="single" borderColor={CORAL} paddingX={1}>
 						<TextInput
@@ -107,9 +122,13 @@ function ConfigFieldRow({
 					<Text color={isSelected ? CORAL : SAND}>{fieldValue}</Text>
 				)}
 			</Box>
-			<Text dimColor color={SAND}>{field.description}</Text>
+			<Text dimColor color={SAND}>
+				{field.description}
+			</Text>
 			{field.type === "number" && (
-				<Text dimColor color={GRAY}>Range: {field.min} - {field.max}</Text>
+				<Text dimColor color={GRAY}>
+					Range: {field.min} - {field.max}
+				</Text>
 			)}
 		</Box>
 	);
@@ -125,7 +144,9 @@ export function ConfigEditor({
 	const [selectedField, setSelectedField] = useState<ConfigField>("provider");
 	const [editingField, setEditingField] = useState<ConfigField | null>(null);
 	const [editValue, setEditValue] = useState("");
-	const [activeTab, setActiveTab] = useState<"API & Provider" | "Model Options">("API & Provider");
+	const [activeTab, setActiveTab] = useState<
+		"API & Provider" | "Model Options"
+	>("API & Provider");
 	const { stdout } = useStdout();
 	const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -133,64 +154,71 @@ export function ConfigEditor({
 		setDraftConfig(config);
 	}, [config]);
 
-	const allFields = useMemo<Array<{
-		key: ConfigField;
-		label: string;
-		type: "string" | "number";
-		min?: number;
-		max?: number;
-		description: string;
-		category: "API & Provider" | "Model Options";
-	}>>(() => [
-		{
-			key: "provider",
-			label: "Provider",
-			type: "string",
-			description: "AI provider e.g. openrouter, opencode, ollama, xai, anthropic, custom",
-			category: "API & Provider",
-		},
-		{
-			key: "apiKey",
-			label: "API Key",
-			type: "string",
-			description: "API key for the selected provider (or use env vars)",
-			category: "API & Provider",
-		},
-		{
-			key: "baseUrl",
-			label: "Base URL (optional)",
-			type: "string",
-			description: "Override base URL for the provider's API endpoint (required for opencode etc)",
-			category: "API & Provider",
-		},
-		{
-			key: "model",
-			label: "Default Model",
-			type: "string",
-			description: "Default AI model (e.g. minimax-m3 for opencode go)",
-			category: "Model Options",
-		},
-		{
-			key: "temperature",
-			label: "Temperature",
-			type: "number",
-			min: 0,
-			max: 2,
-			description: "Creativity level (0.0 = deterministic, 2.0 = creative)",
-			category: "Model Options",
-		},
-		{
-			key: "maxTokens",
-			label: "Max Tokens",
-			type: "number",
-			min: 1000,
-			max: 128000,
-			description: "Maximum tokens per response",
-			category: "Model Options",
-		},
-	], []);
+	const allFields = useMemo<
+		Array<{
+			key: ConfigField;
+			label: string;
+			type: "string" | "number";
+			min?: number;
+			max?: number;
+			description: string;
+			category: "API & Provider" | "Model Options";
+		}>
+	>(
+		() => [
+			{
+				key: "provider",
+				label: "Provider",
+				type: "string",
+				description:
+					"AI provider e.g. openrouter, opencode, ollama, xai, anthropic, custom",
+				category: "API & Provider",
+			},
+			{
+				key: "apiKey",
+				label: "API Key",
+				type: "string",
+				description: "API key for the selected provider (or use env vars)",
+				category: "API & Provider",
+			},
+			{
+				key: "baseUrl",
+				label: "Base URL (optional)",
+				type: "string",
+				description:
+					"Override base URL for the provider's API endpoint (required for opencode etc)",
+				category: "API & Provider",
+			},
+			{
+				key: "model",
+				label: "Default Model",
+				type: "string",
+				description: "Default AI model (e.g. minimax-m3 for opencode go)",
+				category: "Model Options",
+			},
+			{
+				key: "temperature",
+				label: "Temperature",
+				type: "number",
+				min: 0,
+				max: 2,
+				description: "Creativity level (0.0 = deterministic, 2.0 = creative)",
+				category: "Model Options",
+			},
+			{
+				key: "maxTokens",
+				label: "Max Tokens",
+				type: "number",
+				min: 1000,
+				max: 128000,
+				description: "Maximum tokens per response",
+				category: "Model Options",
+			},
+		],
+		[],
+	);
 
-	const fields = allFields.filter(f => f.category === activeTab);
+	const fields = allFields.filter((f) => f.category === activeTab);
 
 	const commitFieldEdit = (): void => {
 		if (!editingField) return;
@@ -201,7 +229,7 @@ export function ConfigEditor({
 
 		if (field?.type === "number") {
 			const num = parseFloat(editValue);
-			if (isNaN(num)) {
+			if (Number.isNaN(num)) {
 				isValid = false;
 				setValidationError("Must be a valid number");
 			} else if (field.min !== undefined && num < field.min) {
@@ -254,7 +282,9 @@ export function ConfigEditor({
 				const newIndex = (currentIndex + 1) % fields.length;
 				setSelectedField(fields[newIndex].key);
 			} else if (key.leftArrow || key.rightArrow || char === "\t") {
-				setActiveTab(prev => prev === "API & Provider" ? "Model Options" : "API & Provider");
+				setActiveTab((prev) =>
+					prev === "API & Provider" ? "Model Options" : "API & Provider",
+				);
 				setSelectedField(activeTab === "API & Provider" ? "model" : "provider");
 			} else if (key.home) {
 				setSelectedField(fields[0].key);
@@ -272,7 +302,7 @@ export function ConfigEditor({
 		const value = draftConfig[field];
 		if (field === "apiKey" && value) {
 			const strValue = String(value);
-			return "••••••••" + strValue.slice(-4);
+			return `••••••••${strValue.slice(-4)}`;
 		}
 		return value !== undefined && value !== null ? String(value) : "";
 	};
@@ -289,7 +319,9 @@ export function ConfigEditor({
 			paddingX={1}
 		>
 			<Box marginBottom={1} justifyContent="space-between">
-				<Text bold color={GOLD}>𓆣 Configuration Editor</Text>
+				<Text bold color={GOLD}>
+					𓆣 Configuration Editor
+				</Text>
 				<Box>
 					<ConfigTab
 						label="API & Provider"
@@ -316,7 +348,9 @@ export function ConfigEditor({
 					borderStyle="single"
 					borderColor={RED}
 				>
-					<Text color={RED}>{ERROR_SYMBOL} {validationError}</Text>
+					<Text color={RED}>
+						{ERROR_SYMBOL} {validationError}
+					</Text>
 				</Box>
 			)}
 			<Box marginBottom={1} flexDirection="column">

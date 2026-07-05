@@ -3,11 +3,10 @@ import stringWidth from "string-width";
 import {
 	getTerminalWidth,
 	shouldUseColors,
-	shouldUseUnicode,
 	shouldUseHighContrast,
+	shouldUseUnicode,
 } from "./capabilities.js";
 import { renderMarkdownToAnsi } from "./markdown.js";
-
 
 // High contrast colors (WCAG AA/AAA compliant)
 const HIGH_CONTRAST_GOLD = "\x1b[38;5;220m"; // Bright yellow/gold (WCAG AAA)
@@ -25,28 +24,55 @@ const NILE = "\x1b[38;5;33m"; // Bright blue (high contrast)
 
 const colors = {
 	orange: (text: string) =>
-		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text,
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m`
+			: text,
 	coral: (text: string) =>
-		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m` : text,
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m`
+			: text,
 	primary: (text: string) =>
-		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text,
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m`
+			: text,
 	secondary: (text: string) => pc.dim(text),
 	accent: (text: string) =>
-		shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m` : text,
-	gold: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m` : text),
-	sand: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_SAND : SAND}${text}\x1b[0m` : text),
-	nile: (text: string) => (shouldUseColors() ? `${shouldUseHighContrast() ? HIGH_CONTRAST_BLUE : NILE}${text}\x1b[0m` : text),
-	green: (text: string) => (shouldUseColors() ? (shouldUseHighContrast() ? `${HIGH_CONTRAST_GREEN}${text}\x1b[0m` : pc.green(text)) : text),
-	red: (text: string) => (shouldUseColors() ? (shouldUseHighContrast() ? `${HIGH_CONTRAST_RED}${text}\x1b[0m` : pc.red(text)) : text),
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_CORAL : CORAL}${text}\x1b[0m`
+			: text,
+	gold: (text: string) =>
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_GOLD : GOLD}${text}\x1b[0m`
+			: text,
+	sand: (text: string) =>
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_SAND : SAND}${text}\x1b[0m`
+			: text,
+	nile: (text: string) =>
+		shouldUseColors()
+			? `${shouldUseHighContrast() ? HIGH_CONTRAST_BLUE : NILE}${text}\x1b[0m`
+			: text,
+	green: (text: string) =>
+		shouldUseColors()
+			? shouldUseHighContrast()
+				? `${HIGH_CONTRAST_GREEN}${text}\x1b[0m`
+				: pc.green(text)
+			: text,
+	red: (text: string) =>
+		shouldUseColors()
+			? shouldUseHighContrast()
+				? `${HIGH_CONTRAST_RED}${text}\x1b[0m`
+				: pc.red(text)
+			: text,
 };
 
 const IBIS = "\u{131A3}";
-const EYE = "\u{13075}";
+const _EYE = "\u{13075}";
 const EYE_OF_HORUS = "\u{13080}";
 const ANKH = "\u{13269}";
 const WAS = "\u{13040}";
-const SCROLL = "\u{1331B}";
-const FEATHER = "\u{13184}";
+const _SCROLL = "\u{1331B}";
+const _FEATHER = "\u{13184}";
 
 const symbols = {
 	success: shouldUseUnicode() ? ANKH : "[OK]",
@@ -72,7 +98,7 @@ export function formatOutput(
 	}
 
 	const icon = symbols[type];
-	
+
 	if (shouldUseHighContrast()) {
 		const colorFn = {
 			success: colors.green,
@@ -112,7 +138,10 @@ export function formatHeader(text: string): string {
 	const line = "─".repeat(width - 2);
 
 	if (shouldUseColors()) {
-		const centeredText = padEndWidth(padStartWidth(text, padding + textWidth), width - 4);
+		const centeredText = padEndWidth(
+			padStartWidth(text, padding + textWidth),
+			width - 4,
+		);
 		return `
 ${colors.orange(`╭${line}╮`)}
 ${colors.orange("│")} ${colors.coral(centeredText)} ${colors.orange("│")}
@@ -162,7 +191,9 @@ export function formatTable(headers: string[], rows: string[][]): string {
 
 	const border = colWidths.map((w) => "─".repeat(w + 2));
 
-	const headerRow = headers.map((h, i) => padEndWidth(h, colWidths[i])).join(" │ ");
+	const headerRow = headers
+		.map((h, i) => padEndWidth(h, colWidths[i]))
+		.join(" │ ");
 	const separator = border.join("┼");
 	const dataRows = rows.map((row) =>
 		row.map((cell, i) => padEndWidth(cell ?? "", colWidths[i])).join(" │ "),
@@ -208,9 +239,9 @@ export function truncate(text: string, maxLength?: number): string {
 	return `${text.slice(0, limit - 3)}...`;
 }
 
-
-
-function parseContentBlocks(content: string): Array<{ type: "text" | "reasoning"; content: string }> {
+function parseContentBlocks(
+	content: string,
+): Array<{ type: "text" | "reasoning"; content: string }> {
 	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
 	let remaining = content;
 
@@ -227,11 +258,17 @@ function parseContentBlocks(content: string): Array<{ type: "text" | "reasoning"
 
 		const thinkEnd = remaining.indexOf("</think>", thinkStart + 7);
 		if (thinkEnd === -1) {
-			blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7) });
+			blocks.push({
+				type: "reasoning",
+				content: remaining.slice(thinkStart + 7),
+			});
 			break;
 		}
 
-		blocks.push({ type: "reasoning", content: remaining.slice(thinkStart + 7, thinkEnd) });
+		blocks.push({
+			type: "reasoning",
+			content: remaining.slice(thinkStart + 7, thinkEnd),
+		});
 		remaining = remaining.slice(thinkEnd + 8);
 	}
 
@@ -243,7 +280,11 @@ function computeMarkdownLines(text: string, width: number): number {
 	return wrap(rendered, width).split("\n").length;
 }
 
-function computeToolHeight(result: any, contentMaxWidth: number, isExpanded = false): number {
+function computeToolHeight(
+	result: any,
+	contentMaxWidth: number,
+	isExpanded = false,
+): number {
 	let output: string;
 	if (typeof result === "string") {
 		output = result;
@@ -285,14 +326,25 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	let lines = 0;
 	lines += 1; // Role header
 
-	const blocks = msg.blocks || (Array.isArray(msg.content) ? msg.content : (typeof msg.content === 'string' ? parseContentBlocks(msg.content) : []));
+	const blocks =
+		msg.blocks ||
+		(Array.isArray(msg.content)
+			? msg.content
+			: typeof msg.content === "string"
+				? parseContentBlocks(msg.content)
+				: []);
 
 	if (blocks && blocks.length > 0) {
 		blocks.forEach((block: any) => {
-			if (block.type === 'text') {
+			if (block.type === "text") {
 				let textContent = "";
 				if (Array.isArray(block.content)) {
-					textContent = block.content.map((c: any) => c.text || (typeof c === 'string' ? c : JSON.stringify(c))).join("");
+					textContent = block.content
+						.map(
+							(c: any) =>
+								c.text || (typeof c === "string" ? c : JSON.stringify(c)),
+						)
+						.join("");
 				} else if (typeof block.content === "string") {
 					textContent = block.content;
 				} else if (typeof block.text === "string") {
@@ -301,11 +353,16 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 					textContent = String(block.content || block.text || "");
 				}
 				lines += computeMarkdownLines(textContent, contentMaxWidth - 1); // -1 for paddingLeft
-			} else if (block.type === 'reasoning') {
+			} else if (block.type === "reasoning") {
 				lines += 2; // Borders
 				let reasoningContent = "";
 				if (Array.isArray(block.content)) {
-					reasoningContent = block.content.map((c: any) => c.text || (typeof c === 'string' ? c : JSON.stringify(c))).join("");
+					reasoningContent = block.content
+						.map(
+							(c: any) =>
+								c.text || (typeof c === "string" ? c : JSON.stringify(c)),
+						)
+						.join("");
 				} else if (typeof block.content === "string") {
 					reasoningContent = block.content;
 				} else if (typeof block.text === "string") {
@@ -313,17 +370,24 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 				} else {
 					reasoningContent = String(block.content || block.text || "");
 				}
-				lines += wrap(reasoningContent, Math.max(10, contentMaxWidth - 5)).split('\n').length;
-			} else if (block.type === 'tool') {
-				lines += computeToolHeight(block.result, contentMaxWidth, block.isExpanded);
+				lines += wrap(
+					reasoningContent,
+					Math.max(10, contentMaxWidth - 5),
+				).split("\n").length;
+			} else if (block.type === "tool") {
+				lines += computeToolHeight(
+					block.result,
+					contentMaxWidth,
+					block.isExpanded,
+				);
 			}
 		});
-	} else if (typeof msg.content === 'string') {
+	} else if (typeof msg.content === "string") {
 		lines += computeMarkdownLines(msg.content, contentMaxWidth - 1);
 	}
 
 	if (msg.toolCalls && msg.toolCalls.length > 0) {
-		const hasToolBlock = blocks && blocks.some((b: any) => b.type === 'tool');
+		const hasToolBlock = blocks?.some((b: any) => b.type === "tool");
 		if (!hasToolBlock) {
 			msg.toolCalls.forEach((tc: any) => {
 				lines += computeToolHeight(tc.result, contentMaxWidth, tc.isExpanded);
@@ -334,7 +398,6 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	lines += 1; // Margin bottom between messages
 	return lines;
 }
-
 
 export function wrap(text: string, width?: number): string {
 	const w = width ?? getTerminalWidth() - 4;
@@ -351,7 +414,7 @@ export function wrap(text: string, width?: number): string {
 
 		let currentLine = "";
 		let currentStripped = "";
-		let inEscape = false;
+		const _inEscape = false;
 
 		const words = splitIntoWords(textLine);
 
@@ -431,7 +494,11 @@ function splitIntoWords(text: string): string[] {
 	return words;
 }
 
-function wrapLongWord(word: string, stripped: string, width: number): string[] {
+function wrapLongWord(
+	word: string,
+	_stripped: string,
+	width: number,
+): string[] {
 	const lines: string[] = [];
 	let current = "";
 	let currentStripped = "";

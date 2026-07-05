@@ -6,7 +6,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from "./registry.js";
 
 // Lazy-loaded debug logger to match project style
 const debug = {
-	log: (ns: string, ...args: any[]) => {
+	log: (_ns: string, ..._args: any[]) => {
 		// Console/file debug logs if enabled in the harness
 	},
 };
@@ -688,7 +688,7 @@ export async function parseAST(
 				const tree = parser.parse(content);
 				astData = walk(tree.rootNode);
 				parsedWithTreeSitter = true;
-			} catch (err) {
+			} catch (_err) {
 				// Fallback to regex silently/log
 			}
 		}

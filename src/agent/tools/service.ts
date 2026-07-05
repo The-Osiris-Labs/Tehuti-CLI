@@ -11,7 +11,11 @@ import type {
  * Known local service patterns. We probe each by attempting a TCP connection
  * to the conventional port; if that succeeds we report it as running.
  */
-const KNOWN_SERVICES: ReadonlyArray<{ name: string; host: string; port: number }> = [
+const KNOWN_SERVICES: ReadonlyArray<{
+	name: string;
+	host: string;
+	port: number;
+}> = [
 	{ name: "PostgreSQL", host: "127.0.0.1", port: 5432 },
 	{ name: "MySQL", host: "127.0.0.1", port: 3306 },
 	{ name: "MongoDB", host: "127.0.0.1", port: 27017 },
@@ -63,7 +67,13 @@ async function probeTcp(
 			finish({ name: "", host, port, reachable: false, error: "timeout" });
 		});
 		socket.once("error", (err: NodeJS.ErrnoException) => {
-			finish({ name: "", host, port, reachable: false, error: err.code ?? err.message });
+			finish({
+				name: "",
+				host,
+				port,
+				reachable: false,
+				error: err.code ?? err.message,
+			});
 		});
 		socket.connect(port, host);
 	});
@@ -124,7 +134,7 @@ async function serviceStatus(
 	_ctx: ToolContext,
 ): Promise<ToolResult> {
 	const targets = args.services
-		? KNOWN_SERVICES.filter((s) => args.services!.includes(s.name))
+		? KNOWN_SERVICES.filter((s) => args.services?.includes(s.name))
 		: KNOWN_SERVICES;
 	const timeoutMs = args.timeout_ms ?? 1000;
 	const includeDocker = args.include_docker ?? true;
@@ -141,9 +151,13 @@ async function serviceStatus(
 	);
 	for (const r of results) {
 		if (r.reachable) {
-			out.push(`  ✓ ${r.name.padEnd(18)} ${r.host}:${r.port}  (${r.latencyMs}ms)`);
+			out.push(
+				`  ✓ ${r.name.padEnd(18)} ${r.host}:${r.port}  (${r.latencyMs}ms)`,
+			);
 		} else {
-			out.push(`  ✗ ${r.name.padEnd(18)} ${r.host}:${r.port}  (${r.error ?? "down"})`);
+			out.push(
+				`  ✗ ${r.name.padEnd(18)} ${r.host}:${r.port}  (${r.error ?? "down"})`,
+			);
 		}
 	}
 

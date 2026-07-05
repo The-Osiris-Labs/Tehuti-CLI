@@ -11,6 +11,7 @@ vi.mock("./memory/graph.js", () => ({
 	addEdge: vi.fn().mockResolvedValue(undefined),
 	searchGraph: vi.fn().mockResolvedValue([]),
 }));
+
 import type { OpenRouterMessage } from "../api/openrouter.js";
 import type { TehutiConfig } from "../config/schema.js";
 import {
@@ -24,11 +25,11 @@ import {
 	estimateTokens,
 	getContextSummary,
 	getToolContext,
+	normalizeToolMessageHistory,
 	trackCommand,
 	trackFileRead,
 	trackFileWritten,
 	trackToolCall,
-	normalizeToolMessageHistory,
 } from "./context.js";
 
 describe("Agent Context", () => {

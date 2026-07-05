@@ -19,8 +19,17 @@ function extractPaths(args: unknown): string[] {
 	return paths;
 }
 
-export function invalidateOnWrite(toolDef: ToolDefinition | undefined, toolName: string, args: unknown): void {
-	if (toolDef?.isReadonly || toolName === "bash" || toolName === "start_background") return;
+export function invalidateOnWrite(
+	toolDef: ToolDefinition | undefined,
+	toolName: string,
+	args: unknown,
+): void {
+	if (
+		toolDef?.isReadonly ||
+		toolName === "bash" ||
+		toolName === "start_background"
+	)
+		return;
 
 	const cache = getToolCache();
 	const paths = extractPaths(args);
@@ -68,14 +77,17 @@ export function invalidateOnBash(
 
 	if (isWriteCommand && affectedPaths.length === 0) {
 		const pathPattern = /['"]([/.][^'"]+)['"]/g;
-		let match;
-		while ((match = pathPattern.exec(command)) !== null) {
+		for (const match of command.matchAll(pathPattern)) {
 			cache.invalidateFile(match[1]);
 		}
 	}
 }
 
-export function shouldCacheTool(toolDef: ToolDefinition | undefined, toolName: string, args: unknown): boolean {
+export function shouldCacheTool(
+	toolDef: ToolDefinition | undefined,
+	_toolName: string,
+	args: unknown,
+): boolean {
 	if (!toolDef?.isReadonly) return false;
 
 	if (args && typeof args === "object") {

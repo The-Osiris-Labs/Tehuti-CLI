@@ -1,73 +1,29 @@
 import {
 	CustomProviderClient,
-	costTracker,
-	createStreamingState,
-	getToolCallsFromState,
 	KiloCodeClient,
 	OpenRouterClient,
-	processStreamChunk,
 } from "../api/index.js";
-import { isReasoningModel } from "../api/model-capabilities.js";
-import type { OpenRouterTool } from "../api/openrouter.js";
 import { supportsOpenAICompatibleRuntime } from "../config/providers.js";
 import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
 import { mcpManager } from "../mcp/client.js";
 import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
-import { checkPermission } from "../permissions/index.js";
 import { debug } from "../utils/debug.js";
-import { AgentError, APIError, formatError } from "../utils/errors.js";
-
-import { getTelemetry } from "../utils/telemetry.js";
-import {
-	getToolCache,
-	invalidateOnWrite,
-	loadCacheFromDisk,
-	saveCacheToDisk,
-	shouldCacheTool,
-} from "./cache/index.js";
+import { APIError } from "../utils/errors.js";
+import { loadCacheFromDisk, saveCacheToDisk } from "./cache/index.js";
 import type { AgentContext } from "./context.js";
-import {
-	addAssistantMessageWithTools,
-	addToolResult,
-	addUserMessage,
-	buildSystemPrompt,
-	createAgentContext,
-	getToolContext,
-	normalizeToolMessageHistory,
-	trackToolCall,
-	warnOnContextLimit,
-} from "./context.js";
-import {
-	estimateTokens,
-} from "./context-compressor.js";
-import {
-	classifyTask,
-	MODEL_TIERS,
-	selectModelForClassification,
-} from "./model-router.js";
-import {
-	classifyToolCalls,
-	executeToolsParallel,
-	getParallelizableCount,
-	type ToolCall,
-} from "./parallel-executor.js";
-import { getPrefetcher } from "./prefetcher.js";
+import { createAgentContext } from "./context.js";
+import { shadowWorkspaceTool } from "./shadow-workspace.js";
 import { skillsTools } from "./skills/tools.js";
+import { applyDiffTool } from "./tools/apply-diff.js";
 import { astTool } from "./tools/ast.js";
 import { backgroundTools } from "./tools/background.js";
 import { bashTool } from "./tools/bash.js";
 import { collaborationTools } from "./tools/collaboration.js";
 import { customProviderTools } from "./tools/custom-provider.js";
-import { applyDiffTool } from "./tools/apply-diff.js";
 import { envTools } from "./tools/env.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
-import {
-	executeTool,
-	getToolDefinitions,
-	registerTools,
-	unregisterToolsWhere,
-} from "./tools/index.js";
+import { registerTools, unregisterToolsWhere } from "./tools/index.js";
 import { kiloCodeTools } from "./tools/kilocode.js";
 import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
@@ -84,9 +40,8 @@ import { searchTools } from "./tools/search.js";
 import { semanticTools } from "./tools/semantic.js";
 import { serviceTools } from "./tools/service.js";
 import { swarmTools } from "./tools/swarm.js";
-import { setParentContext, systemTools } from "./tools/system.js";
+import { systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
-import { shadowWorkspaceTool } from "./shadow-workspace.js";
 
 registerTools([
 	astTool,
@@ -183,7 +138,9 @@ export function initializeAgent(): void {
 	loadCacheFromDisk();
 	// Bootstrap environment memory asynchronously; failure is non-fatal.
 	import("./memory/env-bootstrap.js")
-		.then(({ bootstrapEnvironmentMemory }) => bootstrapEnvironmentMemory(process.cwd()))
+		.then(({ bootstrapEnvironmentMemory }) =>
+			bootstrapEnvironmentMemory(process.cwd()),
+		)
 		.then((r) => debug.log("memory", `Env bootstrap wrote ${r.written} facts`))
 		.catch((err) => debug.log("memory", `Env bootstrap failed: ${err}`));
 }
@@ -194,7 +151,11 @@ export function shutdownAgent(): void {
 
 export function configureHooks(hooksConfig: unknown): void {
 	let targetConfig = hooksConfig;
-	if (hooksConfig && typeof hooksConfig === "object" && "hooks" in hooksConfig) {
+	if (
+		hooksConfig &&
+		typeof hooksConfig === "object" &&
+		"hooks" in hooksConfig
+	) {
 		targetConfig = (hooksConfig as any).hooks;
 	}
 	const hooks = parseHooksConfig(targetConfig);

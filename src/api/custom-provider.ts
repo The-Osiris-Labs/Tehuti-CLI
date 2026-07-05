@@ -6,7 +6,6 @@ import type {
 	OpenRouterResponse,
 	OpenRouterStreamChunk,
 	OpenRouterTool,
-	OpenRouterToolCall,
 } from "./openrouter.js";
 import { APIResponseCache } from "./response-cache.js";
 
@@ -36,19 +35,19 @@ export class CustomProviderClient {
 		const headers = customProvider?.headers;
 		const normalizedHeaders = headers
 			? JSON.stringify(
-				Object.keys(headers)
-					.sort()
-					.reduce(
-						(acc, key) => {
-							const val = headers[key];
-							if (val !== undefined) {
-								acc[key] = val;
-							}
-							return acc;
-						},
-						{} as Record<string, string>,
-					),
-			)
+					Object.keys(headers)
+						.sort()
+						.reduce(
+							(acc, key) => {
+								const val = headers[key];
+								if (val !== undefined) {
+									acc[key] = val;
+								}
+								return acc;
+							},
+							{} as Record<string, string>,
+						),
+				)
 			: "";
 		const configKey = [
 			config.customProvider?.name ?? "",
@@ -148,13 +147,17 @@ export class CustomProviderClient {
 	private validateBaseUrl(url: string): void {
 		try {
 			const parsed = new URL(url);
-			const isLocal = 
-				parsed.hostname === "localhost" || 
-				parsed.hostname === "127.0.0.1" || 
-				parsed.hostname.match(/^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\./);
-			
+			const isLocal =
+				parsed.hostname === "localhost" ||
+				parsed.hostname === "127.0.0.1" ||
+				parsed.hostname.match(
+					/^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\./,
+				);
+
 			if (parsed.protocol !== "https:" && !isLocal) {
-				throw new APIError("baseUrl must use HTTPS protocol for remote connections");
+				throw new APIError(
+					"baseUrl must use HTTPS protocol for remote connections",
+				);
 			}
 		} catch (e) {
 			throw new APIError(`Invalid baseUrl format: ${(e as Error).message}`);
@@ -393,8 +396,8 @@ export class CustomProviderClient {
 						[
 							"Check CUSTOM_API_KEY environment variable",
 							"Check ~/.tehuti.json config file",
-							"Verify custom provider settings"
-						]
+							"Verify custom provider settings",
+						],
 					);
 				}
 				if (response.status === 429) {
@@ -408,8 +411,8 @@ export class CustomProviderClient {
 						[
 							"Wait a few minutes before making more requests",
 							"Check custom provider rate limits",
-							"Consider upgrading your plan"
-						]
+							"Consider upgrading your plan",
+						],
 					);
 				}
 				if (response.status === 403) {
@@ -419,8 +422,8 @@ export class CustomProviderClient {
 						[
 							"Check your custom provider account status",
 							"Verify your API key has correct permissions",
-							"Try generating a new API key"
-						]
+							"Try generating a new API key",
+						],
 					);
 				}
 				if (response.status === 404) {
@@ -430,8 +433,8 @@ export class CustomProviderClient {
 						[
 							"Check the custom provider base URL",
 							"Verify the endpoint exists",
-							"Contact your custom provider support"
-						]
+							"Contact your custom provider support",
+						],
 					);
 				}
 				if (response.status >= 500) {
@@ -441,8 +444,8 @@ export class CustomProviderClient {
 						[
 							"Check custom provider status page for outages",
 							"Try again later",
-							"Contact custom provider support"
-						]
+							"Contact custom provider support",
+						],
 					);
 				}
 				throw new APIError(
@@ -451,8 +454,8 @@ export class CustomProviderClient {
 					[
 						"Check your internet connection",
 						"Try again later",
-						"Run with --debug for more details"
-					]
+						"Run with --debug for more details",
+					],
 				);
 			}
 
@@ -482,7 +485,7 @@ export class CustomProviderClient {
 					if (!trimmed || !trimmed.startsWith("data: ")) {
 						continue;
 					}
-					
+
 					const dataStr = trimmed.slice(6);
 					if (dataStr === "[DONE]") {
 						continue;
@@ -492,7 +495,13 @@ export class CustomProviderClient {
 						const data = JSON.parse(dataStr);
 						yield data;
 					} catch (parseError) {
-						debug.log("api", "Failed to parse SSE chunk:", parseError, "Data:", dataStr);
+						debug.log(
+							"api",
+							"Failed to parse SSE chunk:",
+							parseError,
+							"Data:",
+							dataStr,
+						);
 					}
 				}
 			}

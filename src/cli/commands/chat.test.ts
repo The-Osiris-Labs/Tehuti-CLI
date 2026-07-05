@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseContentBlocks, normalizeBlocks } from "./chat.js";
+import { describe, expect, it } from "vitest";
+import { normalizeBlocks, parseContentBlocks } from "./chat.js";
 
 describe("Chat Parsing and Normalization", () => {
 	describe("parseContentBlocks", () => {
@@ -7,7 +7,7 @@ describe("Chat Parsing and Normalization", () => {
 			const content = "Hello world! This is a simple response.";
 			const result = parseContentBlocks(content);
 			expect(result).toEqual([
-				{ type: "text", content: "Hello world! This is a simple response." }
+				{ type: "text", content: "Hello world! This is a simple response." },
 			]);
 		});
 
@@ -17,7 +17,7 @@ describe("Chat Parsing and Normalization", () => {
 			expect(result).toEqual([
 				{ type: "text", content: "Hello " },
 				{ type: "reasoning", content: "analyzing some ideas" },
-				{ type: "text", content: " world!" }
+				{ type: "text", content: " world!" },
 			]);
 		});
 
@@ -26,18 +26,19 @@ describe("Chat Parsing and Normalization", () => {
 			const result = parseContentBlocks(content);
 			expect(result).toEqual([
 				{ type: "text", content: "Starting " },
-				{ type: "reasoning", content: "currently thinking..." }
+				{ type: "reasoning", content: "currently thinking..." },
 			]);
 		});
 
 		it("should handle multiple think blocks", () => {
-			const content = "<think>first thought</think> intermediate text <think>second thought</think> final text";
+			const content =
+				"<think>first thought</think> intermediate text <think>second thought</think> final text";
 			const result = parseContentBlocks(content);
 			expect(result).toEqual([
 				{ type: "reasoning", content: "first thought" },
 				{ type: "text", content: " intermediate text " },
 				{ type: "reasoning", content: "second thought" },
-				{ type: "text", content: " final text" }
+				{ type: "text", content: " final text" },
 			]);
 		});
 	});
@@ -45,9 +46,21 @@ describe("Chat Parsing and Normalization", () => {
 	describe("normalizeBlocks", () => {
 		it("should normalize a mix of blocks, extracting think tags only from text blocks", () => {
 			const blocks = [
-				{ type: "text" as const, content: "Initial <think>thought</think> text" },
-				{ type: "tool" as const, id: "tool-1", name: "list_dir", description: "Listing dir", result: { files: [] } },
-				{ type: "text" as const, content: "After tool <think>next thought</think> final" }
+				{
+					type: "text" as const,
+					content: "Initial <think>thought</think> text",
+				},
+				{
+					type: "tool" as const,
+					id: "tool-1",
+					name: "list_dir",
+					description: "Listing dir",
+					result: { files: [] },
+				},
+				{
+					type: "text" as const,
+					content: "After tool <think>next thought</think> final",
+				},
 			];
 
 			const result = normalizeBlocks(blocks);
@@ -55,10 +68,16 @@ describe("Chat Parsing and Normalization", () => {
 				{ type: "text", content: "Initial " },
 				{ type: "reasoning", content: "thought" },
 				{ type: "text", content: " text" },
-				{ type: "tool", id: "tool-1", name: "list_dir", description: "Listing dir", result: { files: [] } },
+				{
+					type: "tool",
+					id: "tool-1",
+					name: "list_dir",
+					description: "Listing dir",
+					result: { files: [] },
+				},
 				{ type: "text", content: "After tool " },
 				{ type: "reasoning", content: "next thought" },
-				{ type: "text", content: " final" }
+				{ type: "text", content: " final" },
 			]);
 		});
 	});

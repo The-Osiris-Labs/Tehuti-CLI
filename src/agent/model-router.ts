@@ -1,5 +1,5 @@
-import type { ModelSelectionMode } from "../config/schema.js";
 import { getProviderInfo } from "../config/providers.js";
+import type { ModelSelectionMode } from "../config/schema.js";
 import type { AgentContext } from "./context.js";
 import { SAFE_PARALLEL_TOOLS, WRITE_TOOLS } from "./parallel-executor.js";
 
@@ -185,13 +185,18 @@ export function classifyTask(
 
 export function getModelTiersForConfig(
 	providerId: string,
-	configTiers?: { fast?: string; balanced?: string; deep?: string }
+	configTiers?: { fast?: string; balanced?: string; deep?: string },
 ): Record<ModelTier, string> {
 	const info = getProviderInfo(providerId);
 	return {
-		fast: configTiers?.fast || info?.modelTiers?.fast || MODEL_TIERS.fast.modelId,
-		balanced: configTiers?.balanced || info?.modelTiers?.balanced || MODEL_TIERS.balanced.modelId,
-		deep: configTiers?.deep || info?.modelTiers?.deep || MODEL_TIERS.deep.modelId,
+		fast:
+			configTiers?.fast || info?.modelTiers?.fast || MODEL_TIERS.fast.modelId,
+		balanced:
+			configTiers?.balanced ||
+			info?.modelTiers?.balanced ||
+			MODEL_TIERS.balanced.modelId,
+		deep:
+			configTiers?.deep || info?.modelTiers?.deep || MODEL_TIERS.deep.modelId,
 	};
 }
 

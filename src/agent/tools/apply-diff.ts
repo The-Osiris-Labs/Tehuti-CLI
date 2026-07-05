@@ -1,16 +1,15 @@
 import path from "node:path";
+import { applyPatch } from "diff";
 import fs from "fs-extra";
 import { z } from "zod";
-import { applyPatch } from "diff";
-import crypto from "node:crypto";
 import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
 import {
-	resolvePath,
-	validatePathSecurity,
 	checkSymlinkSafety,
 	hasFileBeenRead,
 	markFileAsRead,
+	resolvePath,
 	runAciLinter,
+	validatePathSecurity,
 } from "./fs.js";
 import type {
 	AnyToolExecutor,
@@ -21,7 +20,9 @@ import type {
 
 const APPLY_DIFF_SCHEMA = z.object({
 	file_path: z.string().describe("The absolute path to the file to patch"),
-	patch: z.string().describe("The unified diff patch string to apply to the file"),
+	patch: z
+		.string()
+		.describe("The unified diff patch string to apply to the file"),
 });
 
 async function applyDiff(
@@ -72,12 +73,13 @@ async function applyDiff(
 			return {
 				success: false,
 				output: "",
-				error: "Failed to apply patch. The patch might be malformed or out of sync with the file's current content. Ensure your patch exactly matches the existing file context.",
+				error:
+					"Failed to apply patch. The patch might be malformed or out of sync with the file's current content. Ensure your patch exactly matches the existing file context.",
 			};
 		}
-        
-        // applyPatch returns a string on success
-        newContent = newContent as string;
+
+		// applyPatch returns a string on success
+		newContent = newContent as string;
 
 		const linterResult = await runAciLinter(resolvedPath, newContent);
 		if (!linterResult.success) {

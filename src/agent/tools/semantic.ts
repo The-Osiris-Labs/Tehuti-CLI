@@ -4,12 +4,7 @@ import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
 import { resolvePath, validatePathSecurity } from "./fs.js";
-import {
-	createTool,
-	type ToolContext,
-	type ToolDefinition,
-	type ToolResult,
-} from "./registry.js";
+import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
 // Cache directory for grepai search results
 const GREPAI_CACHE_DIR = path.join(process.cwd(), ".tehuti", "grepai-cache");
@@ -60,7 +55,7 @@ function cleanupProcesses() {
 	for (const proc of spawnedProcesses) {
 		try {
 			proc.kill("SIGKILL");
-		} catch (e) {
+		} catch (_e) {
 			// Ignore
 		}
 	}
@@ -90,7 +85,7 @@ const getGrepaiPath = async (cwd: string): Promise<string> => {
 		const { execSync } = await import("node:child_process");
 		const pathOutput = execSync("which grepai", { encoding: "utf8" }).trim();
 		if (pathOutput) return pathOutput;
-	} catch (err) {
+	} catch (_err) {
 		// Ignore check failure
 	}
 
@@ -182,7 +177,7 @@ export const semanticSearchTool = createTool({
 						metadata: { cached: true, cacheKey },
 					};
 				}
-			} catch (err) {
+			} catch (_err) {
 				// Silently fallback to fresh search
 			}
 		}
@@ -318,11 +313,11 @@ export const semanticInitTool = createTool({
 
 			trackProcess(grepai);
 
-			let stdout = "";
+			let _stdout = "";
 			let stderr = "";
 
 			grepai.stdout.on("data", (data: Buffer) => {
-				stdout += data.toString("utf-8");
+				_stdout += data.toString("utf-8");
 			});
 
 			grepai.stderr.on("data", (data: Buffer) => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getToolCache } from "../agent/cache/tool-cache.js";
 import type {
 	ToolContext,
 	ToolDefinition,
@@ -6,7 +7,6 @@ import type {
 } from "../agent/tools/registry.js";
 import type { OpenRouterTool } from "../api/openrouter.js";
 import type { MCPTool } from "./client.js";
-import { getToolCache } from "../agent/cache/tool-cache.js";
 
 function stableHash(input: string): string {
 	let hash = 5381;
@@ -16,7 +16,11 @@ function stableHash(input: string): string {
 	return (hash >>> 0).toString(36).padStart(7, "0").slice(0, 7);
 }
 
-function safeNamePart(value: string, fallback: string, maxLength: number): string {
+function safeNamePart(
+	value: string,
+	fallback: string,
+	maxLength: number,
+): string {
 	const safe = value
 		.replace(/[^a-zA-Z0-9_-]+/g, "_")
 		.replace(/^_+|_+$/g, "")
@@ -24,7 +28,10 @@ function safeNamePart(value: string, fallback: string, maxLength: number): strin
 	return safe || fallback;
 }
 
-export function createMCPToolName(serverName: string, toolName: string): string {
+export function createMCPToolName(
+	serverName: string,
+	toolName: string,
+): string {
 	const safeServer = safeNamePart(serverName, "server", 18);
 	const safeTool = safeNamePart(toolName, "tool", 28);
 	const hash = stableHash(`${serverName}:${toolName}`);

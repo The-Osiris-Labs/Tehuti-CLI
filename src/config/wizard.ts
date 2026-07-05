@@ -1,15 +1,15 @@
-import { confirm, input, select, search } from "@inquirer/prompts";
-import fs from "fs";
-import path from "path";
-import { isInitialized, saveGlobalConfig } from "./loader.js";
+import fs from "node:fs";
+import path from "node:path";
+import { confirm, input, search, select } from "@inquirer/prompts";
+import { listModelsForProvider } from "../api/models.js";
+import { saveGlobalConfig } from "./loader.js";
+import {
+	getApiKeyEnvVarsForProvider,
+	getEnvApiKeyForProvider,
+	getProviderInfo,
+} from "./providers.js";
 import type { TehutiConfig } from "./schema.js";
 import { DEFAULT_CONFIG } from "./schema.js";
-import {
-	getProviderInfo,
-	getEnvApiKeyForProvider,
-	getApiKeyEnvVarsForProvider,
-} from "./providers.js";
-import { listModelsForProvider } from "../api/models.js";
 
 const GOLD = "\x1b[38;5;178m";
 const CORAL = "\x1b[38;5;174m";
@@ -21,7 +21,7 @@ const GREEN = "\x1b[32m";
 const IBIS = "\u{131A3}";
 const ANKH = "\u{13269}";
 const EYE = "\u{13075}";
-const SCROLL = "\u{1331B}";
+const _SCROLL = "\u{1331B}";
 
 const c = {
 	gold: (text: string) => `${GOLD}${text}${RESET}`,
@@ -42,7 +42,10 @@ const egyptianTheme = {
 };
 
 const PROVIDER_CHOICES = [
-	{ name: "OpenCode Go (Recommended - abundant context window & up-to-date models)", value: "opencode" },
+	{
+		name: "OpenCode Go (Recommended - abundant context window & up-to-date models)",
+		value: "opencode",
+	},
 	{ name: "OpenRouter (Pay-per-use, 200+ models)", value: "openrouter" },
 	{ name: "Ollama (Local, keyless, runs offline)", value: "ollama" },
 	{ name: "LM Studio (Local, keyless, desktop app server)", value: "lmstudio" },
@@ -54,17 +57,30 @@ const PROVIDER_CHOICES = [
 	{ name: "Custom OpenAI-compatible endpoint", value: "custom" },
 ];
 
-const SUGGESTED_MODELS: Record<string, Array<{ name: string; value: string }>> = {
+const SUGGESTED_MODELS: Record<
+	string,
+	Array<{ name: string; value: string }>
+> = {
 	openrouter: [
-		{ name: "google/gemini-2.5-flash (Fast, cost-efficient)", value: "google/gemini-2.5-flash" },
-		{ name: "deepseek/deepseek-chat (DeepSeek V3)", value: "deepseek/deepseek-chat" },
-		{ name: "anthropic/claude-3.5-sonnet (Highly capable coding model)", value: "anthropic/claude-3.5-sonnet" },
+		{
+			name: "google/gemini-2.5-flash (Fast, cost-efficient)",
+			value: "google/gemini-2.5-flash",
+		},
+		{
+			name: "deepseek/deepseek-chat (DeepSeek V3)",
+			value: "deepseek/deepseek-chat",
+		},
+		{
+			name: "anthropic/claude-3.5-sonnet (Highly capable coding model)",
+			value: "anthropic/claude-3.5-sonnet",
+		},
 	],
-	opencode: [
-		{ name: "minimax-m3 (Default)", value: "minimax-m3" },
-	],
+	opencode: [{ name: "minimax-m3 (Default)", value: "minimax-m3" }],
 	ollama: [
-		{ name: "qwen2.5-coder:7b (Excellent for local coding)", value: "qwen2.5-coder:7b" },
+		{
+			name: "qwen2.5-coder:7b (Excellent for local coding)",
+			value: "qwen2.5-coder:7b",
+		},
 		{ name: "llama3 (General capability)", value: "llama3" },
 		{ name: "mistral (Balanced local model)", value: "mistral" },
 	],
@@ -88,9 +104,7 @@ const SUGGESTED_MODELS: Record<string, Array<{ name: string; value: string }>> =
 		{ name: "deepseek-chat (V3)", value: "deepseek-chat" },
 		{ name: "deepseek-reasoner (R1)", value: "deepseek-reasoner" },
 	],
-	xai: [
-		{ name: "grok-2-1212", value: "grok-2-1212" },
-	],
+	xai: [{ name: "grok-2-1212", value: "grok-2-1212" }],
 };
 
 export async function runSetupWizard(): Promise<TehutiConfig> {
@@ -122,19 +136,31 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 				apiKey = envKey;
 			} else {
 				const envVars = getApiKeyEnvVarsForProvider(provider);
-				const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
+				const hint =
+					provider === "openrouter"
+						? " (Get a key at: https://openrouter.ai/keys)"
+						: "";
 				apiKey = await input({
 					message: `Enter your API key for ${info?.name ?? provider}${hint}:`,
-					validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+					validate: (value) =>
+						value.length > 0
+							? true
+							: `API key is required. Alternatively set env var ${envVars.join(" or ")}`,
 					theme: egyptianTheme,
 				});
 			}
 		} else {
 			const envVars = getApiKeyEnvVarsForProvider(provider);
-			const hint = provider === "openrouter" ? " (Get a key at: https://openrouter.ai/keys)" : "";
+			const hint =
+				provider === "openrouter"
+					? " (Get a key at: https://openrouter.ai/keys)"
+					: "";
 			apiKey = await input({
 				message: `Enter your API key for ${info?.name ?? provider}${hint}:`,
-				validate: (value) => (value.length > 0 ? true : `API key is required. Alternatively set env var ${envVars.join(" or ")}`),
+				validate: (value) =>
+					value.length > 0
+						? true
+						: `API key is required. Alternatively set env var ${envVars.join(" or ")}`,
 				theme: egyptianTheme,
 			});
 		}
@@ -145,7 +171,8 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		baseUrl = await input({
 			message: `Enter the custom provider base URL:`,
 			default: "https://api.example.com/v1",
-			validate: (value) => (value.startsWith("http") ? true : "Must be a valid HTTP/HTTPS URL"),
+			validate: (value) =>
+				value.startsWith("http") ? true : "Must be a valid HTTP/HTTPS URL",
 			theme: egyptianTheme,
 		});
 	}
@@ -156,14 +183,21 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	}
 
 	// Attempt to fetch models dynamically
-	console.log(c.dim(`  Fetching available models from ${info?.name ?? provider}...`));
+	console.log(
+		c.dim(`  Fetching available models from ${info?.name ?? provider}...`),
+	);
 	try {
-		const liveModels = await listModelsForProvider(provider, { apiKey, baseUrl });
+		const liveModels = await listModelsForProvider(provider, {
+			apiKey,
+			baseUrl,
+		});
 		if (liveModels && liveModels.length > 0) {
-			modelChoices = liveModels.map(m => ({ name: m.id, value: m.id }));
+			modelChoices = liveModels.map((m) => ({ name: m.id, value: m.id }));
 		}
-	} catch (e) {
-		console.log(c.dim(`  Failed to fetch models dynamically. Using suggested models.`));
+	} catch (_e) {
+		console.log(
+			c.dim(`  Failed to fetch models dynamically. Using suggested models.`),
+		);
 	}
 
 	modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
@@ -174,9 +208,10 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		source: async (term) => {
 			if (!term) return modelChoices;
 			const termLower = term.toLowerCase();
-			return modelChoices.filter(c => 
-				c.name.toLowerCase().includes(termLower) || 
-				c.value.toLowerCase().includes(termLower)
+			return modelChoices.filter(
+				(c) =>
+					c.name.toLowerCase().includes(termLower) ||
+					c.value.toLowerCase().includes(termLower),
 			);
 		},
 	});
@@ -185,7 +220,8 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	if (selectedModel === "__custom__") {
 		model = await input({
 			message: "Type your model ID:",
-			validate: (value) => (value.length > 0 ? true : "Model ID cannot be empty"),
+			validate: (value) =>
+				value.length > 0 ? true : "Model ID cannot be empty",
 			theme: egyptianTheme,
 		});
 	}
@@ -197,7 +233,8 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	});
 
 	const trustedMode = await confirm({
-		message: "Enable trusted mode (skip safety permission prompts for read-only/non-destructive operations)?",
+		message:
+			"Enable trusted mode (skip safety permission prompts for read-only/non-destructive operations)?",
 		default: false,
 		theme: egyptianTheme,
 	});
@@ -207,29 +244,52 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 
 	if (fs.existsSync(localConfigPath)) {
 		console.log();
-		console.log(c.gold("𓁹 Notice:") + c.dim(" Found a local .tehuti.json in the current directory."));
-		console.log(c.dim("   A local configuration file will override any global settings."));
-		
+		console.log(
+			c.gold("𓁹 Notice:") +
+				c.dim(" Found a local .tehuti.json in the current directory."),
+		);
+		console.log(
+			c.dim("   A local configuration file will override any global settings."),
+		);
+
 		const action = await select({
 			message: "How would you like to handle this local configuration file?",
 			theme: egyptianTheme,
 			choices: [
-				{ name: "Update the local .tehuti.json with these new settings (Recommended)", value: "update" },
-				{ name: "Delete the local .tehuti.json and save globally", value: "delete" },
-				{ name: "Keep the local .tehuti.json unchanged and save globally anyway", value: "ignore" },
-			]
+				{
+					name: "Update the local .tehuti.json with these new settings (Recommended)",
+					value: "update",
+				},
+				{
+					name: "Delete the local .tehuti.json and save globally",
+					value: "delete",
+				},
+				{
+					name: "Keep the local .tehuti.json unchanged and save globally anyway",
+					value: "ignore",
+				},
+			],
 		});
 
 		if (action === "update") {
-			const existingConfig = JSON.parse(fs.readFileSync(localConfigPath, "utf-8"));
-			fs.writeFileSync(localConfigPath, JSON.stringify({
-				...existingConfig,
-				provider,
-				apiKey: apiKey || existingConfig.apiKey || null,
-				baseUrl: baseUrl || existingConfig.baseUrl || null,
-				model,
-				initialized: true
-			}, null, 2));
+			const existingConfig = JSON.parse(
+				fs.readFileSync(localConfigPath, "utf-8"),
+			);
+			fs.writeFileSync(
+				localConfigPath,
+				JSON.stringify(
+					{
+						...existingConfig,
+						provider,
+						apiKey: apiKey || existingConfig.apiKey || null,
+						baseUrl: baseUrl || existingConfig.baseUrl || null,
+						model,
+						initialized: true,
+					},
+					null,
+					2,
+				),
+			);
 			configTarget = "local .tehuti.json";
 		} else if (action === "delete") {
 			fs.unlinkSync(localConfigPath);
@@ -258,7 +318,10 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	}
 
 	console.log();
-	console.log(c.green(ANKH) + c.dim(` Configuration successfully written to ${configTarget}`));
+	console.log(
+		c.green(ANKH) +
+			c.dim(` Configuration successfully written to ${configTarget}`),
+	);
 	console.log(c.dim(`  Provider: ${info?.name ?? provider}`));
 	console.log(c.dim(`  Model: ${model}`));
 	console.log();

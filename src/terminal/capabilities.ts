@@ -172,7 +172,11 @@ export function shouldUseHyperlinks(): boolean {
  * Returns the best graphics protocol available, or null if none.
  * Order: Kitty > iTerm2 > Sixel (Kitty is highest fidelity, Sixel most compatible).
  */
-export function detectBestGraphicsProtocol(): "kitty" | "iterm" | "sixel" | null {
+export function detectBestGraphicsProtocol():
+	| "kitty"
+	| "iterm"
+	| "sixel"
+	| null {
 	const g = getCapabilities().graphics;
 	if (g.kitty) return "kitty";
 	if (g.iterm) return "iterm";

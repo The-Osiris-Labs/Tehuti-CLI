@@ -1,16 +1,24 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { configureHooks, initializeAgent } from "../agent/index.js";
 import { updateHttpAgentConfig } from "../api/http-agent.js";
-import { setDebugMode } from "../utils/logger.js";
+import { OpenRouterClient, type OpenRouterMessage } from "../api/openrouter.js";
+import {
+	DEFAULT_CONFIG,
+	getGlobalConfig,
+	loadConfig,
+	runSetupWizard,
+} from "../config/index.js";
+import {
+	getEnvApiKeyForProvider,
+	getProviderInfo,
+} from "../config/providers.js";
+import { mcpManager } from "../mcp/index.js";
 import { debug } from "../utils/debug.js";
 import { setupErrorHandlers } from "../utils/errors.js";
-import { loadConfig, runSetupWizard, getGlobalConfig, DEFAULT_CONFIG } from "../config/index.js";
+import { setDebugMode } from "../utils/logger.js";
 import { getTelemetry } from "../utils/telemetry.js";
-import { getProviderInfo, getEnvApiKeyForProvider } from "../config/providers.js";
-import { configureHooks, initializeAgent } from "../agent/index.js";
-import { mcpManager } from "../mcp/index.js";
-import { OpenRouterClient, type OpenRouterMessage } from "../api/openrouter.js";
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
 
@@ -40,7 +48,10 @@ export interface BootstrapResult {
 	diffPreview?: { showPreview: boolean; autoConfirm?: boolean };
 }
 
-export async function bootstrapCLI(prompt: string | undefined, opts: any): Promise<BootstrapResult> {
+export async function bootstrapCLI(
+	prompt: string | undefined,
+	opts: any,
+): Promise<BootstrapResult> {
 	if (opts.debug) {
 		setDebugMode(true);
 		debug.enable();
@@ -109,12 +120,14 @@ export async function bootstrapCLI(prompt: string | undefined, opts: any): Promi
 	if (cfg.mcp?.enabled && !opts.noMcp) {
 		mcpManager.setSamplingHandler(async (request: any) => {
 			const client = OpenRouterClient.getInstance(cfg);
-			
+
 			const messages: OpenRouterMessage[] = request.messages.map((m: any) => {
-				const textContent = Array.isArray(m.content) 
-					? m.content.find((c: any) => c.type === 'text')?.text || '' 
-					: (m.content.type === 'text' ? m.content.text : '');
-					
+				const textContent = Array.isArray(m.content)
+					? m.content.find((c: any) => c.type === "text")?.text || ""
+					: m.content.type === "text"
+						? m.content.text
+						: "";
+
 				return {
 					role: m.role,
 					content: textContent,
@@ -125,15 +138,23 @@ export async function bootstrapCLI(prompt: string | undefined, opts: any): Promi
 				messages.unshift({ role: "system", content: request.systemPrompt });
 			}
 
-			const response = await client.completeChat(messages, undefined, undefined);
+			const response = await client.completeChat(
+				messages,
+				undefined,
+				undefined,
+			);
 
 			const responseContent = response.choices[0]?.message.content || "";
-			const text = typeof responseContent === "string" 
-				? responseContent 
-				: JSON.stringify(responseContent);
+			const text =
+				typeof responseContent === "string"
+					? responseContent
+					: JSON.stringify(responseContent);
 
 			return {
-				model: request.modelPreferences?.hints?.[0]?.name || cfg.model || "deepseek-v4-flash",
+				model:
+					request.modelPreferences?.hints?.[0]?.name ||
+					cfg.model ||
+					"deepseek-v4-flash",
 				role: "assistant",
 				content: {
 					type: "text",
@@ -148,6 +169,6 @@ export async function bootstrapCLI(prompt: string | undefined, opts: any): Promi
 		cfg,
 		apiKey: apiKey || "",
 		model: model || "deepseek-v4-flash",
-		diffPreview
+		diffPreview,
 	};
 }

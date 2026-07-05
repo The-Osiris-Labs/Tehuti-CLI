@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "fs-extra";
 import { describe, expect, it } from "vitest";
-import { parseAST, parseRegexFallback } from "./ast.js";
+import { parseAST } from "./ast.js";
 
 describe("AST Parser Tool Robustness and Stress Tests", () => {
 	const mockCtx = {
@@ -41,14 +41,17 @@ describe("AST Parser Tool Robustness and Stress Tests", () => {
 	});
 
 	it("should parse a file consisting only of comments successfully", async () => {
-		const commentFile = createLocalTempFile(".js", `
+		const commentFile = createLocalTempFile(
+			".js",
+			`
 			// This is a single line comment
 			/*
 				This is a multi-line comment
 				with braces { } and function keywords
 				function test() {}
 			*/
-		`);
+		`,
+		);
 
 		try {
 			const res = await parseAST({ file_path: commentFile }, mockCtx);
@@ -61,13 +64,16 @@ describe("AST Parser Tool Robustness and Stress Tests", () => {
 	});
 
 	it("should handle extremely malformed/broken syntax in JS/TS files", async () => {
-		const brokenJs = createLocalTempFile(".js", `
+		const brokenJs = createLocalTempFile(
+			".js",
+			`
 			class A {
 				method1(a, {
 					// Missing matching parameter brace, body, etc.
 			
 			function unresolved( {
-		`);
+		`,
+		);
 
 		try {
 			const res = await parseAST({ file_path: brokenJs }, mockCtx);
@@ -87,7 +93,7 @@ describe("AST Parser Tool Robustness and Stress Tests", () => {
 			content += `function level_${i}() {\n`;
 			suffix += `}\n`;
 		}
-		content += "const leaf = 42;\n" + suffix;
+		content += `const leaf = 42;\n${suffix}`;
 
 		const nestedFile = createLocalTempFile(".js", content);
 
@@ -187,7 +193,9 @@ describe("AST Parser Tool Robustness and Stress Tests", () => {
 			expect(res.success).toBe(true);
 			const data = JSON.parse(res.output);
 
-			const nestedCommentClass = data.find((n: any) => n.name === "NestedCommentClass");
+			const nestedCommentClass = data.find(
+				(n: any) => n.name === "NestedCommentClass",
+			);
 			expect(nestedCommentClass).toBeUndefined();
 
 			const insideString = data.find((n: any) => n.name === "InsideString");
@@ -226,7 +234,9 @@ def root_func():
 			expect(rootClass).toBeDefined();
 			expect(rootClass.children).toHaveLength(2); // method_one and InnerClass
 
-			const innerClass = rootClass.children.find((c: any) => c.name === "InnerClass");
+			const innerClass = rootClass.children.find(
+				(c: any) => c.name === "InnerClass",
+			);
 			expect(innerClass).toBeDefined();
 			expect(innerClass.children).toHaveLength(1); // inner_method
 		} finally {
@@ -257,10 +267,14 @@ def root_func():
 			expect(res.success).toBe(true);
 			const data = JSON.parse(res.output);
 
-			const pointStruct = data.find((n: any) => n.name === "Point" && n.type === "class");
+			const pointStruct = data.find(
+				(n: any) => n.name === "Point" && n.type === "class",
+			);
 			expect(pointStruct).toBeDefined();
 
-			const pointImpl = data.find((n: any) => n.name === "Point" && n.start.line > 5);
+			const pointImpl = data.find(
+				(n: any) => n.name === "Point" && n.start.line > 5,
+			);
 			expect(pointImpl).toBeDefined();
 			expect(pointImpl.children).toHaveLength(1);
 			expect(pointImpl.children[0].name).toBe("get_x");

@@ -1,7 +1,7 @@
-import React, { useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { BRANDING } from "../../../branding/index.js";
+import React, { useState } from "react";
 import type { QuestionData } from "../../../agent/tools/system.js";
+import { BRANDING } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";

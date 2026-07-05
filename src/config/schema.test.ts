@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { TehutiConfig } from "../config/schema.js";
 import { DEFAULT_CONFIG, TEHUTI_CONFIG_SCHEMA } from "../config/schema.js";
 
 describe("Config Schema", () => {

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkPermission, setPermissionResolver } from "./prompts.js";
-import { isToolSafe, requiresPermission, permissionManager, matchesPattern } from "./rules.js";
 import type { PermissionsConfig } from "../config/schema.js";
+import { checkPermission, setPermissionResolver } from "./prompts.js";
+import {
+	isToolSafe,
+	matchesPattern,
+	permissionManager,
+	requiresPermission,
+} from "./rules.js";
 
 // Mock @inquirer/prompts confirm
 vi.mock("@inquirer/prompts", () => ({

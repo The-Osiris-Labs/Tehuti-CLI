@@ -1,5 +1,3 @@
-import type { TehutiConfig } from "../config/schema.js";
-import fs from "fs";
 import { z } from "zod";
 import {
 	getApiKeyEnvVarsForProvider,
@@ -8,6 +6,7 @@ import {
 	getProviderModelsUrl,
 	resolveBaseUrlForProvider,
 } from "../config/providers.js";
+import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
 
@@ -71,38 +70,51 @@ export interface OpenRouterStreamChunk {
 	};
 }
 
-const OpenRouterToolCallSchema = z.object({
-	id: z.string().optional(),
-	type: z.literal("function").optional(),
-	function: z.object({
-		name: z.string().optional(),
-		arguments: z.string().optional(),
-	}).optional(),
-}).passthrough();
+const OpenRouterToolCallSchema = z
+	.object({
+		id: z.string().optional(),
+		type: z.literal("function").optional(),
+		function: z
+			.object({
+				name: z.string().optional(),
+				arguments: z.string().optional(),
+			})
+			.optional(),
+	})
+	.passthrough();
 
-const OpenRouterStreamChunkSchema = z.object({
-	id: z.string().optional().default(""),
-	choices: z.array(
-		z.object({
-			index: z.number().optional().default(0),
-			delta: z.object({
-				role: z.string().optional(),
-				content: z.string().nullable().optional(),
-				reasoning: z.string().nullable().optional(),
-				thinking: z.string().nullable().optional(),
-				tool_calls: z.array(OpenRouterToolCallSchema).optional(),
-			}).passthrough(),
-			finish_reason: z.string().nullable().optional(),
-		}).passthrough()
-	),
-	usage: z.object({
-		prompt_tokens: z.number(),
-		completion_tokens: z.number(),
-		total_tokens: z.number(),
-		cache_read_input_tokens: z.number().optional(),
-		cache_creation_input_tokens: z.number().optional(),
-	}).passthrough().optional(),
-}).passthrough();
+const OpenRouterStreamChunkSchema = z
+	.object({
+		id: z.string().optional().default(""),
+		choices: z.array(
+			z
+				.object({
+					index: z.number().optional().default(0),
+					delta: z
+						.object({
+							role: z.string().optional(),
+							content: z.string().nullable().optional(),
+							reasoning: z.string().nullable().optional(),
+							thinking: z.string().nullable().optional(),
+							tool_calls: z.array(OpenRouterToolCallSchema).optional(),
+						})
+						.passthrough(),
+					finish_reason: z.string().nullable().optional(),
+				})
+				.passthrough(),
+		),
+		usage: z
+			.object({
+				prompt_tokens: z.number(),
+				completion_tokens: z.number(),
+				total_tokens: z.number(),
+				cache_read_input_tokens: z.number().optional(),
+				cache_creation_input_tokens: z.number().optional(),
+			})
+			.passthrough()
+			.optional(),
+	})
+	.passthrough();
 
 export interface OpenRouterResponse {
 	id: string;
@@ -151,7 +163,10 @@ export class OpenRouterClient {
 
 	static getInstance(config: TehutiConfig): OpenRouterClient {
 		const resolvedBaseUrl =
-			resolveBaseUrlForProvider(config.provider || "openrouter", config.baseUrl) || "";
+			resolveBaseUrlForProvider(
+				config.provider || "openrouter",
+				config.baseUrl,
+			) || "";
 		const configKey = `${config.provider || "openrouter"}:${config.apiKey}:${resolvedBaseUrl}:${config.model}`;
 		if (
 			!OpenRouterClient.instance ||
@@ -225,7 +240,7 @@ export class OpenRouterClient {
 			const providerEnvVars = getApiKeyEnvVarsForProvider(this.providerId);
 			for (const envVar of providerEnvVars) {
 				const envValue = process.env[envVar];
-				if (envValue && envValue.trim()) {
+				if (envValue?.trim()) {
 					this.apiKey = envValue.trim();
 					break;
 				}
@@ -242,10 +257,7 @@ export class OpenRouterClient {
 		this.supportsCaching = this.checkCachingSupport(config.model);
 		this.extendedThinking = config.extendedThinking ?? false;
 		this.thinkingBudgetTokens = config.thinkingBudgetTokens;
-		this.requestTimeout = this.validateTimeout(
-			config.requestTimeout,
-			120000,
-		);
+		this.requestTimeout = this.validateTimeout(config.requestTimeout, 120000);
 		this.maxRetries = config.maxRetries ?? 3;
 
 		if (this.requiresApiKey && !this.apiKey) {
@@ -257,7 +269,8 @@ export class OpenRouterClient {
 			);
 		}
 
-		const isStrictOpenRouter = !config.provider || config.provider === "openrouter";
+		const isStrictOpenRouter =
+			!config.provider || config.provider === "openrouter";
 		if (this.apiKey && this.apiKey.length < 10) {
 			throw new APIError("Invalid API key format");
 		}
@@ -273,7 +286,6 @@ export class OpenRouterClient {
 		this.validateModel(this.fallbackModel);
 		this.validateTemperature(this.temperature);
 		this.validateMaxTokens(this.maxTokens);
-
 	}
 
 	private buildHeaders(): Record<string, string> {
@@ -286,7 +298,10 @@ export class OpenRouterClient {
 			headers["X-Title"] = "Tehuti CLI";
 		}
 
-		Object.assign(headers, getProviderAuthHeaders(this.providerId, this.apiKey));
+		Object.assign(
+			headers,
+			getProviderAuthHeaders(this.providerId, this.apiKey),
+		);
 
 		return headers;
 	}
@@ -296,8 +311,10 @@ export class OpenRouterClient {
 	}
 
 	private getModelsUrl(): string {
-		return getProviderModelsUrl(this.providerId, this.baseUrl) ||
-			`${this.baseUrl}/models`;
+		return (
+			getProviderModelsUrl(this.providerId, this.baseUrl) ||
+			`${this.baseUrl}/models`
+		);
 	}
 
 	private getProviderErrorSubject(): string {
@@ -306,8 +323,12 @@ export class OpenRouterClient {
 
 	private getProviderAuthHints(): string[] {
 		const envVars = getApiKeyEnvVarsForProvider(this.providerId);
-		const envHint = envVars.length > 0 ? envVars.join(" or ") : "TEHUTI_API_KEY";
-		return [`Check ${envHint} environment variable`, "Check ~/.tehuti.json config file"];
+		const envHint =
+			envVars.length > 0 ? envVars.join(" or ") : "TEHUTI_API_KEY";
+		return [
+			`Check ${envHint} environment variable`,
+			"Check ~/.tehuti.json config file",
+		];
 	}
 
 	private buildInvalidKeyMessage(): string {
@@ -412,7 +433,15 @@ export class OpenRouterClient {
 	private checkCachingSupport(model: string): boolean {
 		const cachingModels = [
 			// live data preferred; these are loose hints only
-			"claude", "sonnet", "opus", "haiku", "gemini", "gpt", "minimax", "qwen", "deepseek",
+			"claude",
+			"sonnet",
+			"opus",
+			"haiku",
+			"gemini",
+			"gpt",
+			"minimax",
+			"qwen",
+			"deepseek",
 			"claude-haiku",
 			"claude-opus",
 			"deepseek/deepseek",
@@ -662,11 +691,11 @@ export class OpenRouterClient {
 		const retryAfterHeader = response.headers.get("Retry-After");
 		if (retryAfterHeader) {
 			const parsedSeconds = parseInt(retryAfterHeader, 10);
-			if (!isNaN(parsedSeconds)) {
+			if (!Number.isNaN(parsedSeconds)) {
 				(apiError as any).retryAfter = parsedSeconds * 1000;
 			} else {
 				const parsedDate = Date.parse(retryAfterHeader);
-				if (!isNaN(parsedDate)) {
+				if (!Number.isNaN(parsedDate)) {
 					(apiError as any).retryAfter = Math.max(0, parsedDate - Date.now());
 				}
 			}
@@ -745,7 +774,9 @@ export class OpenRouterClient {
 			);
 
 			if (!response.body) {
-				throw new APIError(`No response body from ${this.getProviderErrorSubject()}`);
+				throw new APIError(
+					`No response body from ${this.getProviderErrorSubject()}`,
+				);
 			}
 
 			reader = response.body.getReader();
@@ -878,9 +909,15 @@ export class OpenRouterClient {
 		return this.model;
 	}
 
-	async listModels(
-		signal?: AbortSignal,
-	): Promise<Array<{ id: string; name?: string; context_length?: number; pricing?: any; [k: string]: any }>> {
+	async listModels(signal?: AbortSignal): Promise<
+		Array<{
+			id: string;
+			name?: string;
+			context_length?: number;
+			pricing?: any;
+			[k: string]: any;
+		}>
+	> {
 		const timeoutSignal = AbortSignal.timeout(30000);
 		const combinedSignal = signal
 			? AbortSignal.any([signal, timeoutSignal])
@@ -903,7 +940,9 @@ export class OpenRouterClient {
 		);
 
 		const data = (await response.json()) as any;
-		const list = (data?.data || data || []).sort((a: any, b: any) => (a.id || "").localeCompare(b.id || ""));
+		const list = (data?.data || data || []).sort((a: any, b: any) =>
+			(a.id || "").localeCompare(b.id || ""),
+		);
 		return list;
 	}
 
@@ -917,27 +956,27 @@ export class OpenRouterClient {
 				signal: timeoutSignal,
 			});
 
-				if (response.status === 401) {
-					return {
-						valid: false,
-						error:
-							`API key appears to be invalid or expired.\n\n` +
-							`Suggestions:\n` +
-							this.getProviderAuthHints()
-								.map((hint) => `  • ${hint}`)
-								.join("\n") +
-							`\n` +
-							`  • Check ~/.tehuti.json config file\n` +
-							`  • Run 'tehuti init' to reconfigure`,
-						};
-					}
+			if (response.status === 401) {
+				return {
+					valid: false,
+					error:
+						`API key appears to be invalid or expired.\n\n` +
+						`Suggestions:\n` +
+						this.getProviderAuthHints()
+							.map((hint) => `  • ${hint}`)
+							.join("\n") +
+						`\n` +
+						`  • Check ~/.tehuti.json config file\n` +
+						`  • Run 'tehuti init' to reconfigure`,
+				};
+			}
 
-				if (response.status === 403) {
-					return {
-						valid: false,
-						error: `API key is forbidden. Please check your ${this.getProviderErrorSubject()} account status.`,
-					};
-				}
+			if (response.status === 403) {
+				return {
+					valid: false,
+					error: `API key is forbidden. Please check your ${this.getProviderErrorSubject()} account status.`,
+				};
+			}
 
 			if (!response.ok) {
 				return {
@@ -947,17 +986,17 @@ export class OpenRouterClient {
 			}
 
 			return { valid: true };
-			} catch (error) {
+		} catch (error) {
 			if (error instanceof Error && error.name === "AbortError") {
 				return {
 					valid: false,
 					error: "API validation timed out. Please check your connection.",
 				};
 			}
-				return {
-					valid: false,
-					error: `Could not connect to ${this.getProviderErrorSubject()}. Please check your connection.`,
-				};
-			}
+			return {
+				valid: false,
+				error: `Could not connect to ${this.getProviderErrorSubject()}. Please check your connection.`,
+			};
+		}
 	}
 }

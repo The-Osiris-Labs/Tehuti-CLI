@@ -1,8 +1,12 @@
 import * as path from "node:path";
-import { getToolCache, shouldCacheTool, stableStringify } from "./cache/index.js";
+import { debug } from "../utils/debug.js";
+import {
+	getToolCache,
+	shouldCacheTool,
+	stableStringify,
+} from "./cache/index.js";
 import type { ToolContext } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
-import { debug } from "../utils/debug.js";
 
 export interface PrefetchRule {
 	currentTool: string;
@@ -36,7 +40,7 @@ const MAX_PREFETCH_QUEUE = 10;
 export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
 	private abortControllers = new Map<string, AbortController>();
-		private enabled: boolean = true;
+	private enabled: boolean = true;
 	private recentPatterns: Array<{
 		tool: string;
 		args: unknown;
@@ -66,7 +70,7 @@ export class Prefetcher {
 		debug.log("prefetch", `Queueing prefetch for ${toolName}`, args);
 		const controller = new AbortController();
 		this.abortControllers.set(key, controller);
-		
+
 		let timeoutId: NodeJS.Timeout | undefined;
 		const timeoutPromise = new Promise<null>((resolve) => {
 			timeoutId = setTimeout(() => {
@@ -77,7 +81,7 @@ export class Prefetcher {
 
 		const prefetchPromise = Promise.race([
 			executeTool(toolName, args, { ...ctx, signal: controller.signal }),
-			timeoutPromise
+			timeoutPromise,
 		])
 			.then((result) => {
 				if (timeoutId) clearTimeout(timeoutId);
@@ -85,11 +89,18 @@ export class Prefetcher {
 					debug.log("prefetch", `Prefetch aborted for ${toolName}`);
 					return null;
 				}
-				if (result && (result as any).success && shouldCacheTool(getTool(toolName), toolName, args)) {
+				if (
+					result &&
+					(result as any).success &&
+					shouldCacheTool(getTool(toolName), toolName, args)
+				) {
 					debug.log("prefetch", `Caching prefetched result for ${toolName}`);
 					getToolCache().set(toolName, args, result);
 				} else if (result) {
-					debug.log("prefetch", `Prefetch completed for ${toolName}, but not cached (success=${(result as any).success})`);
+					debug.log(
+						"prefetch",
+						`Prefetch completed for ${toolName}, but not cached (success=${(result as any).success})`,
+					);
 				}
 				return result;
 			})
@@ -116,10 +127,19 @@ export class Prefetcher {
 		if (!tool) return;
 
 		// Skip read-only tools and safe tools
-		if (tool.isReadonly !== false && !tool.requiresPermission && tool.category !== "bash") return;
+		if (
+			tool.isReadonly !== false &&
+			!tool.requiresPermission &&
+			tool.category !== "bash"
+		)
+			return;
 
 		const record = args as Record<string, unknown>;
-		const filePath = record?.file_path || record?.target_file || record?.path || record?.TargetFile;
+		const filePath =
+			record?.file_path ||
+			record?.target_file ||
+			record?.path ||
+			record?.TargetFile;
 
 		// Specific check for file modifications
 		if (typeof filePath === "string" && tool.category !== "bash") {
@@ -128,25 +148,46 @@ export class Prefetcher {
 				const colonIndex = key.indexOf(":");
 				if (colonIndex < 0) continue;
 				const prefetchTool = key.slice(0, colonIndex);
-				
-				if (["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(prefetchTool)) {
+
+				if (
+					["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(
+						prefetchTool,
+					)
+				) {
 					try {
 						const readArgs = JSON.parse(key.slice(colonIndex + 1));
-						const readPathVal = readArgs.file_path || readArgs.path || readArgs.AbsolutePath || readArgs.directory || readArgs.directoryPath || readArgs.directory_path || readArgs.TargetFile;
+						const readPathVal =
+							readArgs.file_path ||
+							readArgs.path ||
+							readArgs.AbsolutePath ||
+							readArgs.directory ||
+							readArgs.directoryPath ||
+							readArgs.directory_path ||
+							readArgs.TargetFile;
 						if (typeof readPathVal === "string") {
 							const resolvedReadPath = path.resolve(readPathVal);
 							if (prefetchTool === "list_dir") {
-								const relative = path.relative(resolvedReadPath, resolvedFilePath);
-								const isSubPath = !relative.startsWith("..") && !path.isAbsolute(relative);
+								const relative = path.relative(
+									resolvedReadPath,
+									resolvedFilePath,
+								);
+								const isSubPath =
+									!relative.startsWith("..") && !path.isAbsolute(relative);
 								if (isSubPath) {
-									debug.log("prefetch", `Aborting list_dir prefetch due to modification in subpath ${resolvedFilePath}`);
+									debug.log(
+										"prefetch",
+										`Aborting list_dir prefetch due to modification in subpath ${resolvedFilePath}`,
+									);
 									controller.abort();
 									this.pending.delete(key);
 									this.abortControllers.delete(key);
 								}
 							} else {
 								if (resolvedReadPath === resolvedFilePath) {
-									debug.log("prefetch", `Aborting read prefetch due to modification in ${resolvedFilePath}`);
+									debug.log(
+										"prefetch",
+										`Aborting read prefetch due to modification in ${resolvedFilePath}`,
+									);
 									controller.abort();
 									this.pending.delete(key);
 									this.abortControllers.delete(key);
@@ -162,8 +203,15 @@ export class Prefetcher {
 				const colonIndex = key.indexOf(":");
 				if (colonIndex < 0) continue;
 				const prefetchTool = key.slice(0, colonIndex);
-				if (["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(prefetchTool)) {
-					debug.log("prefetch", `Aborting read/list prefetch due to broad modification tool: ${toolName}`);
+				if (
+					["read", "file_info", "list_dir", "read_image", "read_pdf"].includes(
+						prefetchTool,
+					)
+				) {
+					debug.log(
+						"prefetch",
+						`Aborting read/list prefetch due to broad modification tool: ${toolName}`,
+					);
 					controller.abort();
 					this.pending.delete(key);
 					this.abortControllers.delete(key);
@@ -269,7 +317,11 @@ export class Prefetcher {
 
 				if (!this.pending.has(key)) {
 					const nextToolDef = getTool(nextTool.tool);
-					if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
+					if (
+						nextToolDef &&
+						nextToolDef.isReadonly !== false &&
+						!nextToolDef.requiresPermission
+					) {
 						this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
 					}
 				}
@@ -287,7 +339,11 @@ export class Prefetcher {
 			if (key === currentKey) continue;
 			if (!this.pending.has(key) && !cache.has(pred.tool, pred.args)) {
 				const nextToolDef = getTool(pred.tool);
-				if (nextToolDef && nextToolDef.isReadonly !== false && !nextToolDef.requiresPermission) {
+				if (
+					nextToolDef &&
+					nextToolDef.isReadonly !== false &&
+					!nextToolDef.requiresPermission
+				) {
 					this.queuePrefetch(pred.tool, pred.args, ctx, key);
 				}
 			}
@@ -299,7 +355,10 @@ export class Prefetcher {
 		const pending = this.pending.get(key);
 
 		if (pending) {
-			debug.log("prefetch", `Cache hit successfully anticipated for ${toolName}`);
+			debug.log(
+				"prefetch",
+				`Cache hit successfully anticipated for ${toolName}`,
+			);
 			this.pending.delete(key);
 			return pending;
 		}

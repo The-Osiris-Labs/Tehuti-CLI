@@ -17,7 +17,9 @@ vi.mock("./tools/registry.js", () => ({
 					},
 					{
 						tool: "list_dir",
-						argMapper: (args: any) => ({ dir_path: args.file_path.replace(/\/file\.ts$/, "") }),
+						argMapper: (args: any) => ({
+							dir_path: args.file_path.replace(/\/file\.ts$/, ""),
+						}),
 						priority: "low",
 					},
 				],

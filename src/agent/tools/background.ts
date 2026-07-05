@@ -208,7 +208,7 @@ async function startBackground(
 				p.status = "exited";
 				p.exitCode = code ?? 0;
 			}
-			
+
 			if (ctx.agentContext) {
 				const msg = `[Task Completed] Background process PID ${pid} exited with code ${code}`;
 				agentEventBus.emit("wakeup", msg);
@@ -221,7 +221,7 @@ async function startBackground(
 				p.status = "exited";
 				p.error.push(`Process error: ${error.message}`);
 			}
-			
+
 			if (ctx.agentContext) {
 				const msg = `[Task Completed] Background process PID ${pid} failed with error: ${error.message}`;
 				agentEventBus.emit("wakeup", msg);

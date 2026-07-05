@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { runAgentLoop, createAgentContext, type AgentLoopResult } from "../index.js";
 import { loadConfig } from "../../config/index.js";
 import { debug } from "../../utils/debug.js";
 import { agentEventBus } from "../events.js";
+import {
+	type AgentLoopResult,
+	createAgentContext,
+	runAgentLoop,
+} from "../index.js";
 
 export interface SubagentTask {
 	id: string;
@@ -38,13 +42,13 @@ export class SwarmManager extends EventEmitter {
 	public async spawnSubagent(
 		prompt: string,
 		workingDir: string,
-		parentContext?: any
+		parentContext?: any,
 	): Promise<string> {
 		const id = randomUUID();
 		const abortController = new AbortController();
-		
+
 		const config = await loadConfig();
-		
+
 		const subagentContext = await createAgentContext(workingDir, config);
 
 		const task: SubagentTask = {
@@ -69,7 +73,7 @@ export class SwarmManager extends EventEmitter {
 				if (tokenCount % 20 === 0) {
 					this.emitUpdate();
 				}
-			}
+			},
 		})
 			.then((result) => {
 				if (task.status === "running") {
@@ -104,7 +108,9 @@ export class SwarmManager extends EventEmitter {
 		);
 	}
 
-	public getSubagent(id: string): Omit<SubagentTask, "abortController"> | undefined {
+	public getSubagent(
+		id: string,
+	): Omit<SubagentTask, "abortController"> | undefined {
 		const task = this.tasks.get(id);
 		if (!task) return undefined;
 		const { abortController, ...rest } = task;

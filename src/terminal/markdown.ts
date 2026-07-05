@@ -1,9 +1,9 @@
 import type { Token } from "marked";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
-import { shouldUseColors, shouldUseHighContrast } from "./capabilities.js";
-import { highlightToAnsi, isHighlighterReady, initHighlighter } from "./highlighter.js";
 import stringWidth from "string-width";
+import { shouldUseColors, shouldUseHighContrast } from "./capabilities.js";
+import { highlightToAnsi } from "./highlighter.js";
 
 marked.use(markedKatex({ throwOnError: false }));
 
@@ -43,7 +43,7 @@ const ANSI = {
 	highContrastBlue: "\x1b[38;5;33m", // Bright blue (high contrast)
 	highContrastGreen: "\x1b[38;5;34m", // Bright green (high contrast)
 	highContrastRed: "\x1b[38;5;196m", // Bright red (high contrast)
-	
+
 	// Default colors (improved contrast)
 	defaultGold: "\x1b[38;5;220m", // Bright gold (WCAG AA)
 	defaultCoral: "\x1b[38;5;202m", // Vibrant coral (high contrast)
@@ -69,7 +69,7 @@ function getColors() {
 			red: ANSI.highContrastRed,
 		};
 	}
-	
+
 	return {
 		gold: ANSI.defaultGold,
 		coral: ANSI.defaultCoral,
@@ -84,7 +84,7 @@ function getColors() {
 
 const COLORS = getColors();
 
-function purple(text: string): string {
+function _purple(text: string): string {
 	return applyStyle(text, COLORS.purple);
 }
 
@@ -138,10 +138,11 @@ function highlightCode(code: string, language?: string): string {
 	return highlightToAnsi(code, language);
 }
 
-
 function codeBlock(code: string, language?: string): string {
 	const lang = language || "text";
-	const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+	const isPlain = ["text", "plain", "ascii", "none"].includes(
+		lang.toLowerCase(),
+	);
 	if (isPlain) {
 		return `\n${code}\n`;
 	}
@@ -233,13 +234,15 @@ function renderToken(token: Token, indent: string = ""): string {
 
 		case "code": {
 			const lang = token.lang || "text";
-			const isPlain = ["text", "plain", "ascii", "none"].includes(lang.toLowerCase());
+			const isPlain = ["text", "plain", "ascii", "none"].includes(
+				lang.toLowerCase(),
+			);
 			if (isPlain) {
 				return `\n${token.text}\n`;
 			}
-			return `\n${dim("┌─ " + lang)}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
+			return `\n${dim(`┌─ ${lang}`)}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
 		}
-		
+
 		case "blockKatex":
 			return `\n${cyan(token.text)}\n`;
 
@@ -304,7 +307,7 @@ function renderToken(token: Token, indent: string = ""): string {
 				const width = widths[i];
 				return `│ ${bold(padEndWidth(text, width))} `;
 			});
-			result += headerCells.join("") + "│\n";
+			result += `${headerCells.join("")}│\n`;
 
 			result += `├${border.join("┼")}┤\n`;
 
@@ -317,7 +320,7 @@ function renderToken(token: Token, indent: string = ""): string {
 					const width = widths[i];
 					return `│ ${padEndWidth(text, width)} `;
 				});
-				result += cells.join("") + "│\n";
+				result += `${cells.join("")}│\n`;
 			}
 
 			result += `└${border.join("┴")}┘\n`;

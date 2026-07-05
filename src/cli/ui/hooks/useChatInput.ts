@@ -1,8 +1,7 @@
-import { useInput } from "ink";
 import chalk from "chalk";
-import { isMouseSequence } from "../../../utils/mouse.js";
-import { type CommandItem } from "../components/CommandPalette.js";
+import { useInput } from "ink";
 import React from "react";
+import { isMouseSequence } from "../../../utils/mouse.js";
 
 export interface UseChatInputProps {
 	input: string;
@@ -85,11 +84,11 @@ export function useChatInput(props: UseChatInputProps) {
 	}, [showCommandPalette]);
 
 	useInput((k, key) => {
-		if (k && k.startsWith("\x1b[<64;")) {
+		if (k?.startsWith("\x1b[<64;")) {
 			scrollLineUp();
 			return;
 		}
-		if (k && k.startsWith("\x1b[<65;")) {
+		if (k?.startsWith("\x1b[<65;")) {
 			scrollLineDown();
 			return;
 		}
@@ -123,11 +122,18 @@ export function useChatInput(props: UseChatInputProps) {
 		};
 
 		// Clear selection on cursor navigation without Shift
-		if (!key.shift && (
-			key.leftArrow || key.rightArrow || key.upArrow || key.downArrow ||
-			key.pageUp || key.pageDown || key.home || key.end ||
-			(key.ctrl && (key.upArrow || key.downArrow))
-		)) {
+		if (
+			!key.shift &&
+			(key.leftArrow ||
+				key.rightArrow ||
+				key.upArrow ||
+				key.downArrow ||
+				key.pageUp ||
+				key.pageDown ||
+				key.home ||
+				key.end ||
+				(key.ctrl && (key.upArrow || key.downArrow)))
+		) {
 			if (hasSelection) {
 				setSelectionStart(null);
 				setSelectionEnd(null);
@@ -135,7 +141,7 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		// Bracketed paste handling
-		if (k && k.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
+		if (k?.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
 			if (loading) return;
 			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
 			let targetText = input;
@@ -145,14 +151,24 @@ export function useChatInput(props: UseChatInputProps) {
 				targetText = res.text;
 				targetPos = res.pos;
 			}
-			setInput(targetText.slice(0, targetPos) + pastedText + targetText.slice(targetPos));
+			setInput(
+				targetText.slice(0, targetPos) +
+					pastedText +
+					targetText.slice(targetPos),
+			);
 			setCursorPos(targetPos + pastedText.length);
 			setHistoryIndex(-1);
 			return;
 		}
 
 		// Backspace handling
-		if (key.backspace || k === "\x7f" || k === "\b" || k === "\x08" || (key.delete && k !== "\x1b[3~")) {
+		if (
+			key.backspace ||
+			k === "\x7f" ||
+			k === "\b" ||
+			k === "\x08" ||
+			(key.delete && k !== "\x1b[3~")
+		) {
 			if (loading) return;
 			if (hasSelection) {
 				deleteSelection();
@@ -188,9 +204,14 @@ export function useChatInput(props: UseChatInputProps) {
 				onExit();
 				exit();
 			} else if (hasSelection) {
-				const [start, end] = [Math.min(selectionStart!, selectionEnd!), Math.max(selectionStart!, selectionEnd!)];
+				const [start, end] = [
+					Math.min(selectionStart!, selectionEnd!),
+					Math.max(selectionStart!, selectionEnd!),
+				];
 				const selectedText = input.slice(start, end);
-				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
+				console.log(
+					`\x1B]52;;${Buffer.from(selectedText).toString("base64")}\x07`,
+				);
 				setSelectionStart(null);
 				setSelectionEnd(null);
 			} else {
@@ -300,7 +321,10 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		// Delete previous word: Ctrl+W or Option+Backspace (Meta+Backspace / Meta+Delete)
-		if (((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) || (key.ctrl && k === "w")) {
+		if (
+			((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) ||
+			(key.ctrl && k === "w")
+		) {
 			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
@@ -346,9 +370,14 @@ export function useChatInput(props: UseChatInputProps) {
 		if (key.ctrl && k === "x") {
 			if (loading) return;
 			if (hasSelection) {
-				const [start, end] = [Math.min(selectionStart!, selectionEnd!), Math.max(selectionStart!, selectionEnd!)];
+				const [start, end] = [
+					Math.min(selectionStart!, selectionEnd!),
+					Math.max(selectionStart!, selectionEnd!),
+				];
 				const selectedText = input.slice(start, end);
-				console.log("\x1B]52;;" + Buffer.from(selectedText).toString("base64") + "\x07");
+				console.log(
+					`\x1B]52;;${Buffer.from(selectedText).toString("base64")}\x07`,
+				);
 				setInput(input.slice(0, start) + input.slice(end));
 				setCursorPos(start);
 				setSelectionStart(null);
@@ -367,7 +396,9 @@ export function useChatInput(props: UseChatInputProps) {
 			const after = input.slice(cursorPos);
 			if (before.length > 0) {
 				const lastChar = before.slice(-1);
-				setInput(before.slice(0, -1) + after.slice(0, 1) + lastChar + after.slice(1));
+				setInput(
+					before.slice(0, -1) + after.slice(0, 1) + lastChar + after.slice(1),
+				);
 				setCursorPos(cursorPos + 1);
 			}
 			return;
@@ -449,7 +480,15 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		// Handle normal character input and paste
-		if (k && !key.ctrl && !key.meta && !k.startsWith("\x1b") && k !== "\r" && k !== "\n" && k !== "\t") {
+		if (
+			k &&
+			!key.ctrl &&
+			!key.meta &&
+			!k.startsWith("\x1b") &&
+			k !== "\r" &&
+			k !== "\n" &&
+			k !== "\t"
+		) {
 			// Aggressively filter out mouse sequence fragments that leak into stdin
 			// This covers individual characters, partial sequences, and glued sequences
 			// produced by rapid mouse scrolling or dragging in SGR tracking mode.
@@ -459,8 +498,8 @@ export function useChatInput(props: UseChatInputProps) {
 				k === "<" ||
 				k === "[[ " ||
 				/^(?:\d+;)+\d+[Mm]?$/.test(k) ||
-				/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(k) || 
-				k.includes("[<") || 
+				/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(k) ||
+				k.includes("[<") ||
 				k.includes("[M")
 			) {
 				return;
@@ -473,7 +512,9 @@ export function useChatInput(props: UseChatInputProps) {
 				return;
 			}
 
-			const sanitized = k.replace(/[\x00-\x1F\x7F]/g, "").replace(/\r?\n/g, " ");
+			const sanitized = k
+				.replace(/[\x00-\x1F\x7F]/g, "")
+				.replace(/\r?\n/g, " ");
 			if (sanitized.length > 0) {
 				let targetText = input;
 				let targetPos = cursorPos;
@@ -482,7 +523,11 @@ export function useChatInput(props: UseChatInputProps) {
 					targetText = res.text;
 					targetPos = res.pos;
 				}
-				setInput(targetText.slice(0, targetPos) + sanitized + targetText.slice(targetPos));
+				setInput(
+					targetText.slice(0, targetPos) +
+						sanitized +
+						targetText.slice(targetPos),
+				);
 				setCursorPos(targetPos + sanitized.length);
 				setHistoryIndex(-1);
 			}

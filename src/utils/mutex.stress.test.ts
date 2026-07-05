@@ -11,16 +11,16 @@ describe("ReadWriteLock Stress Tests", () => {
 		let completedTasks = 0;
 		const totalTasks = 200;
 
-		const runTask = async (id: number, type: "read" | "write") => {
+		const runTask = async (_id: number, type: "read" | "write") => {
 			const delayTime = Math.floor(Math.random() * 10) + 1;
 			if (type === "read") {
 				await lock.withReadLock(async () => {
 					// Invariant check: No writers should be active
 					expect(activeWriters).toBe(0);
 					activeReaders++;
-					
+
 					await delay(delayTime);
-					
+
 					activeReaders--;
 				});
 			} else {
@@ -29,9 +29,9 @@ describe("ReadWriteLock Stress Tests", () => {
 					expect(activeWriters).toBe(0);
 					expect(activeReaders).toBe(0);
 					activeWriters++;
-					
+
 					await delay(delayTime);
-					
+
 					activeWriters--;
 				});
 			}
@@ -40,7 +40,7 @@ describe("ReadWriteLock Stress Tests", () => {
 
 		const promises: Promise<void>[] = [];
 		for (let i = 0; i < totalTasks; i++) {
-			const type = Math.random() < 0.6 ? "read" as const : "write" as const;
+			const type = Math.random() < 0.6 ? ("read" as const) : ("write" as const);
 			promises.push(runTask(i, type));
 		}
 
@@ -52,11 +52,11 @@ describe("ReadWriteLock Stress Tests", () => {
 
 	it("should demonstrate reader starvation under continuous writing", async () => {
 		const lock = new ReadWriteLock();
-		let activeReaders = 0;
+		let _activeReaders = 0;
 		let activeWriters = 0;
 
 		// Acquire first write lock to block everything initially
-		let initialWriterReleased = false;
+		let _initialWriterReleased = false;
 		const firstWritePromise = lock.writeLock().then(() => {
 			activeWriters++;
 		});
@@ -66,38 +66,40 @@ describe("ReadWriteLock Stress Tests", () => {
 		let readAcquired = false;
 		const readPromise = lock.withReadLock(async () => {
 			readAcquired = true;
-			activeReaders++;
+			_activeReaders++;
 			expect(activeWriters).toBe(0);
-			activeReaders--;
+			_activeReaders--;
 		});
 
 		// Queue a series of write locks that execute one after another
 		const numWriters = 5;
 		let writersCompleted = 0;
-		
-		const writePromises = Array.from({ length: numWriters }).map(async (_, idx) => {
-			await lock.withWriteLock(async () => {
-				activeWriters++;
-				// At each write, verify that the read lock has NOT been acquired yet
-				// because readers are starved by the write queue
-				expect(readAcquired).toBe(false);
-				await delay(10);
-				activeWriters--;
-				writersCompleted++;
-			});
-		});
+
+		const writePromises = Array.from({ length: numWriters }).map(
+			async (_, _idx) => {
+				await lock.withWriteLock(async () => {
+					activeWriters++;
+					// At each write, verify that the read lock has NOT been acquired yet
+					// because readers are starved by the write queue
+					expect(readAcquired).toBe(false);
+					await delay(10);
+					activeWriters--;
+					writersCompleted++;
+				});
+			},
+		);
 
 		// Release the first write lock
 		activeWriters--;
-		initialWriterReleased = true;
+		_initialWriterReleased = true;
 		lock.writeUnlock();
 
 		// Wait for all subsequent writers to complete
 		await Promise.all(writePromises);
-		
+
 		// Finally, the read lock should acquire
 		await readPromise;
-		
+
 		expect(readAcquired).toBe(true);
 		expect(writersCompleted).toBe(numWriters);
 	});

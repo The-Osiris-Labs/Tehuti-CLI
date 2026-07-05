@@ -1,5 +1,5 @@
-import os from "node:os";
 import { execSync } from "node:child_process";
+import os from "node:os";
 import { z } from "zod";
 import {
 	detectBestGraphicsProtocol,
@@ -86,16 +86,7 @@ function formatBytes(bytes: number): string {
 
 const ENV_INSPECT_SCHEMA = z.object({
 	section: z
-		.enum([
-			"all",
-			"os",
-			"env",
-			"shell",
-			"terminal",
-			"network",
-			"tools",
-			"cwd",
-		])
+		.enum(["all", "os", "env", "shell", "terminal", "network", "tools", "cwd"])
 		.optional()
 		.describe("Limit the report to one section (default: all)"),
 	show_secret_values: z
@@ -124,7 +115,9 @@ async function envInspect(
 		const release = safeExec("uname -r") ?? os.release();
 		const productName = safeExec("sw_vers -productName 2>/dev/null");
 		const productVersion = safeExec("sw_vers -productVersion 2>/dev/null");
-		const disk = safeExec("df -h / | tail -1 | awk '{print $2\" used \"$3\" avail (\"$5\" used)\"}'");
+		const disk = safeExec(
+			'df -h / | tail -1 | awk \'{print $2" used "$3" avail ("$5" used)"}\'',
+		);
 
 		const lines: string[] = [];
 		lines.push(`## OS & Hardware`);
@@ -182,7 +175,9 @@ async function envInspect(
 			`- Graphics: Sixel=${graphics.sixel ? "✓" : "✗"}  Kitty=${graphics.kitty ? "✓" : "✗"}  iTerm2=${graphics.iterm ? "✓" : "✗"}${best ? ` (best: ${best})` : ""}`,
 		);
 		lines.push(`- TTY: ${caps.tty ? "yes" : "no"}`);
-		lines.push(`- Interactive: ${caps.interactive ? "yes" : "no"} (CI=${caps.ci})`);
+		lines.push(
+			`- Interactive: ${caps.interactive ? "yes" : "no"} (CI=${caps.ci})`,
+		);
 		lines.push(`- Size: ${caps.size.columns}×${caps.size.rows}`);
 		lines.push(`- Shell: ${caps.shell}`);
 		lines.push(`- Locale: ${caps.lang}`);
@@ -240,7 +235,9 @@ async function envInspect(
 			probe("curl", "curl"),
 		];
 		const found = probes.filter((l): l is string => l !== null);
-		sections.push(`## Installed Tools\n${found.join("\n") || "(none detected)"}`);
+		sections.push(
+			`## Installed Tools\n${found.join("\n") || "(none detected)"}`,
+		);
 	}
 
 	// ── Environment Variables ──────────────────────────────────────────────
@@ -251,10 +248,16 @@ async function envInspect(
 			for (const k of keys) {
 				const v = process.env[k];
 				if (v) {
-					if (k.includes("KEY") || k.includes("TOKEN") || k.includes("SECRET")) {
+					if (
+						k.includes("KEY") ||
+						k.includes("TOKEN") ||
+						k.includes("SECRET")
+					) {
 						present.push(`  - ${k}: ${showValues ? redact(v) : "✓ set"}`);
 					} else {
-						present.push(`  - ${k}: ${v.length > 80 ? `${v.slice(0, 77)}…` : v}`);
+						present.push(
+							`  - ${k}: ${v.length > 80 ? `${v.slice(0, 77)}…` : v}`,
+						);
 					}
 				}
 			}

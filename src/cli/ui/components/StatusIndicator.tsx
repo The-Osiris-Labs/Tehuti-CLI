@@ -1,6 +1,6 @@
-import React from "react";
 import { Text } from "ink";
 import Spinner from "ink-spinner";
+import React from "react";
 import { BRANDING } from "../../../branding/index.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";

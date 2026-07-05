@@ -1,6 +1,6 @@
 import {
-	getProviderInfo,
 	getProviderAuthHeaders,
+	getProviderInfo,
 	getProviderModelsUrl,
 	resolveBaseUrlForProvider,
 } from "../config/providers.js";
@@ -12,10 +12,10 @@ import {
 export interface LiveModelInfo {
 	id: string;
 	name?: string;
-	contextLength?: number;      // total conversation window (preferred live value)
-	maxOutputTokens?: number;    // max generation length if advertised
+	contextLength?: number; // total conversation window (preferred live value)
+	maxOutputTokens?: number; // max generation length if advertised
 	pricing?: {
-		input?: number;   // per million tokens, normalized number
+		input?: number; // per million tokens, normalized number
 		output?: number;
 		[key: string]: any;
 	};
@@ -127,13 +127,12 @@ export async function listModelsForProvider(
 ): Promise<LiveModelInfo[]> {
 	const info = getProviderInfo(provider);
 	// Provider explicitly opted out of model listing (modelListEndpoint === '')
-	if (info && info.modelListEndpoint === '') {
+	if (info && info.modelListEndpoint === "") {
 		return [];
 	}
-	const resolvedBase = resolveBaseUrlForProvider(
-		provider,
-		config.baseUrl,
-	) || "https://openrouter.ai/api/v1";
+	const resolvedBase =
+		resolveBaseUrlForProvider(provider, config.baseUrl) ||
+		"https://openrouter.ai/api/v1";
 	const base = resolvedBase.replace(/\/+$/, "");
 	const url = getProviderModelsUrl(provider, base) || `${base}/models`;
 	const key = config.apiKey;
@@ -142,16 +141,20 @@ export async function listModelsForProvider(
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			...(getProviderAuthHeaders(provider, key, customHeaders)),
+			...getProviderAuthHeaders(provider, key, customHeaders),
 		};
 
 		let res = await fetch(url, { headers });
-		if (!res.ok && res.status === 404 && info?.modelListEndpoint !== "/models") {
+		if (
+			!res.ok &&
+			res.status === 404 &&
+			info?.modelListEndpoint !== "/models"
+		) {
 			res = await fetch(`${base}/models`, { headers });
 		}
 		if (!res.ok) return [];
 
-		const data = await res.json() as any;
+		const data = (await res.json()) as any;
 		let rawModels: any[] = [];
 		if (data?.data && Array.isArray(data.data)) rawModels = data.data;
 		else if (Array.isArray(data)) rawModels = data;
@@ -163,19 +166,29 @@ export async function listModelsForProvider(
 
 				// Extract live numbers - whatever the endpoint gives us
 				const contextLength =
-					m.context_length ?? m.contextLength ?? m.context_window ??
-					m.top_provider?.context_length ?? m.architecture?.context_length ??
+					m.context_length ??
+					m.contextLength ??
+					m.context_window ??
+					m.top_provider?.context_length ??
+					m.architecture?.context_length ??
 					undefined;
 
 				const maxOutput =
-					m.max_completion_tokens ?? m.top_provider?.max_completion_tokens ??
-					m.max_tokens ?? m.max_output_tokens ?? undefined;
+					m.max_completion_tokens ??
+					m.top_provider?.max_completion_tokens ??
+					m.max_tokens ??
+					m.max_output_tokens ??
+					undefined;
 
-				let pricing: any = undefined;
+				let pricing: any;
 				if (m.pricing) {
 					pricing = {
-						input: toPerMillion(m.pricing.prompt ?? m.pricing.input ?? m.pricing?.["prompt"]),
-						output: toPerMillion(m.pricing.completion ?? m.pricing.output ?? m.pricing?.["completion"]),
+						input: toPerMillion(
+							m.pricing.prompt ?? m.pricing.input ?? m.pricing?.prompt,
+						),
+						output: toPerMillion(
+							m.pricing.completion ?? m.pricing.output ?? m.pricing?.completion,
+						),
 						...m.pricing,
 					};
 				}
@@ -201,18 +214,21 @@ export async function listModelsForProvider(
 function toPerMillion(val: any): number | undefined {
 	if (val == null) return undefined;
 	const n = typeof val === "string" ? parseFloat(val) : Number(val);
-	if (!isFinite(n)) return undefined;
+	if (!Number.isFinite(n)) return undefined;
 	// OpenRouter etc often give per-token (e.g. 0.0000005 = $0.50 / M). If < 1 treat as per-token.
 	if (n > 0 && n < 1) return n * 1_000_000;
 	return n;
 }
 
 /** Convenience: fetch and return string ids (back-compat for old callers) */
-export async function listModelIdsForProvider(provider: string, config: { apiKey?: string; baseUrl?: string }): Promise<string[]> {
+export async function listModelIdsForProvider(
+	provider: string,
+	config: { apiKey?: string; baseUrl?: string },
+): Promise<string[]> {
 	const rich = await listModelsForProvider(provider, config);
-	return rich.map(m => m.id).slice(0, 100);
+	return rich.map((m) => m.id).slice(0, 100);
 }
 
 // Legacy re-exports point at live where possible (old static remains as fallback only)
 export const getLiveModelInfo = (models: LiveModelInfo[], id: string) =>
-	models.find(m => m.id === id || m.id.includes(id) || id.includes(m.id));
+	models.find((m) => m.id === id || m.id.includes(id) || id.includes(m.id));

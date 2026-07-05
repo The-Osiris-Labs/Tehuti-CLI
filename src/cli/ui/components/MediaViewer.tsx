@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import fs from "node:fs";
 import { Box, Text, useStdout } from "ink";
-import { renderMediaToTerminal } from "../../../utils/media.js";
 import Spinner from "ink-spinner";
-import fs from "fs";
+import React, { useEffect, useState } from "react";
+import { renderMediaToTerminal } from "../../../utils/media.js";
 
 export interface MediaViewerProps {
 	src: string;
@@ -13,7 +13,7 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 	const { stdout } = useStdout();
 	const [ansi, setAnsi] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [width, setWidth] = useState(stdout?.columns || 80);
+	const [_width, setWidth] = useState(stdout?.columns || 80);
 
 	useEffect(() => {
 		if (!stdout) return;
@@ -28,7 +28,7 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 
 	useEffect(() => {
 		let isMounted = true;
-		
+
 		// Basic check: is it a local absolute file or relative file that exists?
 		const resolvePath = () => {
 			if (src.startsWith("file://")) {
@@ -38,13 +38,14 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 		};
 
 		const resolvedSrc = resolvePath();
-		
+
 		if (!fs.existsSync(resolvedSrc)) {
-			if (isMounted) setError("File not found or is a remote URL (not yet supported)");
+			if (isMounted)
+				setError("File not found or is a remote URL (not yet supported)");
 			return;
 		}
 
-		renderMediaToTerminal(resolvedSrc, { width: '50%' })
+		renderMediaToTerminal(resolvedSrc, { width: "50%" })
 			.then((rendered) => {
 				if (!isMounted) return;
 				if (rendered) {
@@ -60,13 +61,17 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 		return () => {
 			isMounted = false;
 		};
-	}, [src, width]);
+	}, [src]);
 
 	if (error) {
 		return React.createElement(
 			Box,
 			{ marginY: 1, paddingX: 1, borderStyle: "round", borderColor: "red" },
-			React.createElement(Text, { color: "red" }, `❌ Media Error: ${error} (${src})`)
+			React.createElement(
+				Text,
+				{ color: "red" },
+				`❌ Media Error: ${error} (${src})`,
+			),
 		);
 	}
 
@@ -74,7 +79,12 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 		return React.createElement(
 			Box,
 			{ marginY: 1 },
-			React.createElement(Text, { color: "cyan" }, React.createElement(Spinner, { type: "dots" }), ` Loading media: ${alt || src}`)
+			React.createElement(
+				Text,
+				{ color: "cyan" },
+				React.createElement(Spinner, { type: "dots" }),
+				` Loading media: ${alt || src}`,
+			),
 		);
 	}
 
@@ -82,6 +92,6 @@ export function MediaViewer({ src, alt }: MediaViewerProps): React.ReactNode {
 		Box,
 		{ marginY: 1, flexDirection: "column" },
 		React.createElement(Text, { dimColor: true }, `🖼️  ${alt || src}`),
-		React.createElement(Text, null, ansi)
+		React.createElement(Text, null, ansi),
 	);
 }

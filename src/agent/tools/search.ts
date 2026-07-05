@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import readline from "node:readline";
-import path from "node:path";
-import url from "node:url";
 import { createRequire } from "node:module";
+import path from "node:path";
+import readline from "node:readline";
+import url from "node:url";
 import fs from "fs-extra";
 import { glob } from "tinyglobby";
 
@@ -15,9 +15,10 @@ try {
 		? path.resolve(currentDir, "tehuti-core.darwin-arm64.node")
 		: path.resolve(currentDir, "../../../dist/tehuti-core.darwin-arm64.node");
 	tehutiCore = require(nodePath);
-} catch (e) {
+} catch (_e) {
 	// console.error("Failed to load rust parallel_grep", e);
 }
+
 import { z } from "zod";
 import { mcpManager } from "../../mcp/client.js";
 import type {
@@ -197,7 +198,9 @@ const FIND_REFERENCES_SCHEMA = z.object({
 	path: z
 		.string()
 		.optional()
-		.describe("The directory to search in (default: current working directory)"),
+		.describe(
+			"The directory to search in (default: current working directory)",
+		),
 });
 
 const GO_TO_DEFINITION_SCHEMA = z.object({
@@ -205,7 +208,9 @@ const GO_TO_DEFINITION_SCHEMA = z.object({
 	path: z
 		.string()
 		.optional()
-		.describe("The directory to search in (default: current working directory)"),
+		.describe(
+			"The directory to search in (default: current working directory)",
+		),
 });
 
 const GLOB_TIMEOUT_MS = 30000;
@@ -351,8 +356,7 @@ async function grepFiles(
 
 	try {
 		if (
-			tehutiCore &&
-			tehutiCore.parallelGrep &&
+			tehutiCore?.parallelGrep &&
 			args.ignore_case === false &&
 			!args.multiline &&
 			!args.context &&
@@ -368,7 +372,7 @@ async function grepFiles(
 			const outputLines = results
 				.slice(0, maxResults)
 				.map((r: any) => `${r.filePath}:${r.lineNumber}: ${r.content}`);
-			
+
 			const truncationMsg =
 				results.length > maxResults
 					? `\n... (truncated, ${results.length} total matches)`
@@ -525,7 +529,11 @@ async function grepFiles(
 				(result.output.length > 100
 					? `\n... (${result.output.length - 100} more results)`
 					: ""),
-			metadata: { pattern: args.pattern, path: searchPath, count: result.matchCount },
+			metadata: {
+				pattern: args.pattern,
+				path: searchPath,
+				count: result.matchCount,
+			},
 		};
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("ENOENT")) {
@@ -550,12 +558,16 @@ async function findReferences(
 ): Promise<ToolResult> {
 	// Attempt to use MCP LSP integration if available
 	const tools = mcpManager.getAllTools();
-	const lspTool = tools.find((t) => t.tool.name === "find_references" || t.tool.name === "textDocument/references");
+	const lspTool = tools.find(
+		(t) =>
+			t.tool.name === "find_references" ||
+			t.tool.name === "textDocument/references",
+	);
 	if (lspTool) {
 		try {
 			const mcpArgs: Record<string, unknown> = { symbol: args.symbol };
 			if (args.path) mcpArgs.path = args.path;
-			
+
 			const result = await mcpManager.executeTool(
 				lspTool.serverName,
 				lspTool.tool.name,
@@ -563,10 +575,11 @@ async function findReferences(
 			);
 			return {
 				success: true,
-				output: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+				output:
+					typeof result === "string" ? result : JSON.stringify(result, null, 2),
 				metadata: { source: "mcp", serverName: lspTool.serverName },
 			};
-		} catch (error) {
+		} catch (_error) {
 			// Fallback to regex if MCP tool fails
 			// console.warn("MCP LSP failed, falling back to ripgrep:", error);
 		}
@@ -590,12 +603,16 @@ async function goToDefinition(
 ): Promise<ToolResult> {
 	// Attempt to use MCP LSP integration if available
 	const tools = mcpManager.getAllTools();
-	const lspTool = tools.find((t) => t.tool.name === "go_to_definition" || t.tool.name === "textDocument/definition");
+	const lspTool = tools.find(
+		(t) =>
+			t.tool.name === "go_to_definition" ||
+			t.tool.name === "textDocument/definition",
+	);
 	if (lspTool) {
 		try {
 			const mcpArgs: Record<string, unknown> = { symbol: args.symbol };
 			if (args.path) mcpArgs.path = args.path;
-			
+
 			const result = await mcpManager.executeTool(
 				lspTool.serverName,
 				lspTool.tool.name,
@@ -603,10 +620,11 @@ async function goToDefinition(
 			);
 			return {
 				success: true,
-				output: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+				output:
+					typeof result === "string" ? result : JSON.stringify(result, null, 2),
 				metadata: { source: "mcp", serverName: lspTool.serverName },
 			};
-		} catch (error) {
+		} catch (_error) {
 			// Fallback to regex if MCP tool fails
 		}
 	}
@@ -622,11 +640,15 @@ async function goToDefinition(
 		},
 		ctx,
 	);
-	
-	if (result.success && result.output && !result.output.startsWith("No matches found")) {
+
+	if (
+		result.success &&
+		result.output &&
+		!result.output.startsWith("No matches found")
+	) {
 		return result;
 	}
-	
+
 	// Fallback for methods or properties
 	const methodPattern = `^\\s*(async\\s+)?(get\\s+|set\\s+)?${args.symbol}\\s*[=(:]`;
 	return grepFiles(
@@ -653,7 +675,7 @@ export const searchTools: ToolDefinition[] = [
 		execute: globFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-				isReadonly: true,
+		isReadonly: true,
 		prefetchRules: [
 			{
 				tool: "read",
@@ -676,7 +698,7 @@ export const searchTools: ToolDefinition[] = [
 		execute: grepFiles as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-				isReadonly: true,
+		isReadonly: true,
 		prefetchRules: [
 			{
 				tool: "read",

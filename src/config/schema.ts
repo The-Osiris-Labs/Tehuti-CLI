@@ -86,10 +86,7 @@ export const MODEL_SELECTION_SCHEMA = z.enum([
 	"speed-optimized",
 ]);
 
-export const PROVIDER_SCHEMA = z
-	.string()
-	.min(1)
-	.default("opencode");
+export const PROVIDER_SCHEMA = z.string().min(1).default("opencode");
 
 export const CUSTOM_PROVIDER_SCHEMA = z.object({
 	name: z.string().min(1).describe("Name of custom provider"),

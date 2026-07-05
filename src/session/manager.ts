@@ -1,8 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "fs-extra";
-import { v4 as uuidv4 } from "uuid";
 import Fuse from "fuse.js";
+import { v4 as uuidv4 } from "uuid";
 import type { AgentContext } from "../agent/context.js";
 import type { OpenRouterMessage } from "../api/openrouter.js";
 import type { TehutiConfig } from "../config/schema.js";
@@ -16,7 +16,7 @@ function isValidSessionId(id: string): boolean {
 	return UUID_REGEX.test(id);
 }
 
-function sanitizeSessionId(id: string): string {
+function _sanitizeSessionId(id: string): string {
 	const sanitized = id.replace(/[^0-9a-f-]/gi, "");
 	return sanitized.length === 36 && UUID_REGEX.test(sanitized) ? sanitized : "";
 }
@@ -36,7 +36,10 @@ export interface SessionMetadata {
 	tokensUsed: number;
 }
 
-type SessionSeed = Pick<SessionMetadata, "provider" | "baseUrl" | "customProvider">;
+type SessionSeed = Pick<
+	SessionMetadata,
+	"provider" | "baseUrl" | "customProvider"
+>;
 
 export interface SessionData {
 	metadata: SessionMetadata;
@@ -98,15 +101,23 @@ class SessionManager {
 		await fs.ensureDir(this.sessionsDir);
 	}
 
-  generateAutoName(cwd: string, _model: string, messages?: OpenRouterMessage[]): string {
+	generateAutoName(
+		cwd: string,
+		_model: string,
+		messages?: OpenRouterMessage[],
+	): string {
 		// Try to get name from first user message
 		if (messages && messages.length > 0) {
-			const firstUserMsg = messages.find(m => m.role === "user");
+			const firstUserMsg = messages.find((m) => m.role === "user");
 			if (firstUserMsg && typeof firstUserMsg.content === "string") {
-				let name = firstUserMsg.content.trim().split(/\s+/).slice(0, 5).join(" ");
+				let name = firstUserMsg.content
+					.trim()
+					.split(/\s+/)
+					.slice(0, 5)
+					.join(" ");
 				// Truncate and add ellipsis if too long
 				if (name.length > 30) {
-					name = name.slice(0, 27) + "...";
+					name = `${name.slice(0, 27)}...`;
 				}
 				if (name) {
 					return name;
@@ -214,7 +225,7 @@ class SessionManager {
 		const sessionFile = path.join(sessionDir, "session.json");
 		const tempFile = path.join(sessionDir, "session.json.tmp");
 		await fs.writeJson(tempFile, sessionData, { spaces: 2 });
-		
+
 		try {
 			await fs.rename(tempFile, sessionFile);
 		} catch (error: any) {
@@ -305,7 +316,7 @@ class SessionManager {
 		for (let i = 0; i < dirs.length; i += concurrencyLimit) {
 			const chunk = dirs.slice(i, i + concurrencyLimit);
 			const results = await Promise.all(
-				chunk.map((dir) => this.getSessionMetadata(dir))
+				chunk.map((dir) => this.getSessionMetadata(dir)),
 			);
 			for (const metadata of results) {
 				if (metadata) {
@@ -322,7 +333,7 @@ class SessionManager {
 
 	async searchSessions(query: string): Promise<SessionMetadata[]> {
 		const allSessions = await this.listSessions();
-		
+
 		if (!query.trim()) {
 			return allSessions;
 		}
@@ -334,7 +345,7 @@ class SessionManager {
 		});
 
 		const results = fuse.search(query.trim());
-		return results.map(result => result.item);
+		return results.map((result) => result.item);
 	}
 
 	async deleteSession(id: string): Promise<void> {

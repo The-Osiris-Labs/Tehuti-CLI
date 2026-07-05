@@ -29,7 +29,11 @@ const AI_KEY_ENV_VARS = [
  * without spamming the graph.
  */
 function stableId(prefix: string, parts: string[]): string {
-	return `${prefix}-${parts.sort().join("-").toLowerCase().replace(/[^a-z0-9-]/g, "")}`;
+	return `${prefix}-${parts
+		.sort()
+		.join("-")
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "")}`;
 }
 
 interface BootstrapResult {
@@ -55,7 +59,8 @@ export async function bootstrapEnvironmentMemory(
 		`terminal=${caps.emulator}`,
 		`size=${caps.size.columns}x${caps.size.rows}`,
 		`colors=${caps.colors.has16m ? "TrueColor" : caps.colors.has256 ? "256" : "basic"}`,
-		`graphics=${caps.graphics.sixel ? "sixel" : ""}${caps.graphics.kitty ? "+kitty" : ""}${caps.graphics.iterm ? "+iterm" : ""}` || "graphics=none",
+		`graphics=${caps.graphics.sixel ? "sixel" : ""}${caps.graphics.kitty ? "+kitty" : ""}${caps.graphics.iterm ? "+iterm" : ""}` ||
+			"graphics=none",
 		`shell=${caps.shell.split("/").pop() ?? "unknown"}`,
 		`platform=${os.platform()}-${os.arch()}`,
 	];

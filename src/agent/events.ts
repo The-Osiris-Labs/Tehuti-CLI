@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
 
 export interface AgentEvents {
-	"wakeup": (message: string) => void;
-	"error": (error: Error) => void;
+	wakeup: (message: string) => void;
+	error: (error: Error) => void;
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: generic boundary
 export class TypedEventEmitter<TEvents extends Record<string, any>> {
 	private emitter = new EventEmitter();
 
@@ -12,27 +13,31 @@ export class TypedEventEmitter<TEvents extends Record<string, any>> {
 		eventName: TEventName,
 		...eventArg: Parameters<TEvents[TEventName]>
 	) {
+		// biome-ignore lint/suspicious/noExplicitAny: spread typings
 		this.emitter.emit(eventName, ...(eventArg as unknown as any[]));
 	}
 
 	public on<TEventName extends keyof TEvents & string>(
 		eventName: TEventName,
-		handler: TEvents[TEventName]
+		handler: TEvents[TEventName],
 	) {
+		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.on(eventName, handler as any);
 	}
 
 	public once<TEventName extends keyof TEvents & string>(
 		eventName: TEventName,
-		handler: TEvents[TEventName]
+		handler: TEvents[TEventName],
 	) {
+		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.once(eventName, handler as any);
 	}
 
 	public off<TEventName extends keyof TEvents & string>(
 		eventName: TEventName,
-		handler: TEvents[TEventName]
+		handler: TEvents[TEventName],
 	) {
+		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.off(eventName, handler as any);
 	}
 }
@@ -50,8 +55,8 @@ export class WakeupQueue {
 	constructor() {
 		agentEventBus.on("wakeup", (msg: string) => {
 			if (this.waitingResolves.length > 0) {
-				const resolve = this.waitingResolves.shift()!;
-				resolve(msg);
+				const resolve = this.waitingResolves.shift();
+				if (resolve) resolve(msg);
 			} else {
 				this.queue.push(msg);
 			}
@@ -60,7 +65,8 @@ export class WakeupQueue {
 
 	public async consume(): Promise<string> {
 		if (this.queue.length > 0) {
-			return Promise.resolve(this.queue.shift()!);
+			const msg = this.queue.shift();
+			if (msg !== undefined) return Promise.resolve(msg);
 		}
 		return new Promise((resolve) => {
 			this.waitingResolves.push(resolve);

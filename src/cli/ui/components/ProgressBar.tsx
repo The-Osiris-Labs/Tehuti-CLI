@@ -1,11 +1,19 @@
-import React from "react";
 import { Box, Text } from "ink";
+import React from "react";
 import { BRANDING } from "../../../branding/index.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const SAND = BRANDING.colors?.sand || "#8B7355";
 
-export const ProgressBar = ({ value, label, width = 40 }: { value: number; label?: string; width?: number }): React.ReactElement => {
+export const ProgressBar = ({
+	value,
+	label,
+	width = 40,
+}: {
+	value: number;
+	label?: string;
+	width?: number;
+}): React.ReactElement => {
 	const filledWidth = Math.round((value / 100) * width);
 	const filled = "━".repeat(filledWidth);
 	const empty = "─".repeat(width - filledWidth);

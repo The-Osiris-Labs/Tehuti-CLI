@@ -49,7 +49,13 @@ function isPrivateHost(host: string): boolean {
 async function checkOne(
 	url: string,
 	timeoutMs: number,
-): Promise<{ url: string; ok: boolean; status?: number; ms?: number; error?: string }> {
+): Promise<{
+	url: string;
+	ok: boolean;
+	status?: number;
+	ms?: number;
+	error?: string;
+}> {
 	const start = Date.now();
 	try {
 		const parsed = new URL(url);
@@ -80,7 +86,10 @@ async function checkOne(
 				url,
 				ok: false,
 				ms: Date.now() - start,
-				error: (err as Error).name === "AbortError" ? "timeout" : (err as Error).message,
+				error:
+					(err as Error).name === "AbortError"
+						? "timeout"
+						: (err as Error).message,
 			};
 		}
 	} catch (err) {
@@ -112,9 +121,11 @@ async function networkCheck(
 	args: z.infer<typeof NETWORK_CHECK_SCHEMA>,
 	_ctx: ToolContext,
 ): Promise<ToolResult> {
-	const targets = (args.endpoints && args.endpoints.length > 0
-		? args.endpoints.map((u) => ({ label: u, url: u }))
-		: DEFAULT_ENDPOINTS) as ReadonlyArray<{ label: string; url: string }>;
+	const targets = (
+		args.endpoints && args.endpoints.length > 0
+			? args.endpoints.map((u) => ({ label: u, url: u }))
+			: DEFAULT_ENDPOINTS
+	) as ReadonlyArray<{ label: string; url: string }>;
 	const timeoutMs = args.timeout_ms ?? 5000;
 	const out: string[] = [`## Network Check`];
 
@@ -127,12 +138,16 @@ async function networkCheck(
 					.join("\n")}`,
 			);
 		} catch (err) {
-			out.push(`\n### DNS: ${args.dns_lookup}\n  - failed: ${(err as Error).message}`);
+			out.push(
+				`\n### DNS: ${args.dns_lookup}\n  - failed: ${(err as Error).message}`,
+			);
 		}
 	}
 
 	out.push(`\n### HTTP Probes (timeout ${timeoutMs}ms)`);
-	const results = await Promise.all(targets.map((t) => checkOne(t.url, timeoutMs)));
+	const results = await Promise.all(
+		targets.map((t) => checkOne(t.url, timeoutMs)),
+	);
 	for (const r of results) {
 		const label = targets.find((t) => t.url === r.url)?.label ?? r.url;
 		if (r.ok) {
@@ -149,9 +164,7 @@ async function networkCheck(
 	}
 
 	const reachable = results.filter((r) => r.ok).length;
-	out.unshift(
-		`${reachable}/${results.length} endpoints reachable.\n`,
-	);
+	out.unshift(`${reachable}/${results.length} endpoints reachable.\n`);
 
 	return {
 		success: true,
@@ -167,11 +180,14 @@ async function networkCheck(
  */
 export function pingHost(host: string, timeoutMs = 3000): boolean {
 	try {
-		const out = execSync(`ping -c 1 -W ${Math.max(1, Math.floor(timeoutMs / 1000))} ${host}`, {
-			stdio: ["ignore", "pipe", "ignore"],
-			timeout: timeoutMs + 1000,
-			encoding: "utf8",
-		});
+		const out = execSync(
+			`ping -c 1 -W ${Math.max(1, Math.floor(timeoutMs / 1000))} ${host}`,
+			{
+				stdio: ["ignore", "pipe", "ignore"],
+				timeout: timeoutMs + 1000,
+				encoding: "utf8",
+			},
+		);
 		return out.includes("1 received") || out.includes("1 packets received");
 	} catch {
 		return false;

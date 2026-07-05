@@ -1,5 +1,5 @@
-import type { TehutiConfig } from "../config/schema.js";
 import { resolveBaseUrlForProvider } from "../config/providers.js";
+import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { APIError } from "../utils/errors.js";
 import type {
@@ -7,7 +7,6 @@ import type {
 	OpenRouterResponse,
 	OpenRouterStreamChunk,
 	OpenRouterTool,
-	OpenRouterToolCall,
 } from "./openrouter.js";
 
 // KiloCode specific features
@@ -580,7 +579,7 @@ export class KiloCodeClient {
 
 	async reviewCode(
 		code: string,
-		options?: {
+		_options?: {
 			language?: string;
 			reviewType?: "basic" | "advanced" | "security";
 			guidelines?: string[];

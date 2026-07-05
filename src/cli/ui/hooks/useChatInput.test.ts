@@ -1,7 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { useChatInput, type UseChatInputProps } from "./useChatInput.js";
-import { useInput, render } from "ink";
+import { render, useInput } from "ink";
 import React from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type UseChatInputProps, useChatInput } from "./useChatInput.js";
 
 // Mock the 'ink' module to capture the useInput callback
 vi.mock("ink", async () => {
@@ -191,12 +191,12 @@ describe("useChatInput hook", () => {
 
 		const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		triggerInput("c", { ctrl: true });
-		
+
 		expect(consoleSpy).toHaveBeenCalled();
 		const logArg = consoleSpy.mock.calls[0][0];
 		expect(logArg).toContain("\x1B]52;;");
 		expect(logArg).toContain(Buffer.from("hello").toString("base64"));
-		
+
 		expect(props.setSelectionStart).toHaveBeenCalledWith(null);
 		expect(props.setSelectionEnd).toHaveBeenCalledWith(null);
 		consoleSpy.mockRestore();

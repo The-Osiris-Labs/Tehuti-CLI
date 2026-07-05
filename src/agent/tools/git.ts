@@ -507,7 +507,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitStatus as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
-				isReadonly: true,
+		isReadonly: true,
 		prefetchRules: [
 			{
 				tool: "git_diff",
@@ -528,7 +528,7 @@ export const gitTools: ToolDefinition[] = [
 		execute: gitDiff as AnyToolExecutor,
 		category: "git",
 		requiresPermission: false,
-				isReadonly: true,
+		isReadonly: true,
 		prefetchRules: [
 			{
 				tool: "read",

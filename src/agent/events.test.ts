@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { agentEventBus, wakeupQueue } from "./events.js";
 
 describe("events and WakeupQueue", () => {
@@ -42,12 +42,12 @@ describe("events and WakeupQueue", () => {
 
 	it("should handle error events safely without crashing", () => {
 		// Mock console.error to avoid spamming the test output
-		const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-		
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
 		expect(() => {
 			agentEventBus.emit("error", new Error("test error"));
 		}).not.toThrow();
-		
+
 		expect(consoleSpy).toHaveBeenCalled();
 		consoleSpy.mockRestore();
 	});

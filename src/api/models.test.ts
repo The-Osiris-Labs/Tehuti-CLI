@@ -31,9 +31,8 @@ describe("listModelsForProvider", () => {
 			}),
 		);
 		expect(
-			(fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> }).headers[
-				"x-goog-api-key"
-			],
+			(fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> })
+				.headers["x-goog-api-key"],
 		).toBe("google-key");
 	});
 

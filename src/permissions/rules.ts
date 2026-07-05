@@ -33,10 +33,10 @@ export const PERMISSION_RULES = {
 type Category = keyof typeof PERMISSION_RULES;
 
 export function isToolSafe(category: string, operation: string): boolean {
-	if (!Object.prototype.hasOwnProperty.call(PERMISSION_RULES, category)) return false;
+	if (!Object.hasOwn(PERMISSION_RULES, category)) return false;
 	const cat = category as Category;
 	const catRules = PERMISSION_RULES[cat];
-	if (!Object.prototype.hasOwnProperty.call(catRules, operation)) return false;
+	if (!Object.hasOwn(catRules, operation)) return false;
 
 	return (catRules as Record<string, { safe: boolean }>)[operation].safe;
 }
@@ -45,12 +45,14 @@ export function requiresPermission(
 	category: string,
 	operation: string,
 ): boolean {
-	if (!Object.prototype.hasOwnProperty.call(PERMISSION_RULES, category)) return true;
+	if (!Object.hasOwn(PERMISSION_RULES, category)) return true;
 	const cat = category as Category;
 	const catRules = PERMISSION_RULES[cat];
-	if (!Object.prototype.hasOwnProperty.call(catRules, operation)) return true;
+	if (!Object.hasOwn(catRules, operation)) return true;
 
-	return (catRules as Record<string, { requiresPermission: boolean }>)[operation].requiresPermission;
+	return (catRules as Record<string, { requiresPermission: boolean }>)[
+		operation
+	].requiresPermission;
 }
 
 export interface PermissionRule {

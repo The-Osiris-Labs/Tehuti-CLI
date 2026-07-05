@@ -1,5 +1,5 @@
-import type { OpenRouterMessage } from "../api/openrouter.js";
 import { getEncoding } from "js-tiktoken";
+import type { OpenRouterMessage } from "../api/openrouter.js";
 
 const tokenizer = getEncoding("cl100k_base");
 
@@ -24,7 +24,7 @@ export interface CompressionResult {
 	savedTokens: number;
 }
 
-const DEFAULT_OPTIONS: CompressionOptions = {
+const _DEFAULT_OPTIONS: CompressionOptions = {
 	keepFirstN: 2,
 	keepLastN: 10,
 	chunkSize: 5,
@@ -58,11 +58,11 @@ function estimateTokens(messages: OpenRouterMessage[]): number {
 		} else if (msg.content !== undefined && msg.content !== null) {
 			content = JSON.stringify(msg.content);
 		}
-		
+
 		if (msg.tool_calls) {
 			content += JSON.stringify(msg.tool_calls);
 		}
-		
+
 		if (msg.name) {
 			content += msg.name;
 		}

@@ -1,12 +1,13 @@
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
-// @ts-ignore
-import terminalImage from "terminal-image";
-// @ts-ignore
-import ffmpeg from "fluent-ffmpeg";
-// @ts-ignore
+
+
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import ffmpegStatic from "ffmpeg-static";
+
+import ffmpeg from "fluent-ffmpeg";
+
+import terminalImage from "terminal-image";
 
 // Configure ffmpeg to use the static binary
 if (ffmpegStatic) {
@@ -23,7 +24,10 @@ export interface MediaRenderOptions {
  * Renders a local image file to an ANSI string (or Sixel/iTerm graphic)
  * using terminal-image.
  */
-export async function renderImageToTerminal(filePath: string, options: MediaRenderOptions = {}): Promise<string> {
+export async function renderImageToTerminal(
+	filePath: string,
+	options: MediaRenderOptions = {},
+): Promise<string> {
 	try {
 		return await terminalImage.file(filePath, options);
 	} catch (error) {
@@ -35,7 +39,10 @@ export async function renderImageToTerminal(filePath: string, options: MediaRend
  * Extracts the first frame of a local video file, saves it to a temp dir,
  * and renders that thumbnail to an ANSI string.
  */
-export async function renderVideoThumbnailToTerminal(filePath: string, options: MediaRenderOptions = {}): Promise<string> {
+export async function renderVideoThumbnailToTerminal(
+	filePath: string,
+	options: MediaRenderOptions = {},
+): Promise<string> {
 	try {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "tehuti-media-"));
 		const thumbName = "thumbnail.jpg";
@@ -54,11 +61,11 @@ export async function renderVideoThumbnailToTerminal(filePath: string, options: 
 		});
 
 		const result = await terminalImage.file(thumbPath, options);
-		
+
 		// Cleanup
 		try {
 			await fs.rm(tempDir, { recursive: true, force: true });
-		} catch (cleanupErr) {
+		} catch (_cleanupErr) {
 			// Ignore cleanup errors
 		}
 
@@ -72,10 +79,13 @@ export async function renderVideoThumbnailToTerminal(filePath: string, options: 
  * Unified helper to determine if a local path is an image or video,
  * and returns the rendered terminal string.
  */
-export async function renderMediaToTerminal(filePath: string, options: MediaRenderOptions = {}): Promise<string | null> {
+export async function renderMediaToTerminal(
+	filePath: string,
+	options: MediaRenderOptions = {},
+): Promise<string | null> {
 	try {
 		const ext = path.extname(filePath).toLowerCase();
-		
+
 		const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"];
 		if (imageExts.includes(ext)) {
 			return await renderImageToTerminal(filePath, options);

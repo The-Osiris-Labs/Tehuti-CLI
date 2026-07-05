@@ -1,5 +1,5 @@
 import { watch } from "node:fs";
-import { access, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -189,8 +189,8 @@ When working with Git:
 
 		// Setup dynamic loading via fs.watch
 		try {
-			watch(this.skillsDirectory, (eventType, filename) => {
-				if (filename && filename.endsWith(".json")) {
+			watch(this.skillsDirectory, (_eventType, filename) => {
+				if (filename?.endsWith(".json")) {
 					this.readUserSkillsDirectory().catch((err) =>
 						debug.log("agent", "Error reloading user skills:", err),
 					);
@@ -303,11 +303,15 @@ When working with Git:
 		return this.skills.delete(id);
 	}
 
-	public async createReusableSkill(name: string, description: string, instructions: string): Promise<Skill> {
+	public async createReusableSkill(
+		name: string,
+		description: string,
+		instructions: string,
+	): Promise<Skill> {
 		const skillId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 		const skillDir = join(this.skillsDirectory, skillId);
 		await mkdir(skillDir, { recursive: true });
-		
+
 		const skillContent = `---
 name: ${name}
 description: ${description}
@@ -328,9 +332,13 @@ ${instructions}`;
 			version: "1.0.0",
 			active: true,
 		};
-		
+
 		// Save metadata so it can be picked up by the existing JSON loader
-		await writeFile(join(this.skillsDirectory, `${skillId}.json`), JSON.stringify(skill, null, 2), "utf-8");
+		await writeFile(
+			join(this.skillsDirectory, `${skillId}.json`),
+			JSON.stringify(skill, null, 2),
+			"utf-8",
+		);
 
 		this.addSkill(skill);
 		return skill;
@@ -349,20 +357,36 @@ export function getSkillsManager(): SkillsManager {
 
 export const createReusableSkillTool = createTool({
 	name: "create_reusable_skill",
-	description: "Create a reusable skill by writing instructions to a SKILL.md file autonomously.",
+	description:
+		"Create a reusable skill by writing instructions to a SKILL.md file autonomously.",
 	parameters: z.object({
 		name: z.string().describe("The name of the skill"),
-		description: z.string().describe("A short description of what the skill does"),
-		instructions: z.string().describe("The detailed instructions for the skill in markdown format"),
+		description: z
+			.string()
+			.describe("A short description of what the skill does"),
+		instructions: z
+			.string()
+			.describe("The detailed instructions for the skill in markdown format"),
 	}),
 	category: "system",
 	execute: async (args, _ctx) => {
-		const { name, description, instructions } = args as { name: string; description: string; instructions: string };
+		const { name, description, instructions } = args as {
+			name: string;
+			description: string;
+			instructions: string;
+		};
 		try {
-			const skill = await getSkillsManager().createReusableSkill(name, description, instructions);
+			const skill = await getSkillsManager().createReusableSkill(
+				name,
+				description,
+				instructions,
+			);
 			return {
 				success: true,
-				output: JSON.stringify({ message: `Skill ${skill.name} created successfully`, skillId: skill.id }),
+				output: JSON.stringify({
+					message: `Skill ${skill.name} created successfully`,
+					skillId: skill.id,
+				}),
 			};
 		} catch (error) {
 			return {

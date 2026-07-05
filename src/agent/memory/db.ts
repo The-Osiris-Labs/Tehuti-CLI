@@ -1,21 +1,21 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
 
 const getDbPath = () => {
-  const dir = path.join(os.homedir(), '.config', 'tehuti', 'memory');
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return path.join(dir, 'graph.db');
+	const dir = path.join(os.homedir(), ".config", "tehuti", "memory");
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
+	}
+	return path.join(dir, "graph.db");
 };
 
 const db: Database.Database = new Database(getDbPath());
 
 // Initialize schema
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS nodes (

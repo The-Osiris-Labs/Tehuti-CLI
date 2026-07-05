@@ -1,0 +1,851 @@
+src/agent/cache/lru-cache.ts:36:10 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    34 │ 	}
+    35 │ 	if (Array.isArray(val)) {
+  > 36 │ 		return "[" + val.map(stableStringify).join(",") + "]";
+       │ 		       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    37 │ 	}
+    38 │ 	const keys = Object.keys(val).sort();
+  
+  i Unsafe fix: Use a template literal.
+  
+     34  34 │   	}
+     35  35 │   	if (Array.isArray(val)) {
+     36     │ - → → return·"["·+·val.map(stableStringify).join(",")·+·"]";
+         36 │ + → → return·`[${val.map(stableStringify).join(",")}]`;
+     37  37 │   	}
+     38  38 │   	const keys = Object.keys(val).sort();
+  
+
+src/agent/memory/db.ts:2:16 lint/style/useNodejsImportProtocol  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i A Node.js builtin module should be imported with the node: protocol.
+  
+    1 │ import Database from "better-sqlite3";
+  > 2 │ import fs from "fs";
+      │                ^^^^
+    3 │ import os from "os";
+    4 │ import path from "path";
+  
+  i Using the node: protocol is more explicit and signals that the imported module belongs to Node.js.
+  
+  i Unsafe fix: Add the node: protocol.
+  
+     1  1 │   import Database from "better-sqlite3";
+     2    │ - import·fs·from·"fs";
+        2 │ + import·fs·from·"node:fs";
+     3  3 │   import os from "os";
+     4  4 │   import path from "path";
+  
+
+src/agent/memory/db.ts:3:16 lint/style/useNodejsImportProtocol  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i A Node.js builtin module should be imported with the node: protocol.
+  
+    1 │ import Database from "better-sqlite3";
+    2 │ import fs from "fs";
+  > 3 │ import os from "os";
+      │                ^^^^
+    4 │ import path from "path";
+    5 │ 
+  
+  i Using the node: protocol is more explicit and signals that the imported module belongs to Node.js.
+  
+  i Unsafe fix: Add the node: protocol.
+  
+     1  1 │   import Database from "better-sqlite3";
+     2  2 │   import fs from "fs";
+     3    │ - import·os·from·"os";
+        3 │ + import·os·from·"node:os";
+     4  4 │   import path from "path";
+     5  5 │   
+  
+
+src/agent/memory/db.ts:4:18 lint/style/useNodejsImportProtocol  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i A Node.js builtin module should be imported with the node: protocol.
+  
+    2 │ import fs from "fs";
+    3 │ import os from "os";
+  > 4 │ import path from "path";
+      │                  ^^^^^^
+    5 │ 
+    6 │ const getDbPath = () => {
+  
+  i Using the node: protocol is more explicit and signals that the imported module belongs to Node.js.
+  
+  i Unsafe fix: Add the node: protocol.
+  
+     2  2 │   import fs from "fs";
+     3  3 │   import os from "os";
+     4    │ - import·path·from·"path";
+        4 │ + import·path·from·"node:path";
+     5  5 │   
+     6  6 │   const getDbPath = () => {
+  
+
+src/agent/shadow-workspace.ts:47:13 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    45 │ 				maxBuffer: 10 * 1024 * 1024, // 10MB
+    46 │ 			});
+  > 47 │ 			output = stdout + "\n" + stderr;
+       │ 			         ^^^^^^^^^^^^^^^^^^^^^^
+    48 │ 			success = true;
+    49 │ 		} catch (error: any) {
+  
+  i Unsafe fix: Use a template literal.
+  
+     45  45 │   				maxBuffer: 10 * 1024 * 1024, // 10MB
+     46  46 │   			});
+     47     │ - → → → output·=·stdout·+·"\n"·+·stderr;
+         47 │ + → → → output·=·`${stdout}\n${stderr}`;
+     48  48 │   			success = true;
+     49  49 │   		} catch (error: any) {
+  
+
+src/agent/cache/invalidation.ts:89:2 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    87 │ export function shouldCacheTool(
+    88 │ 	toolDef: ToolDefinition | undefined,
+  > 89 │ 	toolName: string,
+       │ 	^^^^^^^^
+    90 │ 	args: unknown,
+    91 │ ): boolean {
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend toolName with an underscore.
+  
+     87  87 │   export function shouldCacheTool(
+     88  88 │   	toolDef: ToolDefinition | undefined,
+     89     │ - → toolName:·string,
+         89 │ + → _toolName:·string,
+     90  90 │   	args: unknown,
+     91  91 │   ): boolean {
+  
+
+src/agent/cache/lru-cache.test.ts:1:44 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+  > 1 │ import { beforeEach, describe, expect, it, vi } from "vitest";
+      │                                            ^^
+    2 │ import { LRUCache } from "./lru-cache.js";
+    3 │ 
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    1 │ import·{·beforeEach,·describe,·expect,·it,·vi·}·from·"vitest";
+      │                                            ---                
+
+src/agent/cache/persistent-cache.ts:5:13 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  ! This import is unused.
+  
+    3 │ import * as path from "node:path";
+    4 │ import type { ToolResult } from "../tools/registry.js";
+  > 5 │ import type { CacheEntry } from "./lru-cache.js";
+      │             ^^^^^^^^^^^^^^
+    6 │ import { getToolCache, ToolCache } from "./tool-cache.js";
+    7 │ 
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+      3   3 │   import * as path from "node:path";
+      4   4 │   import type { ToolResult } from "../tools/registry.js";
+      5     │ - import·type·{·CacheEntry·}·from·"./lru-cache.js";
+      6   5 │   import { getToolCache, ToolCache } from "./tool-cache.js";
+      7   6 │   
+  
+
+src/agent/cache/persistent-cache.ts:6:24 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+    4 │ import type { ToolResult } from "../tools/registry.js";
+    5 │ import type { CacheEntry } from "./lru-cache.js";
+  > 6 │ import { getToolCache, ToolCache } from "./tool-cache.js";
+      │                        ^^^^^^^^^
+    7 │ 
+    8 │ const CACHE_DIR = path.join(os.homedir(), ".tehuti", "cache");
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    6 │ import·{·getToolCache,·ToolCache·}·from·"./tool-cache.js";
+      │                        ----------                         
+
+src/agent/cache/persistent-cache.ts:81:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━
+
+  ! This variable loaded is unused.
+  
+    80 │ 		const cache = getToolCache();
+  > 81 │ 		let loaded = 0;
+       │ 		    ^^^^^^
+    82 │ 
+    83 │ 		for (const entry of serialized.entries) {
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend loaded with an underscore.
+  
+     79  79 │   
+     80  80 │   		const cache = getToolCache();
+     81     │ - → → let·loaded·=·0;
+         81 │ + → → let·_loaded·=·0;
+     82  82 │   
+     83  83 │   		for (const entry of serialized.entries) {
+    ······· │ 
+     99  99 │   						ttl: entry.ttl,
+    100 100 │   					});
+    101     │ - → → → → → loaded++;
+        101 │ + → → → → → _loaded++;
+    102 102 │   				} catch {}
+    103 103 │   			}
+  
+
+src/agent/cache/tool-cache.test.ts:71:10 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━
+
+  ! This variable deleted is unused.
+  
+    69 │ 			cache.set("read", { file_path: "/test/other.ts" }, createResult("other"));
+    70 │ 
+  > 71 │ 			const deleted = cache.invalidateFile("/test/file.ts");
+       │ 			      ^^^^^^^
+    72 │ 
+    73 │ 			expect(cache.get("read", { file_path: "/test/file.ts" })).toBeNull();
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend deleted with an underscore.
+  
+     69  69 │   			cache.set("read", { file_path: "/test/other.ts" }, createResult("other"));
+     70  70 │   
+     71     │ - → → → const·deleted·=·cache.invalidateFile("/test/file.ts");
+         71 │ + → → → const·_deleted·=·cache.invalidateFile("/test/file.ts");
+     72  72 │   
+     73  73 │   			expect(cache.get("read", { file_path: "/test/file.ts" })).toBeNull();
+  
+
+src/agent/context-compressor.ts:27:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  ! This variable DEFAULT_OPTIONS is unused.
+  
+    25 │ }
+    26 │ 
+  > 27 │ const DEFAULT_OPTIONS: CompressionOptions = {
+       │       ^^^^^^^^^^^^^^^
+    28 │ 	keepFirstN: 2,
+    29 │ 	keepLastN: 10,
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend DEFAULT_OPTIONS with an underscore.
+  
+    25 25 │   }
+    26 26 │   
+    27    │ - const·DEFAULT_OPTIONS:·CompressionOptions·=·{
+       27 │ + const·_DEFAULT_OPTIONS:·CompressionOptions·=·{
+    28 28 │   	keepFirstN: 2,
+    29 29 │   	keepLastN: 10,
+  
+
+src/agent/context.ts:22:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This variable MAX_CONTEXT_TOKENS is unused.
+  
+    20 │ 	"AGENTS.md",
+    21 │ ];
+  > 22 │ const MAX_CONTEXT_TOKENS = 100000;
+       │       ^^^^^^^^^^^^^^^^^^
+    23 │ const COMPACT_THRESHOLD = 0.85;
+    24 │ const MIN_MESSAGES_TO_KEEP = 6;
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend MAX_CONTEXT_TOKENS with an underscore.
+  
+     20  20 │   	"AGENTS.md",
+     21  21 │   ];
+     22     │ - const·MAX_CONTEXT_TOKENS·=·100000;
+         22 │ + const·_MAX_CONTEXT_TOKENS·=·100000;
+     23  23 │   const COMPACT_THRESHOLD = 0.85;
+     24  24 │   const MIN_MESSAGES_TO_KEEP = 6;
+  
+
+src/agent/events.ts:8:63 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+     6 │ }
+     7 │ 
+   > 8 │ export class TypedEventEmitter<TEvents extends Record<string, any>> {
+       │                                                               ^^^
+     9 │ 	private emitter = new EventEmitter();
+    10 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/events.ts:15:59 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    13 │ 		...eventArg: Parameters<TEvents[TEventName]>
+    14 │ 	) {
+  > 15 │ 		this.emitter.emit(eventName, ...(eventArg as unknown as any[]));
+       │ 		                                                        ^^^
+    16 │ 	}
+    17 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/events.ts:22:41 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    20 │ 		handler: TEvents[TEventName],
+    21 │ 	) {
+  > 22 │ 		this.emitter.on(eventName, handler as any);
+       │ 		                                      ^^^
+    23 │ 	}
+    24 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/events.ts:29:43 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    27 │ 		handler: TEvents[TEventName],
+    28 │ 	) {
+  > 29 │ 		this.emitter.once(eventName, handler as any);
+       │ 		                                        ^^^
+    30 │ 	}
+    31 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/events.ts:36:42 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    34 │ 		handler: TEvents[TEventName],
+    35 │ 	) {
+  > 36 │ 		this.emitter.off(eventName, handler as any);
+       │ 		                                       ^^^
+    37 │ 	}
+    38 │ }
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/events.ts:53:21 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    51 │ 		agentEventBus.on("wakeup", (msg: string) => {
+    52 │ 			if (this.waitingResolves.length > 0) {
+  > 53 │ 				const resolve = this.waitingResolves.shift()!;
+       │ 				                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    54 │ 				resolve(msg);
+    55 │ 			} else {
+  
+
+src/agent/events.ts:63:27 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    61 │ 	public async consume(): Promise<string> {
+    62 │ 		if (this.queue.length > 0) {
+  > 63 │ 			return Promise.resolve(this.queue.shift()!);
+       │ 			                       ^^^^^^^^^^^^^^^^^^^
+    64 │ 		}
+    65 │ 		return new Promise((resolve) => {
+  
+
+src/agent/loop/compression.ts:6:8 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This import is unused.
+  
+    4 │ 	OpenRouterClient,
+    5 │ } from "../../api/index.js";
+  > 6 │ import { supportsPromptCaching } from "../../api/model-capabilities.js";
+      │        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    7 │ import { debug } from "../../utils/debug.js";
+    8 │ import type { AgentContext } from "../context.js";
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+     4  4 │   	OpenRouterClient,
+     5  5 │   } from "../../api/index.js";
+     6    │ - import·{·supportsPromptCaching·}·from·"../../api/model-capabilities.js";
+     7  6 │   import { debug } from "../../utils/debug.js";
+     8  7 │   import type { AgentContext } from "../context.js";
+  
+
+src/agent/loop/compression.ts:13:2 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    11 │ export async function manageContextWindow(
+    12 │ 	ctx: AgentContext,
+  > 13 │ 	client: OpenRouterClient | KiloCodeClient | CustomProviderClient,
+       │ 	^^^^^^
+    14 │ ): Promise<void> {
+    15 │ 	let currentTokens = estimateTokens(ctx.messages);
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend client with an underscore.
+  
+    11 11 │   export async function manageContextWindow(
+    12 12 │   	ctx: AgentContext,
+    13    │ - → client:·OpenRouterClient·|·KiloCodeClient·|·CustomProviderClient,
+       13 │ + → _client:·OpenRouterClient·|·KiloCodeClient·|·CustomProviderClient,
+    14 14 │   ): Promise<void> {
+    15 15 │   	let currentTokens = estimateTokens(ctx.messages);
+  
+
+src/agent/loop/retry.ts:21:19 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    19 │ 			}
+    20 │ 			return await operation();
+  > 21 │ 		} catch (error: any) {
+       │ 		                ^^^
+    22 │ 			if (options.signal?.aborted) {
+    23 │ 				throw error;
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/loop/runner.ts:312:21 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    310 │ 				}
+    311 │ 
+  > 312 │ 				let agentError: any;
+        │ 				                ^^^
+    313 │ 
+    314 │ 				if (error instanceof APIError) {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:94:28 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    93 │ // Map db row to Node
+  > 94 │ function mapRowToNode(row: any): Node {
+       │                            ^^^
+    95 │ 	const meta = row.metadata ? JSON.parse(row.metadata) : {};
+    96 │ 	return {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:121:45 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    120 │ 	const allNodesStmt = db.prepare(`SELECT * FROM nodes`);
+  > 121 │ 	const allNodesRows = allNodesStmt.all() as any[];
+        │ 	                                           ^^^
+    122 │ 	const nodes = allNodesRows.map(mapRowToNode);
+    123 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:163:56 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    161 │ 		);
+    162 │ 		const params = Array.from(currentSet);
+  > 163 │ 		const edges = edgesStmt.all(...params, ...params) as any[];
+        │ 		                                                     ^^^
+    164 │ 
+    165 │ 		for (const edge of edges) {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:175:26 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    173 │ 				const neighborRow = db
+    174 │ 					.prepare(`SELECT * FROM nodes WHERE id = ?`)
+  > 175 │ 					.get(neighborId) as any;
+        │ 					                    ^^^
+    176 │ 				if (neighborRow) {
+    177 │ 					const n = mapRowToNode(neighborRow);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:211:29 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    209 │ 		`SELECT * FROM nodes WHERE type IN ('project_rule', 'critical_fact')`,
+    210 │ 	);
+  > 211 │ 	const rows = stmt.all() as any[];
+        │ 	                           ^^^
+    212 │ 	const nodes = rows.map(mapRowToNode);
+    213 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:248:37 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    247 │ 	const stmt = db.prepare(`SELECT * FROM nodes`);
+  > 248 │ 	const allNodesRows = stmt.all() as any[];
+        │ 	                                   ^^^
+    249 │ 	let nodes = allNodesRows.map(mapRowToNode);
+    250 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/graph.ts:334:59 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    332 │ 					`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
+    333 │ 				);
+  > 334 │ 				const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
+        │ 				                                                      ^^^
+    335 │ 
+    336 │ 				for (const edge of oldEdges) {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:6:28 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    4 │ 		id: string,
+    5 │ 		text: string,
+  > 6 │ 		metadata: Record<string, any>,
+      │ 		                         ^^^
+    7 │ 	): Promise<void>;
+    8 │ 	search(
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:12:63 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    10 │ 		limit?: number,
+    11 │ 	): Promise<
+  > 12 │ 		Array<{ id: string; score: number; metadata: Record<string, any> }>
+       │ 		                                                            ^^^
+    13 │ 	>;
+    14 │ }
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:25:48 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    23 │ 	private documents: Map<
+    24 │ 		string,
+  > 25 │ 		{ tokens: string[]; metadata: Record<string, any> }
+       │ 		                                             ^^^
+    26 │ 	> = new Map();
+    27 │ 	private documentCount = 0;
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:54:28 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    52 │ 		id: string,
+    53 │ 		text: string,
+  > 54 │ 		metadata: Record<string, any>,
+       │ 		                         ^^^
+    55 │ 	): Promise<void> {
+    56 │ 		const tokens = this.tokenize(text);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:75:63 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    73 │ 		limit = 5,
+    74 │ 	): Promise<
+  > 75 │ 		Array<{ id: string; score: number; metadata: Record<string, any> }>
+       │ 		                                                            ^^^
+    76 │ 	> {
+    77 │ 		const queryTokens = this.tokenize(query);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/memory/vector-store.ts:83:29 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    81 │ 			id: string;
+    82 │ 			score: number;
+  > 83 │ 			metadata: Record<string, any>;
+       │ 			                         ^^^
+    84 │ 		}> = [];
+    85 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/model-router.test.ts:34:18 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    32 │ 			cwd: "/",
+    33 │ 			workingDir: "/",
+  > 34 │ 			config: {} as any,
+       │ 			              ^^^
+    35 │ 			metadata: {
+    36 │ 				startTime: new Date(),
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/model-router.test.ts:4:2 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+     2 │ import {
+     3 │ 	classifyTask,
+   > 4 │ 	estimateCost,
+       │ 	^^^^^^^^^^^^^
+   > 5 │ 	getCheaperAlternative,
+        ...
+   > 9 │ 	ModelTier,
+  > 10 │ 	selectModelForClassification,
+       │ 	^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    11 │ } from "../agent/model-router.js";
+    12 │ import { loadConfig } from "../config/loader.js";
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+      2   2 │   import {
+      3   3 │   	classifyTask,
+      4     │ - → estimateCost,
+      5     │ - → getCheaperAlternative,
+      6     │ - → getModelConfig,
+      7     │ - → getTierForModel,
+      8   4 │   	MODEL_TIERS,
+      9     │ - → ModelTier,
+     10     │ - → selectModelForClassification,
+     11   5 │   } from "../agent/model-router.js";
+     12   6 │   import { loadConfig } from "../config/loader.js";
+  
+
+src/agent/shadow-workspace.ts:49:19 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    47 │ 			output = stdout + "\n" + stderr;
+    48 │ 			success = true;
+  > 49 │ 		} catch (error: any) {
+       │ 		                ^^^
+    50 │ 			output =
+    51 │ 				(error.stdout || "") +
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/shadow-workspace.ts:87:18 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    85 │ 			output: `Speculative test ${success ? "passed and changes applied" : "failed and discarded"}.\n\nOutput:\n${output.trim()}`,
+    86 │ 		};
+  > 87 │ 	} catch (error: any) {
+       │ 	                ^^^
+    88 │ 		return {
+    89 │ 			success: false,
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/skills/manager.test.ts:152:5 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    151 │ 			const expertise = skillsManager.getExpertiseForSkills([
+  > 152 │ 				jsSkill!,
+        │ 				^^^^^^^^
+    153 │ 				pythonSkill!,
+    154 │ 			]);
+  
+
+src/agent/skills/manager.test.ts:153:5 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    151 │ 			const expertise = skillsManager.getExpertiseForSkills([
+    152 │ 				jsSkill!,
+  > 153 │ 				pythonSkill!,
+        │ 				^^^^^^^^^^^^
+    154 │ 			]);
+    155 │ 			expect(expertise).toContain("JavaScript/TypeScript Expert");
+  
+
+src/agent/skills/tools.test.ts:14:58 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    12 │ 	describe("list_skills", () => {
+    13 │ 		it("should list all skills with proper fields", async () => {
+  > 14 │ 			const result = await listSkillsTool.execute({}, {} as any);
+       │ 			                                                      ^^^
+    15 │ 			expect(result).toBeDefined();
+    16 │ 			expect(result.success).toBe(true);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/skills/tools.test.ts:23:32 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    21 │ 			expect(data.skills.length).toBeGreaterThan(0);
+    22 │ 
+  > 23 │ 			data.skills.forEach((skill: any) => {
+       │ 			                            ^^^
+    24 │ 				expect(typeof skill.id).toBe("string");
+    25 │ 				expect(typeof skill.name).toBe("string");
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/skills/tools.test.ts:37:11 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+  
+    35 │ 			const result = await getSkillTool.execute(
+    36 │ 				{ skillId: "javascript-expert" },
+  > 37 │ 				{} as any,
+       │ 				      ^^^
+    38 │ 			);
+    39 │ 			expect(result).toBeDefined();
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+src/agent/skills/tools.ts:2:22 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+    1 │ import { z } from "zod";
+  > 2 │ import { createTool, type ToolContext, ToolResult } from "../tools/registry.js";
+      │                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ import {
+    4 │ 	createReusableSkillTool,
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    2 │ import·{·createTool,·type·ToolContext,·ToolResult·}·from·"../tools/registry.js";
+      │                      -----------------------------                              
+
+src/agent/skills/tools.ts:6:2 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+    4 │ 	createReusableSkillTool,
+    5 │ 	getSkillsManager,
+  > 6 │ 	type Skill,
+      │ 	^^^^^^^^^^
+    7 │ } from "./manager.js";
+    8 │ 
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+      4   4 │   	createReusableSkillTool,
+      5   5 │   	getSkillsManager,
+      6     │ - → type·Skill,
+      7   6 │   } from "./manager.js";
+      8   7 │   
+  
+
+src/agent/cache/invalidation.ts:80:7 lint/suspicious/noImplicitAnyLet ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This variable implicitly has the any type.
+  
+    78 │ 	if (isWriteCommand && affectedPaths.length === 0) {
+    79 │ 		const pathPattern = /['"]([/.][^'"]+)['"]/g;
+  > 80 │ 		let match;
+       │ 		    ^^^^^
+    81 │ 		while ((match = pathPattern.exec(command)) !== null) {
+    82 │ 			cache.invalidateFile(match[1]);
+  
+  i Variable declarations without type annotation and initialization implicitly have the any type. Declare a type or initialize the variable with some value.
+  
+
+src/agent/cache/invalidation.ts:81:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The assignment should not be in an expression.
+  
+    79 │ 		const pathPattern = /['"]([/.][^'"]+)['"]/g;
+    80 │ 		let match;
+  > 81 │ 		while ((match = pathPattern.exec(command)) !== null) {
+       │ 		        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    82 │ 			cache.invalidateFile(match[1]);
+    83 │ 		}
+  
+  i The use of assignments in expressions is confusing.
+    Expressions are often considered as side-effect free.
+  
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 358.
+Checked 161 files in 69ms. No fixes applied.
+Found 12 errors.
+Found 358 warnings.
+Found 38 infos.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.
+  
+

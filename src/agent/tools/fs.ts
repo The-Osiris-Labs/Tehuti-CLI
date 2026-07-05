@@ -1,23 +1,36 @@
+import { exec } from "node:child_process";
+import crypto from "node:crypto";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileTypeFromBuffer } from "file-type";
 import fs from "fs-extra";
 import sharp from "sharp";
 import { z } from "zod";
-import crypto from "node:crypto";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
 
 const execAsync = promisify(exec);
 
-export async function runAciLinter(filePath: string, content: string): Promise<{ success: boolean; error?: string }> {
-	if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx") && !filePath.endsWith(".js") && !filePath.endsWith(".jsx")) {
+export async function runAciLinter(
+	filePath: string,
+	content: string,
+): Promise<{ success: boolean; error?: string }> {
+	if (
+		!filePath.endsWith(".ts") &&
+		!filePath.endsWith(".tsx") &&
+		!filePath.endsWith(".js") &&
+		!filePath.endsWith(".jsx")
+	) {
 		return { success: true };
 	}
-	const tempFilePath = path.join(path.dirname(filePath), `.tmp.aci.${path.basename(filePath)}`);
+	const tempFilePath = path.join(
+		path.dirname(filePath),
+		`.tmp.aci.${path.basename(filePath)}`,
+	);
 	try {
 		await fs.writeFile(tempFilePath, content, "utf-8");
-		await execAsync(`npx tsc --noEmit --esModuleInterop --skipLibCheck --target es2022 --moduleResolution node16 --module node16 "${tempFilePath}"`);
+		await execAsync(
+			`npx tsc --noEmit --esModuleInterop --skipLibCheck --target es2022 --moduleResolution node16 --module node16 "${tempFilePath}"`,
+		);
 		return { success: true };
 	} catch (error: any) {
 		return { success: false, error: error.stdout || error.message };
@@ -32,8 +45,6 @@ import type {
 	ToolDefinition,
 	ToolResult,
 } from "./registry.js";
-
-
 
 const PROTECTED_FILES = [
 	".env",
@@ -126,7 +137,11 @@ const EDIT_FILE_SCHEMA = z.object({
 	file_path: z.string().describe("The absolute path to the file to edit"),
 	old_string: z.string().describe("The text to find and replace"),
 	new_string: z.string().describe("The text to replace with"),
-	expected_hash: z.string().describe("The short MD5 hash of the live file to prevent drift corruption"),
+	expected_hash: z
+		.string()
+		.describe(
+			"The short MD5 hash of the live file to prevent drift corruption",
+		),
 	replace_all: z
 		.boolean()
 		.optional()
@@ -335,7 +350,11 @@ async function readFile(
 		}
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
-		const fileHash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8);
+		const fileHash = crypto
+			.createHash("md5")
+			.update(content)
+			.digest("hex")
+			.slice(0, 8);
 		const lines = content.split("\n");
 
 		const offset = Math.max(0, args.offset ? args.offset - 1 : 0);
@@ -356,7 +375,7 @@ async function readFile(
 
 		return {
 			success: true,
-			output: numberedLines + summary + `\n\nFile Hash: ${fileHash}`,
+			output: `${numberedLines + summary}\n\nFile Hash: ${fileHash}`,
 			metadata: {
 				path: resolvedPath,
 				totalLines: lines.length,
@@ -421,7 +440,6 @@ async function writeFile(
 
 	try {
 		const fileExists = await fs.pathExists(resolvedPath);
-
 
 		if (fileExists) {
 			const existingSymlinkCheck = await checkSymlinkSafety(
@@ -588,8 +606,12 @@ async function editFile(
 		}
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
-		const currentHash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8);
-		
+		const currentHash = crypto
+			.createHash("md5")
+			.update(content)
+			.digest("hex")
+			.slice(0, 8);
+
 		if (args.expected_hash !== currentHash) {
 			return {
 				success: false,
@@ -599,7 +621,6 @@ async function editFile(
 		}
 
 		if (!content.includes(args.old_string)) {
-
 			const lines = content.split("\n");
 			const contextLines: string[] = [];
 
@@ -649,7 +670,6 @@ async function editFile(
 		}
 
 		if (ctx.diffPreview?.showPreview) {
-
 			const previewResult = await showDiffPreview(
 				content,
 				newContent,
@@ -969,7 +989,7 @@ async function listDir(
 			error: "Missing required parameter: dir_path (or directory)",
 		};
 	}
-	
+
 	const resolvedPath = resolvePath(dirPath, ctx.cwd);
 
 	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
@@ -1009,7 +1029,7 @@ async function listDir(
 		}
 
 		const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-		
+
 		if (args.json) {
 			const jsonEntries = entries
 				.sort((a, b) => {
@@ -1022,7 +1042,7 @@ async function listDir(
 					type: entry.isDirectory() ? "directory" : "file",
 					path: path.join(resolvedPath, entry.name),
 				}));
-				
+
 			return {
 				success: true,
 				output: JSON.stringify(jsonEntries, null, 2),
@@ -1126,7 +1146,7 @@ Usage:
 		execute: readFile as AnyToolExecutor,
 		category: "fs",
 		requiresPermission: false,
-				isReadonly: true,
+		isReadonly: true,
 		prefetchRules: [
 			{
 				tool: "file_info",
@@ -1139,7 +1159,7 @@ Usage:
 			},
 			{
 				tool: "list_dir",
-				argMapper: (args: unknown, ctx: ToolContext) => {
+				argMapper: (args: unknown, _ctx: ToolContext) => {
 					if (!args || typeof args !== "object") return null;
 					const record = args as Record<string, unknown>;
 					const filePath = record.file_path;
@@ -1150,7 +1170,7 @@ Usage:
 			},
 			{
 				tool: "grep",
-				argMapper: (args: unknown, ctx: ToolContext) => {
+				argMapper: (args: unknown, _ctx: ToolContext) => {
 					if (!args || typeof args !== "object") return null;
 					const record = args as Record<string, unknown>;
 					const filePath = record.file_path;

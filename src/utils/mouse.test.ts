@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { isMouseSequence } from "./mouse.js";
 
 describe("Mouse Sequence Filter Utility", () => {

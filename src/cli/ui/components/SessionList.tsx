@@ -1,8 +1,12 @@
-import React, { useState, useRef } from "react";
+import {
+	useOnClick,
+	useOnMouseEnter,
+	useOnMouseLeave,
+} from "@ink-tools/ink-mouse";
 import { Box, Text } from "ink";
-import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
-import { SessionMetadata } from "../../../session/manager.js";
+import { useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
+import type { SessionMetadata } from "../../../session/manager.js";
 
 interface SessionListProps {
 	sessions: SessionMetadata[];
@@ -25,9 +29,10 @@ function SessionRow({
 
 	const { secondary: GOLD, coral: CORAL, sand: SAND } = BRANDING.colors;
 	const dateStr = new Date(session.updatedAt).toLocaleDateString();
-	
-	const pad = (str: string, length: number) => str.padEnd(length).substring(0, length);
-	
+
+	const pad = (str: string, length: number) =>
+		str.padEnd(length).substring(0, length);
+
 	const idText = pad(session.id, 8);
 	const nameText = pad(session.name || "Unnamed", 20);
 	const msgText = pad(String(session.messageCount || 0), 6);
@@ -40,7 +45,9 @@ function SessionRow({
 			<Text color={isHovered ? "white" : "gray"}>│ </Text>
 			<Text color={isHovered ? GOLD : CORAL}>{idText}</Text>
 			<Text color={isHovered ? "white" : "gray"}> │ </Text>
-			<Text color={isHovered ? "white" : SAND} bold={isHovered}>{nameText}</Text>
+			<Text color={isHovered ? "white" : SAND} bold={isHovered}>
+				{nameText}
+			</Text>
 			<Text color={isHovered ? "white" : "gray"}> │ </Text>
 			<Text color={isHovered ? "white" : "cyan"}>{msgText}</Text>
 			<Text color={isHovered ? "white" : "gray"}> │ </Text>
@@ -56,31 +63,35 @@ function SessionRow({
 
 export function SessionList({ sessions, onLoadSession }: SessionListProps) {
 	if (sessions.length === 0) {
-		return <Box><Text dimColor>No sessions found.</Text></Box>;
+		return (
+			<Box>
+				<Text dimColor>No sessions found.</Text>
+			</Box>
+		);
 	}
 
 	return (
 		<Box flexDirection="column" marginY={1}>
 			<Box paddingX={1}>
-				<Text color="gray">{"┌" + "─".repeat(84) + "┐"}</Text>
+				<Text color="gray">{`┌${"─".repeat(84)}┐`}</Text>
 			</Box>
 			<Box paddingX={1}>
 				<Text color="gray">│ </Text>
-				<Text bold>ID      </Text>
+				<Text bold>ID </Text>
 				<Text color="gray"> │ </Text>
-				<Text bold>Name                </Text>
+				<Text bold>Name </Text>
 				<Text color="gray"> │ </Text>
-				<Text bold>Msgs  </Text>
+				<Text bold>Msgs </Text>
 				<Text color="gray"> │ </Text>
-				<Text bold>Tokens  </Text>
+				<Text bold>Tokens </Text>
 				<Text color="gray"> │ </Text>
-				<Text bold>Model               </Text>
+				<Text bold>Model </Text>
 				<Text color="gray"> │ </Text>
-				<Text bold>Date        </Text>
+				<Text bold>Date </Text>
 				<Text color="gray"> │</Text>
 			</Box>
 			<Box paddingX={1}>
-				<Text color="gray">{"├" + "─".repeat(84) + "┤"}</Text>
+				<Text color="gray">{`├${"─".repeat(84)}┤`}</Text>
 			</Box>
 			{sessions.map((session) => (
 				<SessionRow
@@ -90,7 +101,7 @@ export function SessionList({ sessions, onLoadSession }: SessionListProps) {
 				/>
 			))}
 			<Box paddingX={1}>
-				<Text color="gray">{"└" + "─".repeat(84) + "┘"}</Text>
+				<Text color="gray">{`└${"─".repeat(84)}┘`}</Text>
 			</Box>
 			<Box marginTop={1} paddingX={1}>
 				<Text dimColor>💡 Click a row to load the session</Text>
