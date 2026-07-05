@@ -98,6 +98,8 @@ import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
+import { daemonCommand } from ./daemon.js;
+import { companionCommand } from ./companion.js;
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
@@ -3773,6 +3775,12 @@ export function createProgram(): Command {
 				),
 			);
 		});
+
+	program.addCommand(daemonCommand());
+	program.addCommand(companionCommand());
+
+	program.addCommand(daemonCommand());
+	program.addCommand(companionCommand());
 
 	return program;
 }
