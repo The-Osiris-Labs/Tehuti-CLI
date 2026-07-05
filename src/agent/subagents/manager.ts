@@ -15,6 +15,8 @@ export interface SubagentTask {
 	result?: AgentLoopResult;
 	startTime?: Date;
 	endTime?: Date;
+	abortController?: AbortController;
+	context?: any;
 }
 
 export interface SubagentOptions {
@@ -73,11 +75,14 @@ export async function spawnSubagent(
 	try {
 		task.status = "running";
 		task.startTime = new Date();
+		const abortController = new AbortController();
+		task.abortController = abortController;
 
 		const subContext = await createAgentContext(
 			options.parentContext.cwd,
 			options.parentContext.config,
 		);
+		task.context = subContext;
 
 		const systemPrompt = SYSTEM_PROMPTS[options.type];
 		subContext.messages.push({
@@ -98,6 +103,7 @@ ${options.prompt}
 			onToolCall: () => {},
 			onToolResult: () => {},
 			onThinking: () => {},
+			signal: abortController.signal,
 		};
 
 		const result = await runAgentLoop(subContext, "", loopOptions);
@@ -139,4 +145,32 @@ export function clearCompletedTasks(): number {
 		}
 	}
 	return cleared;
+}
+
+export function abortTask(taskId: string): boolean {
+	const task = activeTasks.get(taskId);
+	if (task && (task.status === "running" || task.status === "pending")) {
+		task.abortController?.abort();
+		task.status = "failed"; // Aborted counts as failed or killed
+		task.endTime = new Date();
+		return true;
+	}
+	return false;
+}
+
+export function sendMessageToTask(taskId: string, message: string): boolean {
+	const task = activeTasks.get(taskId);
+	if (task && task.status === "running" && task.context) {
+		task.context.messages.push({
+			role: "user",
+			content: `[Message from Parent]: ${message}`,
+		});
+		if (task.context.isSleeping) {
+			import("../events.js").then(({ agentEventBus }) => {
+				agentEventBus.emit("wakeup", `Message received for task ${taskId}`);
+			});
+		}
+		return true;
+	}
+	return false;
 }

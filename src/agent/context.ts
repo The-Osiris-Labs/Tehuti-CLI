@@ -7,7 +7,7 @@ import type {
 import type { TehutiConfig } from "../config/schema.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
-import { estimateTokens as tiktokenEstimateTokens } from "./context-compressor.js";
+import { estimateTokens as tiktokenEstimateTokens, compressContext } from "./context-compressor.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
@@ -49,26 +49,20 @@ export function compactContext(
 		`Context compaction triggered (${currentTokens} tokens)`,
 	);
 
-	const systemMessage = ctx.messages[0];
-	const recentMessages = ctx.messages.slice(-MIN_MESSAGES_TO_KEEP);
-	const midMessages = ctx.messages.slice(1, -MIN_MESSAGES_TO_KEEP);
+	const result = compressContext(ctx.messages, {
+		keepFirstN: 1,
+		keepLastN: MIN_MESSAGES_TO_KEEP,
+	});
 
-	if (midMessages.length === 0) {
+	if (result.removedCount === 0) {
 		return false;
 	}
 
-	const compactedSummary = `[${midMessages.length} earlier messages compacted for context efficiency]`;
+	ctx.messages = result.messages;
 
-	ctx.messages = [
-		systemMessage,
-		{ role: "user", content: compactedSummary },
-		...recentMessages,
-	];
-
-	const newTokens = estimateTokens(ctx.messages);
 	debug.log(
 		"context",
-		`Context compacted: ${currentTokens} -> ${newTokens} tokens`,
+		`Context compacted: ${currentTokens} -> ${result.newTokens} tokens (Saved ${result.savedTokens} tokens)`,
 	);
 
 	return true;

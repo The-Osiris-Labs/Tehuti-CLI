@@ -6,12 +6,12 @@ Contributor guide for the Tehuti CLI codebase. This document reflects **what the
 
 ## What Tehuti Is
 
-Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent:
+Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent powered by React 19 and Ink 6:
 
 - **Interactive mode:** React/Ink TUI in `src/cli/commands/chat.ts`
 - **One-shot mode:** ANSI streaming via `src/terminal/buffered-writer.ts`
 - **Agent loop:** `src/agent/loop/runner.ts` — stream LLM → execute tools → repeat
-- **API:** Custom `fetch` + SSE clients in `src/api/` (not Vercel AI SDK)
+- **API:** Custom `fetch` + SSE clients (HTTP/3) in `src/api/` (not Vercel AI SDK)
 - **Default provider:** OpenCode Go (`opencode` → `https://opencode.ai/zen/go/v1`, model `deepseek-v4-flash`)
 - **Tools:** ~66 registered native tools + dynamic MCP tools at runtime
 
@@ -28,7 +28,7 @@ Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent:
 | `src/cli/ui/` | Extracted components (`CommandPalette`, `ConfigEditor`, hooks) |
 | `src/agent/index.ts` | Tool registration, `runAgentLoop` / `runOneShot` public API |
 | `src/agent/loop/runner.ts` | Core agent iteration loop |
-| `src/agent/loop/tool-processing.ts` | Permissions, hooks, cache, parallel/sequential dispatch |
+| `src/agent/loop/tool-processing.ts` | Permissions (IBAC), hooks, cache, parallel/sequential dispatch |
 | `src/api/openrouter.ts` | `OpenRouterClient` — generic OpenAI-compatible client (misnomer; handles OpenCode, OpenRouter, etc.) |
 | `src/mcp/client.ts` | MCP manager (stdio, http, sse, websocket) |
 | `src/config/loader.ts` | Config merge precedence |

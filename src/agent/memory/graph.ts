@@ -371,3 +371,68 @@ export async function optimizeInsights(
 
 	return { removed: removedCount, merged: mergedCount };
 }
+
+export async function saveGraph(graphData: GraphData): Promise<void> {
+	const insertNodeStmt = db.prepare(`
+		INSERT INTO nodes (id, type, content, metadata, created_at, last_accessed)
+		VALUES (@id, @type, @content, @metadata, @now, @now)
+		ON CONFLICT(id) DO UPDATE SET
+			content = @content,
+			metadata = @metadata,
+			last_accessed = @now
+	`);
+
+	const insertEdgeStmt = db.prepare(`
+		INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
+		VALUES (@id, @source, @target, @relation, @weight, @now)
+		ON CONFLICT(id) DO UPDATE SET weight = @weight
+	`);
+
+	const transaction = db.transaction((data: GraphData) => {
+		const now = Date.now();
+		for (const node of data.nodes) {
+			const resolvedCwd = node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
+			insertNodeStmt.run({
+				id: node.id,
+				type: node.type,
+				content: node.content,
+				metadata: JSON.stringify({
+					cwd: resolvedCwd,
+					priority: node.priority ?? 0,
+					importance: node.importance ?? 0,
+					accessCount: node.accessCount ?? 1,
+				}),
+				now,
+			});
+		}
+		for (const edge of data.edges) {
+			const edgeId = `${edge.source}->${edge.target}:${edge.relation}`;
+			insertEdgeStmt.run({
+				id: edgeId,
+				source: edge.source,
+				target: edge.target,
+				relation: edge.relation,
+				weight: edge.weight ?? 1.0,
+				now,
+			});
+		}
+	});
+
+	transaction(graphData);
+
+	const now = Date.now();
+	for (const node of graphData.nodes) {
+		const resolvedCwd = node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
+		await vectorStore.addEmbedding(node.id, node.content, {
+			type: node.type,
+			cwd: resolvedCwd,
+			priority: node.priority ?? 0,
+			importance: node.importance ?? 0,
+			timestamp: node.timestamp ?? now,
+		});
+	}
+}
+
+export async function loadGraph(): Promise<GraphData> {
+	return { nodes: [], edges: [] };
+}

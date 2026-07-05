@@ -20,39 +20,7 @@ function truncateToolResultForModel(result: string): string {
 	return `${result.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... (truncated due to excessive size)`;
 }
 
-export const SAFE_PARALLEL_TOOLS = new Set([
-	"read",
-	"read_file",
-	"read_image",
-	"read_pdf",
-	"glob",
-	"grep",
-	"grep_search",
-	"file_info",
-	"list_dir",
-	"list_directory",
-	"web_fetch",
-	"webfetch",
-	"web_search",
-	"code_search",
-	"git_status",
-	"git_log",
-	"git_diff",
-]);
 
-export const WRITE_TOOLS = new Set([
-	"write",
-	"write_file",
-	"edit",
-	"edit_file",
-	"delete_file",
-	"delete_dir",
-	"create_dir",
-	"move",
-	"copy",
-]);
-
-export const INTERACTIVE_TOOLS = new Set(["question"]);
 
 export interface ToolCall {
 	id: string;
@@ -89,11 +57,12 @@ export function classifyToolCalls(toolCalls: ToolCall[]): ClassifiedToolCalls {
 	const interactive: ToolCall[] = [];
 
 	for (const tc of toolCalls) {
-		const toolName = tc.function.name;
+		const tool = getTool(tc.function.name);
+		const intent = tool?.intent || "destructive"; // Default to destructive for safety
 
-		if (INTERACTIVE_TOOLS.has(toolName)) {
+		if (intent === "interactive") {
 			interactive.push(tc);
-		} else if (SAFE_PARALLEL_TOOLS.has(toolName)) {
+		} else if (intent === "read-only") {
 			parallel.push(tc);
 		} else {
 			sequential.push(tc);
@@ -104,14 +73,9 @@ export function classifyToolCalls(toolCalls: ToolCall[]): ClassifiedToolCalls {
 }
 
 export function canRunInParallel(toolCalls: ToolCall[]): boolean {
-	const names = toolCalls.map((tc) => tc.function.name);
-
-	const hasWrites = names.some((n) => WRITE_TOOLS.has(n));
-	if (hasWrites) return false;
-
-	const hasInteractive = names.some((n) => INTERACTIVE_TOOLS.has(n));
-	if (hasInteractive) return false;
-
+	const intents = toolCalls.map((tc) => getTool(tc.function.name)?.intent);
+	if (intents.includes("destructive")) return false;
+	if (intents.includes("interactive")) return false;
 	return true;
 }
 
@@ -161,7 +125,7 @@ async function executeToolCall(
 	}
 
 	const toolDef = getTool(toolName);
-	if (WRITE_TOOLS.has(toolName)) {
+	if (toolDef?.intent === "destructive") {
 		invalidateOnWrite(toolDef, toolName, args);
 	}
 
@@ -220,8 +184,7 @@ export async function executeToolsParallel(
 
 	for (const tc of toolCalls) {
 		const toolName = tc.function.name;
-		const isSafe =
-			SAFE_PARALLEL_TOOLS.has(toolName) && !INTERACTIVE_TOOLS.has(toolName);
+		const isSafe = getTool(toolName)?.intent === "read-only";
 
 		if (isSafe) {
 			currentParallelBatch.push(tc);
@@ -384,14 +347,12 @@ export async function executeToolsParallel(
 }
 
 export function getParallelizableCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter((tc) => SAFE_PARALLEL_TOOLS.has(tc.function.name))
-		.length;
+	return toolCalls.filter((tc) => getTool(tc.function.name)?.intent === "read-only").length;
 }
 
 export function getSequentialCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter(
-		(tc) =>
-			!SAFE_PARALLEL_TOOLS.has(tc.function.name) &&
-			!INTERACTIVE_TOOLS.has(tc.function.name),
-	).length;
+	return toolCalls.filter((tc) => {
+		const intent = getTool(tc.function.name)?.intent;
+		return intent !== "read-only" && intent !== "interactive";
+	}).length;
 }

@@ -1,7 +1,7 @@
 import { getProviderInfo } from "../config/providers.js";
 import type { ModelSelectionMode } from "../config/schema.js";
 import type { AgentContext } from "./context.js";
-import { SAFE_PARALLEL_TOOLS, WRITE_TOOLS } from "./parallel-executor.js";
+import { getTool } from "./tools/registry.js";
 
 export type ModelTier = "fast" | "balanced" | "deep";
 
@@ -95,8 +95,8 @@ export function classifyTask(
 	const messageLower = userMessage.toLowerCase();
 
 	if (pendingTools.length > 0) {
-		const allSafeParallel = pendingTools.every((t) =>
-			SAFE_PARALLEL_TOOLS.has(t.name),
+		const allSafeParallel = pendingTools.every(
+			(t) => getTool(t.name)?.intent === "read-only"
 		);
 
 		if (allSafeParallel) {
@@ -107,7 +107,7 @@ export function classifyTask(
 			};
 		}
 
-		const hasWrites = pendingTools.some((t) => WRITE_TOOLS.has(t.name));
+		const hasWrites = pendingTools.some((t) => getTool(t.name)?.intent === "destructive");
 
 		if (hasWrites && pendingTools.length === 1) {
 			return {

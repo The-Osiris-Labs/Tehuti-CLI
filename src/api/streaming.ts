@@ -168,8 +168,10 @@ export async function* processStreamAsync(
 		}[];
 		usage?: unknown;
 	}>,
+	yieldThresholdMs: number = 16,
 ): AsyncGenerator<string, void, unknown> {
 	const state = createStreamingState();
+	let lastYield = Date.now();
 
 	for await (const chunk of stream) {
 		const { hasContent, newContent } = processStreamChunk(
@@ -178,6 +180,15 @@ export async function* processStreamAsync(
 		);
 		if (hasContent && newContent) {
 			yield newContent;
+		}
+
+		// HTTP/3 Backpressure-Aware SSE concepts:
+		// Yielding to the event loop when processing a fast stream prevents buffer bloat
+		// and allows underlying HTTP/3 / TCP stack to manage flow control (backpressure).
+		const now = Date.now();
+		if (now - lastYield > yieldThresholdMs) {
+			await new Promise((resolve) => setImmediate(resolve));
+			lastYield = now;
 		}
 	}
 }

@@ -18,6 +18,7 @@ export interface SubagentTask {
 	abortController: AbortController;
 	createdAt: Date;
 	tokensUsed: number;
+	context?: any;
 }
 
 export class SwarmManager extends EventEmitter {
@@ -58,6 +59,7 @@ export class SwarmManager extends EventEmitter {
 			abortController,
 			createdAt: new Date(),
 			tokensUsed: 0,
+			context: subagentContext,
 		};
 
 		this.tasks.set(id, task);
@@ -123,6 +125,21 @@ export class SwarmManager extends EventEmitter {
 			task.abortController.abort();
 			task.status = "killed";
 			this.emitUpdate();
+			return true;
+		}
+		return false;
+	}
+
+	public sendMessage(id: string, message: string): boolean {
+		const task = this.tasks.get(id);
+		if (task && task.status === "running" && task.context) {
+			task.context.messages.push({
+				role: "user",
+				content: `[Message from Parent]: ${message}`,
+			});
+			if (task.context.isSleeping) {
+				agentEventBus.emit("wakeup", `Message received for subagent ${id}`);
+			}
 			return true;
 		}
 		return false;

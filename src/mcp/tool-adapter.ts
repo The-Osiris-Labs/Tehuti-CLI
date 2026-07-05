@@ -8,14 +8,6 @@ import type {
 import type { StandardTool } from "../api/base-client.js";
 import type { MCPTool } from "./client.js";
 
-function stableHash(input: string): string {
-	let hash = 5381;
-	for (let i = 0; i < input.length; i++) {
-		hash = (hash * 33) ^ input.charCodeAt(i);
-	}
-	return (hash >>> 0).toString(36).padStart(7, "0").slice(0, 7);
-}
-
 function safeNamePart(
 	value: string,
 	fallback: string,
@@ -32,10 +24,9 @@ export function createMCPToolName(
 	serverName: string,
 	toolName: string,
 ): string {
-	const safeServer = safeNamePart(serverName, "server", 18);
-	const safeTool = safeNamePart(toolName, "tool", 28);
-	const hash = stableHash(`${serverName}:${toolName}`);
-	return `mcp_${safeServer}__${safeTool}__${hash}`;
+	const safeServer = safeNamePart(serverName, "server", 20).replace(/_/g, "-");
+	const safeTool = safeNamePart(toolName, "tool", 40);
+	return `mcp_${safeServer}_${safeTool}`;
 }
 
 export function normalizeMCPInputSchema(
@@ -163,14 +154,16 @@ export function parseMCPToolName(
 ): { serverName: string; toolName: string } | null {
 	if (!isMCPTool(fullName)) return null;
 
-	const parts = fullName.slice("mcp_".length).split("__");
-	if (parts.length < 3) return null;
+	const rest = fullName.slice(4); // Remove "mcp_"
+	const underscoreIdx = rest.indexOf("_");
+	if (underscoreIdx === -1) return null;
+
 	return {
-		serverName: parts[0],
-		toolName: parts.slice(1, -1).join("__"),
+		serverName: rest.slice(0, underscoreIdx),
+		toolName: rest.slice(underscoreIdx + 1),
 	};
 }
 
 export function isMCPTool(name: string): boolean {
-	return name.startsWith("mcp_") && name.includes("__");
+	return name.startsWith("mcp_") && name.indexOf("_", 4) !== -1;
 }

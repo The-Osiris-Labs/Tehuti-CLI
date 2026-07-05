@@ -123,6 +123,7 @@ export class PermissionManager {
 	private rules: PermissionRule[] = [];
 	private sessionAllowed: Set<string> = new Set();
 	private sessionDenied: Set<string> = new Set();
+	private capabilities: Set<string> = new Set();
 
 	constructor() {
 		this.loadRules();
@@ -174,6 +175,19 @@ export class PermissionManager {
 	clearSessionDecisions(): void {
 		this.sessionAllowed.clear();
 		this.sessionDenied.clear();
+		this.capabilities.clear();
+	}
+
+	grantCapability(toolName: string): void {
+		this.capabilities.add(toolName);
+	}
+
+	consumeCapability(toolName: string): boolean {
+		if (this.capabilities.has(toolName)) {
+			this.capabilities.delete(toolName);
+			return true;
+		}
+		return false;
 	}
 
 	check(

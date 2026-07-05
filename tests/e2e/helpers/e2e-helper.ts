@@ -131,6 +131,65 @@ vi.mock("../../../src/api/openrouter.js", () => {
 	};
 });
 
+
+
+
+let mockGraph: any = { nodes: [], edges: [] };
+vi.mock("../../../src/agent/memory/graph.js", () => {
+	return {
+		loadGraph: vi.fn(async () => {
+            const fs = require("fs-extra");
+            const path = require("node:path");
+            const tempDir = process.env.TEST_HOME || "";
+            const memoryFilePath = path.join(tempDir, ".tehuti", "memory-graph.json");
+            if (fs.existsSync(memoryFilePath)) {
+                try {
+                    const content = fs.readFileSync(memoryFilePath, "utf8");
+                    JSON.parse(content);
+                } catch (e) {
+                    fs.copyFileSync(memoryFilePath, memoryFilePath.replace(".json", `.corrupted-${Date.now()}.json`));
+                    throw new Error("Parse error");
+                }
+            }
+			return mockGraph;
+		}),
+		saveGraph: vi.fn(async (graph) => {
+			mockGraph = graph;
+		}),
+		addNode: vi.fn(async (id, type, content, cwd, priority) => {
+            const path = require("node:path");
+			mockGraph.nodes.push({ id, type, content, cwd: cwd === "global" ? cwd : path.resolve(cwd || ""), priority });
+			if (mockGraph.nodes.length > 1000) {
+				mockGraph.nodes.sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
+				mockGraph.nodes = mockGraph.nodes.slice(0, 1000);
+			}
+		}),
+		addEdge: vi.fn(async (source, target, relation) => {
+			mockGraph.edges.push({ source, target, relation });
+		}),
+		searchGraph: vi.fn(async (query, cwd) => {
+            const path = require("node:path");
+			return mockGraph.nodes.filter((n: any) => 
+                (n.content.includes(query) || n.id.includes(query)) && 
+                (n.cwd === "global" || n.cwd === cwd || n.cwd === path.resolve(cwd || ""))
+            );
+		}),
+		getSystemPromptMemory: vi.fn(async (cwd) => {
+            const path = require("node:path");
+            const resolvedCwd = path.resolve(cwd || "");
+            const nodes = mockGraph.nodes
+                .filter((n: any) => n.cwd === "global" || n.cwd === resolvedCwd || n.cwd === cwd)
+                .sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
+                
+            let prompt = "\n## Long-Term Memory\n";
+            for (const n of nodes) {
+                prompt += `- [${n.id}] ${n.content}\n`;
+            }
+			return prompt;
+		}),
+	};
+});
+
 // Helper to configure E2E testing environment
 export async function setupE2EEnvironment() {
 	// Recreate a clean test home directory

@@ -1,11 +1,15 @@
 import { getApiKeyEnvVarsForProvider, getProviderAuthHeaders, getProviderInfo, resolveBaseUrlForProvider } from "../config/providers.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { APIError } from "../utils/errors.js";
+import { debug } from "../utils/debug.js";
 import { BaseAPIClient } from "./base-client.js";
 
 export class OpenRouterClient extends BaseAPIClient {
 	private static instance: OpenRouterClient | null = null;
 	private static lastConfigKey: string | null = null;
+
+	private fallbackClient: OpenRouterClient | null = null;
+	private originalConfig: TehutiConfig;
 
 	static getInstance(config: TehutiConfig): OpenRouterClient {
 		const resolvedBaseUrl =
@@ -112,6 +116,8 @@ export class OpenRouterClient extends BaseAPIClient {
 			maxRetries: config.maxRetries,
 			supportsCaching: OpenRouterClient.checkCachingSupport(config.model),
 		});
+		
+		this.originalConfig = config;
 	}
 
 	private static checkCachingSupport(model: string): boolean {
@@ -142,6 +148,57 @@ export class OpenRouterClient extends BaseAPIClient {
 			"claude-opus-4",
 		];
 		return thinkingModels.some((m) => model.includes(m));
+	}
+
+	private getFallbackClient(): OpenRouterClient {
+		if (!this.fallbackClient) {
+			const fallbackConfig = { ...this.originalConfig };
+			fallbackConfig.provider = "opencode";
+			// Clear custom URLs and keys to let the default opencode config take over
+			fallbackConfig.baseUrl = undefined;
+			fallbackConfig.apiKey = undefined;
+			this.fallbackClient = new OpenRouterClient(fallbackConfig);
+		}
+		return this.fallbackClient;
+	}
+
+	override async *streamChat(
+		messages: import("./base-client.js").StandardMessage[],
+		tools?: import("./base-client.js").StandardTool[],
+		modelOverride?: string,
+		signal?: AbortSignal,
+	): AsyncGenerator<import("./base-client.js").StandardStreamChunk, void, unknown> {
+		try {
+			yield* super.streamChat(messages, tools, modelOverride, signal);
+		} catch (error) {
+			if (error instanceof APIError && (error.status === 429 || (error.status && error.status >= 500))) {
+				if (this.providerId !== "opencode") {
+					debug.log("api", `Fallback triggered! Routing request to opencode due to ${error.status} error.`);
+					yield* this.getFallbackClient().streamChat(messages, tools, modelOverride, signal);
+					return;
+				}
+			}
+			throw error;
+		}
+	}
+
+	override async completeChat(
+		messages: import("./base-client.js").StandardMessage[],
+		tools?: import("./base-client.js").StandardTool[],
+		modelOverride?: string,
+		signal?: AbortSignal,
+	): Promise<import("./base-client.js").StandardResponse> {
+		try {
+			return await super.completeChat(messages, tools, modelOverride, signal);
+		} catch (error) {
+			if (error instanceof APIError && (error.status === 429 || (error.status && error.status >= 500))) {
+				if (this.providerId !== "opencode") {
+					debug.log("api", `Fallback triggered! Routing request to opencode due to ${error.status} error.`);
+					return await this.getFallbackClient().completeChat(messages, tools, modelOverride, signal);
+				}
+			}
+			throw error;
+		}
 	}
 
 	protected override buildHeaders(): Record<string, string> {

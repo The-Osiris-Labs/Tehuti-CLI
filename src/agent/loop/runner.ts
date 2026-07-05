@@ -26,6 +26,7 @@ import { classifyTask, selectModelForClassification } from "../model-router.js";
 import type { ToolCall } from "../parallel-executor.js";
 import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
 import { getToolDefinitions } from "../tools/index.js";
+import { getTool } from "../tools/registry.js";
 import { setParentContext } from "../tools/system.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
@@ -169,9 +170,20 @@ export async function runAgentLoop(
 				);
 
 				// Use retry wrapper for API calls
-				const state = createStreamingState(modelId);
+				let state = createStreamingState(modelId);
+				let midStreamPromises: Promise<number>[] = [];
+				let dispatchedToolIds = new Set<string>();
+				const streamStartMessageCount = ctx.messages.length;
+
 				await withRetry(
 					async () => {
+						state = createStreamingState(modelId);
+						midStreamPromises = [];
+						dispatchedToolIds = new Set<string>();
+						if (ctx.messages.length > streamStartMessageCount) {
+							ctx.messages.length = streamStartMessageCount;
+						}
+
 						const stream = client.streamChat(
 							ctx.messages,
 							tools,
@@ -210,10 +222,49 @@ export async function runAgentLoop(
 							if (hasThinking && newThinking) {
 								onThinking?.(newThinking);
 							}
+
+							const currentToolCalls = getToolCallsFromState(state);
+							for (const tc of currentToolCalls) {
+								if (dispatchedToolIds.has(tc.id)) continue;
+
+								let args: unknown;
+								try {
+									args = JSON.parse(tc.function.arguments);
+								} catch {
+									continue;
+								}
+
+								const toolDef = getTool(tc.function.name);
+								if (toolDef?.intent === "read-only") {
+									dispatchedToolIds.add(tc.id);
+									debug.log("agent", `Mid-stream dispatching read-only tool: ${tc.function.name}`);
+
+									const tcTyped: ToolCall = {
+										id: tc.id,
+										function: {
+											name: tc.function.name,
+											arguments: tc.function.arguments,
+										},
+									};
+
+									const p = processToolCalls(
+										ctx,
+										[tcTyped],
+										{ onToolCall, onToolResult, onProgress },
+										signal
+									);
+									midStreamPromises.push(p);
+								}
+							}
 						}
 					},
 					{ signal, maxRetries: 3, initialDelayMs: 2000 },
 				);
+
+				const midStreamCounts = await Promise.all(midStreamPromises);
+				for (const count of midStreamCounts) {
+					totalToolCalls += count;
+				}
 
 				const toolCalls = getToolCallsFromState(state);
 
@@ -222,6 +273,15 @@ export async function runAgentLoop(
 					state.content || "",
 					toolCalls.length > 0 ? toolCalls : undefined,
 				);
+
+				if (ctx.messages.length > streamStartMessageCount) {
+					const newMessages = ctx.messages.splice(streamStartMessageCount);
+					const assistantMessage = newMessages.pop();
+					if (assistantMessage) {
+						ctx.messages.push(assistantMessage);
+					}
+					ctx.messages.push(...newMessages);
+				}
 
 				if (state.usage) {
 					ctx.metadata.tokensUsed += state.usage.totalTokens;
@@ -285,17 +345,21 @@ export async function runAgentLoop(
 					},
 				}));
 
-				const processedCount = await processToolCalls(
-					ctx,
-					toolCallsTyped,
-					{
-						onToolCall,
-						onToolResult,
-						onProgress,
-					},
-					signal,
-				);
-				totalToolCalls += processedCount;
+				const remainingToolCalls = toolCallsTyped.filter((tc) => !dispatchedToolIds.has(tc.id));
+
+				if (remainingToolCalls.length > 0) {
+					const processedCount = await processToolCalls(
+						ctx,
+						remainingToolCalls,
+						{
+							onToolCall,
+							onToolResult,
+							onProgress,
+						},
+						signal,
+					);
+					totalToolCalls += processedCount;
+				}
 			} catch (error) {
 				if (
 					signal?.aborted ||

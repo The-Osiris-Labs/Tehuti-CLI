@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { swarmManager } from "../swarm/manager.js";
+import { abortTask, sendMessageToTask } from "../subagents/manager.js";
 import { createTool, type ToolDefinition } from "./registry.js";
 
 const delegateTaskSchema = z.object({
@@ -10,6 +11,15 @@ const delegateTaskSchema = z.object({
 
 const checkSubagentStatusSchema = z.object({
 	id: z.string().describe("The ID of the subagent to check"),
+});
+
+const abortSubagentSchema = z.object({
+	id: z.string().describe("The ID of the subagent to abort"),
+});
+
+const sendMessageToSubagentSchema = z.object({
+	id: z.string().describe("The ID of the subagent to send a message to"),
+	message: z.string().describe("The message to send"),
 });
 
 export const swarmTools: ToolDefinition[] = [
@@ -70,6 +80,46 @@ export const swarmTools: ToolDefinition[] = [
 				success: true,
 				output,
 			};
+		},
+	}),
+	createTool({
+		name: "abort_subagent",
+		description: "Aborts a running subagent by its ID.",
+		parameters: abortSubagentSchema,
+		category: "development",
+		isReadonly: false,
+		execute: async (args: unknown) => {
+			const { id } = args as z.infer<typeof abortSubagentSchema>;
+			
+			let success = swarmManager.killSubagent(id);
+			if (!success) {
+				success = abortTask(id);
+			}
+
+			if (success) {
+				return { success: true, output: `Subagent ${id} aborted successfully.` };
+			}
+			return { success: false, output: `Failed to abort subagent ${id}. It may not be running or may not exist.` };
+		},
+	}),
+	createTool({
+		name: "send_message_to_subagent",
+		description: "Sends a message to a running subagent by its ID.",
+		parameters: sendMessageToSubagentSchema,
+		category: "development",
+		isReadonly: false,
+		execute: async (args: unknown) => {
+			const { id, message } = args as z.infer<typeof sendMessageToSubagentSchema>;
+			
+			let success = swarmManager.sendMessage(id, message);
+			if (!success) {
+				success = sendMessageToTask(id, message);
+			}
+
+			if (success) {
+				return { success: true, output: `Message sent to subagent ${id}.` };
+			}
+			return { success: false, output: `Failed to send message to subagent ${id}. It may not be running or may not exist.` };
 		},
 	}),
 ];

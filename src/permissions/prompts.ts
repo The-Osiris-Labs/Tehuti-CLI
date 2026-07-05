@@ -4,6 +4,9 @@ import type { PermissionsConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { matchesPattern, permissionManager } from "./rules.js";
 
+import { getTool } from "../agent/tools/registry.js";
+import { isMCPTool, parseMCPToolName } from "../mcp/tool-adapter.js";
+
 export interface PermissionRequest {
 	toolName: string;
 	args: unknown;
@@ -31,25 +34,7 @@ export function setPermissionResolver(
 	permissionResolver = resolver;
 }
 
-const SAFE_TOOLS = [
-	"read",
-	"read_image",
-	"read_pdf",
-	"glob",
-	"grep",
-	"grep_search",
-	"web_fetch",
-	"web_search",
-	"code_search",
-	"file_info",
-	"list_dir",
-	"git_status",
-	"git_log",
-	"git_diff",
-	"mcp_list_prompts",
-	"mcp_get_prompt",
-	"todo_write",
-];
+
 
 function hasDangerousCommandPattern(cmd: string): boolean {
 	const trimmed = cmd.trim();
@@ -129,6 +114,11 @@ export async function checkPermission(
 		return { allowed: true, reason: "Trusted mode enabled" };
 	}
 
+	// 0. Check ephemeral capabilities first
+	if (permissionManager.consumeCapability(toolName)) {
+		return { allowed: true, reason: "Allowed by JIT capability" };
+	}
+
 	// 1. Consult PermissionManager first (session/persistent decisions)
 	const managerDecision = permissionManager.check(
 		toolName,
@@ -178,16 +168,15 @@ export async function checkPermission(
 		}
 	}
 
-	// 5. Check SAFE_TOOLS list
-	if (SAFE_TOOLS.includes(toolName)) {
-		return { allowed: true, reason: "Safe tool" };
+	// 5. Check Intent-Based Access Control (IBAC)
+	const toolDef = getTool(toolName);
+	if (toolDef?.intent === "read-only") {
+		return { allowed: true, reason: "Safe read-only tool" };
 	}
 
 	// 6. Check readonly mode
 	if (config.defaultMode === "readonly") {
-		if (!SAFE_TOOLS.includes(toolName)) {
-			return { allowed: false, reason: "Read-only mode" };
-		}
+		return { allowed: false, reason: "Read-only mode" };
 	}
 
 	// 7. Check trust mode

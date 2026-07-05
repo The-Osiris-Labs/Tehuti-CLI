@@ -9,6 +9,7 @@ import { Box, render, Text, useApp, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import React, {
 	useCallback,
+	useDeferredValue,
 	useEffect,
 	useMemo,
 	useRef,
@@ -2468,8 +2469,10 @@ function ChatUI({
 		}
 	}
 
+	const deferredVisibleMessages = useDeferredValue(visibleMessages);
+
 	const messageElements = useMemo(() => {
-		return visibleMessages.map((m) => {
+		return deferredVisibleMessages.map((m) => {
 			let header: React.ReactNode;
 			let content: React.ReactNode[];
 
@@ -2821,7 +2824,7 @@ function ChatUI({
 				),
 			);
 		});
-	}, [visibleMessages, contentMaxWidth, loadSessionById]);
+	}, [deferredVisibleMessages, contentMaxWidth, loadSessionById]);
 
 	const commandSuggestions = null;
 
@@ -3413,6 +3416,14 @@ export function createProgram(): Command {
 					await mcpManager.disconnectAll();
 				}
 			} else {
+				const originalWrite = process.stdout.write;
+				process.stdout.write = function (chunk: any, encoding?: any, cb?: any) {
+					originalWrite.call(process.stdout, "\x1b[?2026h");
+					const result = originalWrite.call(process.stdout, chunk, encoding, cb);
+					originalWrite.call(process.stdout, "\x1b[?2026l");
+					return result;
+				} as any;
+
 				const { waitUntilExit, unmount } = render(
 					React.createElement(App, {
 						apiKey: apiKey || "",

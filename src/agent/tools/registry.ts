@@ -50,6 +50,7 @@ export interface ToolDefinition {
 		| "git"
 		| "search"
 		| "development";
+	intent?: "read-only" | "destructive" | "interactive";
 	onRegister?: (manager: ToolRegistryManager) => Promise<void> | void;
 	onUnregister?: (manager: ToolRegistryManager) => Promise<void> | void;
 }
@@ -143,6 +144,17 @@ export class ToolRegistryManager {
 	}
 
 	registerTool(tool: ToolDefinition): void {
+		// Auto-derive intent if not explicitly set
+		if (!tool.intent) {
+			if (tool.name === "question") {
+				tool.intent = "interactive";
+			} else if (tool.isReadonly) {
+				tool.intent = "read-only";
+			} else {
+				tool.intent = "destructive";
+			}
+		}
+
 		if (this.tools.has(tool.name)) {
 			debug.log("tools", `Overwriting existing tool: ${tool.name}`);
 			const existing = this.tools.get(tool.name);
