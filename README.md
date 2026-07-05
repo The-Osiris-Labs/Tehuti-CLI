@@ -33,13 +33,13 @@ Security is treated as a foundational primitive. Tehuti does not blindly execute
 
 ## 🤖 Capabilities & Tools
 
-Tehuti ships with **68 native built-in tools** designed for comprehensive repository manipulation:
+Tehuti ships with **73 native built-in tools** designed for comprehensive repository manipulation:
 
 - **Filesystem & AST:** Read, write, manipulate directories, and parse native Abstract Syntax Trees (AST) using Tree-Sitter.
 - **Sandboxed Execution:** Securely execute bash commands to run tests, formatters, and builds.
 - **Git Integration:** Full programmatic access to read history, stage, commit, and manage branches.
 - **Web Intelligence:** Built-in web scraping, headless browser integration, and code-specific search tools.
-- **Multi-Agent Swarm Orchestration:** Tehuti can dynamically spawn background subagents via `invoke_subagent`, delegating concurrent tasks (like research or QA) while continuing main-thread execution. Bidirectional communication is fully supported.
+- **Multi-Agent Swarm Orchestration:** Tehuti can dynamically spawn background subagents via `delegate_task`, delegating concurrent tasks (like research or QA) while continuing main-thread execution. Bidirectional communication is fully supported.
 
 ### Model Context Protocol (MCP) Support
 Tehuti is fully extensible via the open **Model Context Protocol (MCP)**. You can dynamically attach external capabilities via standard IO, HTTP, SSE, or WebSocket. Tehuti automatically reads, maps, and registers MCP tool schemas directly into the agent's inference loop.
@@ -52,8 +52,8 @@ Tehuti requires Node.js 20 or later.
 
 ### 1. Install
 ```bash
-git clone https://github.com/The-Osiris-Labs/Tehuti-CLI-Revival.git
-cd Tehuti-CLI-Revival
+git clone https://github.com/The-Osiris-Labs/Tehuti-CLI.git
+cd Tehuti-CLI
 npm install
 npm run build
 ```
