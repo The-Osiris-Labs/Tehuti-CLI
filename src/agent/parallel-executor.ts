@@ -20,8 +20,6 @@ function truncateToolResultForModel(result: string): string {
 	return `${result.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... (truncated due to excessive size)`;
 }
 
-
-
 export interface ToolCall {
 	id: string;
 	function: {
@@ -347,7 +345,9 @@ export async function executeToolsParallel(
 }
 
 export function getParallelizableCount(toolCalls: ToolCall[]): number {
-	return toolCalls.filter((tc) => getTool(tc.function.name)?.intent === "read-only").length;
+	return toolCalls.filter(
+		(tc) => getTool(tc.function.name)?.intent === "read-only",
+	).length;
 }
 
 export function getSequentialCount(toolCalls: ToolCall[]): number {

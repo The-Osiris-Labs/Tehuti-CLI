@@ -158,9 +158,18 @@ export function abortTask(taskId: string): boolean {
 	return false;
 }
 
-export function sendMessageToTask(taskId: string, message: string): boolean {
+export function sendMessageToTask(
+	taskId: string,
+	message: string,
+): { success: boolean; status?: string; error?: string } {
 	const task = activeTasks.get(taskId);
-	if (task && task.status === "running" && task.context) {
+	if (!task) {
+		return { success: false, error: "not_found" };
+	}
+	if (task.status !== "running") {
+		return { success: false, status: task.status, error: "not_running" };
+	}
+	if (task.context) {
 		task.context.messages.push({
 			role: "user",
 			content: `[Message from Parent]: ${message}`,
@@ -170,7 +179,7 @@ export function sendMessageToTask(taskId: string, message: string): boolean {
 				agentEventBus.emit("wakeup", `Message received for task ${taskId}`);
 			});
 		}
-		return true;
+		return { success: true };
 	}
-	return false;
+	return { success: false, error: "no_context" };
 }

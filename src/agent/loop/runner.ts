@@ -1,3 +1,4 @@
+import type { StandardTool } from "../../api/base-client.js";
 import type { CustomProviderClient, KiloCodeClient } from "../../api/index.js";
 import {
 	costTracker,
@@ -7,7 +8,7 @@ import {
 } from "../../api/index.js";
 import { isReasoningModel } from "../../api/model-capabilities.js";
 import type { OpenRouterClient } from "../../api/openrouter.js";
-import type { StandardTool } from "../../api/base-client.js";;
+
 import { debug } from "../../utils/debug.js";
 
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
@@ -237,7 +238,10 @@ export async function runAgentLoop(
 								const toolDef = getTool(tc.function.name);
 								if (toolDef?.intent === "read-only") {
 									dispatchedToolIds.add(tc.id);
-									debug.log("agent", `Mid-stream dispatching read-only tool: ${tc.function.name}`);
+									debug.log(
+										"agent",
+										`Mid-stream dispatching read-only tool: ${tc.function.name}`,
+									);
 
 									const tcTyped: ToolCall = {
 										id: tc.id,
@@ -251,8 +255,11 @@ export async function runAgentLoop(
 										ctx,
 										[tcTyped],
 										{ onToolCall, onToolResult, onProgress },
-										signal
-									);
+										signal,
+									).catch((err) => {
+										debug.log("agent", "Mid-stream tool error:", err);
+										return 0;
+									});
 									midStreamPromises.push(p);
 								}
 							}
@@ -345,7 +352,9 @@ export async function runAgentLoop(
 					},
 				}));
 
-				const remainingToolCalls = toolCallsTyped.filter((tc) => !dispatchedToolIds.has(tc.id));
+				const remainingToolCalls = toolCallsTyped.filter(
+					(tc) => !dispatchedToolIds.has(tc.id),
+				);
 
 				if (remainingToolCalls.length > 0) {
 					const processedCount = await processToolCalls(

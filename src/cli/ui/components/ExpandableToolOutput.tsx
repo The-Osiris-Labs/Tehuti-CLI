@@ -6,6 +6,7 @@ import {
 import { Box, Text } from "ink";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
+import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
 
 interface ExpandableToolOutputProps {
@@ -32,7 +33,6 @@ const ANSI_STRIP_REGEX = new RegExp(
 	"[\\x1b\\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]",
 	"g",
 );
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function safeStringify(value: unknown): string {
 	try {
@@ -163,8 +163,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				setDuration((Date.now() - startTimeRef.current) / 1000);
 			}, 100);
 			const spinnerInterval = setInterval(() => {
-				setSpinnerFrame((f) => (f + 1) % SPINNER_FRAMES.length);
-			}, 80);
+				setSpinnerFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
+			}, 150);
 			return () => {
 				clearInterval(interval);
 				clearInterval(spinnerInterval);
@@ -193,17 +193,17 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	let headerColor = "";
 
 	if (status === "pending") {
-		headerIcon = SPINNER_FRAMES[spinnerFrame];
+		headerIcon = HIEROGLYPHS.loading[spinnerFrame];
 		headerStatusText = `RUNNING • ${durStr}`;
-		headerColor = "yellow";
+		headerColor = BRANDING.colors.gold;
 	} else if (status === "success") {
 		headerIcon = DECORATIVE.ankh;
 		headerStatusText = `SUCCESS • ${durStr}`;
-		headerColor = "green";
+		headerColor = BRANDING.colors.green;
 	} else {
 		headerIcon = DECORATIVE.eye_horus;
 		headerStatusText = `FAILED • ${durStr}`;
-		headerColor = "red";
+		headerColor = BRANDING.colors.red;
 	}
 
 	const cleanToolName = stripAnsi(toolName);
@@ -226,7 +226,9 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 					? `completed (click to collapse)`
 					: `completed`;
 
-	const borderTextColor = isHovered ? "coral" : "gray";
+	const borderTextColor = isHovered
+		? BRANDING.colors.coral
+		: BRANDING.colors.gray;
 
 	const isJson = useMemo(() => {
 		try {
@@ -267,7 +269,11 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 					</Text>
 				</Box>
 				<Box>
-					<Text bold dimColor={status === "success"} color={status === "success" ? undefined : headerColor}>
+					<Text
+						bold
+						dimColor={status === "success"}
+						color={status === "success" ? undefined : headerColor}
+					>
 						{headerStatusText}
 					</Text>
 				</Box>

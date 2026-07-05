@@ -1395,7 +1395,7 @@ function ChatUI({
 					ctxRef.current.messages = data.messages;
 					// Seed context with the loaded historical messages
 					ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
-					
+
 					if (data.metadata.model) {
 						setCtxModel(resolvedModel);
 					}
@@ -1717,8 +1717,10 @@ function ChatUI({
 								},
 								diffPreview,
 							);
-							ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
-							
+							ctxRef.current.messages = JSON.parse(
+								JSON.stringify(data.messages),
+							);
+
 							return;
 						}
 					}
@@ -1772,6 +1774,8 @@ function ChatUI({
 		setSessionId,
 		setCtxModel,
 		abortActiveRequest,
+		diffPreview,
+		getActiveConfig,
 	]);
 
 	useEffect(() => {
@@ -3417,12 +3421,17 @@ export function createProgram(): Command {
 				}
 			} else {
 				const originalWrite = process.stdout.write;
-				process.stdout.write = function (chunk: any, encoding?: any, cb?: any) {
+				process.stdout.write = ((chunk: any, encoding?: any, cb?: any) => {
 					originalWrite.call(process.stdout, "\x1b[?2026h");
-					const result = originalWrite.call(process.stdout, chunk, encoding, cb);
+					const result = originalWrite.call(
+						process.stdout,
+						chunk,
+						encoding,
+						cb,
+					);
 					originalWrite.call(process.stdout, "\x1b[?2026l");
 					return result;
-				} as any;
+				}) as any;
 
 				const { waitUntilExit, unmount } = render(
 					React.createElement(App, {

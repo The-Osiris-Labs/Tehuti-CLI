@@ -84,7 +84,7 @@ runAgentLoop (runner.ts)
   4. classifyTask + selectModel (once per session, keyword heuristics)
   5. syncMCPToolRegistry
   LOOP (maxIterations):
-    a. manageContextWindow (LLM compression at ~85%)
+    a. manageContextWindow (deterministic array truncation at ~85%)
     b. normalizeToolMessageHistory
     c. streamChat → processStreamChunk → onToken/onThinking
     d. if no tool calls → return
@@ -98,7 +98,7 @@ runAgentLoop (runner.ts)
 - Model routing runs **once** at session start, not per message
 
 **Two compression systems:**
-- In-loop: LLM summarization via `context-compressor.ts` (~85% threshold)
+- In-loop: Deterministic array truncation (splicing out oldest messages) via `loop/compression.ts` (~85% threshold)
 - `/compact`: cheap placeholder compaction via `compactContext()` in `context.ts` (no LLM)
 
 ---
@@ -109,7 +109,7 @@ Registered in `src/agent/index.ts` at module load. MCP tools sync each loop iter
 
 **Categories:** fs, search, repo_map, bash, web, git, memory, background, plan, skills, semantic (grepai binary), ast (parse_ast), swarm, kilocode, collaboration, custom provider, system (todo/task/question), MCP prompts, dynamic MCP.
 
-**Dead code (implemented, not registered):** `grepai-*.ts` (~17 tools), `shadow-workspace.ts`, `create_reusable_skill`.
+**Dead code (implemented, not registered):** `grepai-*.ts` (~17 tools).
 
 **Skills:** Prompt injection only. Three built-in (JS/TS, Python, Git) + user JSON in `~/.tehuti/skills/`. Activation is in-memory; not persisted.
 
@@ -134,10 +134,6 @@ Defaults: `provider: "opencode"`, `model: "deepseek-v4-flash"`.
 
 | Feature | Status |
 |---------|--------|
-| **Hooks** | Executor runs in tool loop; **no `hooks` field in config schema** — always empty |
-| **Telemetry config** | `telemetry: false` default; flag never checked — metrics always collected |
-| **MCP sampling** | `setSamplingHandler()` defined, never called |
-| **Question tool UI** | `_QuestionPrompt` + state wired; **component not rendered** — will hang in TUI |
 | **Palette `/load` submenu** | Passes session ID but `handleLoad` ignores it |
 | **Mid-session auto-save** | None — only `/save` or clean exit (Ctrl+C with empty input) |
 | **Two markdown pipelines** | Ink `renderMarkdown()` vs ANSI `renderMarkdownToAnsi()` — feature parity gaps |
@@ -162,7 +158,7 @@ Extracted components: `CommandPalette.tsx`, `ConfigEditor.tsx`, `ExpandableToolO
 npm run typecheck   # tsc --noEmit
 npm test            # 570 passed, 2 skipped (unit, src/**/*.test.ts)
 npm run test:e2e    # 105 passed, 1 failed (106 total, tests/e2e/)
-npm run build       # tsup → dist/index.js ~652 KB
+npm run build       # tsup → dist/index.js ~684 KB
 npm run lint        # biome check src/
 ```
 

@@ -1,7 +1,12 @@
-import { getApiKeyEnvVarsForProvider, getProviderAuthHeaders, getProviderInfo, resolveBaseUrlForProvider } from "../config/providers.js";
+import {
+	getApiKeyEnvVarsForProvider,
+	getProviderAuthHeaders,
+	getProviderInfo,
+	resolveBaseUrlForProvider,
+} from "../config/providers.js";
 import type { TehutiConfig } from "../config/schema.js";
-import { APIError } from "../utils/errors.js";
 import { debug } from "../utils/debug.js";
+import { APIError } from "../utils/errors.js";
 import { BaseAPIClient } from "./base-client.js";
 
 export class OpenRouterClient extends BaseAPIClient {
@@ -59,7 +64,8 @@ export class OpenRouterClient extends BaseAPIClient {
 			);
 		}
 
-		const isStrictOpenRouter = !config.provider || config.provider === "openrouter";
+		const isStrictOpenRouter =
+			!config.provider || config.provider === "openrouter";
 		if (apiKey && apiKey.length < 10) {
 			throw new APIError("Invalid API key format");
 		}
@@ -116,7 +122,7 @@ export class OpenRouterClient extends BaseAPIClient {
 			maxRetries: config.maxRetries,
 			supportsCaching: OpenRouterClient.checkCachingSupport(config.model),
 		});
-		
+
 		this.originalConfig = config;
 	}
 
@@ -167,14 +173,29 @@ export class OpenRouterClient extends BaseAPIClient {
 		tools?: import("./base-client.js").StandardTool[],
 		modelOverride?: string,
 		signal?: AbortSignal,
-	): AsyncGenerator<import("./base-client.js").StandardStreamChunk, void, unknown> {
+	): AsyncGenerator<
+		import("./base-client.js").StandardStreamChunk,
+		void,
+		unknown
+	> {
 		try {
 			yield* super.streamChat(messages, tools, modelOverride, signal);
 		} catch (error) {
-			if (error instanceof APIError && (error.status === 429 || (error.status && error.status >= 500))) {
+			if (
+				error instanceof APIError &&
+				(error.status === 429 || (error.status && error.status >= 500))
+			) {
 				if (this.providerId !== "opencode") {
-					debug.log("api", `Fallback triggered! Routing request to opencode due to ${error.status} error.`);
-					yield* this.getFallbackClient().streamChat(messages, tools, modelOverride, signal);
+					debug.log(
+						"api",
+						`Fallback triggered! Routing request to opencode due to ${error.status} error.`,
+					);
+					yield* this.getFallbackClient().streamChat(
+						messages,
+						tools,
+						modelOverride,
+						signal,
+					);
 					return;
 				}
 			}
@@ -191,10 +212,21 @@ export class OpenRouterClient extends BaseAPIClient {
 		try {
 			return await super.completeChat(messages, tools, modelOverride, signal);
 		} catch (error) {
-			if (error instanceof APIError && (error.status === 429 || (error.status && error.status >= 500))) {
+			if (
+				error instanceof APIError &&
+				(error.status === 429 || (error.status && error.status >= 500))
+			) {
 				if (this.providerId !== "opencode") {
-					debug.log("api", `Fallback triggered! Routing request to opencode due to ${error.status} error.`);
-					return await this.getFallbackClient().completeChat(messages, tools, modelOverride, signal);
+					debug.log(
+						"api",
+						`Fallback triggered! Routing request to opencode due to ${error.status} error.`,
+					);
+					return await this.getFallbackClient().completeChat(
+						messages,
+						tools,
+						modelOverride,
+						signal,
+					);
 				}
 			}
 			throw error;
@@ -239,8 +271,13 @@ export class OpenRouterClient extends BaseAPIClient {
 		modelOverride?: string,
 		isStream: boolean = true,
 	): Record<string, unknown> {
-		const body = super.buildRequestBody(messages, tools, modelOverride, isStream);
-		
+		const body = super.buildRequestBody(
+			messages,
+			tools,
+			modelOverride,
+			isStream,
+		);
+
 		const model = modelOverride ?? this.model;
 		if (this.extendedThinking && this.supportsExtendedThinking(model)) {
 			body.thinking = {
@@ -248,7 +285,7 @@ export class OpenRouterClient extends BaseAPIClient {
 				budget_tokens: this.thinkingBudgetTokens ?? 10000,
 			};
 		}
-		
+
 		return body;
 	}
 }

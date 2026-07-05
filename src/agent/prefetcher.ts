@@ -48,8 +48,6 @@ export class Prefetcher {
 	}> = [];
 	private readonly maxRecentPatterns = 50;
 
-	constructor() {}
-
 	setEnabled(enabled: boolean): void {
 		this.enabled = enabled;
 		if (!enabled) {
@@ -104,7 +102,7 @@ export class Prefetcher {
 				}
 				return result;
 			})
-			.catch((err) => {
+			.catch((_err) => {
 				if (timeoutId) clearTimeout(timeoutId);
 				return null;
 			});

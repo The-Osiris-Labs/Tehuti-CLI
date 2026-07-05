@@ -1,11 +1,10 @@
 import { Mutex } from "async-mutex";
 import chalk from "chalk";
+import { getTool } from "../agent/tools/registry.js";
 import type { PermissionsConfig } from "../config/schema.js";
+import { isMCPTool, parseMCPToolName } from "../mcp/tool-adapter.js";
 import { debug } from "../utils/debug.js";
 import { matchesPattern, permissionManager } from "./rules.js";
-
-import { getTool } from "../agent/tools/registry.js";
-import { isMCPTool, parseMCPToolName } from "../mcp/tool-adapter.js";
 
 export interface PermissionRequest {
 	toolName: string;
@@ -33,8 +32,6 @@ export function setPermissionResolver(
 ): void {
 	permissionResolver = resolver;
 }
-
-
 
 function hasDangerousCommandPattern(cmd: string): boolean {
 	const trimmed = cmd.trim();
@@ -115,7 +112,7 @@ export async function checkPermission(
 	}
 
 	// 0. Check ephemeral capabilities first
-	if (permissionManager.consumeCapability(toolName)) {
+	if (permissionManager.consumeCapability(toolName, (args ?? {}) as Record<string, unknown>)) {
 		return { allowed: true, reason: "Allowed by JIT capability" };
 	}
 
@@ -185,7 +182,9 @@ export async function checkPermission(
 	}
 
 	const checkDangerous = DANGEROUS_ARGS[toolName];
-	const isDangerous = checkDangerous ? checkDangerous(args) : false;
+	const isDangerousArgs = checkDangerous ? checkDangerous(args) : false;
+	const isDangerous =
+		isDangerousArgs || toolDef?.intent === "destructive" || !toolDef;
 
 	return interactivePrompt(request, isDangerous);
 }

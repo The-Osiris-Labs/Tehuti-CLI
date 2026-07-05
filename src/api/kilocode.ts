@@ -115,7 +115,12 @@ export class KiloCodeClient extends BaseAPIClient {
 		modelOverride?: string,
 		isStream: boolean = true,
 	): Record<string, unknown> {
-		const body = super.buildRequestBody(messages, tools, modelOverride, isStream);
+		const body = super.buildRequestBody(
+			messages,
+			tools,
+			modelOverride,
+			isStream,
+		);
 
 		if (this.options.memoryBank?.enabled) {
 			body.memory = {
@@ -201,7 +206,9 @@ export class KiloCodeClient extends BaseAPIClient {
 		return JSON.parse(content || "{}");
 	}
 
-	async summarizeContext(messages: import("./base-client.js").StandardMessage[]): Promise<{
+	async summarizeContext(
+		messages: import("./base-client.js").StandardMessage[],
+	): Promise<{
 		summary: string;
 		keyPoints: string[];
 		contextTokens: number;
@@ -216,7 +223,11 @@ export class KiloCodeClient extends BaseAPIClient {
 			content: `Please summarize the following conversation history:\n\n${JSON.stringify(messages)}`,
 		};
 
-		const response = await this.completeChat([sysMsg, userMsg], undefined, this.model);
+		const response = await this.completeChat(
+			[sysMsg, userMsg],
+			undefined,
+			this.model,
+		);
 
 		const content =
 			typeof response.choices[0].message.content === "string"

@@ -78,25 +78,28 @@ export const StandardToolCallSchema = z
 export const StandardStreamChunkSchema = z
 	.object({
 		id: z.string().optional().default(""),
-		choices: z.array(
-			z
-				.object({
-					index: z.number().optional().default(0),
-					delta: z
-						.object({
-							role: z.string().optional(),
-							content: z.string().nullable().optional(),
-							reasoning: z.string().nullable().optional(),
-							thinking: z.string().nullable().optional(),
-							tool_calls: z.array(StandardToolCallSchema).optional(),
-						})
-						.passthrough()
-						.optional()
-						.default({}),
-					finish_reason: z.string().nullable().optional(),
-				})
-				.passthrough(),
-		).optional().default([]),
+		choices: z
+			.array(
+				z
+					.object({
+						index: z.number().optional().default(0),
+						delta: z
+							.object({
+								role: z.string().optional(),
+								content: z.string().nullable().optional(),
+								reasoning: z.string().nullable().optional(),
+								thinking: z.string().nullable().optional(),
+								tool_calls: z.array(StandardToolCallSchema).optional(),
+							})
+							.passthrough()
+							.optional()
+							.default({}),
+						finish_reason: z.string().nullable().optional(),
+					})
+					.passthrough(),
+			)
+			.optional()
+			.default([]),
 		usage: z
 			.object({
 				prompt_tokens: z.number(),
@@ -431,7 +434,14 @@ export abstract class BaseAPIClient {
 			msg.includes("eaddrinuse") ||
 			msg.includes("connection closed") ||
 			msg.includes("socket closed") ||
-			msg.includes("terminated")
+			msg.includes("socket hang up") ||
+			msg.includes("terminated") ||
+			msg.includes("err_http3_") ||
+			msg.includes("err_quic_") ||
+			msg.includes("nghttp3") ||
+			msg.includes("und_err_") ||
+			msg.includes("h3_") ||
+			msg.includes("protocol error")
 		) {
 			return true;
 		}
@@ -451,7 +461,10 @@ export abstract class BaseAPIClient {
 		return Math.min(baseDelay + jitter, MAX_RETRY_DELAY_MS);
 	}
 
-	protected handleResponseError(response: Response, errorText: string): APIError {
+	protected handleResponseError(
+		response: Response,
+		errorText: string,
+	): APIError {
 		const sanitizedError = errorText
 			.slice(0, 500)
 			.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]")
@@ -635,12 +648,13 @@ export abstract class BaseAPIClient {
 					try {
 						const json = trimmed.slice(6);
 						const parsedJson = JSON.parse(json);
-						
+
 						if (parsedJson.error) {
-							const errMsg = parsedJson.error.message || JSON.stringify(parsedJson.error);
+							const errMsg =
+								parsedJson.error.message || JSON.stringify(parsedJson.error);
 							throw new APIError(`API Error in stream: ${errMsg}`);
 						}
-						
+
 						const result = StandardStreamChunkSchema.safeParse(parsedJson);
 						if (!result.success) {
 							throw new Error(`Zod validation failed: ${result.error.message}`);
@@ -648,7 +662,7 @@ export abstract class BaseAPIClient {
 						yield result.data as unknown as StandardStreamChunk;
 					} catch (e) {
 						if (e instanceof APIError) throw e;
-						
+
 						parseErrorCount++;
 						debug.log(
 							"stream",

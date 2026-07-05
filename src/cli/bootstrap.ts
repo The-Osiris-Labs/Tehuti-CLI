@@ -2,11 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { configureHooks, initializeAgent } from "../agent/index.js";
+import type { StandardMessage } from "../api/base-client.js";
 import { updateHttpAgentConfig } from "../api/http-agent.js";
 import { OpenRouterClient } from "../api/openrouter.js";
-;
-;
-import { type StandardMessage } from "../api/base-client.js";;
+
 import {
 	DEFAULT_CONFIG,
 	getGlobalConfig,

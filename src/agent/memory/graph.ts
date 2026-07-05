@@ -270,6 +270,9 @@ export async function optimizeInsights(
 		);
 
 	for (let i = 0; i < nodes.length; i++) {
+		if (i > 0 && i % 50 === 0) {
+			await new Promise((resolve) => setImmediate(resolve));
+		}
 		if (toRemove.has(nodes[i].id)) continue;
 
 		for (let j = i + 1; j < nodes.length; j++) {
@@ -391,7 +394,8 @@ export async function saveGraph(graphData: GraphData): Promise<void> {
 	const transaction = db.transaction((data: GraphData) => {
 		const now = Date.now();
 		for (const node of data.nodes) {
-			const resolvedCwd = node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
+			const resolvedCwd =
+				node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
 			insertNodeStmt.run({
 				id: node.id,
 				type: node.type,
@@ -421,8 +425,10 @@ export async function saveGraph(graphData: GraphData): Promise<void> {
 	transaction(graphData);
 
 	const now = Date.now();
+	let processed = 0;
 	for (const node of graphData.nodes) {
-		const resolvedCwd = node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
+		const resolvedCwd =
+			node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
 		await vectorStore.addEmbedding(node.id, node.content, {
 			type: node.type,
 			cwd: resolvedCwd,
@@ -430,6 +436,10 @@ export async function saveGraph(graphData: GraphData): Promise<void> {
 			importance: node.importance ?? 0,
 			timestamp: node.timestamp ?? now,
 		});
+		processed++;
+		if (processed % 50 === 0) {
+			await new Promise((resolve) => setImmediate(resolve));
+		}
 	}
 }
 

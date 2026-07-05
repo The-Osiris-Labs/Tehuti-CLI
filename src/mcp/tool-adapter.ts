@@ -8,15 +8,31 @@ import type {
 import type { StandardTool } from "../api/base-client.js";
 import type { MCPTool } from "./client.js";
 
+import crypto from "crypto";
+
 function safeNamePart(
 	value: string,
 	fallback: string,
 	maxLength: number,
+	hashInput?: string,
+	isServer?: boolean,
 ): string {
-	const safe = value
+	let safe = value
 		.replace(/[^a-zA-Z0-9_-]+/g, "_")
-		.replace(/^_+|_+$/g, "")
-		.slice(0, maxLength);
+		.replace(/^_+|_+$/g, "");
+	
+	if (isServer) {
+		safe = safe.replace(/_/g, "-");
+	}
+	
+	if (hashInput && (value !== safe || safe.length > maxLength)) {
+		const hash = crypto.createHash("md5").update(hashInput).digest("hex").slice(0, 4);
+		const availableLength = Math.max(1, maxLength - 5);
+		safe = `${safe.slice(0, availableLength)}${isServer ? "-" : "_"}${hash}`;
+	} else if (safe.length > maxLength) {
+		safe = safe.slice(0, maxLength);
+	}
+	
 	return safe || fallback;
 }
 
@@ -24,8 +40,8 @@ export function createMCPToolName(
 	serverName: string,
 	toolName: string,
 ): string {
-	const safeServer = safeNamePart(serverName, "server", 20).replace(/_/g, "-");
-	const safeTool = safeNamePart(toolName, "tool", 40);
+	const safeServer = safeNamePart(serverName, "server", 15, serverName, true);
+	const safeTool = safeNamePart(toolName, "tool", 43, toolName, false);
 	return `mcp_${safeServer}_${safeTool}`;
 }
 

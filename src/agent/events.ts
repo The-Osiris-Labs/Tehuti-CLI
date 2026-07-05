@@ -5,7 +5,6 @@ export interface AgentEvents {
 	error: (error: Error) => void;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: generic boundary
 export class TypedEventEmitter<TEvents extends Record<string, any>> {
 	private emitter = new EventEmitter();
 
@@ -13,7 +12,6 @@ export class TypedEventEmitter<TEvents extends Record<string, any>> {
 		eventName: TEventName,
 		...eventArg: Parameters<TEvents[TEventName]>
 	) {
-		// biome-ignore lint/suspicious/noExplicitAny: spread typings
 		this.emitter.emit(eventName, ...(eventArg as unknown as any[]));
 	}
 
@@ -21,7 +19,6 @@ export class TypedEventEmitter<TEvents extends Record<string, any>> {
 		eventName: TEventName,
 		handler: TEvents[TEventName],
 	) {
-		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.on(eventName, handler as any);
 	}
 
@@ -29,7 +26,6 @@ export class TypedEventEmitter<TEvents extends Record<string, any>> {
 		eventName: TEventName,
 		handler: TEvents[TEventName],
 	) {
-		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.once(eventName, handler as any);
 	}
 
@@ -37,7 +33,6 @@ export class TypedEventEmitter<TEvents extends Record<string, any>> {
 		eventName: TEventName,
 		handler: TEvents[TEventName],
 	) {
-		// biome-ignore lint/suspicious/noExplicitAny: handler typings
 		this.emitter.off(eventName, handler as any);
 	}
 }

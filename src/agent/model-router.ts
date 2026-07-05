@@ -96,7 +96,7 @@ export function classifyTask(
 
 	if (pendingTools.length > 0) {
 		const allSafeParallel = pendingTools.every(
-			(t) => getTool(t.name)?.intent === "read-only"
+			(t) => getTool(t.name)?.intent === "read-only",
 		);
 
 		if (allSafeParallel) {
@@ -107,7 +107,9 @@ export function classifyTask(
 			};
 		}
 
-		const hasWrites = pendingTools.some((t) => getTool(t.name)?.intent === "destructive");
+		const hasWrites = pendingTools.some(
+			(t) => getTool(t.name)?.intent === "destructive",
+		);
 
 		if (hasWrites && pendingTools.length === 1) {
 			return {

@@ -130,9 +130,18 @@ export class SwarmManager extends EventEmitter {
 		return false;
 	}
 
-	public sendMessage(id: string, message: string): boolean {
+	public sendMessage(
+		id: string,
+		message: string,
+	): { success: boolean; status?: string; error?: string } {
 		const task = this.tasks.get(id);
-		if (task && task.status === "running" && task.context) {
+		if (!task) {
+			return { success: false, error: "not_found" };
+		}
+		if (task.status !== "running") {
+			return { success: false, status: task.status, error: "not_running" };
+		}
+		if (task.context) {
 			task.context.messages.push({
 				role: "user",
 				content: `[Message from Parent]: ${message}`,
@@ -140,9 +149,9 @@ export class SwarmManager extends EventEmitter {
 			if (task.context.isSleeping) {
 				agentEventBus.emit("wakeup", `Message received for subagent ${id}`);
 			}
-			return true;
+			return { success: true };
 		}
-		return false;
+		return { success: false, error: "no_context" };
 	}
 }
 

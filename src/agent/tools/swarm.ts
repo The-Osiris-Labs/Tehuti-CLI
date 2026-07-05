@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { swarmManager } from "../swarm/manager.js";
 import { abortTask, sendMessageToTask } from "../subagents/manager.js";
+import { swarmManager } from "../swarm/manager.js";
 import { createTool, type ToolDefinition } from "./registry.js";
 
 const delegateTaskSchema = z.object({
@@ -90,16 +90,22 @@ export const swarmTools: ToolDefinition[] = [
 		isReadonly: false,
 		execute: async (args: unknown) => {
 			const { id } = args as z.infer<typeof abortSubagentSchema>;
-			
+
 			let success = swarmManager.killSubagent(id);
 			if (!success) {
 				success = abortTask(id);
 			}
 
 			if (success) {
-				return { success: true, output: `Subagent ${id} aborted successfully.` };
+				return {
+					success: true,
+					output: `Subagent ${id} aborted successfully.`,
+				};
 			}
-			return { success: false, output: `Failed to abort subagent ${id}. It may not be running or may not exist.` };
+			return {
+				success: false,
+				output: `Failed to abort subagent ${id}. It may not be running or may not exist.`,
+			};
 		},
 	}),
 	createTool({
@@ -109,17 +115,33 @@ export const swarmTools: ToolDefinition[] = [
 		category: "development",
 		isReadonly: false,
 		execute: async (args: unknown) => {
-			const { id, message } = args as z.infer<typeof sendMessageToSubagentSchema>;
-			
-			let success = swarmManager.sendMessage(id, message);
-			if (!success) {
-				success = sendMessageToTask(id, message);
+			const { id, message } = args as z.infer<
+				typeof sendMessageToSubagentSchema
+			>;
+
+			let result = swarmManager.sendMessage(id, message);
+			if (result.error === "not_found") {
+				const taskResult = sendMessageToTask(id, message);
+				if (taskResult.error !== "not_found") {
+					result = taskResult as any;
+				}
 			}
 
-			if (success) {
+			if (result.success) {
 				return { success: true, output: `Message sent to subagent ${id}.` };
 			}
-			return { success: false, output: `Failed to send message to subagent ${id}. It may not be running or may not exist.` };
+
+			if (result.error === "not_running") {
+				return {
+					success: false,
+					output: `Failed to send message: Subagent ${id} is no longer running (status: ${result.status}).`,
+				};
+			}
+
+			return {
+				success: false,
+				output: `Failed to send message to subagent ${id}. It may not exist or its context is missing.`,
+			};
 		},
 	}),
 ];

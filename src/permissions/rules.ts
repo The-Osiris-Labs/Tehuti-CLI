@@ -178,11 +178,22 @@ export class PermissionManager {
 		this.capabilities.clear();
 	}
 
-	grantCapability(toolName: string): void {
-		this.capabilities.add(toolName);
+	grantCapability(toolName: string, args?: Record<string, unknown>): void {
+		if (args) {
+			this.capabilities.add(this.makeKey(toolName, args));
+		} else {
+			this.capabilities.add(toolName);
+		}
 	}
 
-	consumeCapability(toolName: string): boolean {
+	consumeCapability(toolName: string, args?: Record<string, unknown>): boolean {
+		if (args) {
+			const key = this.makeKey(toolName, args);
+			if (this.capabilities.has(key)) {
+				this.capabilities.delete(key);
+				return true;
+			}
+		}
 		if (this.capabilities.has(toolName)) {
 			this.capabilities.delete(toolName);
 			return true;

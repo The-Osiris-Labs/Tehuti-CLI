@@ -74,7 +74,7 @@ function estimateTokens(messages: StandardMessage[]): number {
 
 export function compressContext(
 	messages: StandardMessage[],
-	options: Partial<CompressionOptions> = {}
+	options: Partial<CompressionOptions> = {},
 ): CompressionResult {
 	const opts = { ..._DEFAULT_OPTIONS, ...options };
 	const originalTokens = estimateTokens(messages);
@@ -99,7 +99,9 @@ export function compressContext(
 	for (const msg of midMessages) {
 		let preview = "";
 		if (typeof msg.content === "string") {
-			preview = msg.content.substring(0, 100).replace(/\n/g, " ") + (msg.content.length > 100 ? "..." : "");
+			preview =
+				msg.content.substring(0, 100).replace(/\n/g, " ") +
+				(msg.content.length > 100 ? "..." : "");
 		} else if (Array.isArray(msg.content)) {
 			preview = "[Multipart Content]";
 		} else if (msg.content !== undefined && msg.content !== null) {
@@ -107,12 +109,15 @@ export function compressContext(
 		}
 
 		if (msg.tool_calls) {
-			const tools = msg.tool_calls.map(tc => tc.function?.name).filter(Boolean).join(", ");
+			const tools = msg.tool_calls
+				.map((tc) => tc.function?.name)
+				.filter(Boolean)
+				.join(", ");
 			preview += preview ? ` | Tool calls: ${tools}` : `Tool calls: ${tools}`;
 		}
 
 		if (msg.name) {
-			preview = `[${msg.name}] ` + preview;
+			preview = `[${msg.name}] ${preview}`;
 		}
 
 		summaryContent += `- ${msg.role}: ${preview || "[No content]"}\n`;
@@ -147,8 +152,20 @@ export function identifyCriticalMessages(messages: any): number[] {
 	});
 	return indices;
 }
-export async function compressContextWithMetrics(messages: any, summarizer: any, target: number, opts: any) { return { messages, tokensSaved: 0, compressionRatio: 1 }; }
-export function progressiveCompress(messages: any, target: number) { return messages; }
-export function createContextSummarizer() { return async () => ''; }
-export function createSmartSummarizer() { return async () => ''; }
-
+export async function compressContextWithMetrics(
+	messages: any,
+	_summarizer: any,
+	_target: number,
+	_opts: any,
+) {
+	return { messages, tokensSaved: 0, compressionRatio: 1 };
+}
+export function progressiveCompress(messages: any, _target: number) {
+	return messages;
+}
+export function createContextSummarizer() {
+	return async () => "";
+}
+export function createSmartSummarizer() {
+	return async () => "";
+}

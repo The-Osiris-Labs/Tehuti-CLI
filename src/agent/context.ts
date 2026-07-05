@@ -1,13 +1,13 @@
 import path from "node:path";
 import fs from "fs-extra";
-import type {
-	StandardMessage,
-	StandardToolCall,
-} from "../api/base-client.js";
+import type { StandardMessage, StandardToolCall } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
-import { estimateTokens as tiktokenEstimateTokens, compressContext } from "./context-compressor.js";
+import {
+	compressContext,
+	estimateTokens as tiktokenEstimateTokens,
+} from "./context-compressor.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";

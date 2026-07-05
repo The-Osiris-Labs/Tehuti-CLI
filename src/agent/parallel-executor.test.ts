@@ -6,9 +6,6 @@ import {
 	executeToolsParallel,
 	getParallelizableCount,
 	getSequentialCount,
-	INTERACTIVE_TOOLS,
-	SAFE_PARALLEL_TOOLS,
-	WRITE_TOOLS,
 } from "./parallel-executor.js";
 
 vi.mock("./tools/registry.js", () => ({
@@ -16,7 +13,18 @@ vi.mock("./tools/registry.js", () => ({
 		await new Promise((r) => setTimeout(r, 10));
 		return { success: true, output: `${name} result` };
 	}),
-	getTool: vi.fn().mockReturnValue(null),
+	getTool: vi.fn().mockImplementation((name: string) => {
+		if (["read", "read_file", "glob", "grep", "list_dir", "web_fetch", "git_status"].includes(name)) {
+			return { intent: "read-only" };
+		}
+		if (["question"].includes(name)) {
+			return { intent: "interactive" };
+		}
+		if (["write", "write_file", "edit", "edit_file", "delete_file"].includes(name)) {
+			return { intent: "destructive" };
+		}
+		return null;
+	}),
 }));
 
 vi.mock("./cache/index.js", () => ({
@@ -43,33 +51,6 @@ vi.mock("../utils/telemetry.js", () => ({
 describe("Parallel Executor", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-	});
-
-	describe("Tool Classification Sets", () => {
-		it("should have correct SAFE_PARALLEL_TOOLS", () => {
-			expect(SAFE_PARALLEL_TOOLS.has("read")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("read_file")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("glob")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("grep")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("list_dir")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("web_fetch")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("git_status")).toBe(true);
-			expect(SAFE_PARALLEL_TOOLS.has("write")).toBe(false);
-		});
-
-		it("should have correct WRITE_TOOLS", () => {
-			expect(WRITE_TOOLS.has("write")).toBe(true);
-			expect(WRITE_TOOLS.has("write_file")).toBe(true);
-			expect(WRITE_TOOLS.has("edit")).toBe(true);
-			expect(WRITE_TOOLS.has("edit_file")).toBe(true);
-			expect(WRITE_TOOLS.has("delete_file")).toBe(true);
-			expect(WRITE_TOOLS.has("read")).toBe(false);
-		});
-
-		it("should have correct INTERACTIVE_TOOLS", () => {
-			expect(INTERACTIVE_TOOLS.has("question")).toBe(true);
-			expect(INTERACTIVE_TOOLS.has("read")).toBe(false);
-		});
 	});
 
 	describe("classifyToolCalls", () => {

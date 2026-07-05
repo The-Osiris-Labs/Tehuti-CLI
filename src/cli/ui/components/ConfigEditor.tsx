@@ -7,11 +7,12 @@ import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 
 const GOLD = BRANDING.colors.gold;
-const GRAY = "#6B7280";
+const GRAY = BRANDING.colors.gray;
 const CORAL = BRANDING.colors.coral;
 const NILE = BRANDING.colors.nile;
 const SAND = BRANDING.colors.sand;
-const RED = "#EF4444";
+const RED = BRANDING.colors.red;
+const OBSIDIAN = BRANDING.colors.obsidian;
 
 interface ConfigEditorProps {
 	config: {
@@ -103,7 +104,7 @@ function ConfigFieldRow({
 			padding={1}
 			borderStyle="single"
 			borderColor={isSelected ? GOLD : NILE}
-			backgroundColor={isSelected && !isEditing ? "#1A1A2E" : undefined}
+			backgroundColor={isSelected && !isEditing ? OBSIDIAN : undefined}
 		>
 			<Box justifyContent="space-between" marginBottom={0.5}>
 				<Text bold color={isSelected ? GOLD : GRAY}>

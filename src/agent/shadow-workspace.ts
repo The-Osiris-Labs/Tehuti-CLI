@@ -44,7 +44,7 @@ async function executeShadowTest(
 				cwd: worktreePath,
 				maxBuffer: 10 * 1024 * 1024, // 10MB
 			});
-			output = stdout + "\n" + stderr;
+			output = `${stdout}\n${stderr}`;
 			success = true;
 		} catch (error: any) {
 			output =

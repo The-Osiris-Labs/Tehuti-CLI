@@ -8,15 +8,15 @@
 
 Tehuti is an advanced Node.js 20+ terminal agent designed to integrate directly into your workflow. It runs natively in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to help you write, refactor, and understand code. 
 
-Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it combines a highly polished Egyptian-themed TUI with an incredibly powerful, native-speed engine under the hood.
+Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, it combines a highly polished Egyptian-themed TUI with a high-performance, native-speed engine under the hood.
 
 ## 🌟 Key Features
 
-- **Stunning Terminal UI:** We built a custom React 19 and Ink 6 terminal UI featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming. It delivers a fluid, immersive experience.
-- **High-Performance Networking:** Tehuti utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3 with `undici` connection pooling, establishing raw, direct HTTP communication for zero-latency streaming.
-- **Native Semantic Muscle:** Tehuti leverages a native Rust `.node` binary (`tehuti-core`) for parallel, lightning-fast semantic `grep` operations. 
+- **Terminal UI:** We built a custom React 19 and Ink 6 terminal UI featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming. It delivers a fluid, immersive experience.
+- **High-Performance Networking:** Tehuti utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3 with `undici` connection pooling, establishing raw, direct HTTP communication for low-latency streaming.
+- **Native Semantic Capabilities:** Tehuti leverages a native Rust `.node` binary (`tehuti-core`) for parallel, fast semantic `grep` operations. 
 - **Extensive Model Support:** Works out of the box with OpenCode Go (`deepseek-v4-flash` by default), and natively supports over 18 providers including OpenRouter, KiloCode, Anthropic, and local Ollama instances.
-- **Infinite Extensibility:** Ships with around 68 built-in tools (filesystem, bash sandboxes, git, AST parsing) and fully supports the **Model Context Protocol (MCP)** via stdio, HTTP, SSE, or WebSocket to plug in any external capability.
+- **Extensibility:** Ships with around 68 built-in tools (filesystem, bash sandboxes, git, AST parsing) and fully supports the **Model Context Protocol (MCP)** via stdio, HTTP, SSE, or WebSocket to plug in any external capability.
 - **Secure Access Control:** Integrates modern Identity-Based Access Control (IBAC) for fine-grained, secure tool permissions.
 
 ---
