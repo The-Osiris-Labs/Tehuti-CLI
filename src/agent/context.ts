@@ -28,42 +28,7 @@ const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
 export function stripReasoningTokens(content: string): string {
-	if (!content.includes("<think>")) return content;
-
-	let result = "";
-	let depth = 0;
-	let i = 0;
-	let lastCopiedIndex = 0;
-
-	while (i < content.length) {
-		if (content.startsWith("<think>", i)) {
-			if (depth === 0) {
-				result += content.substring(lastCopiedIndex, i);
-			}
-			depth++;
-			i += 7;
-			lastCopiedIndex = i;
-		} else if (depth > 0 && content.startsWith("</think>", i)) {
-			depth--;
-			if (depth === 0) {
-				lastCopiedIndex = i + 8;
-			}
-			i += 8;
-		} else {
-			const nextTag = content.indexOf("<", i + 1);
-			if (nextTag === -1) {
-				i = content.length;
-			} else {
-				i = nextTag;
-			}
-		}
-	}
-
-	if (depth === 0 && lastCopiedIndex < content.length) {
-		result += content.substring(lastCopiedIndex);
-	}
-
-	return result;
+	return content.replace(/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g, "");
 }
 
 export function estimateTokens(messages: StandardMessage[]): number {

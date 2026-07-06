@@ -243,35 +243,24 @@ function parseContentBlocks(
 	content: string,
 ): Array<{ type: "text" | "reasoning"; content: string }> {
 	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
-	let remaining = content;
-
-	while (remaining.length > 0) {
-		const thinkStart = remaining.indexOf("<think>");
-		if (thinkStart === -1) {
-			blocks.push({ type: "text", content: remaining });
-			break;
+	const regex = /<(think|thinking|reasoning)>([\s\S]*?)(?:<\/\1>|$)/g;
+	
+	let lastIndex = 0;
+	let match;
+	
+	while ((match = regex.exec(content)) !== null) {
+		if (match.index > lastIndex) {
+			blocks.push({ type: "text", content: content.slice(lastIndex, match.index) });
 		}
-
-		if (thinkStart > 0) {
-			blocks.push({ type: "text", content: remaining.slice(0, thinkStart) });
-		}
-
-		const thinkEnd = remaining.indexOf("</think>", thinkStart + 7);
-		if (thinkEnd === -1) {
-			blocks.push({
-				type: "reasoning",
-				content: remaining.slice(thinkStart + 7),
-			});
-			break;
-		}
-
-		blocks.push({
-			type: "reasoning",
-			content: remaining.slice(thinkStart + 7, thinkEnd),
-		});
-		remaining = remaining.slice(thinkEnd + 8);
+		
+		blocks.push({ type: "reasoning", content: match[2] });
+		lastIndex = regex.lastIndex;
 	}
-
+	
+	if (lastIndex < content.length) {
+		blocks.push({ type: "text", content: content.slice(lastIndex) });
+	}
+	
 	return blocks;
 }
 

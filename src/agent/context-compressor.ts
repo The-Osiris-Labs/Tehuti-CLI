@@ -99,8 +99,8 @@ export function compressContext(
 	for (const msg of midMessages) {
 		let preview = "";
 		if (typeof msg.content === "string") {
-			// Safely respect <think> boundaries
-			let c = msg.content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, "[Thought Process]");
+			// Safely respect reasoning block boundaries
+			let c = msg.content.replace(/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g, "[Thought Process]");
 
 			// Never accidentally slice a JSON tool_call object mid-string during heavy compression
 			const trimmed = c.trim();
