@@ -92,8 +92,36 @@ export function SessionList({
 	onLoadSession,
 	onClose,
 }: SessionListProps) {
-	const [selectedIndex, setSelectedIndex] = useState(0);
 	const PAGE_SIZE = 15;
+
+	const {
+		selectedIndex,
+		windowStart,
+		moveUp,
+		moveDown,
+		getVisibleItems,
+		setSelectedIndex,
+	} = useVirtualScroll({
+		totalItems: sessions.length,
+		maxVisibleWindow: PAGE_SIZE,
+	});
+
+	useVimInput({
+		isActive: true,
+		onUp: moveUp,
+		onDown: moveDown,
+		onSelect: () => {
+			if (sessions.length > 0) {
+				onLoadSession(sessions[selectedIndex].id);
+			}
+		},
+		onDelete: () => {
+			// Stub for future delete support
+		},
+		onRename: () => {
+			// Stub for future rename support
+		}
+	});
 
 	// Keyboard navigation
 	useInput((_input, key) => {
@@ -103,19 +131,12 @@ export function SessionList({
 		}
 
 		if (key.upArrow) {
-			setSelectedIndex((prev) => Math.max(0, prev - 1));
+			moveUp();
 			return;
 		}
 
 		if (key.downArrow) {
-			setSelectedIndex((prev) => Math.min(sessions.length - 1, prev + 1));
-			return;
-		}
-
-		if (key.return) {
-			if (sessions.length > 0) {
-				onLoadSession(sessions[selectedIndex].id);
-			}
+			moveDown();
 			return;
 		}
 	});
@@ -131,14 +152,7 @@ export function SessionList({
 		);
 	}
 
-	const startIdx = Math.max(
-		0,
-		Math.min(
-			selectedIndex - Math.floor(PAGE_SIZE / 2),
-			sessions.length - PAGE_SIZE,
-		),
-	);
-	const visibleSessions = sessions.slice(startIdx, startIdx + PAGE_SIZE);
+	const visibleSessions = getVisibleItems(sessions);
 
 	const { secondary: GOLD } = BRANDING.colors;
 
@@ -171,7 +185,7 @@ export function SessionList({
 				<Text color="gray">{`├${"─".repeat(84)}┤`}</Text>
 			</Box>
 			{visibleSessions.map((session, i) => {
-				const actualIndex = startIdx + i;
+				const actualIndex = windowStart + i;
 				return (
 					<SessionRow
 						key={session.id}
@@ -194,8 +208,8 @@ export function SessionList({
 			>
 				<Text dimColor>↑/↓: Navigate • Enter/Click: Select • Esc: Close</Text>
 				<Text dimColor>
-					Showing {startIdx + 1}-
-					{Math.min(startIdx + PAGE_SIZE, sessions.length)} of {sessions.length}
+					Showing {windowStart + 1}-
+					{Math.min(windowStart + PAGE_SIZE, sessions.length)} of {sessions.length}
 				</Text>
 			</Box>
 		</Box>
