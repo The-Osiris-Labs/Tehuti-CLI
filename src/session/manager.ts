@@ -377,7 +377,12 @@ class SessionManager {
 		});
 
 		const results = fuse.search(query.trim());
-		return results.map((result) => result.item);
+		return results
+			.map((result) => result.item)
+			.sort(
+				(a, b) =>
+					new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+			);
 	}
 
 	async deleteSession(id: string): Promise<void> {
