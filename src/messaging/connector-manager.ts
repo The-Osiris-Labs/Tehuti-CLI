@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { SessionResolver } from "./session-resolver.js";
+
 export interface UnifiedMessageEvent {
 	platform: "slack" | "discord" | "telegram" | "whatsapp";
 	senderId: string;
@@ -17,6 +18,7 @@ export interface ConnectorConfig {
 
 export class ConnectorManager extends EventEmitter {
 	private config: ConnectorConfig;
+	private sessionResolver = new SessionResolver();
 
 	constructor(config: ConnectorConfig) {
 		super();
@@ -34,18 +36,72 @@ export class ConnectorManager extends EventEmitter {
 		this.registerWhatsAppWebhook();
 	}
 
+	/**
+	 * Connects to a WebSocket-based service using an exponential backoff strategy
+	 * with jitter to prevent reconnect storms.
+	 */
+	private async connectWithBackoff(
+		platform: string,
+		connectFn: () => Promise<void>,
+		maxRetries = 10,
+	): Promise<void> {
+		let attempt = 0;
+		const baseDelay = 1000; // 1 second
+		const maxDelay = 60000; // 1 minute max backoff
+
+		while (attempt < maxRetries) {
+			try {
+				await connectFn();
+				console.log(`[${platform}] Connected successfully.`);
+				return;
+			} catch (error) {
+				attempt++;
+				const errMessage = error instanceof Error ? error.message : String(error);
+
+				if (attempt >= maxRetries) {
+					console.error(`[${platform}] Exhausted max retries (${maxRetries}): ${errMessage}`);
+					this.emit("error", new Error(`Max retries reached for ${platform}`));
+					return;
+				}
+
+				// Exponential backoff: baseDelay * 2^(attempt - 1)
+				const delay = Math.min(maxDelay, baseDelay * Math.pow(2, attempt - 1));
+				// Add jitter: random between 0 and 500ms
+				const jitter = Math.random() * 500;
+				const sleepTime = delay + jitter;
+
+				console.warn(
+					`[${platform}] Connection failed: ${errMessage}. ` +
+						`Retrying in ${Math.round(sleepTime)}ms (attempt ${attempt}/${maxRetries})...`,
+				);
+
+				await new Promise((resolve) => setTimeout(resolve, sleepTime));
+			}
+		}
+	}
+
 	private initSlackSocketMode(): void {
 		if (!this.config.slackAppToken) return;
-		// Mock implementation for Slack Socket Mode
-		console.log("Initializing Slack Socket Mode...");
-		// Simulate incoming message
-		// this.handleIncomingMessage("slack", "user_123", "Hello from Slack", {});
+
+		this.connectWithBackoff("Slack", async () => {
+			console.log("Initializing Slack Socket Mode...");
+			// In a real implementation, this would throw on connection failure
+			// e.g. await slackClient.start();
+		}).catch((err) => {
+			console.error("Slack backoff wrapper threw an unexpected error", err);
+		});
 	}
 
 	private initDiscordGateway(): void {
 		if (!this.config.discordToken) return;
-		// Mock implementation for Discord Gateway
-		console.log("Initializing Discord Gateway...");
+
+		this.connectWithBackoff("Discord", async () => {
+			console.log("Initializing Discord Gateway...");
+			// In a real implementation, this would throw on connection failure
+			// e.g. await discordClient.login(this.config.discordToken);
+		}).catch((err) => {
+			console.error("Discord backoff wrapper threw an unexpected error", err);
+		});
 	}
 
 	private registerTelegramWebhook(): void {
@@ -59,8 +115,6 @@ export class ConnectorManager extends EventEmitter {
 		// Mock implementation for WhatsApp Webhook
 		console.log("Registering WhatsApp Webhook endpoint...");
 	}
-
-	private sessionResolver = new SessionResolver();
 
 	/**
 	 * Resolves the inbound sender ID to a persistent session ID
