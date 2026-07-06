@@ -3,11 +3,12 @@ import {
 	useOnMouseEnter,
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 
 interface ExpandableToolOutputProps {
 	toolName: string;
@@ -23,9 +24,10 @@ export interface ToolOutputSummary {
 	isTruncated: boolean;
 	lineCount: number;
 	hiddenLineCount: number;
+	rawLines: string[];
 }
 
-const MAX_RENDERED_OUTPUT_CHARS = 8000;
+const MAX_RENDERED_OUTPUT_CHARS = 500000;
 // biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
 const ANSI_SEQUENCE_REGEX = new RegExp("^\\x1b\\[[0-9;]*[a-zA-Z]");
 // biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
@@ -122,6 +124,7 @@ export function summarizeToolOutput(
 		isTruncated,
 		lineCount: lines.length,
 		hiddenLineCount: isTruncated ? lines.length - previewLines : 0,
+		rawLines: lines,
 	};
 }
 
@@ -180,11 +183,27 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		() =>
 			summarizeToolOutput(
 				result,
-				expanded ? 10000 : width - 4,
-				expanded ? 10000 : 4,
+				width - 4,
+				4,
 			),
-		[result, expanded, width],
+		[result, width],
 	);
+
+	const {
+		windowStart,
+		windowEnd,
+		moveUp,
+		moveDown,
+	} = useVirtualScroll({
+		totalItems: expanded ? summary.rawLines.length : 0,
+		maxVisibleWindow: 40,
+	});
+
+	useInput((_input, key) => {
+		if (!isHovered || !expanded) return;
+		if (key.upArrow) moveUp();
+		if (key.downArrow) moveDown();
+	});
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
@@ -220,9 +239,11 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const footerLabel =
 		status === "pending"
 			? "running..."
-			: summary.isTruncated
-				? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
-				: `completed`;
+			: expanded && summary.rawLines.length > 40
+				? `Lines ${windowStart + 1}-${windowEnd} of ${summary.lineCount} (hover & use ↑/↓ to scroll)`
+				: summary.isTruncated && !expanded
+					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
+					: `completed`;
 
 	const borderTextColor = isHovered
 		? BRANDING.colors.coral
@@ -240,8 +261,16 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const displayContent = useMemo(() => {
 		if (!expanded) return summary.displayContent;
-		return highlightToAnsi(summary.displayContent, isJson ? "json" : "text");
-	}, [expanded, summary.displayContent, isJson]);
+		
+		const visibleLines = summary.rawLines.slice(windowStart, windowEnd);
+		const formatted = visibleLines.map(line => {
+			return stringWidth(line) > width - 4
+				? `${sliceAnsi(line, width - 7)}...`
+				: line;
+		}).join("\n");
+		
+		return highlightToAnsi(formatted, isJson ? "json" : "text");
+	}, [expanded, summary.displayContent, summary.rawLines, windowStart, windowEnd, width, isJson]);
 
 	const expandedIcon = expanded ? "▼" : "▶";
 
@@ -289,3 +318,4 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		</Box>
 	);
 });
+

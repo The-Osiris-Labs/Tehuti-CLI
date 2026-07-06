@@ -1,7 +1,9 @@
-import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
+import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useVimInput } from "../hooks/useVimInput.js";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
@@ -132,19 +134,38 @@ function CommandItemRow({
 	onClick,
 }: any) {
 	const ref = useRef<any>(null);
-	useOnMouseEnter(ref, () => onHover(cmdIndex));
-	useOnClick(ref, () => onClick(cmd));
+	const [isMouseHovered, setIsMouseHovered] = useState(false);
+
+	const disableMouse =
+		process.env.TEHUTI_DISABLE_MOUSE === "1" || process.env.NO_MOUSE === "1";
+
+	useOnClick(ref, disableMouse ? () => {} : () => onClick(cmd));
+	useOnMouseEnter(
+		ref,
+		disableMouse
+			? () => {}
+			: () => {
+					setIsMouseHovered(true);
+					onHover(cmdIndex);
+				},
+	);
+	useOnMouseLeave(
+		ref,
+		disableMouse ? () => {} : () => setIsMouseHovered(false),
+	);
+
+	const active = isSelected || isMouseHovered;
 
 	const label =
 		query.trim() &&
 		cmd.matchIndices &&
 		cmd.matchIndices.length > 0 &&
 		cmd.matchField === "label"
-			? highlightMatch(cmd.label, cmd.matchIndices, isSelected)
+			? highlightMatch(cmd.label, cmd.matchIndices, active)
 			: [
 					React.createElement(
 						Text,
-						{ key: "l", color: isSelected ? "black" : CORAL, bold: isSelected },
+						{ key: "l", color: active ? "black" : CORAL, bold: active },
 						cmd.label,
 					),
 				];
@@ -156,21 +177,21 @@ function CommandItemRow({
 			flexDirection: "column",
 			paddingX: 1,
 			paddingY: 0,
-			backgroundColor: isSelected ? GOLD : undefined,
+			backgroundColor: active ? GOLD : undefined,
 		},
 		React.createElement(
 			Box,
 			{ flexDirection: "row" },
 			React.createElement(
 				Text,
-				{ color: isSelected ? "black" : CORAL, bold: isSelected },
-				isSelected ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
+				{ color: active ? "black" : CORAL, bold: active },
+				active ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
 			),
 			React.createElement(Text, null, label),
 			cmd.shortcut &&
 				React.createElement(
 					Text,
-					{ color: isSelected ? "black" : CYAN, dimColor: !isSelected },
+					{ color: active ? "black" : CYAN, dimColor: !active },
 					`  ${cmd.shortcut}`,
 				),
 		),
@@ -179,7 +200,7 @@ function CommandItemRow({
 			{ paddingLeft: 2 },
 			React.createElement(
 				Text,
-				{ color: isSelected ? "black" : GRAY, dimColor: !isSelected },
+				{ color: active ? "black" : GRAY, dimColor: !active },
 				`${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ""}`,
 			),
 		),
@@ -194,7 +215,6 @@ export function CommandPalette({
 	initialQuery = "",
 }: CommandPaletteProps): React.ReactElement | null {
 	const [query, setQuery] = useState("");
-	const [selectedIndex, setSelectedIndex] = useState<number>(0);
 	const { stdout } = useStdout();
 	const [terminalWidth, setTerminalWidth] = useState(stdout?.columns || 80);
 
@@ -302,6 +322,20 @@ export function CommandPalette({
 		}
 	}, [visible, initialQuery, menuStack.length, query]);
 
+	const MAX_DISPLAY = 9;
+
+	const {
+		selectedIndex,
+		windowStart,
+		moveUp,
+		moveDown,
+		getVisibleItems,
+		setSelectedIndex,
+	} = useVirtualScroll({
+		totalItems: filteredCommands.length,
+		maxVisibleWindow: MAX_DISPLAY,
+	});
+
 	const [prevFilteredCommands, setPrevFilteredCommands] =
 		useState(filteredCommands);
 	if (filteredCommands !== prevFilteredCommands) {
@@ -333,6 +367,12 @@ export function CommandPalette({
 			onSelect(selected);
 		}
 	};
+
+	useVimInput({
+		isActive: visible && query.length === 0 && !isLoading,
+		onUp: moveUp,
+		onDown: moveDown,
+	});
 
 	useInput(
 		(char, key) => {
@@ -386,19 +426,22 @@ export function CommandPalette({
 				) {
 					return;
 				}
+
+				// Delegate j/k to useVimInput when query is empty
+				if (query.length === 0 && (char === "j" || char === "k")) {
+					return;
+				}
+
 				setQuery((prev) => prev + char);
 			}
 
-			// Vim navigation (j/k) when query is empty, or standard arrows
-			if (key.upArrow || (char === "k" && query.length === 0)) {
-				setSelectedIndex((prev) => Math.max(0, prev - 1));
+			if (key.upArrow) {
+				moveUp();
 				return;
 			}
 
-			if (key.downArrow || (char === "j" && query.length === 0)) {
-				setSelectedIndex((prev) =>
-					Math.min(filteredCommands.length - 1, prev + 1),
-				);
+			if (key.downArrow) {
+				moveDown();
 				return;
 			}
 
@@ -416,18 +459,7 @@ export function CommandPalette({
 	if (!visible) return null;
 
 	const paletteWidth = "100%";
-	const MAX_DISPLAY = 9;
-	const windowStart = Math.max(
-		0,
-		Math.min(
-			filteredCommands.length - MAX_DISPLAY,
-			selectedIndex - Math.floor(MAX_DISPLAY / 2),
-		),
-	);
-	const displayCommands = filteredCommands.slice(
-		windowStart,
-		windowStart + MAX_DISPLAY,
-	);
+	const displayCommands = getVisibleItems(filteredCommands);
 	const hasMore = filteredCommands.length > MAX_DISPLAY;
 
 	const groupedDisplayCommands = {
