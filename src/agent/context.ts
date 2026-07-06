@@ -414,8 +414,6 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - Current date: ${_dayOfWeek}, ${_monthName} ${_day}, ${_year}
 - Current time: ${_hh}:${_mm} (${_tzLabel})
 - ISO timestamp: ${_isoTimestamp}
-- Day of week: ${_dayOfWeek}
-
 ## Harness & Subagent Capabilities
 - **Harness**: You are running inside the Tehuti Agent Harness, a powerful terminal-based environment.
 - **Parallel Subagents**: You can spawn specialized subagents to work on different parts of a codebase simultaneously or conduct isolated research.
@@ -442,10 +440,20 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 When you complete a task, summarize what was done and any follow-up actions needed.`;
 }
 
+function getTimestampPrefix(): string {
+	const now = new Date();
+	const hh = String(now.getHours()).padStart(2, "0");
+	const mm = String(now.getMinutes()).padStart(2, "0");
+	const ss = String(now.getSeconds()).padStart(2, "0");
+	return `[Timestamp: ${hh}:${mm}:${ss}]\n`;
+}
+
 export function addUserMessage(ctx: AgentContext, content: string): void {
+	const timePrefix = getTimestampPrefix();
+	const finalContent = content ? `${timePrefix}${content}` : timePrefix.trim();
 	const msg: StandardMessage = {
 		role: "user",
-		content,
+		content: finalContent,
 		timestamp: Date.now(),
 		internalId: randomUUID(),
 	};
@@ -455,9 +463,12 @@ export function addUserMessage(ctx: AgentContext, content: string): void {
 }
 
 export function addAssistantMessage(ctx: AgentContext, content: string): void {
+	const timePrefix = getTimestampPrefix();
+	const stripped = stripReasoningTokens(content);
+	const finalContent = stripped ? `${timePrefix}${stripped}` : timePrefix.trim();
 	const msg: StandardMessage = {
 		role: "assistant",
-		content: stripReasoningTokens(content),
+		content: finalContent,
 		timestamp: Date.now(),
 		internalId: randomUUID(),
 	};
@@ -471,9 +482,12 @@ export function addAssistantMessageWithTools(
 	content: string,
 	toolCalls?: StandardToolCall[],
 ): void {
+	const timePrefix = getTimestampPrefix();
+	const stripped = stripReasoningTokens(content);
+	const finalContent = stripped ? `${timePrefix}${stripped}` : timePrefix.trim();
 	const message: StandardMessage = {
 		role: "assistant",
-		content: stripReasoningTokens(content),
+		content: finalContent,
 		timestamp: Date.now(),
 		internalId: randomUUID(),
 	};
