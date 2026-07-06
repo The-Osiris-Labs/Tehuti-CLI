@@ -94,6 +94,7 @@ import { QuestionPrompt } from "../ui/components/QuestionPrompt.js";
 import { SessionList } from "../ui/components/SessionList.js";
 import { StatusIndicator } from "../ui/components/StatusIndicator.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
+import { TodoList } from "../ui/components/TodoList.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
@@ -3291,6 +3292,7 @@ function ChatUI({
 						),
 					),
 					showDashboard && React.createElement(SwarmVisualizer, null),
+					React.createElement(TodoList, null),
 					messages.length === 0
 						? React.createElement(
 								Box,
