@@ -14,15 +14,27 @@ export interface ValidationResult {
 
 export class SelfHealingManager {
 	private mainDir: string;
-	private activeWorktrees: Map<string, { worktreePath: string; branchName: string }> = new Map();
+	private activeWorktrees: Map<
+		string,
+		{ worktreePath: string; branchName: string }
+	> = new Map();
 
 	constructor(mainDir: string) {
 		this.mainDir = mainDir;
 		process.on("exit", () => {
-			for (const { worktreePath, branchName } of this.activeWorktrees.values()) {
+			for (const {
+				worktreePath,
+				branchName,
+			} of this.activeWorktrees.values()) {
 				try {
-					spawnSync("git", ["worktree", "remove", "--force", worktreePath], { cwd: this.mainDir, stdio: "ignore" });
-					spawnSync("git", ["branch", "-D", branchName], { cwd: this.mainDir, stdio: "ignore" });
+					spawnSync("git", ["worktree", "remove", "--force", worktreePath], {
+						cwd: this.mainDir,
+						stdio: "ignore",
+					});
+					spawnSync("git", ["branch", "-D", branchName], {
+						cwd: this.mainDir,
+						stdio: "ignore",
+					});
 				} catch (e) {}
 			}
 		});
@@ -50,27 +62,56 @@ export class SelfHealingManager {
 
 		// Sync uncommitted changes to the shadow workspace
 		try {
-			const { stdout: deletedFilesOut } = await execAsync('git diff --name-only --diff-filter=D HEAD', { cwd: this.mainDir });
-			const { stdout: modifiedFilesOut } = await execAsync('git diff --name-only --diff-filter=d HEAD', { cwd: this.mainDir });
-			const { stdout: untrackedFilesOut } = await execAsync('git ls-files --others --exclude-standard', { cwd: this.mainDir });
+			const { stdout: deletedFilesOut } = await execAsync(
+				"git diff --name-only --diff-filter=D HEAD",
+				{ cwd: this.mainDir },
+			);
+			const { stdout: modifiedFilesOut } = await execAsync(
+				"git diff --name-only --diff-filter=d HEAD",
+				{ cwd: this.mainDir },
+			);
+			const { stdout: untrackedFilesOut } = await execAsync(
+				"git ls-files --others --exclude-standard",
+				{ cwd: this.mainDir },
+			);
 
-			const deletedFiles = deletedFilesOut.split('\n').filter(Boolean);
-			const filesToCopy = [...modifiedFilesOut.split('\n'), ...untrackedFilesOut.split('\n')].filter(Boolean);
+			const deletedFiles = deletedFilesOut.split("\n").filter(Boolean);
+			const filesToCopy = [
+				...modifiedFilesOut.split("\n"),
+				...untrackedFilesOut.split("\n"),
+			].filter(Boolean);
 
 			for (const file of deletedFiles) {
 				const dest = path.join(worktreePath, file);
-				await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => {});
+				await fs.promises
+					.rm(dest, { recursive: true, force: true })
+					.catch(() => {});
 			}
 
 			for (const file of filesToCopy) {
 				const src = path.join(this.mainDir, file);
 				const dest = path.join(worktreePath, file);
-				await fs.promises.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+				await fs.promises
+					.mkdir(path.dirname(dest), { recursive: true })
+					.catch(() => {});
 				try {
 					const stat = await fs.promises.lstat(src);
-					await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => {});
+					await fs.promises
+						.rm(dest, { recursive: true, force: true })
+						.catch(() => {});
 					if (stat.isSymbolicLink()) {
 						const target = await fs.promises.readlink(src);
+						const absoluteTarget = path.resolve(path.dirname(src), target);
+						const resolvedMainDir = path.resolve(this.mainDir);
+
+						// Prevent symlink path traversal vulnerability
+						if (
+							!absoluteTarget.startsWith(resolvedMainDir + path.sep) &&
+							absoluteTarget !== resolvedMainDir
+						) {
+							continue;
+						}
+
 						await fs.promises.symlink(target, dest);
 					} else {
 						await fs.promises.copyFile(src, dest);

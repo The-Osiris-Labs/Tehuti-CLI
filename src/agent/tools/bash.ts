@@ -26,6 +26,8 @@ function getSpawnArgs(
 				"run",
 				"--rm",
 				"-i",
+				"--cap-drop=ALL",
+				"--security-opt=no-new-privileges",
 				"-v",
 				`${cwd}:/workspace`,
 				"-w",
