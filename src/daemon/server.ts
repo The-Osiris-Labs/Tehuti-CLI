@@ -160,12 +160,12 @@ export class TehutiDaemonServer extends EventEmitter {
 
 	private startGarbageCollector(): void {
 		// Run a sweep immediately
-		sweepCacheDir();
+		sweepCacheDir().catch(() => {});
 		
 		// Run a sweep every 12 hours
 		const GC_INTERVAL = 12 * 60 * 60 * 1000;
 		this.gcInterval = setInterval(() => {
-			sweepCacheDir();
+			sweepCacheDir().catch(() => {});
 		}, GC_INTERVAL);
 		
 		if (this.gcInterval?.unref) {

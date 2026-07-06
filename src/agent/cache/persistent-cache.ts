@@ -130,24 +130,24 @@ export function getCacheStats(): { diskSize: number; diskEntries: number } {
 	}
 }
 
-export function sweepCacheDir(): void {
+export async function sweepCacheDir(): Promise<void> {
 	if (!fs.existsSync(CACHE_DIR)) {
 		return;
 	}
 
 	try {
-		const files = fs.readdirSync(CACHE_DIR);
+		const files = await fs.promises.readdir(CACHE_DIR);
 		const now = Date.now();
 		const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
 		for (const file of files) {
 			const filePath = path.join(CACHE_DIR, file);
-			const stat = fs.statSync(filePath);
+			const stat = await fs.promises.stat(filePath);
 			if (now - stat.mtimeMs > SEVEN_DAYS) {
 				if (stat.isDirectory()) {
-					fs.rmSync(filePath, { recursive: true, force: true });
+					await fs.promises.rm(filePath, { recursive: true, force: true });
 				} else {
-					fs.unlinkSync(filePath);
+					await fs.promises.unlink(filePath);
 				}
 			}
 		}

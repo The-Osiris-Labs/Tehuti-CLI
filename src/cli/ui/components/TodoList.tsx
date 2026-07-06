@@ -2,13 +2,16 @@ import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 import { getTodos } from "../../../agent/tools/system.js";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
+import { GlobalInputState } from "../input-state.js";
 
 export function TodoList() {
 	const [todos, setTodos] = useState(getTodos());
 
 	useEffect(() => {
 		const interval = setInterval(() => {
-			setTodos(getTodos());
+			if (GlobalInputState.hoveredComponentCount === 0) {
+				setTodos(getTodos());
+			}
 		}, 1000);
 		return () => clearInterval(interval);
 	}, []);
