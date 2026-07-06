@@ -219,7 +219,7 @@ class HookExecutor {
 			const proc = spawn("bash", ["-c", command], {
 				cwd: context.cwd,
 				env,
-				timeout,
+				detached: true,
 			});
 
 			const cleanup = () => {
@@ -267,7 +267,11 @@ class HookExecutor {
 				cleanup();
 				resolved = true;
 				try {
-					proc.kill("SIGKILL");
+					if (proc.pid) {
+						process.kill(-proc.pid, "SIGKILL");
+					} else {
+						proc.kill("SIGKILL");
+					}
 				} catch {}
 				resolve({ success: false, error: `Hook timed out after ${timeout}ms` });
 			}, timeout);
