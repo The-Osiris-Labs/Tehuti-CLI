@@ -140,7 +140,7 @@ describe("Agent Context", () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
 			addUserMessage(ctx, "Hello");
 			expect(ctx.messages.length).toBe(1);
-			expect(ctx.messages[0]).toMatchObject({ role: "user", content: "Hello" });
+			expect(ctx.messages[0]).toMatchObject({ role: "user", content: expect.stringContaining("Hello") });
 		});
 
 		it("should append multiple messages", async () => {
@@ -158,7 +158,7 @@ describe("Agent Context", () => {
 			expect(ctx.messages.length).toBe(1);
 			expect(ctx.messages[0]).toMatchObject({
 				role: "assistant",
-				content: "Response",
+				content: expect.stringContaining("Response"),
 			});
 		});
 	});

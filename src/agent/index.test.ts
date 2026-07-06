@@ -101,7 +101,7 @@ describe("Agent Loop", () => {
 			await runAgentLoop(ctx, "Test message");
 			const userMsg = ctx.messages.find((m) => m.role === "user");
 			expect(userMsg).toBeDefined();
-			expect(userMsg?.content).toBe("Test message");
+			expect(userMsg?.content).toContain("Test message");
 		});
 
 		it("should stream tokens via onToken callback", async () => {

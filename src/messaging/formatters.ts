@@ -306,16 +306,19 @@ export function formatMessage(
 	platform: Platform,
 	markdown: string,
 ): string | string[] {
+	// Strip the internal [Timestamp: HH:MM:SS] prefix before sending to external platforms
+	const cleanedMarkdown = markdown.replace(/^\[Timestamp: \d{2}:\d{2}:\d{2}\]\n?/, "");
+
 	switch (platform) {
 		case "slack":
-			return formatForSlack(markdown);
+			return formatForSlack(cleanedMarkdown);
 		case "discord":
-			return formatForDiscord(markdown);
+			return formatForDiscord(cleanedMarkdown);
 		case "telegram":
-			return formatForTelegram(markdown);
+			return formatForTelegram(cleanedMarkdown);
 		case "whatsapp":
-			return formatForWhatsApp(markdown);
+			return formatForWhatsApp(cleanedMarkdown);
 		default:
-			return markdown;
+			return cleanedMarkdown;
 	}
 }
