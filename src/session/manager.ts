@@ -4,12 +4,12 @@ import fs from "fs-extra";
 import Fuse from "fuse.js";
 import { v4 as uuidv4 } from "uuid";
 import type { AgentContext } from "../agent/context.js";
+import { exportState, importState } from "../agent/subagents/manager.js";
+import { swarmManager } from "../agent/swarm/manager.js";
 import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
-import { exportState, importState } from "../agent/subagents/manager.js";
-import { swarmManager } from "../agent/swarm/manager.js";
 
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -351,8 +351,15 @@ class SessionManager {
 		}
 
 		const fuse = new Fuse(allSessions, {
-			keys: ["name", "id", "model"],
-			threshold: 0.4, // Fuzzy matching threshold (lower = stricter)
+			keys: [
+				{ name: "name", weight: 2 },
+				{ name: "model", weight: 1 },
+				{ name: "id", weight: 0.8 },
+				{ name: "createdAt", weight: 0.5 },
+				{ name: "updatedAt", weight: 0.5 },
+			],
+			threshold: 0.4,
+			ignoreLocation: true,
 			includeScore: false,
 		});
 
