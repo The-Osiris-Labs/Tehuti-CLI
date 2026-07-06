@@ -21,12 +21,16 @@ export function useVimInput({
 }: UseVimInputProps) {
 	useInput(
 		(input, key) => {
-			if (key.upArrow || (!key.ctrl && !key.meta && input === "k")) {
+			if (key.ctrl || key.meta) {
+				return;
+			}
+
+			if (key.upArrow || input === "k") {
 				onUp?.();
 				return;
 			}
 
-			if (key.downArrow || (!key.ctrl && !key.meta && input === "j")) {
+			if (key.downArrow || input === "j") {
 				onDown?.();
 				return;
 			}
@@ -36,21 +40,17 @@ export function useVimInput({
 				return;
 			}
 
-			if (
-				key.delete ||
-				key.backspace ||
-				(!key.ctrl && !key.meta && input === "d")
-			) {
+			if (key.delete || key.backspace || input === "d") {
 				onDelete?.();
 				return;
 			}
 
-			if (!key.ctrl && !key.meta && input === "r") {
+			if (input === "r") {
 				onRename?.();
 				return;
 			}
 
-			if (!key.ctrl && !key.meta && input === "/") {
+			if (input === "/") {
 				onSearch?.();
 				return;
 			}

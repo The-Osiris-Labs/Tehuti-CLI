@@ -1,6 +1,8 @@
 import chalk from "chalk";
 import { BRANDING } from "../../../branding/index.js";
 
+const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
 /**
  * Returns a human readable relative time.
  */
@@ -8,33 +10,40 @@ export function formatDate(timestamp: number): string {
 	const now = Date.now();
 	// Handle cases where timestamp might be in seconds instead of milliseconds
 	const tsMs = timestamp < 1e12 ? timestamp * 1000 : timestamp;
-	const diffInSeconds = Math.floor((now - tsMs) / 1000);
+	
+	if (tsMs >= now) return "just now";
 
+	const diffInSeconds = Math.floor((now - tsMs) / 1000);
 	if (diffInSeconds < 60) return "just now";
 
 	const diffInMinutes = Math.floor(diffInSeconds / 60);
 	if (diffInMinutes < 60) {
-		return `${diffInMinutes} minute${diffInMinutes === 1 ? "" : "s"} ago`;
+		return rtf.format(-diffInMinutes, "minute");
 	}
 
 	const diffInHours = Math.floor(diffInMinutes / 60);
 	if (diffInHours < 24) {
-		return `${diffInHours} hour${diffInHours === 1 ? "" : "s"} ago`;
+		return rtf.format(-diffInHours, "hour");
 	}
 
-	const diffInDays = Math.floor(diffInHours / 24);
-	if (diffInDays === 1) return "yesterday";
+	const nowDate = new Date(now);
+	const targetDate = new Date(tsMs);
+	
+	const nowDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+	const targetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+	const diffInDays = Math.round((nowDay.getTime() - targetDay.getTime()) / (1000 * 60 * 60 * 24));
+	
 	if (diffInDays < 30) {
-		return `${diffInDays} day${diffInDays === 1 ? "" : "s"} ago`;
+		return rtf.format(-diffInDays, "day");
 	}
 
-	const diffInMonths = Math.floor(diffInDays / 30);
+	const diffInMonths = (nowDate.getFullYear() - targetDate.getFullYear()) * 12 + (nowDate.getMonth() - targetDate.getMonth());
 	if (diffInMonths < 12) {
-		return `${diffInMonths} month${diffInMonths === 1 ? "" : "s"} ago`;
+		return rtf.format(-diffInMonths, "month");
 	}
 
-	const diffInYears = Math.floor(diffInDays / 365);
-	return `${diffInYears} year${diffInYears === 1 ? "" : "s"} ago`;
+	const diffInYears = nowDate.getFullYear() - targetDate.getFullYear();
+	return rtf.format(-diffInYears, "year");
 }
 
 /**

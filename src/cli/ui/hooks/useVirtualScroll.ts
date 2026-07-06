@@ -1,94 +1,98 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
 export interface UseVirtualScrollOptions {
-  totalItems: number;
-  maxVisibleWindow?: number;
-  initialSelectedIndex?: number;
+	totalItems: number;
+	maxVisibleWindow?: number;
+	initialSelectedIndex?: number;
 }
 
 export function useVirtualScroll({
-  totalItems,
-  maxVisibleWindow = 15,
-  initialSelectedIndex = 0,
+	totalItems,
+	maxVisibleWindow = 15,
+	initialSelectedIndex = 0,
 }: UseVirtualScrollOptions) {
-  const [selectedIndex, setSelectedIndex] = useState(() =>
-    Math.min(Math.max(0, initialSelectedIndex), Math.max(0, totalItems - 1))
-  );
+	const safeTotalItems = Math.max(0, Number.isNaN(totalItems) ? 0 : Number(totalItems));
+	const safeMaxWindow = Math.max(1, Number.isNaN(maxVisibleWindow) ? 15 : Number(maxVisibleWindow));
 
-  const [windowStart, setWindowStart] = useState(() => {
-    const start = Math.max(0, selectedIndex - Math.floor(maxVisibleWindow / 2));
-    return Math.min(start, Math.max(0, totalItems - maxVisibleWindow));
-  });
+	const [selectedIndex, setSelectedIndex] = useState(() =>
+		safeTotalItems === 0 ? 0 : Math.min(Math.max(0, initialSelectedIndex), Math.max(0, safeTotalItems - 1)),
+	);
 
-  // Keep state valid if totalItems changes
-  useEffect(() => {
-    if (totalItems === 0) {
-      setSelectedIndex(0);
-      setWindowStart(0);
-      return;
-    }
+	const [windowStart, setWindowStart] = useState(() => {
+		if (safeTotalItems === 0) return 0;
+		const start = Math.max(0, selectedIndex - Math.floor(safeMaxWindow / 2));
+		return Math.min(start, Math.max(0, safeTotalItems - safeMaxWindow));
+	});
 
-    setSelectedIndex((prev) => {
-      const clamped = Math.min(prev, totalItems - 1);
-      return Math.max(0, clamped);
-    });
+	// Keep state valid if totalItems changes
+	useEffect(() => {
+		if (safeTotalItems === 0) {
+			setSelectedIndex(0);
+			setWindowStart(0);
+			return;
+		}
 
-    setWindowStart((prev) => {
-      // If the current window start is beyond what's possible, bring it back
-      const maxPossibleStart = Math.max(0, totalItems - maxVisibleWindow);
-      return Math.min(prev, maxPossibleStart);
-    });
-  }, [totalItems, maxVisibleWindow]);
+		setSelectedIndex((prev) => {
+			const clamped = Math.min(prev, safeTotalItems - 1);
+			return Math.max(0, clamped);
+		});
 
-  const windowEnd = Math.min(windowStart + maxVisibleWindow, totalItems);
+		setWindowStart((prev) => {
+			// If the current window start is beyond what's possible, bring it back
+			const maxPossibleStart = Math.max(0, safeTotalItems - safeMaxWindow);
+			return Math.min(prev, maxPossibleStart);
+		});
+	}, [safeTotalItems, safeMaxWindow]);
 
-  const moveUp = useCallback(() => {
-    if (totalItems === 0) return;
-    setSelectedIndex((prevIndex) => {
-      const newIndex = Math.max(0, prevIndex - 1);
+	const windowEnd = Math.min(windowStart + safeMaxWindow, safeTotalItems);
 
-      setWindowStart((prevStart) => {
-        if (newIndex < prevStart) {
-          return newIndex;
-        }
-        return prevStart;
-      });
+	const moveUp = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		setSelectedIndex((prevIndex) => {
+			const newIndex = Math.max(0, prevIndex - 1);
 
-      return newIndex;
-    });
-  }, [totalItems]);
+			setWindowStart((prevStart) => {
+				if (newIndex < prevStart) {
+					return newIndex;
+				}
+				return prevStart;
+			});
 
-  const moveDown = useCallback(() => {
-    if (totalItems === 0) return;
-    setSelectedIndex((prevIndex) => {
-      const newIndex = Math.min(totalItems - 1, prevIndex + 1);
+			return newIndex;
+		});
+	}, [safeTotalItems]);
 
-      setWindowStart((prevStart) => {
-        if (newIndex >= prevStart + maxVisibleWindow) {
-          return Math.max(0, newIndex - maxVisibleWindow + 1);
-        }
-        return prevStart;
-      });
+	const moveDown = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		setSelectedIndex((prevIndex) => {
+			const newIndex = Math.min(safeTotalItems - 1, prevIndex + 1);
 
-      return newIndex;
-    });
-  }, [totalItems, maxVisibleWindow]);
+			setWindowStart((prevStart) => {
+				if (newIndex >= prevStart + safeMaxWindow) {
+					return Math.max(0, newIndex - safeMaxWindow + 1);
+				}
+				return prevStart;
+			});
 
-  const getVisibleItems = useCallback(
-    <T>(items: T[]): T[] => {
-      return items.slice(windowStart, windowEnd);
-    },
-    [windowStart, windowEnd]
-  );
+			return newIndex;
+		});
+	}, [safeTotalItems, safeMaxWindow]);
 
-  return {
-    selectedIndex,
-    windowStart,
-    windowEnd,
-    visibleSelectedIndex: Math.max(0, selectedIndex - windowStart),
-    moveUp,
-    moveDown,
-    getVisibleItems,
-    setSelectedIndex,
-  };
+	const getVisibleItems = useCallback(
+		<T>(items: T[]): T[] => {
+			return items.slice(windowStart, windowEnd);
+		},
+		[windowStart, windowEnd],
+	);
+
+	return {
+		selectedIndex,
+		windowStart,
+		windowEnd,
+		visibleSelectedIndex: Math.max(0, selectedIndex - windowStart),
+		moveUp,
+		moveDown,
+		getVisibleItems,
+		setSelectedIndex,
+	};
 }
