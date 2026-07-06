@@ -414,6 +414,7 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - Current date: ${_dayOfWeek}, ${_monthName} ${_day}, ${_year}
 - Current time: ${_hh}:${_mm} (${_tzLabel})
 - ISO timestamp: ${_isoTimestamp}
+
 ## Harness & Subagent Capabilities
 - **Harness**: You are running inside the Tehuti Agent Harness, a powerful terminal-based environment.
 - **Parallel Subagents**: You can spawn specialized subagents to work on different parts of a codebase simultaneously or conduct isolated research.
