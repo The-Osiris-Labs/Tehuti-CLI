@@ -322,7 +322,19 @@ function computeToolHeight(
 	return 2 + 1 + 2 + previewLines + 1 + 1;
 }
 
+let lineCache = new WeakMap<any, number>();
+
+if (typeof process !== "undefined" && process.stdout && process.stdout.on) {
+	process.stdout.on("resize", () => {
+		lineCache = new WeakMap<any, number>();
+	});
+}
+
 export function computeMessageLines(msg: any, contentMaxWidth: number): number {
+	if (lineCache.has(msg)) {
+		return lineCache.get(msg)!;
+	}
+
 	let lines = 0;
 	lines += 1; // Role header
 
@@ -396,6 +408,7 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	}
 
 	lines += 1; // Margin bottom between messages
+	lineCache.set(msg, lines);
 	return lines;
 }
 

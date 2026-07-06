@@ -124,6 +124,7 @@ export interface ResourceSubscription {
 
 export type SamplingHandler = (
 	request: CreateMessageRequestParams,
+	serverName: string,
 ) => Promise<CreateMessageResult>;
 
 type HealthCheckCallback = (serverName: string, healthy: boolean) => void;
@@ -145,6 +146,13 @@ export class MCPClientManager {
 	private statusCallback: ConnectionStatusCallback | null = null;
 	private samplingHandler: SamplingHandler | null = null;
 	private intentionalDisconnects: Set<string> = new Set();
+	
+	// Infinite loop protection for sampling
+	private samplingDepth = 0;
+	private samplingRequests = 0;
+	private samplingResetTime = Date.now();
+	private readonly MAX_SAMPLING_DEPTH = 3;
+	private readonly MAX_SAMPLING_PER_MINUTE = 15;
 
 	constructor() {
 		// Register a global exit handler to kill child processes synchronously when process exits
@@ -378,7 +386,33 @@ export class MCPClientManager {
 				if (!this.samplingHandler) {
 					throw new Error("Sampling handler not configured");
 				}
-				return this.samplingHandler(request.params);
+
+				// Protect against infinite sampling loops
+				const now = Date.now();
+				if (now - this.samplingResetTime > 60000) {
+					this.samplingResetTime = now;
+					this.samplingRequests = 0;
+				}
+
+				if (this.samplingRequests >= this.MAX_SAMPLING_PER_MINUTE) {
+					throw new Error(
+						`Sampling rate limit exceeded: max ${this.MAX_SAMPLING_PER_MINUTE} requests per minute`,
+					);
+				}
+
+				if (this.samplingDepth >= this.MAX_SAMPLING_DEPTH) {
+					throw new Error(
+						`Sampling depth limit exceeded: max ${this.MAX_SAMPLING_DEPTH} concurrent/nested requests`,
+					);
+				}
+
+				this.samplingRequests++;
+				this.samplingDepth++;
+				try {
+					return await this.samplingHandler(request.params, info.name);
+				} finally {
+					this.samplingDepth--;
+				}
 			},
 		);
 	}
