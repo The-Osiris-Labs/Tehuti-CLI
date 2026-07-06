@@ -94,9 +94,10 @@ export class SelfHealingManager {
 		const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
 		await fs.promises.mkdir(shadowsDir, { recursive: true }).catch(() => {});
 		
-		const worktreeName = `shadow-healing-${Date.now()}`;
+		const epoch = Date.now();
+		const worktreeName = `tehuti-shadow-${epoch}`;
 		const worktreePath = path.join(shadowsDir, worktreeName);
-		const branchName = `healing-speculative-${Date.now()}`;
+		const branchName = `tehuti-shadow-${epoch}`;
 
 		// Create a new branch and worktree
 		await execAsync(`git branch ${branchName}`, { cwd: this.mainDir });
