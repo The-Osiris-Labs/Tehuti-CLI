@@ -153,13 +153,30 @@ async function listPlansTool(
 		return { success: true, output: "No plans directory found." };
 	}
 	const files = await fs.readdir(plansDir);
-	const planFiles = files.filter((f) => f.endsWith(".md")).sort().reverse();
+	const planFiles = files.filter((f) => f.endsWith(".md"));
+	
 	if (planFiles.length === 0) {
 		return { success: true, output: "No plans found." };
 	}
+
+	const plansWithStats = await Promise.all(
+		planFiles.map(async (filename) => {
+			const filePath = path.join(plansDir, filename);
+			const stat = await fs.stat(filePath);
+			// Fallback to mtime if birthtime is not available/reliable
+			const createdAt = stat.birthtimeMs === 0 ? stat.mtime : stat.birthtime;
+			return { filename, createdAt };
+		})
+	);
+
+	// Sort chronologically (oldest to newest)
+	plansWithStats.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
 	return {
 		success: true,
-		output: `Available plans:\n${planFiles.map((f) => `- ${f}`).join("\n")}`,
+		output: `Available plans (chronological):\n${plansWithStats
+			.map((p) => `- ${p.filename} (Created: ${p.createdAt.toISOString()})`)
+			.join("\n")}`,
 	};
 }
 
