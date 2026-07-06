@@ -563,6 +563,10 @@ function ChatUI({
 		setOperationLabel,
 		showConfigEditor,
 		setShowConfigEditor,
+		showSessionList,
+		setShowSessionList,
+		savedSessions,
+		setSavedSessions,
 		questionResolverRef,
 		pendingPermission,
 		setPendingPermission,
@@ -1720,49 +1724,12 @@ function ChatUI({
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
-	// Lightweight line estimate that avoids the O(N) full markdown render
-	// that computeMessageLines performs (it calls renderMarkdownToAnsi on every text block).
-	// We only need this for scroll math, so an approximation is sufficient and prevents
-	// the UI from hanging when a long final response is rendered.
+	// We can now use computeMessageLines directly since it caches results,
+	// preventing the UI from hanging on long responses.
 	const totalMessageLines = useMemo(() => {
-		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
 		let lines = 0;
 		for (const msg of messages) {
-			lines += 1; // Role header
-			const blocks = msg.blocks;
-			if (blocks && blocks.length > 0) {
-				for (const block of blocks) {
-					if (block.type === "text") {
-						const text =
-							typeof block.content === "string"
-								? block.content
-								: String(block.content || "");
-						const newlines = (text.match(/\n/g) || []).length;
-						lines +=
-							Math.max(1, Math.ceil(text.length / avgCharsPerLine)) + newlines;
-					} else if (block.type === "reasoning") {
-						const text =
-							typeof block.content === "string"
-								? block.content
-								: String(block.content || "");
-						lines +=
-							2 +
-							Math.max(
-								1,
-								Math.ceil(text.length / Math.max(10, contentMaxWidth - 5)),
-							);
-					} else if (block.type === "tool") {
-						// Conservative estimate for tool outputs (preview mode is 4 lines)
-						lines += 8;
-					}
-				}
-			} else if (typeof msg.content === "string") {
-				const text = msg.content;
-				const newlines = (text.match(/\n/g) || []).length;
-				lines +=
-					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) + newlines;
-			}
-			lines += 1; // Margin bottom
+			lines += computeMessageLines(msg, contentMaxWidth);
 		}
 		if (showWelcome) {
 			lines += messages.length > 0 ? 3 : 12;
@@ -2107,6 +2074,7 @@ function ChatUI({
 		send,
 		saveHistory,
 		showConfigEditor,
+		showSessionList,
 		pendingQuestion,
 	});
 
@@ -2252,22 +2220,22 @@ function ChatUI({
 
 			if (cmd === "/sessions") {
 				setLoading(true);
-				const sessions = await sessionManager.listSessions();
-				const limit = 30;
-				const displaySessions = sessions.slice(0, limit);
-				const table = formatSessionsTable(displaySessions);
-				setMessages((m) => [
-					...m,
-					{
-						id: msgIdRef.current++,
-						role: "system",
-						content:
-							sessions.length > 0
-								? `**Saved sessions (${sessions.length} total, showing recent ${displaySessions.length}):**\n\n${table}\n\n*Use: /load <id> | /search <query>*`
-								: "No saved sessions",
-					},
-				]);
-				setLoading(false);
+				try {
+					const sessions = await sessionManager.listSessions();
+					setSavedSessions(sessions);
+					setShowSessionList(true);
+				} catch (err) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `❌ Error loading sessions: ${err}`,
+						},
+					]);
+				} finally {
+					setLoading(false);
+				}
 				return;
 			}
 
@@ -2406,7 +2374,17 @@ function ChatUI({
 		const requestId = request.requestId;
 		const requestController = request.controller;
 
-		setMessages((m) => [...m, { id: userMsgId, role: "user", content: text }]);
+		setMessages((m) => [
+			...m, 
+			{ id: userMsgId, role: "user", content: text },
+			{
+				id: assistantMsgId,
+				role: "assistant",
+				content: "",
+				toolCalls: [],
+				blocks: [],
+			}
+		]);
 		setLoading(true);
 		setError("");
 		setThinking("");
@@ -2446,16 +2424,6 @@ function ChatUI({
 				result: unknown;
 				isExpanded: boolean;
 			}> = [];
-			setMessages((m) => [
-				...m.filter((msg) => msg.id !== assistantMsgId),
-				{
-					id: assistantMsgId,
-					role: "assistant",
-					content: "",
-					toolCalls: [],
-					blocks: [],
-				},
-			]);
 
 			const result = await runAgentLoop(ctxRef.current, text, {
 				onToken: (t) => {
@@ -2800,25 +2768,13 @@ function ChatUI({
 					React.createElement(Text, { color: SAND, dimColor: true }, divider),
 				);
 				if (m.content.startsWith("[SESSION_LIST]")) {
-					try {
-						const sessionsStr = m.content.substring("[SESSION_LIST]".length);
-						const sessions = JSON.parse(sessionsStr);
-						content = [
-							React.createElement(SessionList, {
-								key: `session-list-${m.id}`,
-								sessions,
-								onLoadSession: (id) => loadSessionById(id),
-							}),
-						];
-					} catch (_e) {
-						content = [
-							React.createElement(
-								Text,
-								{ key: 0, dimColor: true, wrap: "wrap" },
-								"Error parsing session list",
-							),
-						];
-					}
+					content = [
+						React.createElement(
+							Box,
+							{ key: 0, flexDirection: "column" },
+							...renderMarkdown(m.content, contentMaxWidth, `msg-${m.id}`),
+						),
+					];
 				} else {
 					content = [
 						React.createElement(
@@ -3181,6 +3137,17 @@ function ChatUI({
 	]);
 
 	const scrollIndicator = null;
+
+	if (showSessionList) {
+		return React.createElement(SessionList, {
+			sessions: savedSessions,
+			onLoadSession: async (id: string) => {
+				setShowSessionList(false);
+				await loadSessionById(id);
+			},
+			onClose: () => setShowSessionList(false),
+		});
+	}
 
 	return showConfigEditor
 		? React.createElement(ConfigEditor, {

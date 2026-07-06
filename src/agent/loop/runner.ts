@@ -87,15 +87,17 @@ export async function runAgentLoop(
 		const telemetry = getTelemetry();
 		const prefetcher = getPrefetcher();
 
+		const systemPromptContent = await buildSystemPrompt(ctx, userMessage);
+
 		if (ctx.messages.length === 0) {
 			ctx.messages.push({
 				role: "system",
-				content: await buildSystemPrompt(ctx, userMessage),
+				content: systemPromptContent,
 				timestamp: Date.now(),
 				internalId: randomUUID(),
 			});
 		} else if (ctx.messages[0]?.role === "system") {
-			ctx.messages[0].content = await buildSystemPrompt(ctx, userMessage);
+			ctx.messages[0].content = systemPromptContent;
 		}
 
 		addUserMessage(ctx, userMessage);
