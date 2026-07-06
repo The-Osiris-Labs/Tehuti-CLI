@@ -2,6 +2,8 @@ import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { useVimInput } from "../hooks/useVimInput.js";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 
@@ -147,7 +149,6 @@ export function ConfigEditor({
 	width,
 }: ConfigEditorProps): React.ReactElement {
 	const [draftConfig, setDraftConfig] = useState<EditorConfig>(config);
-	const [selectedField, setSelectedField] = useState<ConfigField>("provider");
 	const [editingField, setEditingField] = useState<ConfigField | null>(null);
 	const [editValue, setEditValue] = useState("");
 	const [activeTab, setActiveTab] = useState<
@@ -225,6 +226,37 @@ export function ConfigEditor({
 	);
 
 	const fields = allFields.filter((f) => f.category === activeTab);
+
+	const {
+		selectedIndex,
+		windowStart,
+		windowEnd,
+		visibleSelectedIndex,
+		moveUp,
+		moveDown,
+		getVisibleItems,
+		setSelectedIndex,
+	} = useVirtualScroll({
+		totalItems: fields.length,
+		maxVisibleWindow: 10,
+		initialSelectedIndex: 0,
+	});
+
+	const visibleFields = getVisibleItems(fields);
+	const selectedField = fields[selectedIndex]?.key;
+
+	useVimInput({
+		isActive: !editingField,
+		onUp: moveUp,
+		onDown: moveDown,
+		onSelect: () => {
+			if (!editingField && selectedField) {
+				setEditingField(selectedField);
+				setEditValue(String(draftConfig[selectedField] ?? ""));
+				setValidationError(null);
+			}
+		},
+	});
 
 	const commitFieldEdit = (): void => {
 		if (!editingField) return;
@@ -305,27 +337,21 @@ export function ConfigEditor({
 				onSave(draftConfig);
 			} else if (key.escape) {
 				onCancel();
-			} else if (key.upArrow) {
-				const currentIndex = fields.findIndex((f) => f.key === selectedField);
-				const newIndex = (currentIndex - 1 + fields.length) % fields.length;
-				setSelectedField(fields[newIndex].key);
-			} else if (key.downArrow) {
-				const currentIndex = fields.findIndex((f) => f.key === selectedField);
-				const newIndex = (currentIndex + 1) % fields.length;
-				setSelectedField(fields[newIndex].key);
 			} else if (key.leftArrow || key.rightArrow || char === "\t") {
 				setActiveTab((prev) =>
 					prev === "API & Provider" ? "Model Options" : "API & Provider",
 				);
-				setSelectedField(activeTab === "API & Provider" ? "model" : "provider");
+				setSelectedIndex(0);
 			} else if (key.home) {
-				setSelectedField(fields[0].key);
+				setSelectedIndex(0);
 			} else if (key.end) {
-				setSelectedField(fields[fields.length - 1].key);
-			} else if (key.return || char === " ") {
-				setEditingField(selectedField);
-				setEditValue(String(draftConfig[selectedField] ?? ""));
-				setValidationError(null);
+				setSelectedIndex(fields.length - 1);
+			} else if (char === " ") {
+				if (selectedField) {
+					setEditingField(selectedField);
+					setEditValue(String(draftConfig[selectedField] ?? ""));
+					setValidationError(null);
+				}
 			}
 		}
 	});
@@ -360,7 +386,7 @@ export function ConfigEditor({
 						isActive={activeTab === "API & Provider"}
 						onClick={() => {
 							setActiveTab("API & Provider");
-							setSelectedField("provider");
+							setSelectedIndex(0);
 						}}
 					/>
 					<ConfigTab
@@ -368,7 +394,7 @@ export function ConfigEditor({
 						isActive={activeTab === "Model Options"}
 						onClick={() => {
 							setActiveTab("Model Options");
-							setSelectedField("model");
+							setSelectedIndex(0);
 						}}
 					/>
 				</Box>
@@ -386,7 +412,7 @@ export function ConfigEditor({
 				</Box>
 			)}
 			<Box marginBottom={1} flexDirection="column">
-				{fields.map((field) => {
+				{visibleFields.map((field) => {
 					const isSelected = selectedField === field.key;
 					const isEditing = editingField === field.key;
 
@@ -398,9 +424,13 @@ export function ConfigEditor({
 							isEditing={isEditing}
 							editValue={editValue}
 							fieldValue={getFieldValue(field.key)}
-							onHover={() => setSelectedField(field.key)}
+							onHover={() => {
+								const index = fields.findIndex((f) => f.key === field.key);
+								if (index !== -1) setSelectedIndex(index);
+							}}
 							onClick={() => {
-								setSelectedField(field.key);
+								const index = fields.findIndex((f) => f.key === field.key);
+								if (index !== -1) setSelectedIndex(index);
 								setEditingField(field.key);
 								setEditValue(String(draftConfig[field.key] ?? ""));
 								setValidationError(null);
