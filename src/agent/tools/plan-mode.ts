@@ -18,6 +18,12 @@ const EXIT_PLAN_MODE_SCHEMA = z.object({
 	feedback: z.string().optional().describe("Feedback on the plan"),
 });
 
+const LIST_PLANS_SCHEMA = z.object({});
+
+const READ_PLAN_SCHEMA = z.object({
+	filename: z.string().describe("The filename of the plan to read"),
+});
+
 let currentPlan: string | null = null;
 let planModeActive = false;
 
@@ -53,6 +59,8 @@ const READ_ONLY_TOOLS = [
 	"task",
 	"write_plan",
 	"exit_plan_mode",
+	"list_plans",
+	"read_plan",
 ];
 
 export function isToolAllowedInPlanMode(toolName: string): boolean {
@@ -129,6 +137,45 @@ async function exitPlanModeTool(
 	}
 }
 
+async function listPlansTool(
+	_args: z.infer<typeof LIST_PLANS_SCHEMA>,
+	ctx: ToolContext,
+): Promise<ToolResult> {
+	const plansDir = path.join(ctx.cwd, ".tehuti", "plans");
+	if (!(await fs.pathExists(plansDir))) {
+		return { success: true, output: "No plans directory found." };
+	}
+	const files = await fs.readdir(plansDir);
+	const planFiles = files.filter((f) => f.endsWith(".md")).sort().reverse();
+	if (planFiles.length === 0) {
+		return { success: true, output: "No plans found." };
+	}
+	return {
+		success: true,
+		output: `Available plans:\n${planFiles.map((f) => `- ${f}`).join("\n")}`,
+	};
+}
+
+async function readPlanTool(
+	args: z.infer<typeof READ_PLAN_SCHEMA>,
+	ctx: ToolContext,
+): Promise<ToolResult> {
+	const { filename } = args;
+	const plansDir = path.join(ctx.cwd, ".tehuti", "plans");
+	const planFile = path.resolve(plansDir, filename);
+
+	if (!planFile.startsWith(plansDir)) {
+		return { success: false, output: "Invalid filename. Path traversal not allowed." };
+	}
+
+	if (!(await fs.pathExists(planFile))) {
+		return { success: false, output: `Plan not found: ${filename}` };
+	}
+
+	const content = await fs.readFile(planFile, "utf-8");
+	return { success: true, output: content };
+}
+
 export const planTools: ToolDefinition[] = [
 	{
 		name: "write_plan",
@@ -146,6 +193,24 @@ export const planTools: ToolDefinition[] = [
 			"Exit plan mode with approval or feedback. After approval, destructive tools will be enabled.",
 		parameters: EXIT_PLAN_MODE_SCHEMA,
 		execute: exitPlanModeTool as AnyToolExecutor,
+		category: "system",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "list_plans",
+		description: "List historical implementation plans from .tehuti/plans/",
+		parameters: LIST_PLANS_SCHEMA,
+		execute: listPlansTool as AnyToolExecutor,
+		category: "system",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "read_plan",
+		description: "Read a specific implementation plan by filename",
+		parameters: READ_PLAN_SCHEMA,
+		execute: readPlanTool as AnyToolExecutor,
 		category: "system",
 		requiresPermission: false,
 		isReadonly: true,

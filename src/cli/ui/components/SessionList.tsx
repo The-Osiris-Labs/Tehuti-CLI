@@ -7,6 +7,8 @@ import { Box, Text, useInput } from "ink";
 import React, { useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
+import { useVimInput } from "../hooks/useVimInput.js";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 
 interface SessionListProps {
 	sessions: SessionMetadata[];
@@ -184,7 +186,7 @@ export function SessionList({
 			<Box paddingX={1}>
 				<Text color="gray">{`├${"─".repeat(84)}┤`}</Text>
 			</Box>
-			{visibleSessions.map((session, i) => {
+			{visibleSessions.map((session: SessionMetadata, i: number) => {
 				const actualIndex = windowStart + i;
 				return (
 					<SessionRow
