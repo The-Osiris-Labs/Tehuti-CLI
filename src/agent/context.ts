@@ -14,6 +14,7 @@ import { initMemory } from "./memory/index.js";
 import { getPersonalityPromptBlock } from "./memory/personality.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
+import { TehutiDaemonClient } from "../daemon/client.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -362,13 +363,43 @@ export async function buildSystemPrompt(
 		.toISOString()
 		.replace("Z", `${_tzSign}${_tzHH}:${_tzMM}`);
 
+	let daemonInfo = "";
+	try {
+		const client = new TehutiDaemonClient();
+		await client.connect();
+		const pong: any = await new Promise((resolve, reject) => {
+			client.onMessage((msg) => {
+				if (msg.type === "pong") resolve(msg);
+			});
+			client.send({ type: "ping" });
+			setTimeout(() => reject(new Error("timeout")), 500);
+		});
+		client.disconnect();
+
+		const uptimeD = Math.floor(pong.uptime / 86400);
+		const uptimeH = Math.floor((pong.uptime % 86400) / 3600);
+		const uptimeM = Math.floor((pong.uptime % 3600) / 60);
+		const uptimeS = Math.floor(pong.uptime % 60);
+		
+		const parts = [];
+		if (uptimeD > 0) parts.push(`${uptimeD}d`);
+		if (uptimeH > 0) parts.push(`${uptimeH}h`);
+		if (uptimeM > 0) parts.push(`${uptimeM}m`);
+		parts.push(`${uptimeS}s`);
+		const daemonUptimeFormatted = parts.join(" ");
+
+		daemonInfo = `\n## Companion Daemon Status\n- Daemon Uptime: ${daemonUptimeFormatted}\n- Session Start Time: ${pong.session_start_time || "Unknown"}\n`;
+	} catch (e) {
+		// daemon not running or unresponsive, skip
+	}
+
 	return `You are Tehuti, the Scribe of Code Transformations - an AI coding assistant.
 
 ## Identity
 - You are an expert software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 - Your goal is to accomplish the user's task efficiently and effectively.
 - You work iteratively, breaking down complex tasks into clear steps.
-${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSection}
+${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSection}${daemonInfo}
 ## Operational Rules
 - Always explain what you're doing before doing it.
 - Use tools safely - never run destructive commands without confirmation.

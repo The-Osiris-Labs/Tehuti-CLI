@@ -12,9 +12,11 @@ export class TehutiDaemonServer extends EventEmitter {
 	private activeSockets: Set<net.Socket> = new Set();
 	private processHandlersSetup = false;
 	private gcInterval?: ReturnType<typeof setInterval>;
+	private readonly daemonStartTime: string;
 
 	constructor() {
 		super();
+		this.daemonStartTime = new Date().toISOString();
 		this.server = net.createServer((socket: net.Socket) => {
 			this.activeSockets.add(socket);
 			this.emit("connection", socket);
@@ -49,6 +51,7 @@ export class TehutiDaemonServer extends EventEmitter {
 												type: "pong",
 												pid: process.pid,
 												uptime: process.uptime(),
+												session_start_time: this.daemonStartTime,
 												clients: count || 0,
 											}) + "\n",
 										);
