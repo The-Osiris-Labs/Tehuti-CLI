@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import { sweepCacheDir } from "../agent/cache/persistent-cache.js";
 
 export const SOCKET_PATH = path.join(os.homedir(), ".tehuti", "tehutid.sock");
 
@@ -10,6 +11,7 @@ export class TehutiDaemonServer extends EventEmitter {
 	private server: net.Server;
 	private activeSockets: Set<net.Socket> = new Set();
 	private processHandlersSetup = false;
+	private gcInterval?: ReturnType<typeof setInterval>;
 
 	constructor() {
 		super();
@@ -152,10 +154,30 @@ export class TehutiDaemonServer extends EventEmitter {
 			fs.chmodSync(SOCKET_PATH, 0o600);
 			this.emit("listening", SOCKET_PATH);
 			this.setupProcessHandlers();
+			this.startGarbageCollector();
 		});
 	}
 
+	private startGarbageCollector(): void {
+		// Run a sweep immediately
+		sweepCacheDir();
+		
+		// Run a sweep every 12 hours
+		const GC_INTERVAL = 12 * 60 * 60 * 1000;
+		this.gcInterval = setInterval(() => {
+			sweepCacheDir();
+		}, GC_INTERVAL);
+		
+		if (this.gcInterval?.unref) {
+			this.gcInterval.unref();
+		}
+	}
+
 	public stop(): void {
+		if (this.gcInterval) {
+			clearInterval(this.gcInterval);
+		}
+
 		for (const socket of this.activeSockets) {
 			socket.destroy();
 		}
