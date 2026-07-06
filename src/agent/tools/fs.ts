@@ -1149,12 +1149,27 @@ async function getFileInfo(
 	try {
 		const stats = await fs.stat(resolvedPath);
 
+		const now = Date.now();
+		const msAgo = Math.max(0, now - stats.mtimeMs);
+		const seconds = Math.floor(msAgo / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		let relativeModified = "";
+		if (seconds < 60) relativeModified = `${seconds} seconds ago`;
+		else if (minutes < 60) relativeModified = `${minutes} minutes ago`;
+		else if (hours < 24) relativeModified = `${hours} hours ago`;
+		else relativeModified = `${days} days ago`;
+
 		const info = {
 			path: resolvedPath,
 			type: stats.isDirectory() ? "directory" : "file",
 			size: stats.size,
 			created: stats.birthtime,
 			modified: stats.mtime,
+			modified_ms: stats.mtimeMs,
+			modified_relative: relativeModified,
 			accessed: stats.atime,
 		};
 
