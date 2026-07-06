@@ -21,7 +21,32 @@ export class SelfHealingManager {
 
 	constructor(mainDir: string) {
 		this.mainDir = mainDir;
+		this.cleanupOrphanedWorktrees();
 		this.registerCleanupHandlers();
+	}
+
+	private cleanupOrphanedWorktrees() {
+		try {
+			// Forcefully run git worktree prune
+			spawnSync("git", ["worktree", "prune"], {
+				cwd: this.mainDir,
+				stdio: "ignore",
+			});
+
+			// Manually delete orphaned shadow directories in .tehuti/shadows/
+			const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
+			if (fs.existsSync(shadowsDir)) {
+				const entries = fs.readdirSync(shadowsDir, { withFileTypes: true });
+				for (const entry of entries) {
+					if (entry.isDirectory()) {
+						const shadowPath = path.join(shadowsDir, entry.name);
+						fs.rmSync(shadowPath, { recursive: true, force: true });
+					}
+				}
+			}
+		} catch (error) {
+			// Ignore errors during cleanup
+		}
 	}
 
 	private registerCleanupHandlers() {
@@ -66,8 +91,11 @@ export class SelfHealingManager {
 		worktreePath: string;
 		branchName: string;
 	}> {
+		const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
+		await fs.promises.mkdir(shadowsDir, { recursive: true }).catch(() => {});
+		
 		const worktreeName = `shadow-healing-${Date.now()}`;
-		const worktreePath = path.join(os.tmpdir(), worktreeName);
+		const worktreePath = path.join(shadowsDir, worktreeName);
 		const branchName = `healing-speculative-${Date.now()}`;
 
 		// Create a new branch and worktree
