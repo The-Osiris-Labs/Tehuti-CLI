@@ -501,6 +501,9 @@ async function writeFile(
 
 		if (fileExists) {
 			try {
+				const existingContent = await fs.readFile(resolvedPath, "utf-8");
+				await fs.writeFile(`${resolvedPath}.bak`, existingContent, "utf-8");
+
 				const fd = await fs.promises.open(resolvedPath, "w");
 				try {
 					await fd.writeFile(args.content, "utf8");
@@ -655,6 +658,9 @@ async function editFile(
 				metadata: { occurrences, firstMatchLine: lineNum },
 			};
 		}
+
+		const bakPath = `${resolvedPath}.bak`;
+		await fs.writeFile(bakPath, content, "utf-8");
 
 		const newContent = args.replace_all
 			? content.split(args.old_string).join(args.new_string)

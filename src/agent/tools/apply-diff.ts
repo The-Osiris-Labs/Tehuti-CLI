@@ -68,6 +68,9 @@ async function applyDiff(
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
 
+		const bakPath = `${resolvedPath}.bak`;
+		await fs.writeFile(bakPath, content, "utf-8");
+
 		let newContent = applyPatch(content, args.patch);
 		if (newContent === false) {
 			return {
