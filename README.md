@@ -12,39 +12,38 @@
 
 ---
 
-Tehuti is a specialized Node.js terminal coding assistant designed to bridge the gap between static CLI scripts and localized intelligence. Equipped natively with **75 specialized tools**, it runs natively in your terminal, interfacing seamlessly with OpenAI-compatible APIs (OpenCode Go, OpenRouter, Anthropic, DeepSeek, local Ollama) to execute complex, autonomous engineering tasks. 
+Tehuti is a specialized Node.js terminal coding assistant designed to bridge the gap between static CLI scripts and localized intelligence. It runs natively in your terminal, interfacing seamlessly with OpenAI-compatible APIs to execute complex, autonomous engineering tasks. 
 
-Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI combines a meticulously crafted Egyptian-themed Terminal User Interface (TUI) with a highly concurrent, multi-agent execution engine.
-
----
-
-## 🧠 Advanced Recall & Structural Memory
-
-Tehuti actively remembers, contextualizes, and adapts to your specific engineering environment over long periods of time. 
-
-- **SQLite Personality Graph & Immunity:** Tehuti passively learns your coding style by analyzing Git diffs and command histories. While standard memory pathways undergo an exponential time-decay logic ($W \times e^{-\lambda t}$) to purge obsolete contexts, memories explicitly typed as `project_rule` or `critical_fact` are strictly immune to decay and are permanently retained.
-- **Deterministic Context Compression:** Instead of relying on lossy, expensive LLM summarization to manage massive conversation histories, Tehuti employs a rigorous deterministic array truncator that mathematically splices out the oldest conversational turns at 85% capacity. It further protects the active window by aggressively stripping raw `<think>` and `<thinking>` tokens from historical assistant messages.
-- **Config Schema Salvaging:** Configuration is hyper-resilient. Environment variables can be natively interpolated inside `.tehuti.json`. If a configuration file is corrupted or malformed, the Zod validation engine surgically drops only the corrupted fields and gracefully salvages the rest, preventing daemon startup failures.
-- **Chronological Markdown Plans:** Implementation workloads are persisted to disk as `.md` files and inherently sorted chronologically (ascending) natively within the tool execution logic.
+Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI combines a meticulously crafted Egyptian-themed Terminal User Interface (TUI) with a highly concurrent execution engine.
 
 ---
 
-## ⚡ Swarm Concurrency & Network Stack
+## 🧠 Memory Architecture
 
-Tehuti is structurally hardened to support massive, uninterrupted autonomous workflows without UI stuttering, API throttling, or memory leaks.
+Tehuti is designed to remember and adapt to your specific engineering environment over long periods of time.
 
-- **Dynamic Swarm Serialization:** Multi-agent swarms run in highly isolated child processes (`child_process.fork()`). The Swarm Manager can fully export and import subagent states (`importState()`), automatically cleaning up orphaned and killed tasks natively across daemon reboots.
-- **IPC Payload Chunking & Throttling:** Gigabytes of context are serialized and streamed via IPC in 512KB chunks. Furthermore, to eliminate TUI lag during massive generation bursts, the IPC layer dynamically throttles UI token-update emissions to every 20 tokens.
-- **16ms Backpressure Yielding & Undici Pooling:** The HTTP/3 and SSE streaming stack is actively designed to yield to the Node event loop every 16ms to prevent buffer bloat during gigabyte payload streams. It leverages `undici` Agent Pools to manage `keepAliveTimeout` and multiplexing.
-- **Advanced MCP Capabilities:** The native MCP client goes beyond basic tool mapping. It explicitly supports 4 transport layers (`stdio`, `sse`, `http`, `websocket`), handles real-time resource subscriptions, and enforces granular security via `toolFilter` allowlists and denylists.
+- **Personality Learning Engine**: Analyzes Git diffs and command histories post-session to learn your style and formatting habits, persistently stored in an internal SQLite key-value store (`user_preferences` and `project_profiles`).
+- **Semantic Graph Consolidation**: A background job continuously scans recent interaction logs and creates relational edges in an internal SQLite database (`insights` and `edges`) using an exponential decay weighting system.
+- **Dual Context Compression**: The execution loop dynamically manages its context window. At ~85% capacity, it seamlessly executes a deterministic array truncation (splicing out oldest messages) without incurring expensive LLM calls. For user-initiated compression, the `/compact` command executes a lossy summarization to retain only critical system context and the most recent interactions.
 
 ---
 
-## 🛡️ AST Rollbacks & Codebase Safety
+## ⚡ Execution & Swarm Concurrency
 
-- **AST Validation:** Before applying critical codebase edits, Tehuti automatically stages a `.tmp.aci.<filename>` and runs a zero-emission TypeScript AST validation (`npx tsc --noEmit`). The edit is aborted if the generated syntax is invalid.
-- **Timestamped Rollbacks & TTLs:** Every native codebase edit instantly triggers the generation of a timestamped `.bak` rollback file. These backups are rigorously managed, enforcing a strict 5-file retention limit and a localized 24-hour Time-To-Live (TTL) auto-delete policy.
-- **Sandboxed Execution:** Code execution natively utilizes `just-bash` coupled with explicit IBAC permission prompts to ensure user verification before any destructive commands touch the host system. Hooks explicitly filter dangerous environments (like `LD_PRELOAD`) before execution.
+Tehuti is built for massive, uninterrupted autonomous workflows.
+
+- **Parallel Tool Execution**: Safe, read-only tools run in highly concurrent batches (max 5 concurrency) when the model emits multiple tool calls in a single turn. Write operations logically force sequential execution.
+- **Rule-Based Prefetching**: Predicts and queues secondary data (e.g., `git_status` triggering a `git_diff` prefetch) on the first tool call of a batch to eliminate round-trip latency.
+- **Connection Pooling**: Utilizes an `undici` Agent pool to substantially reduce TLS overhead across repeated LLM API invocations.
+- **Swarm Delegation**: Supports spawning autonomous subagents for specialized execution tasks.
+- **Dynamic MCP Integration**: Natively registers and mounts dynamic `mcp_*` tools at runtime using the `@modelcontextprotocol/sdk`.
+
+---
+
+## 🛡️ Self-Healing & Codebase Safety
+
+- **Speculative Worktree Loops**: Tehuti creates ephemeral Git worktree branches for speculative edits, runs validation commands securely, injects failures directly back into the LLM context, and merges on success or discards on failure.
+- **IBAC Permissions**: Code execution occurs through a sandboxed `just-bash` utility, explicitly coupled with Interactive Role-Based Access Control (IBAC) permission prompts. Destructive operations strictly require user authorization.
 
 ---
 
@@ -52,21 +51,24 @@ Tehuti is structurally hardened to support massive, uninterrupted autonomous wor
 
 Tehuti is shipped with an incredibly rich, interactive Terminal User Interface built on Ink 6 and React 19.
 
-- **Negative Margin Viewport:** The primary chat utilizes a highly performant "negative margin" hack (`marginBottom={-scrollOffset}`) to gracefully handle infinite scroll streams without forcing costly React remounts on massive arrays.
-- **In-Terminal Dashboards & Visualizers:**
-  - **Swarm Observability Dashboard:** Track active subagents, their current task, and token usage in real time natively in the terminal.
-  - **Interactive Todo List:** Visually render active, queued, and completed tasks alongside priority indicators.
-  - **Media Viewer:** Render local images and media via ANSI blocks natively in the CLI stream.
-  - **Interactive Prompts:** Tehuti halts execution seamlessly to present interactive multiple-choice menus and manual Y/n execution blocks for critical tools.
-- **Extensive Command Palette:** Type `/` to access 11+ hidden slash commands including `/cost`, `/stats`, `/thinking`, `/skills` (activate/deactivate specific agent skillsets), `/config` (in-terminal editor), and `/dashboard`.
+- **Hybrid Viewport Architecture**: Handles massive logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
+- **Interactive Sessions UI**: Includes full Vim keybindings (`j/k/d/r`), mouse-hover support, and virtual scrolling.
+- **Command Palette**: Type `/` to access built-in workflows including `/save`, `/load`, `/sessions`, and `/compact`.
+
+For environments like SSH or tmux where mouse tracking is unavailable, set either environment variable below to launch in strict keyboard-only mode:
+
+```bash
+TEHUTI_DISABLE_MOUSE=1 npm run start
+NO_MOUSE=1 npm run start
+```
 
 ---
 
-## 🌐 The Companion Daemon
+## 🌐 Background Daemon & Connectors
 
-- **macOS `launchd` Autostart:** The daemon natively generates and installs a `com.tehuti.daemon.plist` into `~/Library/LaunchAgents` to persist flawlessly across system reboots, piping stdout and stderr to `~/.tehuti/tehutid.*.log`.
-- **7-Day Background Cache Sweeper:** The daemon continuously manages disk health, running an aggressive background garbage collection cycle that purges cached tool outputs older than 7 days.
-- **Persistent Socket:** The TUI attaches to a background Unix Domain Socket (`tehutid.sock`), allowing complex workflows and multi-agent swarms to run asynchronously even if you close the terminal window.
+- **macOS `launchd` Autostart**: Generates and installs a `launchd` plist so the persistent daemon survives system reboots.
+- **IPC Unix Socket**: Operates a background server (`~/.tehuti/tehutid.sock`) mapping interactive sessions asynchronously. 
+- **Omnichannel Connectors**: Integrates deeply with Discord, Slack, Telegram, and WhatsApp via WebSockets and HTTP webhook listeners. A central `messaging_sessions` SQLite table maps platform-specific sender IDs back to native Tehuti sessions.
 
 ---
 
@@ -83,7 +85,11 @@ npm run build
 ```
 
 ### 2. Configure
-Run the interactive setup wizard to link your API keys and configure your default provider.
+Tehuti dynamically routes models based on keyword heuristics to optimize for speed, depth, or balanced capabilities based on your prompt. Settings cascade from global configs down to environment variables (`TEHUTI_API_KEY`, `TEHUTI_MODEL`, `TEHUTI_PROVIDER`).
+- **Default Provider**: `opencode` (`https://opencode.ai/zen/go/v1`)
+- **Default Model**: `deepseek-v4-flash`
+
+Run the interactive setup wizard to link your API keys:
 ```bash
 npm run start -- init
 ```
