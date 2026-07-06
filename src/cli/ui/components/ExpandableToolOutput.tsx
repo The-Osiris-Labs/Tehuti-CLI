@@ -86,6 +86,13 @@ export function summarizeToolOutput(
 	} else if (
 		typeof result === "object" &&
 		result !== null &&
+		"uiOutput" in result &&
+		typeof (result as Record<string, unknown>).uiOutput === "string"
+	) {
+		output = (result as Record<string, unknown>).uiOutput as string;
+	} else if (
+		typeof result === "object" &&
+		result !== null &&
 		"output" in result
 	) {
 		output = String((result as Record<string, unknown>).output);
@@ -268,15 +275,18 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		? BRANDING.colors.coral
 		: BRANDING.colors.gray;
 
-	const isJson = useMemo(() => {
-		try {
-			if (typeof result !== "string") return true;
-			JSON.parse(summary.displayContent);
-			return true;
-		} catch {
-			return false;
+	const language = useMemo(() => {
+		if (toolName === "write_plan" || (typeof result === "object" && result !== null && "uiOutput" in result)) {
+			return "markdown";
 		}
-	}, [summary.displayContent, result]);
+		try {
+			if (typeof result !== "string") return "json";
+			JSON.parse(summary.displayContent);
+			return "json";
+		} catch {
+			return "text";
+		}
+	}, [summary.displayContent, result, toolName]);
 
 	const displayContent = useMemo(() => {
 		if (!expanded) return summary.displayContent;
@@ -288,8 +298,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				: line;
 		}).join("\n");
 		
-		return highlightToAnsi(formatted, isJson ? "json" : "text");
-	}, [expanded, summary.displayContent, summary.rawLines, windowStart, windowEnd, width, isJson]);
+		return highlightToAnsi(formatted, language);
+	}, [expanded, summary.displayContent, summary.rawLines, windowStart, windowEnd, width, language]);
 
 	const expandedIcon = expanded ? "▼" : "▶";
 

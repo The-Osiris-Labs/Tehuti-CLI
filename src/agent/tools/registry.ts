@@ -5,6 +5,7 @@ import { debug } from "../../utils/debug.js";
 export interface ToolResult {
 	success: boolean;
 	output: string;
+	uiOutput?: string;
 	error?: string;
 	metadata?: Record<string, unknown>;
 }

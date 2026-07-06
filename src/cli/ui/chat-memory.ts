@@ -57,8 +57,11 @@ export function safeStringify(
 	}
 }
 
-export function compactToolResultForUi(value: unknown, depth = 0): unknown {
+export function compactToolResultForUi(value: unknown, depth = 0, isUiOutputField = false): unknown {
 	if (typeof value === "string") {
+		if (isUiOutputField) {
+			return truncateMiddle(value, 500000, "truncated for UI memory");
+		}
 		return truncateMiddle(
 			value,
 			UI_MAX_TOOL_OUTPUT_CHARS,
@@ -74,7 +77,7 @@ export function compactToolResultForUi(value: unknown, depth = 0): unknown {
 	if (Array.isArray(value)) {
 		const items = value
 			.slice(0, UI_MAX_TOOL_ARRAY_ITEMS)
-			.map((item) => compactToolResultForUi(item, depth + 1));
+			.map((item) => compactToolResultForUi(item, depth + 1, isUiOutputField));
 		if (value.length > UI_MAX_TOOL_ARRAY_ITEMS) {
 			items.push(
 				`... [${value.length - UI_MAX_TOOL_ARRAY_ITEMS} items omitted]`,
@@ -92,7 +95,7 @@ export function compactToolResultForUi(value: unknown, depth = 0): unknown {
 			compacted.__omitted__ = "additional object keys omitted for UI memory";
 			break;
 		}
-		compacted[key] = compactToolResultForUi(nested, depth + 1);
+		compacted[key] = compactToolResultForUi(nested, depth + 1, key === "uiOutput");
 		count++;
 	}
 	return compacted;

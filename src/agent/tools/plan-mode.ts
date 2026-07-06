@@ -113,6 +113,7 @@ ${plan}
 	return {
 		success: true,
 		output: `Plan written to: ${planFile}\n\n## Plan Preview\n\n${plan.slice(0, 1000)}${plan.length > 1000 ? "\n\n... (truncated)" : ""}`,
+		uiOutput: `Plan written to: ${planFile}\n\n${content}`,
 		metadata: {
 			planFile,
 			title,
