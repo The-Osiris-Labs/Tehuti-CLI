@@ -39,6 +39,48 @@ export async function runAciLinter(
 	}
 }
 
+export async function createBackup(filePath: string, content: string): Promise<void> {
+	try {
+		const timestamp = Date.now();
+		const bakPath = `${filePath}.${timestamp}.bak`;
+		await fs.writeFile(bakPath, content, "utf-8");
+
+		await fs.unlink(`${filePath}.bak`).catch(() => {});
+
+		const dir = path.dirname(filePath);
+		const basename = path.basename(filePath);
+		const files = await fs.readdir(dir);
+		
+		const escapedBasename = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const bakPattern = new RegExp("^" + escapedBasename + "\\.\\d+\\.bak$");
+		const bakFiles = files.filter((f) => bakPattern.test(f));
+		
+		const MAX_BACKUPS = 5;
+		const TTL = 24 * 60 * 60 * 1000;
+		const now = Date.now();
+
+		const stats = await Promise.all(
+			bakFiles.map(async (f) => {
+				const p = path.join(dir, f);
+				const stat = await fs.stat(p).catch(() => null);
+				return stat ? { path: p, mtimeMs: stat.mtimeMs } : null;
+			}),
+		);
+
+		const validStats = stats.filter((s): s is { path: string; mtimeMs: number } => s !== null);
+		validStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+		for (let i = 0; i < validStats.length; i++) {
+			const stat = validStats[i];
+			if (i >= MAX_BACKUPS || now - stat.mtimeMs > TTL) {
+				await fs.unlink(stat.path).catch(() => {});
+			}
+		}
+	} catch (e) {
+		// Ignore backup creation/cleanup errors to avoid failing the main operation
+	}
+}
+
 import type {
 	AnyToolExecutor,
 	ToolContext,
@@ -502,7 +544,7 @@ async function writeFile(
 		if (fileExists) {
 			try {
 				const existingContent = await fs.readFile(resolvedPath, "utf-8");
-				await fs.writeFile(`${resolvedPath}.bak`, existingContent, "utf-8");
+				await createBackup(resolvedPath, existingContent);
 
 				const fd = await fs.promises.open(resolvedPath, "w");
 				try {
@@ -659,8 +701,7 @@ async function editFile(
 			};
 		}
 
-		const bakPath = `${resolvedPath}.bak`;
-		await fs.writeFile(bakPath, content, "utf-8");
+		await createBackup(resolvedPath, content);
 
 		const newContent = args.replace_all
 			? content.split(args.old_string).join(args.new_string)
