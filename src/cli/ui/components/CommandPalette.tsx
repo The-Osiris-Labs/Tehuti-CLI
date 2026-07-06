@@ -686,6 +686,13 @@ export function createCommands(options: {
 			action: options.onSave || (() => {}),
 		},
 		{
+			id: "/export",
+			label: "/export",
+			description: "Export session to Markdown or JSON",
+			category: "session",
+			action: () => {}, // Action handled in chat.ts
+		},
+		{
 			id: "/load",
 			label: "/load",
 			description: "Load a saved session",
@@ -817,6 +824,7 @@ export function formatHelpOutput(): string {
 │    /stats              Show performance metrics                   │
 │    /compact            Compact context to free up token space     │
 │    /save [name]        Save session                               │
+│    /export [format]    Export session to Markdown or JSON         │
 │    /load               Load session (Interactive Submenu)         │
 │    /sessions           List saved sessions                        │
 │    /plan               Enter plan mode (read-only exploration)    │

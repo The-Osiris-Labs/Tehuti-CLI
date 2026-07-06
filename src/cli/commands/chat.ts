@@ -2305,6 +2305,47 @@ function ChatUI({
 				return;
 			}
 
+			if (text.toLowerCase().startsWith("/export")) {
+				const format = text.slice(7).trim().toLowerCase() === "json" ? "json" : "md";
+				const sessionIdStr = sessionId ? sessionId.slice(0, 8) : Date.now().toString().slice(-8);
+				const filename = path.join(process.cwd(), `tehuti-session-${sessionIdStr}.${format}`);
+
+				try {
+					let exportData = "";
+					if (format === "json") {
+						exportData = JSON.stringify(ctxRef.current?.messages || [], null, 2);
+					} else {
+						exportData = `# Tehuti Session Export\n\n`;
+						const messages = ctxRef.current?.messages || [];
+						for (const msg of messages) {
+							const role = msg.role.toUpperCase();
+							const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content, null, 2);
+							exportData += `## ${role}\n\n${content}\n\n---\n\n`;
+						}
+					}
+
+					fs.writeFileSync(filename, exportData, "utf8");
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `✅ Session exported successfully to:\n${filename}`,
+						},
+					]);
+				} catch (err: any) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `❌ Failed to export session: ${err.message}`,
+						},
+					]);
+				}
+				return;
+			}
+
 			if (text.toLowerCase().startsWith("/load ")) {
 				const id = text.slice(6).trim();
 				await loadSessionById(id);
