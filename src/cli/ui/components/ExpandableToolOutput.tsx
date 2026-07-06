@@ -9,6 +9,9 @@ import stringWidth from "string-width";
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { GlobalInputState } from "../input-state.js";
+
+const disableMouse = process.env.NO_MOUSE || process.env.TEHUTI_DISABLE_MOUSE;
 
 interface ExpandableToolOutputProps {
 	toolName: string;
@@ -150,8 +153,24 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		setExpanded((prev) => !prev);
 	});
 
-	useOnMouseEnter(boxRef, () => setIsHovered(true));
-	useOnMouseLeave(boxRef, () => setIsHovered(false));
+	useOnMouseEnter(
+		boxRef,
+		disableMouse
+			? () => {}
+			: () => {
+					setIsHovered(true);
+					GlobalInputState.hoveredComponentCount++;
+				},
+	);
+	useOnMouseLeave(
+		boxRef,
+		disableMouse
+			? () => {}
+			: () => {
+					setIsHovered(false);
+					GlobalInputState.hoveredComponentCount = Math.max(0, GlobalInputState.hoveredComponentCount - 1);
+				},
+	);
 
 	const DECORATIVE = {
 		eye_ra: "𓁹",

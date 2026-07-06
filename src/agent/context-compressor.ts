@@ -99,9 +99,18 @@ export function compressContext(
 	for (const msg of midMessages) {
 		let preview = "";
 		if (typeof msg.content === "string") {
-			preview =
-				msg.content.substring(0, 100).replace(/\n/g, " ") +
-				(msg.content.length > 100 ? "..." : "");
+			// Safely respect <think> boundaries
+			let c = msg.content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, "[Thought Process]");
+
+			// Never accidentally slice a JSON tool_call object mid-string during heavy compression
+			const trimmed = c.trim();
+			if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+				preview = "[JSON Payload]";
+			} else {
+				preview =
+					c.substring(0, 100).replace(/\n/g, " ") +
+					(c.length > 100 ? "..." : "");
+			}
 		} else if (Array.isArray(msg.content)) {
 			preview = "[Multipart Content]";
 		} else if (msg.content !== undefined && msg.content !== null) {
