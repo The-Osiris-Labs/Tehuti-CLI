@@ -26,3 +26,4 @@ export * from "./db.js";
 export * from "./env-bootstrap.js";
 export * from "./graph.js";
 export * from "./vector-store.js";
+export * from "./consolidation.js";
