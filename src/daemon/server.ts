@@ -8,19 +8,24 @@ export const SOCKET_PATH = path.join(os.homedir(), ".tehuti", "tehutid.sock");
 
 export class TehutiDaemonServer extends EventEmitter {
 	private server: net.Server;
+	private activeSockets: Set<net.Socket> = new Set();
+	private processHandlersSetup = false;
 
 	constructor() {
 		super();
 		this.server = net.createServer((socket: net.Socket) => {
+			this.activeSockets.add(socket);
 			this.emit("connection", socket);
 
+			socket.setEncoding("utf8");
 			let buffer = "";
 
-			socket.on("data", (data: Buffer) => {
-				buffer += data.toString("utf-8");
-				
+			socket.on("data", (chunk: string) => {
+				buffer += chunk;
+
 				// Prevent memory leak from unbounded buffer
-				if (buffer.length > 1024 * 1024 * 10) { // 10MB limit
+				if (buffer.length > 1024 * 1024 * 10) {
+					// 10MB limit
 					socket.destroy(new Error("Buffer size limit exceeded"));
 					return;
 				}
@@ -29,26 +34,30 @@ export class TehutiDaemonServer extends EventEmitter {
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
 					const line = buffer.slice(0, newlineIndex).trim();
 					buffer = buffer.slice(newlineIndex + 1);
-					
+
 					if (line) {
 						try {
 							const msg = JSON.parse(line);
 							if (msg.type === "ping") {
 								// Count connected sockets by asking the server
 								this.server.getConnections((err, count) => {
-									socket.write(
-										JSON.stringify({
-											type: "pong",
-											pid: process.pid,
-											uptime: process.uptime(),
-											clients: count || 0,
-										}) + "\n",
-									);
+									if (!socket.destroyed) {
+										socket.write(
+											JSON.stringify({
+												type: "pong",
+												pid: process.pid,
+												uptime: process.uptime(),
+												clients: count || 0,
+											}) + "\n",
+										);
+									}
 								});
 								continue;
 							}
 							if (msg.type === "stop") {
-								socket.write(JSON.stringify({ type: "stopping" }) + "\n");
+								if (!socket.destroyed) {
+									socket.write(JSON.stringify({ type: "stopping" }) + "\n");
+								}
 								this.stop();
 								setTimeout(() => process.exit(0), 100);
 								return;
@@ -64,6 +73,10 @@ export class TehutiDaemonServer extends EventEmitter {
 
 			socket.on("error", (err: Error) => {
 				this.emit("clientError", err);
+			});
+
+			socket.on("close", () => {
+				this.activeSockets.delete(socket);
 			});
 
 			socket.on("end", () => {
@@ -105,17 +118,54 @@ export class TehutiDaemonServer extends EventEmitter {
 		}
 	}
 
+	private setupProcessHandlers() {
+		if (this.processHandlersSetup) return;
+		this.processHandlersSetup = true;
+
+		const cleanup = () => {
+			if (fs.existsSync(SOCKET_PATH)) {
+				try {
+					fs.unlinkSync(SOCKET_PATH);
+				} catch (err) {}
+			}
+			process.exit(0);
+		};
+
+		process.on("SIGINT", cleanup);
+		process.on("SIGTERM", cleanup);
+		process.on("exit", () => {
+			if (fs.existsSync(SOCKET_PATH)) {
+				try {
+					fs.unlinkSync(SOCKET_PATH);
+				} catch (err) {}
+			}
+		});
+
+		process.on("uncaughtException", (err) => {
+			console.error("Uncaught exception in daemon:", err);
+			cleanup();
+		});
+	}
+
 	private listen(): void {
 		this.server.listen(SOCKET_PATH, () => {
 			fs.chmodSync(SOCKET_PATH, 0o600);
 			this.emit("listening", SOCKET_PATH);
+			this.setupProcessHandlers();
 		});
 	}
 
 	public stop(): void {
+		for (const socket of this.activeSockets) {
+			socket.destroy();
+		}
+		this.activeSockets.clear();
+
 		this.server.close(() => {
 			if (fs.existsSync(SOCKET_PATH)) {
-				fs.unlinkSync(SOCKET_PATH);
+				try {
+					fs.unlinkSync(SOCKET_PATH);
+				} catch (err) {}
 			}
 			this.emit("close");
 		});

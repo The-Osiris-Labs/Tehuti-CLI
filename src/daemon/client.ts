@@ -40,11 +40,13 @@ export class TehutiDaemonClient {
 
 	public onMessage(callback: (data: any) => void): void {
 		if (this.client) {
-			this.client.on("data", (data: Buffer) => {
-				this.buffer += data.toString("utf-8");
-				
+			this.client.setEncoding("utf8");
+			this.client.on("data", (chunk: string) => {
+				this.buffer += chunk;
+
 				// Prevent memory leak from unbounded buffer
-				if (this.buffer.length > 1024 * 1024 * 10) { // 10MB limit
+				if (this.buffer.length > 1024 * 1024 * 10) {
+					// 10MB limit
 					console.error("Daemon client buffer overflow. Disconnecting.");
 					this.disconnect();
 					return;
