@@ -54,10 +54,25 @@ export function TodoList() {
 					if (todo.priority === "medium") priorityMark = " 🟡";
 					if (todo.priority === "low") priorityMark = " 🟢";
 
+					let ageText = "";
+					// @ts-ignore - backward compatibility for older todos without updatedAt
+					const updatedAt = todo.updatedAt;
+					if (updatedAt) {
+						const updatedDate = new Date(updatedAt);
+						const ageMin = Math.round((Date.now() - updatedDate.getTime()) / 60000);
+						if (ageMin > 60) {
+							ageText = ` [${Math.round(ageMin / 60)}h ago]`;
+						} else if (ageMin > 0) {
+							ageText = ` [${ageMin}m ago]`;
+						} else {
+							ageText = " [just now]";
+						}
+					}
+
 					return (
 						<Box key={todo.id} flexDirection="row">
 							<Text color={color}>
-								{icon} [{todo.id}]{priorityMark}{" "}
+								{icon} [{todo.id}]{priorityMark}{ageText}{" "}
 							</Text>
 							<Text color={color}>{todo.content}</Text>
 						</Box>

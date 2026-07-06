@@ -23,6 +23,8 @@ const TODO_WRITE_SCHEMA = z.object({
 				priority: z
 					.enum(["high", "medium", "low"])
 					.describe("Priority level of the task"),
+				createdAt: z.string().datetime().describe("ISO 8601 creation timestamp"),
+				updatedAt: z.string().datetime().describe("ISO 8601 update timestamp"),
 			}),
 		)
 		.describe("The updated todo list"),
@@ -72,6 +74,8 @@ const TASK_SCHEMA = z.object({
 		.positive()
 		.optional()
 		.describe("Timeout in milliseconds (default: 60000)"),
+	createdAt: z.string().datetime().describe("ISO 8601 creation timestamp"),
+	updatedAt: z.string().datetime().describe("ISO 8601 update timestamp"),
 });
 
 const WAIT_FOR_EVENT_SCHEMA = z.object({
