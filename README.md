@@ -24,8 +24,8 @@ What distinguishes Tehuti is its profound capability to remember, contextualize,
 
 - **SQLite Personality Graph:** Tehuti runs a localized, asynchronous SQLite vector graph. It passively learns your coding style and architectural preferences by continuously scraping and analyzing Git diffs and command histories, natively evolving its responses to match your engineering voice.
 - **Semantic Exponential Time-Decay:** Memory is managed mathematically. Insight vectors undergo an exponential time-decay logic ($W \times e^{-\lambda t}$) based on last-accessed metrics. Obsolete memory pathways are actively purged to prevent permanent vector sprawl, ensuring the agent retrieves only highly relevant, modern context.
-- **Deep Temporal Awareness:** The LLM's system prompt natively understands local timezones, exact ISO epochs, and daemon uptime. Furthermore, every conversational turn is dynamically injected with a precise prefix (e.g., `[Timestamp: HH:MM:SS]`), granting the AI organic intuition regarding the latency and sequence between replies.
-- **Chronological Backlogs:** Workloads are persisted natively to JSON backlogs (`backlog.json`) rather than volatile RAM. These tasks are rendered within the TUI via interactive timelines that calculate staleness on the fly.
+- **Deterministic Context Compression:** Instead of relying on lossy, expensive LLM summarization to manage massive conversation histories, Tehuti employs a rigorous deterministic array truncator that mathematically splices out the oldest conversational turns at 85% capacity, preserving the structural integrity of the active context window.
+- **`<think>` Token Stripping:** To prevent severe context degradation during marathon multi-agent sessions, Tehuti rigorously strips raw reasoning tokens (`<think>` and `<thinking>` blocks) from historical assistant messages before they are passed back into the active payload.
 
 ---
 
@@ -33,18 +33,24 @@ What distinguishes Tehuti is its profound capability to remember, contextualize,
 
 Tehuti has been structurally hardened to support massive, uninterrupted autonomous workflows without UI stuttering, API throttling, or memory leaks.
 
+### ⏱️ Temporal & Sequential Codebase Awareness
+- **Deep Temporal Injection:** The LLM's system prompt natively understands local timezones, exact ISO epochs, and daemon uptime. Furthermore, every conversational turn is dynamically injected with a precise prefix (e.g., `[Timestamp: HH:MM:SS]`), granting the AI organic intuition regarding the latency and sequence between replies.
+- **Sequential File Epoch Intuition:** Filesystem payloads dynamically calculate and inject relative timeframes (e.g., `modified_relative: "3 seconds ago"`). The AI never hallucinates temporal sequences when auditing massive repositories; it inherently knows the precise chronological order of codebase edits.
+- **Chronological Architectures:** Workloads and implementation plans are not held in volatile RAM. They are persisted to JSON backlogs and forcefully sorted by exact ISO 8601 birth-time descending, ensuring the LLM sequence-matches modern vs. obsolete plans flawlessly.
+
 ### ⚡ Swarm & Concurrency Orchestration
 - **Isolated Swarm Execution:** Multi-agent swarms are cleanly offloaded from the single-threaded Node.js event loop. Subagents run in highly isolated child processes (`child_process.fork()`), communicating via strict IPC boundaries.
 - **IPC Payload Chunking:** Gigabytes of context are serialized and streamed in 512KB chunks, mathematically guaranteeing a locked 60fps TUI framerate even during the heaviest LLM orchestrations.
 - **Native Semantic Engine:** Bypassing JavaScript overhead entirely, Tehuti leverages a native Rust `.node` binary to execute ultra-fast, parallel semantic `grep` operations directly against your local filesystem.
 
 ### 🖥️ Interactive TUI Interfaces
-- **Virtual Scrolling Sessions:** A stunning, mouse-aware TUI built on Ink 6 and React 19. It leverages `useVirtualScroll`, enabling users to parse thousands of historical interactions at 60fps with Vim keybindings (j/k/d/r) and fuzzy search algorithms.
+- **Virtual Scrolling Sessions:** A stunning, mouse-aware TUI built on Ink 6 and React 19. It leverages `useVirtualScroll`, enabling users to parse thousands of historical interactions at 60fps with Vim keybindings (j/k/d/r), while an internal `Fuse.js` engine guarantees `updated_at` chronological search perfection.
 - **Global TUI Input Isolation:** A native `GlobalInputState` event manager completely isolates terminal inputs, ensuring zero "input bleed" when navigating dynamic overlays, configuration editors, or command palettes.
 
 ### 🌐 The Companion Daemon & Omnichannel Integration
 - **Persistent Background Socket:** Tehuti operates continuously via a background Unix Domain Socket (`tehutid.sock`). This daemon survives terminal closures and reboots, handling asynchronous garbage collection and long-running cognitive processes.
 - **Universal External Connectors:** A native Connector Manager bridges localized terminal sessions directly to **Slack, Discord, Telegram, and WhatsApp**. You can converse with your local codebase intelligence from any device.
+- **SQLite Omnichannel Resolution:** To prevent `SQLITE_BUSY` crashes when external webhooks trigger massive concurrent payloads, session resolution is backed by an SQLite `messaging_sessions` table heavily shielded by a 1,000-capacity LRU memory cache.
 - **Jittered Exponential Backoffs:** Network adapters intelligently manage latency. If the daemon drops connection, it smoothly backs off using randomized algorithms to prevent daemon crashes or API rate-limiting.
 
 ### 🛡️ Safety, Sandboxing & Self-Healing
