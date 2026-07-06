@@ -12,6 +12,7 @@ export interface Node {
 	accessCount?: number;
 	priority?: number;
 	importance?: number;
+	lastAccessed?: number;
 }
 
 export interface Edge {
@@ -102,6 +103,7 @@ function mapRowToNode(row: any): Node {
 		importance: meta.importance,
 		accessCount: meta.accessCount,
 		timestamp: row.created_at,
+		lastAccessed: row.last_accessed || row.created_at,
 	};
 }
 
@@ -260,6 +262,30 @@ export async function optimizeInsights(
 
 	const toRemove = new Set<string>();
 
+	const now = Date.now();
+	const DECAY_RATE = 0.05; // 5% decay per day
+	const OBSOLETE_THRESHOLD = 0.5;
+
+	for (const node of nodes) {
+		if (node.type === "project_rule" || node.type === "critical_fact") {
+			continue;
+		}
+
+		const lastAccess = node.lastAccessed || node.timestamp || now;
+		const daysOld = Math.max(0, (now - lastAccess) / (1000 * 60 * 60 * 24));
+		
+		const p = node.priority ?? 0;
+		const i = node.importance ?? 0;
+		const accessCount = node.accessCount ?? 1;
+		
+		const baseScore = (p * 10) + (i * 10) + accessCount;
+		const decayedScore = baseScore * Math.exp(-DECAY_RATE * daysOld);
+		
+		if (decayedScore < OBSOLETE_THRESHOLD) {
+			toRemove.add(node.id);
+		}
+	}
+
 	const getTokens = (t: string) =>
 		new Set(
 			t
@@ -369,6 +395,11 @@ export async function optimizeInsights(
 			`DELETE FROM nodes WHERE id IN (${placeholders})`,
 		);
 		deleteStmt.run(...Array.from(toRemove));
+		
+		for (const id of toRemove) {
+			await vectorStore.removeEmbedding(id);
+		}
+		
 		removedCount = toRemove.size;
 	}
 

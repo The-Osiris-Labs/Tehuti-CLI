@@ -5,6 +5,7 @@ export interface VectorStore {
 		text: string,
 		metadata: Record<string, any>,
 	): Promise<void>;
+	removeEmbedding(id: string): Promise<void>;
 	search(
 		query: string,
 		limit?: number,
@@ -53,6 +54,10 @@ export class BM25VectorStore implements VectorStore {
 		text: string,
 		metadata: Record<string, any>,
 	): Promise<void> {
+		if (this.documents.has(id)) {
+			await this.removeEmbedding(id);
+		}
+
 		const tokens = this.tokenize(text);
 		if (tokens.length === 0) return;
 
@@ -65,6 +70,28 @@ export class BM25VectorStore implements VectorStore {
 		const uniqueTokens = new Set(tokens);
 		for (const token of uniqueTokens) {
 			this.df.set(token, (this.df.get(token) || 0) + 1);
+		}
+	}
+
+	async removeEmbedding(id: string): Promise<void> {
+		const doc = this.documents.get(id);
+		if (!doc) return;
+
+		this.documents.delete(id);
+		this.documentCount--;
+		this.totalTokens -= doc.tokens.length;
+		this.avgdl = this.documentCount > 0 ? this.totalTokens / this.documentCount : 0;
+
+		const uniqueTokens = new Set(doc.tokens);
+		for (const token of uniqueTokens) {
+			const currentDf = this.df.get(token);
+			if (currentDf !== undefined) {
+				if (currentDf <= 1) {
+					this.df.delete(token);
+				} else {
+					this.df.set(token, currentDf - 1);
+				}
+			}
 		}
 	}
 
