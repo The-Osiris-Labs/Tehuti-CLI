@@ -21,7 +21,11 @@ export class SelfHealingManager {
 
 	constructor(mainDir: string) {
 		this.mainDir = mainDir;
-		process.on("exit", () => {
+		this.registerCleanupHandlers();
+	}
+
+	private registerCleanupHandlers() {
+		const cleanup = () => {
 			for (const {
 				worktreePath,
 				branchName,
@@ -37,6 +41,20 @@ export class SelfHealingManager {
 					});
 				} catch (e) {}
 			}
+			this.activeWorktrees.clear();
+		};
+
+		process.on("exit", cleanup);
+		
+		// Ensure we gracefully clean up on common termination signals
+		process.on("SIGINT", () => {
+			cleanup();
+			process.exit(130);
+		});
+		
+		process.on("SIGTERM", () => {
+			cleanup();
+			process.exit(143);
 		});
 	}
 
@@ -81,42 +99,47 @@ export class SelfHealingManager {
 				...untrackedFilesOut.split("\n"),
 			].filter(Boolean);
 
-			for (const file of deletedFiles) {
-				const dest = path.join(worktreePath, file);
-				await fs.promises
-					.rm(dest, { recursive: true, force: true })
-					.catch(() => {});
-			}
-
-			for (const file of filesToCopy) {
-				const src = path.join(this.mainDir, file);
-				const dest = path.join(worktreePath, file);
-				await fs.promises
-					.mkdir(path.dirname(dest), { recursive: true })
-					.catch(() => {});
-				try {
-					const stat = await fs.promises.lstat(src);
+			if (deletedFiles.length > 0) {
+				for (const file of deletedFiles) {
+					const dest = path.join(worktreePath, file);
 					await fs.promises
 						.rm(dest, { recursive: true, force: true })
 						.catch(() => {});
-					if (stat.isSymbolicLink()) {
-						const target = await fs.promises.readlink(src);
-						const absoluteTarget = path.resolve(path.dirname(src), target);
-						const resolvedMainDir = path.resolve(this.mainDir);
+				}
+			}
 
-						// Prevent symlink path traversal vulnerability
-						if (
-							!absoluteTarget.startsWith(resolvedMainDir + path.sep) &&
-							absoluteTarget !== resolvedMainDir
-						) {
-							continue;
-						}
-
-						await fs.promises.symlink(target, dest);
-					} else {
-						await fs.promises.copyFile(src, dest);
+			if (filesToCopy.length > 0) {
+				const filesListPath = path.join(os.tmpdir(), `rsync-files-${Date.now()}.txt`);
+				await fs.promises.writeFile(filesListPath, filesToCopy.join("\n") + "\n");
+				try {
+					// Use rsync to robustly copy modified/untracked files while preserving permissions, symlinks, etc.
+					await execAsync(`rsync -a --files-from="${filesListPath}" . "${worktreePath}"`, {
+						cwd: this.mainDir,
+					});
+				} catch (rsyncErr) {
+					// Fallback to manual copy if rsync fails
+					for (const file of filesToCopy) {
+						const src = path.join(this.mainDir, file);
+						const dest = path.join(worktreePath, file);
+						await fs.promises
+							.mkdir(path.dirname(dest), { recursive: true })
+							.catch(() => {});
+						try {
+							const stat = await fs.promises.lstat(src);
+							await fs.promises
+								.rm(dest, { recursive: true, force: true })
+								.catch(() => {});
+							if (stat.isSymbolicLink()) {
+								const target = await fs.promises.readlink(src);
+								await fs.promises.symlink(target, dest);
+							} else {
+								await fs.promises.cp(src, dest, { preserveTimestamps: true });
+							}
+						} catch (err) {}
 					}
-				} catch (err) {}
+				} finally {
+					await fs.promises.rm(filesListPath, { force: true }).catch(() => {});
+				}
 			}
 		} catch (error) {
 			// Ignore if not a git repo or if syncing fails
