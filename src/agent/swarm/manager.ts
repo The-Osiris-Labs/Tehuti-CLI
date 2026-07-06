@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { loadConfig } from "../../config/index.js";
+import { fork, type ChildProcess } from "node:child_process";
 import { debug } from "../../utils/debug.js";
 import { agentEventBus } from "../events.js";
-import {
-	type AgentLoopResult,
-	createAgentContext,
-	runAgentLoop,
-} from "../index.js";
+import type { AgentLoopResult } from "../index.js";
+import { ChunkReceiver } from "./serialization.js";
 
 export interface SubagentTask {
 	id: string;
@@ -15,10 +12,9 @@ export interface SubagentTask {
 	status: "running" | "completed" | "failed" | "killed";
 	result?: AgentLoopResult;
 	error?: string;
-	abortController: AbortController;
+	process?: ChildProcess;
 	createdAt: Date;
 	tokensUsed: number;
-	context?: any;
 }
 
 export class SwarmManager extends EventEmitter {
@@ -46,83 +42,127 @@ export class SwarmManager extends EventEmitter {
 		parentContext?: any,
 	): Promise<string> {
 		const id = randomUUID();
-		const abortController = new AbortController();
 
-		const config = await loadConfig();
-
-		const subagentContext = await createAgentContext(workingDir, config);
+		const entryFile = process.argv[1];
+		const childProcess = fork(entryFile, [], {
+			env: {
+				...process.env,
+				SWARM_RUNNER: "1",
+			},
+			cwd: workingDir,
+			stdio: ["pipe", "pipe", "pipe", "ipc"],
+		});
 
 		const task: SubagentTask = {
 			id,
 			prompt,
 			status: "running",
-			abortController,
+			process: childProcess,
 			createdAt: new Date(),
 			tokensUsed: 0,
-			context: subagentContext,
 		};
 
 		this.tasks.set(id, task);
 		this.emitUpdate();
 
 		let tokenCount = 0;
+		const receiver = new ChunkReceiver();
 
-		runAgentLoop(subagentContext, prompt, {
-			signal: abortController.signal,
-			onToken: () => {
+		const handleMessage = (type: string, payload: any) => {
+			if (type === "token") {
 				task.tokensUsed++;
 				tokenCount++;
 				if (tokenCount % 20 === 0) {
 					this.emitUpdate();
 				}
-			},
-		})
-			.then((result) => {
+			} else if (type === "completed") {
 				if (task.status === "running") {
 					task.status = "completed";
-					task.result = result;
+					task.result = payload;
 					this.emitUpdate();
 				}
 				if (parentContext) {
 					const msg = `[Task Completed] Subagent ${id} completed`;
 					agentEventBus.emit("wakeup", msg);
 				}
-			})
-			.catch((error) => {
+				childProcess.kill();
+			} else if (type === "error") {
 				if (task.status === "running") {
 					task.status = "failed";
-					task.error = error instanceof Error ? error.message : String(error);
-					debug.log("agent", `Subagent ${id} failed:`, error);
+					task.error = payload;
+					debug.log("agent", `Subagent ${id} failed:`, payload);
 					this.emitUpdate();
 				}
 				if (parentContext) {
-					const msg = `[Task Completed] Subagent ${id} failed: ${error instanceof Error ? error.message : String(error)}`;
+					const msg = `[Task Completed] Subagent ${id} failed: ${payload}`;
 					agentEventBus.emit("wakeup", msg);
 				}
-			});
+				childProcess.kill();
+			}
+		};
+
+		childProcess.on("message", (msg: any) => {
+			if (msg.type?.endsWith("_chunk")) {
+				const { complete, payload } = receiver.receive(msg);
+				if (complete) {
+					const baseType = msg.type.replace("_chunk", "");
+					handleMessage(baseType, payload);
+				}
+			} else {
+				handleMessage(msg.type, msg.payload);
+			}
+		});
+
+		childProcess.on("error", (error) => {
+			if (task.status === "running") {
+				task.status = "failed";
+				task.error = error.message;
+				this.emitUpdate();
+				if (parentContext) {
+					agentEventBus.emit(
+						"wakeup",
+						`[Task Completed] Subagent ${id} failed: ${error.message}`,
+					);
+				}
+			}
+		});
+
+		childProcess.on("exit", (code) => {
+			if (task.status === "running") {
+				task.status = "failed";
+				task.error = `Process exited with code ${code}`;
+				this.emitUpdate();
+				if (parentContext) {
+					agentEventBus.emit(
+						"wakeup",
+						`[Task Completed] Subagent ${id} failed: exited with code ${code}`,
+					);
+				}
+			}
+		});
+
+		childProcess.send({ type: "start", payload: { prompt, workingDir } });
 
 		return id;
 	}
 
-	public listSubagents(): Omit<SubagentTask, "abortController">[] {
-		return Array.from(this.tasks.values()).map(
-			({ abortController, ...rest }) => rest,
-		);
+	public listSubagents(): Omit<SubagentTask, "process">[] {
+		return Array.from(this.tasks.values()).map(({ process, ...rest }) => rest);
 	}
 
-	public getSubagent(
-		id: string,
-	): Omit<SubagentTask, "abortController"> | undefined {
+	public getSubagent(id: string): Omit<SubagentTask, "process"> | undefined {
 		const task = this.tasks.get(id);
 		if (!task) return undefined;
-		const { abortController, ...rest } = task;
+		const { process, ...rest } = task;
 		return rest;
 	}
 
 	public killSubagent(id: string): boolean {
 		const task = this.tasks.get(id);
 		if (task && task.status === "running") {
-			task.abortController.abort();
+			if (task.process) {
+				task.process.kill();
+			}
 			task.status = "killed";
 			this.emitUpdate();
 			return true;
@@ -141,17 +181,14 @@ export class SwarmManager extends EventEmitter {
 		if (task.status !== "running") {
 			return { success: false, status: task.status, error: "not_running" };
 		}
-		if (task.context) {
-			task.context.messages.push({
-				role: "user",
-				content: `[Message from Parent]: ${message}`,
+		if (task.process) {
+			task.process.send({
+				type: "message",
+				payload: `[Message from Parent]: ${message}`,
 			});
-			if (task.context.isSleeping) {
-				agentEventBus.emit("wakeup", `Message received for subagent ${id}`);
-			}
 			return { success: true };
 		}
-		return { success: false, error: "no_context" };
+		return { success: false, error: "no_process" };
 	}
 
 	public exportState(): any {
@@ -181,7 +218,6 @@ export class SwarmManager extends EventEmitter {
 				...(taskData as any),
 				status,
 				createdAt: new Date((taskData as any).createdAt),
-				abortController: new AbortController(),
 			} as SubagentTask);
 		}
 		this.emitUpdate();

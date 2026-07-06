@@ -100,6 +100,8 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 	const [showThinking, setShowThinking] = useState(false);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [showDashboard, setShowDashboard] = useState(false);
+	const [showSessionList, setShowSessionList] = useState(false);
+	const [savedSessions, setSavedSessions] = useState<any[]>([]);
 	const [pendingQuestion, setPendingQuestion] = useState<{
 		questions: QuestionData[];
 		resolve: (answers: string[]) => void;
@@ -167,6 +169,10 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 		setShowCommandPalette,
 		showDashboard,
 		setShowDashboard,
+		showSessionList,
+		setShowSessionList,
+		savedSessions,
+		setSavedSessions,
 		pendingQuestion,
 		setPendingQuestion,
 		pendingPermission,

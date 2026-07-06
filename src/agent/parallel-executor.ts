@@ -116,7 +116,7 @@ async function executeToolCall(
 
 	const startTime = Date.now();
 	let result = await executeTool(toolName, args, toolContext);
-	
+
 	if (result && !result.success && selfHealer) {
 		result = await selfHealer.wrapToolFailure(toolName, args, result);
 	}

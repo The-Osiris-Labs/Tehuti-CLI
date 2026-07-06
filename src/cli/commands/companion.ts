@@ -12,7 +12,7 @@ export function companionCommand(): Command {
 			try {
 				await client.connect();
 				consola.success("Connected to Tehuti companion daemon.\n");
-				
+
 				client.onMessage((data: any) => {
 					if (typeof data === "string") {
 						process.stdout.write(data + "\n");
@@ -20,11 +20,11 @@ export function companionCommand(): Command {
 						process.stdout.write(JSON.stringify(data) + "\n");
 					}
 				});
-				
+
 				process.stdin.on("data", (data) => {
 					client.send(data.toString());
 				});
-				
+
 				// Handle exit
 				process.on("SIGINT", () => {
 					client.disconnect();

@@ -1,12 +1,12 @@
+import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import * as path from "node:path";
 import { Command } from "commander";
 import { consola } from "consola";
-import { spawn } from "node:child_process";
-import * as path from "node:path";
-import * as net from "node:net";
-import { TehutiDaemonServer } from "../../daemon/server.js";
-import { TehutiDaemonClient, SOCKET_PATH } from "../../daemon/client.js";
+import { SOCKET_PATH, TehutiDaemonClient } from "../../daemon/client.js";
 import { installLaunchAgent } from "../../daemon/launch-agent.js";
-import * as fs from "node:fs";
+import { TehutiDaemonServer } from "../../daemon/server.js";
 
 export function daemonCommand(): Command {
 	const daemon = new Command("daemon").description(
@@ -22,7 +22,7 @@ export function daemonCommand(): Command {
 				try {
 					const client = new TehutiDaemonClient();
 					await client.connect();
-					
+
 					let responded = false;
 					client.onMessage((msg: any) => {
 						if (msg.type === "pong") {
@@ -32,20 +32,26 @@ export function daemonCommand(): Command {
 							process.exit(1);
 						}
 					});
-					
+
 					client.send({ type: "ping" });
-					
+
 					setTimeout(() => {
 						if (!responded) {
-							consola.warn("Daemon socket exists and connects, but daemon is unresponsive (zombie).");
-							consola.info("Please run `tehuti daemon stop` or manually kill the process and remove the socket file.");
+							consola.warn(
+								"Daemon socket exists and connects, but daemon is unresponsive (zombie).",
+							);
+							consola.info(
+								"Please run `tehuti daemon stop` or manually kill the process and remove the socket file.",
+							);
 							client.disconnect();
 							process.exit(1);
 						}
 					}, 2000);
 				} catch (e) {
 					// Socket exists but connection failed (e.g. ECONNREFUSED) -> dead socket
-					try { fs.unlinkSync(SOCKET_PATH); } catch (err) {}
+					try {
+						fs.unlinkSync(SOCKET_PATH);
+					} catch (err) {}
 					startDaemonProcess();
 				}
 			} else {
@@ -117,20 +123,20 @@ export function daemonCommand(): Command {
 			try {
 				installLaunchAgent();
 				consola.success("Daemon launch agent installed.");
-				consola.info("Run `launchctl load ~/Library/LaunchAgents/com.tehuti.daemon.plist` to start it now, or it will start on next login.");
+				consola.info(
+					"Run `launchctl load ~/Library/LaunchAgents/com.tehuti.daemon.plist` to start it now, or it will start on next login.",
+				);
 			} catch (e: any) {
 				consola.error(`Failed to install launch agent: ${e.message}`);
 				process.exit(1);
 			}
 		});
 
-	daemon
-		.command("_run_server", { hidden: true })
-		.action(() => {
-			const server = new TehutiDaemonServer();
-			server.start();
-			consola.info(`Daemon server started on ${SOCKET_PATH}`);
-		});
+	daemon.command("_run_server", { hidden: true }).action(() => {
+		const server = new TehutiDaemonServer();
+		server.start();
+		consola.info(`Daemon server started on ${SOCKET_PATH}`);
+	});
 
 	return daemon;
 }

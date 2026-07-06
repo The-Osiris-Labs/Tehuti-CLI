@@ -142,7 +142,9 @@ export function setUserPreference(key: string, value: string): void {
 /**
  * Retrieves the project profile from the database.
  */
-export async function getProjectProfile(projectPath: string): Promise<ProjectProfile | null> {
+export async function getProjectProfile(
+	projectPath: string,
+): Promise<ProjectProfile | null> {
 	try {
 		const stmt = db.prepare(
 			"SELECT * FROM project_profiles WHERE project_path = ?",
@@ -181,7 +183,9 @@ export async function getUserPreference(key: string): Promise<string | null> {
 /**
  * Generates a prompt block to inject into the system prompt based on learned personality/preferences.
  */
-export async function getPersonalityPromptBlock(projectPath: string): Promise<string> {
+export async function getPersonalityPromptBlock(
+	projectPath: string,
+): Promise<string> {
 	const profile = await getProjectProfile(projectPath);
 	const globalGuidelines = await getUserPreference("global_guidelines");
 

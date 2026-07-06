@@ -26,6 +26,45 @@ const _MAX_CONTEXT_TOKENS = 100000;
 const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
+export function stripReasoningTokens(content: string): string {
+	if (!content.includes("<think>")) return content;
+
+	let result = "";
+	let depth = 0;
+	let i = 0;
+	let lastCopiedIndex = 0;
+
+	while (i < content.length) {
+		if (content.startsWith("<think>", i)) {
+			if (depth === 0) {
+				result += content.substring(lastCopiedIndex, i);
+			}
+			depth++;
+			i += 7;
+			lastCopiedIndex = i;
+		} else if (depth > 0 && content.startsWith("</think>", i)) {
+			depth--;
+			if (depth === 0) {
+				lastCopiedIndex = i + 8;
+			}
+			i += 8;
+		} else {
+			const nextTag = content.indexOf("<", i + 1);
+			if (nextTag === -1) {
+				i = content.length;
+			} else {
+				i = nextTag;
+			}
+		}
+	}
+
+	if (depth === 0 && lastCopiedIndex < content.length) {
+		result += content.substring(lastCopiedIndex);
+	}
+
+	return result;
+}
+
 export function estimateTokens(messages: StandardMessage[]): number {
 	return tiktokenEstimateTokens(messages);
 }
@@ -257,10 +296,14 @@ export async function buildSystemPrompt(
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
 		: "";
 
-	const systemMemory = ctx.systemMemoryPromise ? await ctx.systemMemoryPromise : "";
+	const systemMemory = ctx.systemMemoryPromise
+		? await ctx.systemMemoryPromise
+		: "";
 	const systemMemorySection = systemMemory ? `${systemMemory}\n` : "";
 
-	const personalitySection = ctx.personalityBlockPromise ? await ctx.personalityBlockPromise : "";
+	const personalitySection = ctx.personalityBlockPromise
+		? await ctx.personalityBlockPromise
+		: "";
 	const personalityBlock = personalitySection
 		? `\n## Personality & Preferences\n${personalitySection}\n`
 		: "";
@@ -414,13 +457,13 @@ export function addUserMessage(ctx: AgentContext, content: string): void {
 export function addAssistantMessage(ctx: AgentContext, content: string): void {
 	const msg: StandardMessage = {
 		role: "assistant",
-		content,
+		content: stripReasoningTokens(content),
 		timestamp: Date.now(),
 		internalId: randomUUID(),
 	};
 	ctx.messages.push(msg);
 	ctx.appendOnlyLog.push(msg);
-	debug.log("context", `Added assistant message (${content.length} chars)`);
+	debug.log("context", `Added assistant message (${msg.content.length} chars)`);
 }
 
 export function addAssistantMessageWithTools(
@@ -430,7 +473,7 @@ export function addAssistantMessageWithTools(
 ): void {
 	const message: StandardMessage = {
 		role: "assistant",
-		content,
+		content: stripReasoningTokens(content),
 		timestamp: Date.now(),
 		internalId: randomUUID(),
 	};

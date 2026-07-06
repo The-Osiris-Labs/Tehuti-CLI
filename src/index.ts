@@ -9,6 +9,12 @@ import {
 import { showUpdateNotification } from "./utils/update-checker.js";
 
 async function main() {
+	if (process.env.SWARM_RUNNER === "1") {
+		const { startRunner } = await import("./agent/swarm/runner-process.js");
+		startRunner();
+		return;
+	}
+
 	setupErrorHandlers(
 		Boolean(process.argv.includes("--debug") || process.env.TEHUTI_DEBUG),
 	);

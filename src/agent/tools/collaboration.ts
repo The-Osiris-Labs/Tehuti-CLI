@@ -34,7 +34,8 @@ export const configureCollaborationTool = createTool({
 		try {
 			agentCtx.config.collaboration = {
 				enabled,
-				sessionId: sessionId ?? agentCtx.config.collaboration?.sessionId ?? "default",
+				sessionId:
+					sessionId ?? agentCtx.config.collaboration?.sessionId ?? "default",
 				peers: peers,
 				realTime,
 			};
