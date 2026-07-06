@@ -38,6 +38,7 @@ export interface UseChatInputProps {
 	saveHistory: (history: string[]) => void;
 	showConfigEditor?: boolean;
 	pendingQuestion?: any;
+	showSessionList?: boolean;
 }
 
 export function useChatInput(props: UseChatInputProps) {
@@ -76,12 +77,20 @@ export function useChatInput(props: UseChatInputProps) {
 		saveHistory,
 		showConfigEditor,
 		pendingQuestion,
+		showSessionList,
 	} = props;
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
+	const showConfigEditorRef = React.useRef(showConfigEditor);
+	const pendingQuestionRef = React.useRef(pendingQuestion);
+	const showSessionListRef = React.useRef(showSessionList);
+
 	React.useEffect(() => {
 		showCommandPaletteRef.current = showCommandPalette;
-	}, [showCommandPalette]);
+		showConfigEditorRef.current = showConfigEditor;
+		pendingQuestionRef.current = pendingQuestion;
+		showSessionListRef.current = showSessionList;
+	}, [showCommandPalette, showConfigEditor, pendingQuestion, showSessionList]);
 
 	useInput((k, key) => {
 		if (k?.startsWith("\x1b[<64;")) {
@@ -103,7 +112,12 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		if (showCommandPaletteRef.current || showConfigEditor || pendingQuestion) {
+		if (
+			showCommandPaletteRef.current ||
+			showConfigEditorRef.current ||
+			pendingQuestionRef.current ||
+			showSessionListRef.current
+		) {
 			return;
 		}
 
