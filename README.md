@@ -6,7 +6,7 @@
 
 ---
 
-Tehuti is a specialized Node.js 20+ terminal agent designed to integrate directly into your local development workflow. It runs natively in your terminal, interfacing with OpenAI-compatible `/chat/completions` APIs to execute autonomous coding tasks, orchestrate multi-agent swarms, and securely manage system interactions.
+Tehuti is a specialized Node.js 20+ terminal agent designed to integrate directly into your local development workflow. It runs natively in your terminal, interfacing with OpenAI-compatible APIs to execute autonomous coding tasks, orchestrate multi-agent swarms, and securely manage system interactions.
 
 Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI combines a meticulously crafted Egyptian-themed Terminal User Interface (TUI) with a highly concurrent execution engine.
 
@@ -14,10 +14,21 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ## 🌟 Core Architecture
 
-- **Interactive Terminal UI:** Built on React 19 and Ink 6, featuring a virtual sliding viewport, mouse-aware command palettes, an Interactive Sessions UI with virtual scrolling, Vim keybindings (j/k/d/r), and mouse hover support, alongside real-time ANSI token streaming.
-- **High-Performance Networking:** Utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3. It features `undici` connection pooling to establish direct, low-latency communication with LLM providers while seamlessly handling automated network backpressure and QUIC fallback retries.
-- **Native Semantic Engine:** Leverages a native Rust `.node` binary (`tehuti-core`) to bypass JavaScript overhead, enabling ultra-fast, parallel semantic `grep` operations directly against the filesystem.
-- **Context & Memory Graph:** Replaces naive array slicing with deterministic `semantic compaction`. Tehuti maps conversation histories into an asynchronous SQLite graph, isolating long-term insights and dynamically compressing context to stay rigorously within model token limits.
+- **Interactive Terminal UI:** Built on React 19 and Ink 6, featuring a virtual sliding viewport, mouse-aware command palettes, an Interactive Sessions UI with virtual scrolling, Vim keybindings, and mouse hover support, alongside real-time ANSI token streaming.
+- **Global TUI Input Isolation:** A native event manager completely isolates terminal input, guaranteeing zero "input bleed" when navigating dynamic overlays, command palettes, or virtual scrolls.
+- **Persistent Companion Daemon:** Tehuti operates via a persistent background daemon (`tehutid.sock`). This enables long-running cognitive processes, background garbage collection, and seamless re-attachment to ongoing sessions across reboots.
+- **Omnichannel Presence:** A native connector manager equipped with jittered exponential backoffs allows Tehuti to reliably extend its presence beyond the terminal, bridging sessions to Slack, Discord, Telegram, and WhatsApp.
+- **Isolated Swarm Execution:** Swarm orchestrations are natively offloaded from the Node.js event loop into isolated child processes (`child_process.fork()`), utilizing IPC chunking to ensure zero UI stuttering during massive multi-agent parallel generation.
+- **Native Semantic Engine:** Leverages a native Rust `.node` binary to bypass JavaScript overhead, enabling ultra-fast, parallel semantic `grep` operations directly against the filesystem.
+
+---
+
+## 🧠 Cognitive Systems
+
+- **Self-Healing Worktrees:** Tehuti autonomously manages risk by isolating destructive tasks into ephemeral Git branches (`tehuti-shadow-<epoch>`). Code is iteratively validated and tested within this speculative worktree before safely merging back into your active branch.
+- **Deep Temporal Awareness:** Tehuti intrinsically understands time. Through rolling background garbage collection, persistent ISO 8601 task tracking, and systemic chronological decay logic within its memory graph, the agent natively understands the sequence of codebase edits and conversation pacing.
+- **Personality Learning Engine:** Backed by an asynchronous SQLite graph, Tehuti passively learns your coding style and preferences from Git diffs over time, dynamically adapting its responses to align with your personal engineering standards.
+- **Backlog & Planner Persistence:** Natively writes and organizes historical implementation plans and JSON-backed task backlogs, rendering them chronologically via a beautifully branded, interactive Ink Checklist directly inside the chat UI.
 
 ---
 
@@ -26,8 +37,9 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 Security is treated as a foundational primitive. Tehuti does not blindly execute LLM tool requests.
 
 - **Identity-Based Access Control (IBAC):** All capabilities are gated by a strict IBAC layer. Read-only actions run dynamically in parallel, while destructive actions (writes, bash commands) pause execution to enforce explicit interactive prompts.
-- **JIT Ephemeral Tokens:** Destructive tasks can be granted single-use, argument-bound ephemeral tokens. This enables multi-step autonomous workflows without sacrificing security against payload substitution attacks.
-- **Deterministic MCP Namespacing:** Mitigates 64-character tool collision spoofing by automatically injecting MD5 hashes into truncated Model Context Protocol (MCP) bounds, ensuring untrusted external servers cannot hijack native system permissions.
+- **Hardened Docker Sandboxing:** Bash executions are heavily restricted. Staged calls drop all privileges (`--cap-drop=ALL`), prevent escalations, block network interfaces, and strictly mount workspaces as read-only by default.
+- **AST Rollbacks & Process Isolation:** All native LLM file edits instantly generate localized `.bak` rollback variants. Misbehaving hooks or infinite-looping child processes are aggressively neutralized via atomic process-group `SIGKILL` signals.
+- **JIT Ephemeral Tokens:** Destructive tasks can be granted single-use, argument-bound ephemeral tokens, enabling multi-step autonomous workflows without sacrificing security against payload substitution attacks.
 
 ---
 
@@ -38,11 +50,8 @@ Tehuti ships with **73 native built-in tools** designed for comprehensive reposi
 - **Filesystem & AST:** Read, write, manipulate directories, and parse native Abstract Syntax Trees (AST) using Tree-Sitter.
 - **Sandboxed Execution:** Securely execute bash commands to run tests, formatters, and builds.
 - **Git Integration:** Full programmatic access to read history, stage, commit, and manage branches.
-- **Web Intelligence:** Built-in web scraping, headless browser integration, and code-specific search tools.
-- **Multi-Agent Swarm Orchestration:** Tehuti can dynamically spawn background subagents via `delegate_task`, delegating concurrent tasks (like research or QA) while continuing main-thread execution. Bidirectional communication is fully supported.
-
-### Model Context Protocol (MCP) Support
-Tehuti is fully extensible via the open **Model Context Protocol (MCP)**. You can dynamically attach external capabilities via standard IO, HTTP, SSE, or WebSocket. Tehuti automatically reads, maps, and registers MCP tool schemas directly into the agent's inference loop.
+- **Multi-Agent Swarm Orchestration:** Tehuti dynamically spawns background subagents via `delegate_task`, delegating concurrent tasks (like research or QA) while continuing main-thread execution.
+- **Model Context Protocol (MCP):** Fully extensible via standard IO, HTTP, SSE, or WebSocket. Tehuti automatically reads, maps, and registers MCP tool schemas directly into the agent's inference loop.
 
 ---
 
@@ -65,9 +74,11 @@ npm run start -- init
 ```
 
 ### 3. Launch
-Drop into the interactive loop:
+Drop into the interactive loop or launch the background daemon:
 ```bash
-npm run start
+npm run start          # Start interactive mode
+tehuti daemon start    # Start the background daemon
+tehuti companion       # Connect to the background daemon
 ```
 *Pro tip: Type `/` in the chat to open the interactive command palette!*
 
@@ -76,7 +87,10 @@ npm run start
 ## 🛠️ Execution Modes
 
 ### Interactive Mode
-The default mode. Features deep workflow persistence, an Interactive Sessions UI (with virtual scrolling, Vim keybindings, and mouse support), expandable tool outputs, reasoning spinners, and full command palette support.
+The default mode. Features deep workflow persistence, an Interactive Sessions UI with fuzzy search, expandable tool outputs, reasoning spinners, and full command palette support.
+
+### Companion Mode
+Routes an interactive session through the persistent background daemon, allowing for asynchronous task completion and external connector integration.
 
 ### One-Shot & Scripting Mode
 Tehuti can be utilized as a standard UNIX utility for single-prompt automation.
