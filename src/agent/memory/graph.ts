@@ -202,6 +202,23 @@ export async function searchGraph(
 	return finalResults;
 }
 
+function formatRelativeTime(timestamp: number): string {
+	const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+	if (diffSeconds < 60) return `${diffSeconds} seconds ago`;
+	const diffMinutes = Math.floor(diffSeconds / 60);
+	if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+	const diffHours = Math.floor(diffMinutes / 60);
+	if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+	const diffDays = Math.floor(diffHours / 24);
+	if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+	const diffWeeks = Math.floor(diffDays / 7);
+	if (diffWeeks < 4) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
+	const diffMonths = Math.floor(diffDays / 30);
+	if (diffMonths < 12) return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
+	const diffYears = Math.floor(diffDays / 365);
+	return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
+}
+
 export async function getSystemPromptMemory(
 	cwd: string = process.cwd(),
 ): Promise<string> {
@@ -233,7 +250,9 @@ export async function getSystemPromptMemory(
 
 	let memoryStr = "\n## Long-Term Memory (Critical Insights)\n";
 	for (const node of criticalNodes) {
-		memoryStr += `- [${node.id}] ${node.content}\n`;
+		const ageTime = node.lastAccessed || node.timestamp || Date.now();
+		const ageStr = formatRelativeTime(ageTime);
+		memoryStr += `- [${node.id}] (Learned ${ageStr}) ${node.content}\n`;
 	}
 	return memoryStr;
 }
