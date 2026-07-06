@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { z } from "zod";
 import type { AgentContext } from "../context.js";
 import { type SubagentType, spawnSubagent } from "../subagents/manager.js";
@@ -79,7 +82,37 @@ const WAIT_FOR_EVENT_SCHEMA = z.object({
 		),
 });
 
-let currentTodos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"] = [];
+function getBacklogPath(): string {
+	return path.join(os.homedir(), ".config", "tehuti", "backlog.json");
+}
+
+function loadTodos(): z.infer<typeof TODO_WRITE_SCHEMA>["todos"] {
+	try {
+		const filePath = getBacklogPath();
+		if (fs.existsSync(filePath)) {
+			const data = fs.readFileSync(filePath, "utf-8");
+			return JSON.parse(data);
+		}
+	} catch (error) {
+		// Ignore errors
+	}
+	return [];
+}
+
+function saveTodos(todos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"]): void {
+	try {
+		const filePath = getBacklogPath();
+		const dirPath = path.dirname(filePath);
+		if (!fs.existsSync(dirPath)) {
+			fs.mkdirSync(dirPath, { recursive: true });
+		}
+		fs.writeFileSync(filePath, JSON.stringify(todos, null, 2), "utf-8");
+	} catch (error) {
+		// Ignore errors
+	}
+}
+
+let currentTodos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"] = loadTodos();
 let parentContext: AgentContext | null = null;
 let questionResolver:
 	| ((questions: QuestionData[]) => Promise<string[]>)
@@ -109,7 +142,7 @@ export function setQuestionResolver(
 }
 
 export function clearSystemState(): void {
-	currentTodos = [];
+	currentTodos = loadTodos();
 	parentContext = null;
 	questionResolver = null;
 }
@@ -131,6 +164,7 @@ async function writeTodos(
 	}
 
 	currentTodos = args.todos;
+	saveTodos(currentTodos);
 
 	const statusEmoji = {
 		pending: "⏳",
@@ -388,4 +422,5 @@ export function getTodos() {
 
 export function clearTodos() {
 	currentTodos = [];
+	saveTodos(currentTodos);
 }
