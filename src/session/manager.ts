@@ -387,6 +387,17 @@ class SessionManager {
 		}
 		const sessionDir = path.join(this.sessionsDir, id);
 		await fs.remove(sessionDir);
+
+		try {
+			const { default: db } = await import("../agent/memory/db.js");
+			const stmt = db.prepare(
+				"DELETE FROM messaging_sessions WHERE tehuti_session_id = ?",
+			);
+			stmt.run(id);
+		} catch (error) {
+			consola.error(`Failed to delete session from database: ${error}`);
+		}
+
 		debug.log("session", `Deleted session: ${id}`);
 	}
 
