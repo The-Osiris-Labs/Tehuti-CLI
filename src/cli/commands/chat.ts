@@ -5,8 +5,6 @@ import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
 import clipboardy from "clipboardy";
 import { Command } from "commander";
-import { registerDaemonCommand } from "./daemon.js";
-import { registerCompanionCommand } from "./companion.js";
 import { consola } from "consola";
 import { Box, render, Text, useApp, useStdout } from "ink";
 import Spinner from "ink-spinner";
@@ -88,7 +86,6 @@ import {
 	formatHelpOutput,
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
-import { CompanionStatusBar } from "../ui/components/CompanionStatusBar.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { HieroglyphSpinner } from "../ui/components/HieroglyphSpinner.js";
 import { PermissionPrompt } from "../ui/components/PermissionPrompt.js";
@@ -101,8 +98,8 @@ import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
-import { daemonCommand } from ./daemon.js;
-import { companionCommand } from ./companion.js;
+import { companionCommand } from "./companion.js";
+import { daemonCommand } from "./daemon.js";
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
@@ -512,7 +509,6 @@ function ChatUI({
 	mouseEnabled?: boolean;
 	onToggleMouse?: () => void;
 	companionMode?: boolean;
-	companionMode?: boolean;
 }) {
 	const {
 		messages,
@@ -753,6 +749,7 @@ function ChatUI({
 			process.cwd(),
 			getActiveConfig(),
 			diffPreview,
+			companionMode,
 		);
 		ctxRef.current = ctx;
 		return ctx;
@@ -912,12 +909,13 @@ function ChatUI({
 	messagesRef.current = messages;
 
 	useEffect(() => {
-		if (!needsUiCompaction(messages as UiMessage[])) return;
+		// Skip compaction during active streaming to avoid visual flicker
+		if (loading || !needsUiCompaction(messages as UiMessage[])) return;
 		setMessages((current) => {
-			if (!needsUiCompaction(current as UiMessage[])) return current;
+			if (loading || !needsUiCompaction(current as UiMessage[])) return current;
 			return compactMessagesForUi(current as UiMessage[]) as typeof current;
 		});
-	}, [messages, setMessages]);
+	}, [messages, loading, setMessages]);
 
 	// Cleanup batch timer on unmount
 	useEffect(() => {
@@ -946,13 +944,36 @@ function ChatUI({
 		);
 
 		if (streamingMsgIdRef.current !== null) {
-			setMessages((m) =>
-				m.map((msg) =>
-					msg.id === streamingMsgIdRef.current
-						? { ...msg, content: streamingContentRef.current }
-						: msg,
-				),
-			);
+			setMessages((m) => {
+				const updated = [];
+				for (let i = 0; i < m.length; i++) {
+					const msg = m[i];
+					if (msg.id !== streamingMsgIdRef.current) {
+						updated.push(msg);
+						continue;
+					}
+					const freshBlocks = msg.blocks ? msg.blocks.slice() : [];
+					const lastBlock = freshBlocks[freshBlocks.length - 1];
+					if (lastBlock && lastBlock.type === "text") {
+						freshBlocks[freshBlocks.length - 1] = {
+							...lastBlock,
+							content: truncateMiddle(
+								lastBlock.content + tokens,
+								UI_MAX_TEXT_CHARS,
+								"truncated for UI memory",
+							),
+						};
+					} else {
+						freshBlocks.push({ type: "text", content: tokens });
+					}
+					updated.push({
+						...msg,
+						content: streamingContentRef.current,
+						blocks: freshBlocks,
+					});
+				}
+				return updated;
+			});
 		}
 	}, [setMessages]);
 
@@ -1373,7 +1394,7 @@ function ChatUI({
 							if (m.tool_calls && m.tool_calls.length > 0) {
 								for (const tc of m.tool_calls) {
 									const toolMsg = data.messages.find(
-										(msg) => msg.role === "tool" && msg.tool_call_id === tc.id
+										(msg) => msg.role === "tool" && msg.tool_call_id === tc.id,
 									);
 									let toolResultStr: string | null = null;
 									if (toolMsg) {
@@ -1406,7 +1427,6 @@ function ChatUI({
 								}
 							}
 						}
-
 						loadedMsgs.push(uiMsg);
 					}
 					setMessages(loadedMsgs);
@@ -1417,7 +1437,6 @@ function ChatUI({
 					setShowThinking(false);
 					costTracker.reset();
 					setSessionCost(0);
-
 					ctxRef.current = await createAgentContext(
 						process.cwd(),
 						{
@@ -1441,6 +1460,7 @@ function ChatUI({
 							},
 						},
 						diffPreview,
+						companionMode,
 					);
 					ctxRef.current.config.provider = resolvedState.provider;
 					if (resolvedState.baseUrl) {
@@ -1464,15 +1484,20 @@ function ChatUI({
 					ctxRef.current.messages = data.messages;
 					// Seed context with the loaded historical messages
 					ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
-					ctxRef.current.appendOnlyLog = JSON.parse(JSON.stringify(data.appendOnlyLog || data.messages));
-					
+					ctxRef.current.appendOnlyLog = JSON.parse(
+						JSON.stringify(data.appendOnlyLog || data.messages),
+					);
+
 					if (data.context) {
-						ctxRef.current.workingDir = data.context.workingDir || process.cwd();
+						ctxRef.current.workingDir =
+							data.context.workingDir || process.cwd();
 						ctxRef.current.metadata = {
 							...ctxRef.current.metadata,
-							...data.context.metadata
+							...data.context.metadata,
 						};
-						ctxRef.current.readFilesThisSession = new Set(data.context.readFilesThisSession || []);
+						ctxRef.current.readFilesThisSession = new Set(
+							data.context.readFilesThisSession || [],
+						);
 					}
 
 					if (data.metadata.model) {
@@ -1695,13 +1720,52 @@ function ChatUI({
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
+	// Lightweight line estimate that avoids the O(N) full markdown render
+	// that computeMessageLines performs (it calls renderMarkdownToAnsi on every text block).
+	// We only need this for scroll math, so an approximation is sufficient and prevents
+	// the UI from hanging when a long final response is rendered.
 	const totalMessageLines = useMemo(() => {
-		let lines = messages.reduce(
-			(acc, msg) => acc + computeMessageLines(msg, contentMaxWidth),
-			0,
-		);
+		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
+		let lines = 0;
+		for (const msg of messages) {
+			lines += 1; // Role header
+			const blocks = msg.blocks;
+			if (blocks && blocks.length > 0) {
+				for (const block of blocks) {
+					if (block.type === "text") {
+						const text =
+							typeof block.content === "string"
+								? block.content
+								: String(block.content || "");
+						const newlines = (text.match(/\n/g) || []).length;
+						lines +=
+							Math.max(1, Math.ceil(text.length / avgCharsPerLine)) + newlines;
+					} else if (block.type === "reasoning") {
+						const text =
+							typeof block.content === "string"
+								? block.content
+								: String(block.content || "");
+						lines +=
+							2 +
+							Math.max(
+								1,
+								Math.ceil(text.length / Math.max(10, contentMaxWidth - 5)),
+							);
+					} else if (block.type === "tool") {
+						// Conservative estimate for tool outputs (preview mode is 4 lines)
+						lines += 8;
+					}
+				}
+			} else if (typeof msg.content === "string") {
+				const text = msg.content;
+				const newlines = (text.match(/\n/g) || []).length;
+				lines +=
+					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) + newlines;
+			}
+			lines += 1; // Margin bottom
+		}
 		if (showWelcome) {
-			lines += messages.length > 0 ? 3 : 12; // Approximate height of the TehutiHeader (compact or full)
+			lines += messages.length > 0 ? 3 : 12;
 		}
 		return lines;
 	}, [messages, contentMaxWidth, showWelcome]);
@@ -1795,6 +1859,7 @@ function ChatUI({
 									},
 								},
 								diffPreview,
+								companionMode,
 							);
 							ctxRef.current.messages = JSON.parse(
 								JSON.stringify(data.messages),
@@ -1911,22 +1976,54 @@ function ChatUI({
 		setPendingQuestion(null);
 	}, [pendingQuestion, setPendingQuestion]);
 
-	// For performance, we only render the messages that intersect the viewport plus a buffer
-	// (we rely on Ink's overflow="hidden" + negative margin for the actual virtualization slice)
+	// For performance, we only render the messages that intersect the viewport plus a buffer.
+	// The line estimate is intentionally cheap (no markdown rendering) to avoid hanging
+	// the UI when long final responses are streamed.
 	const visibleMessages = useMemo(() => {
-		const linesNeeded = chatViewportHeight + scrollOffset + 20; // 20 lines buffer
+		const linesNeeded = chatViewportHeight + scrollOffset + 20;
+		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
+		const estimateMsgLines = (msg: any) => {
+			let l = 1;
+			const blocks = msg.blocks;
+			if (blocks && blocks.length > 0) {
+				for (const block of blocks) {
+					if (block.type === "text") {
+						const text =
+							typeof block.content === "string"
+								? block.content
+								: String(block.content || "");
+						l +=
+							Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
+							(text.match(/\n/g) || []).length;
+					} else if (block.type === "reasoning") {
+						l +=
+							2 +
+							Math.max(
+								1,
+								Math.ceil(
+									String(block.content || "").length /
+										Math.max(10, contentMaxWidth - 5),
+								),
+							);
+					} else if (block.type === "tool") {
+						l += 8;
+					}
+				}
+			} else if (typeof msg.content === "string") {
+				const text = msg.content;
+				l +=
+					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
+					(text.match(/\n/g) || []).length;
+			}
+			return l + 1;
+		};
 		let accumulatedLines = 0;
 		let sliceIndex = messages.length;
-
 		for (let i = messages.length - 1; i >= 0; i--) {
-			accumulatedLines += computeMessageLines(messages[i], contentMaxWidth);
+			accumulatedLines += estimateMsgLines(messages[i]);
 			sliceIndex = i;
-			if (accumulatedLines >= linesNeeded) {
-				break;
-			}
+			if (accumulatedLines >= linesNeeded) break;
 		}
-
-		// Always render at least 50 messages as a baseline
 		return messages.slice(
 			Math.min(sliceIndex, Math.max(0, messages.length - 50)),
 		);
@@ -2060,7 +2157,9 @@ function ChatUI({
 
 			if (cmd === "/copy") {
 				// Find the last assistant message
-				const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant");
+				const lastAssistantMsg = [...messages]
+					.reverse()
+					.find((m) => m.role === "assistant");
 				if (lastAssistantMsg) {
 					try {
 						clipboardy.writeSync(lastAssistantMsg.content);
@@ -2069,7 +2168,8 @@ function ChatUI({
 							{
 								id: msgIdRef.current++,
 								role: "system",
-								content: "Copied the last assistant response to your clipboard! 📋",
+								content:
+									"Copied the last assistant response to your clipboard! 📋",
 							},
 						]);
 					} catch (err) {
@@ -2334,6 +2434,7 @@ function ChatUI({
 						},
 					},
 					diffPreview,
+					companionMode,
 				);
 			}
 
@@ -2366,27 +2467,6 @@ function ChatUI({
 					}
 					response += t;
 					batchToken(t);
-
-					setMessages((m) =>
-						m.map((msg) => {
-							if (msg.id !== assistantMsgId) return msg;
-							const blocks = msg.blocks ? [...msg.blocks] : [];
-							const lastBlock = blocks[blocks.length - 1];
-							if (lastBlock && lastBlock.type === "text") {
-								blocks[blocks.length - 1] = {
-									...lastBlock,
-									content: truncateMiddle(
-										lastBlock.content + t,
-										UI_MAX_TEXT_CHARS,
-										"truncated for UI memory",
-									),
-								};
-							} else {
-								blocks.push({ type: "text", content: t });
-							}
-							return { ...msg, blocks };
-						}),
-					);
 				},
 				onToolCall: (id, name, args) => {
 					if (
@@ -2519,8 +2599,13 @@ function ChatUI({
 			}
 			flushBatchedTokens();
 
+			// Prefer the streaming accumulator we already wrote into the message.
+			// result.content is the API's final string; response is our local
+			// accumulator. If either is missing, fall back to what is already
+			// on the message so we never blank out a long final response.
+			const streamedContent = streamingContentRef.current;
 			const finalContent = truncateMiddle(
-				result.content || response,
+				streamedContent || result?.content || response || "",
 				UI_MAX_TEXT_CHARS,
 				"truncated for UI memory",
 			);
@@ -2555,13 +2640,24 @@ function ChatUI({
 						blocks = blocks.map((block) =>
 							compactBlockForUi(block as UiBlock, true),
 						);
+						// Preserve tool call results. The blocks array holds the
+						// canonical tool results; mirror them into the top-level
+						// toolCalls for backward compatibility with older render
+						// paths. Wiping them to null previously caused the agentic
+						// context to appear empty in the UI for long sessions.
+						const toolCallsWithResults = toolCallsInfo.map((toolCall) => {
+							const matchingBlock = blocks.find(
+								(b) => b.type === "tool" && b.id === toolCall.id,
+							);
+							if (matchingBlock && matchingBlock.type === "tool") {
+								return { ...toolCall, result: matchingBlock.result };
+							}
+							return toolCall;
+						});
 						return {
 							...msg,
 							content: finalContent || `Task completed.`,
-							toolCalls: toolCallsInfo.map((toolCall) => ({
-								...toolCall,
-								result: null,
-							})),
+							toolCalls: toolCallsWithResults,
 							blocks,
 						};
 					}),
@@ -3424,7 +3520,22 @@ function ChatUI({
 					visible: showCommandPalette,
 					initialQuery: commandPaletteInitialQuery,
 				}),
-				companionMode ? React.createElement(CompanionStatusBar, null) : null
+				companionMode
+					? React.createElement(
+							Box,
+							{
+								paddingX: 1,
+								borderStyle: "single",
+								borderColor: "gray",
+								marginTop: 1,
+							},
+							React.createElement(
+								Text,
+								{ color: "gray", dimColor: true },
+								"𓋹 Companion mode active",
+							),
+						)
+					: null,
 			);
 }
 
@@ -3445,7 +3556,6 @@ function App({
 	onExit: () => void;
 	mouseEnabled?: boolean;
 	onToggleMouse?: () => void;
-	companionMode?: boolean;
 	companionMode?: boolean;
 }) {
 	const initialMouseEnabled =
@@ -3474,8 +3584,6 @@ function App({
 
 export function createProgram(): Command {
 	const program = new Command();
-	registerDaemonCommand(program);
-	registerCompanionCommand(program);
 
 	program
 		.name("tehuti")
@@ -3498,6 +3606,7 @@ export function createProgram(): Command {
 		.option("--no-mcp", "Disable MCP")
 		.option("--reset-key", "Reset API key and re-prompt")
 		.option("-c, --continue", "Continue the previous session automatically")
+		.option("--companion", "Start in companion mode", false)
 		.argument("[prompt]", "One-shot prompt")
 		.action(async (prompt?: string, options?: ChatCommandOptions) => {
 			const opts = options ?? {};
@@ -3556,7 +3665,7 @@ export function createProgram(): Command {
 											: chalk.red("✗");
 
 										const formattedResult = formatToolResult(
-											result,
+											result ?? "",
 											outputManager?.getTerminalWidth?.() || 80,
 										);
 
@@ -3631,6 +3740,7 @@ export function createProgram(): Command {
 						diffPreview,
 						cfg,
 						continueSession: opts.continue,
+						companionMode: !!opts.companion,
 						onExit: async () => {
 							await mcpManager.disconnectAll();
 						},
@@ -3788,9 +3898,6 @@ export function createProgram(): Command {
 				),
 			);
 		});
-
-	program.addCommand(daemonCommand());
-	program.addCommand(companionCommand());
 
 	program.addCommand(daemonCommand());
 	program.addCommand(companionCommand());

@@ -173,7 +173,10 @@ export class SwarmManager extends EventEmitter {
 	public importState(state: any): void {
 		if (!state) return;
 		for (const [id, taskData] of Object.entries(state)) {
-			const status = (taskData as any).status === "running" ? "killed" : (taskData as any).status;
+			const status =
+				(taskData as any).status === "running"
+					? "killed"
+					: (taskData as any).status;
 			this.tasks.set(id, {
 				...(taskData as any),
 				status,

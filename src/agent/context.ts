@@ -175,8 +175,10 @@ export interface AgentContext {
 	appendOnlyLog: StandardMessage[];
 	config: TehutiConfig;
 	projectInstructions?: string;
-	systemMemory?: string;
+	systemMemoryPromise?: Promise<string>;
 	diffPreview?: DiffPreviewOptions;
+	companionMode?: boolean;
+	personalityBlockPromise?: Promise<string>;
 	readFilesThisSession: Set<string>;
 	isSleeping?: boolean;
 	metadata: {
@@ -212,12 +214,14 @@ export async function createAgentContext(
 	cwd: string,
 	config: TehutiConfig,
 	diffPreview?: DiffPreviewOptions,
+	companionMode?: boolean,
 ): Promise<AgentContext> {
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
-	const systemMemory = await getSystemPromptMemory(resolvedCwd);
-
-	await initMemory();
+	const systemMemoryPromise = getSystemPromptMemory(resolvedCwd);
+	const personalityBlockPromise = initMemory().then(() =>
+		getPersonalityPromptBlock(resolvedCwd),
+	);
 
 	return {
 		cwd: resolvedCwd,
@@ -226,8 +230,10 @@ export async function createAgentContext(
 		appendOnlyLog: [],
 		config,
 		projectInstructions,
-		systemMemory,
+		systemMemoryPromise,
+		personalityBlockPromise,
 		diffPreview,
+		companionMode,
 		readFilesThisSession: new Set(),
 		metadata: {
 			startTime: new Date(),
@@ -243,18 +249,21 @@ export async function createAgentContext(
 	};
 }
 
-export function buildSystemPrompt(
+export async function buildSystemPrompt(
 	ctx: AgentContext,
 	userQuery?: string,
-): string {
+): Promise<string> {
 	const projectInstructionsSection = ctx.projectInstructions
 		? `\n## Project Instructions\n\n${ctx.projectInstructions}\n`
 		: "";
 
-	const systemMemorySection = ctx.systemMemory ? `${ctx.systemMemory}\n` : "";
+	const systemMemory = ctx.systemMemoryPromise ? await ctx.systemMemoryPromise : "";
+	const systemMemorySection = systemMemory ? `${systemMemory}\n` : "";
 
-	const personalitySection = getPersonalityPromptBlock();
-	const personalityBlock = personalitySection ? `\n## Personality & Preferences\n${personalitySection}\n` : "";
+	const personalitySection = ctx.personalityBlockPromise ? await ctx.personalityBlockPromise : "";
+	const personalityBlock = personalitySection
+		? `\n## Personality & Preferences\n${personalitySection}\n`
+		: "";
 
 	let skillsSection = "";
 	if (userQuery) {

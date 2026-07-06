@@ -304,8 +304,18 @@ class SessionManager {
 	}
 
 	async renameSession(id: string, name: string): Promise<void> {
+		if (!isValidSessionId(id)) {
+			consola.error(`Invalid session ID format: ${id}`);
+			return;
+		}
+
 		const metadata = await this.getSessionMetadata(id);
-		if (metadata) {
+		if (!metadata) {
+			consola.error(`Session metadata not found for ID: ${id}`);
+			return;
+		}
+
+		try {
 			metadata.name = name;
 			await this.saveSessionMetadata(id, metadata);
 
@@ -315,6 +325,9 @@ class SessionManager {
 				data.metadata.name = name;
 				await fs.writeJson(sessionFile, data, { spaces: 2 });
 			}
+			debug.log("session", `Renamed session: ${id} to "${name}"`);
+		} catch (error) {
+			consola.error(`Failed to rename session ${id}: ${error}`);
 		}
 	}
 

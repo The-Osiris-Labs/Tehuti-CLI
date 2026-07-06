@@ -1,4 +1,5 @@
-import { exec } from "node:child_process";
+import { exec, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -13,16 +14,28 @@ export interface ValidationResult {
 
 export class SelfHealingManager {
 	private mainDir: string;
+	private activeWorktrees: Map<string, { worktreePath: string; branchName: string }> = new Map();
 
 	constructor(mainDir: string) {
 		this.mainDir = mainDir;
+		process.on("exit", () => {
+			for (const { worktreePath, branchName } of this.activeWorktrees.values()) {
+				try {
+					spawnSync("git", ["worktree", "remove", "--force", worktreePath], { cwd: this.mainDir, stdio: "ignore" });
+					spawnSync("git", ["branch", "-D", branchName], { cwd: this.mainDir, stdio: "ignore" });
+				} catch (e) {}
+			}
+		});
 	}
 
 	/**
 	 * Creates an ephemeral shadow workspace using git worktree.
 	 * @returns The path to the created worktree and the branch name used.
 	 */
-	async createShadowWorkspace(): Promise<{ worktreePath: string; branchName: string }> {
+	async createShadowWorkspace(): Promise<{
+		worktreePath: string;
+		branchName: string;
+	}> {
 		const worktreeName = `shadow-healing-${Date.now()}`;
 		const worktreePath = path.join(os.tmpdir(), worktreeName);
 		const branchName = `healing-speculative-${Date.now()}`;
@@ -33,6 +46,41 @@ export class SelfHealingManager {
 			cwd: this.mainDir,
 		});
 
+		this.activeWorktrees.set(worktreePath, { worktreePath, branchName });
+
+		// Sync uncommitted changes to the shadow workspace
+		try {
+			const { stdout: deletedFilesOut } = await execAsync('git diff --name-only --diff-filter=D HEAD', { cwd: this.mainDir });
+			const { stdout: modifiedFilesOut } = await execAsync('git diff --name-only --diff-filter=d HEAD', { cwd: this.mainDir });
+			const { stdout: untrackedFilesOut } = await execAsync('git ls-files --others --exclude-standard', { cwd: this.mainDir });
+
+			const deletedFiles = deletedFilesOut.split('\n').filter(Boolean);
+			const filesToCopy = [...modifiedFilesOut.split('\n'), ...untrackedFilesOut.split('\n')].filter(Boolean);
+
+			for (const file of deletedFiles) {
+				const dest = path.join(worktreePath, file);
+				await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => {});
+			}
+
+			for (const file of filesToCopy) {
+				const src = path.join(this.mainDir, file);
+				const dest = path.join(worktreePath, file);
+				await fs.promises.mkdir(path.dirname(dest), { recursive: true }).catch(() => {});
+				try {
+					const stat = await fs.promises.lstat(src);
+					await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => {});
+					if (stat.isSymbolicLink()) {
+						const target = await fs.promises.readlink(src);
+						await fs.promises.symlink(target, dest);
+					} else {
+						await fs.promises.copyFile(src, dest);
+					}
+				} catch (err) {}
+			}
+		} catch (error) {
+			// Ignore if not a git repo or if syncing fails
+		}
+
 		return { worktreePath, branchName };
 	}
 
@@ -42,7 +90,10 @@ export class SelfHealingManager {
 	 * @param command The command to execute in the worktree to apply changes.
 	 * @param worktreePath The path of the shadow workspace.
 	 */
-	async applySpeculativeChanges(command: string, worktreePath: string): Promise<void> {
+	async applySpeculativeChanges(
+		command: string,
+		worktreePath: string,
+	): Promise<void> {
 		await execAsync(command, { cwd: worktreePath });
 	}
 
@@ -52,7 +103,10 @@ export class SelfHealingManager {
 	 * @param worktreePath The path of the shadow workspace.
 	 * @returns The result containing success boolean, stdout/stderr output.
 	 */
-	async runValidation(command: string, worktreePath: string): Promise<ValidationResult> {
+	async runValidation(
+		command: string,
+		worktreePath: string,
+	): Promise<ValidationResult> {
 		try {
 			const { stdout, stderr } = await execAsync(command, {
 				cwd: worktreePath,
@@ -77,11 +131,17 @@ export class SelfHealingManager {
 	 * @param worktreePath The path of the shadow workspace.
 	 * @param branchName The branch name to be deleted.
 	 */
-	async cleanupShadowWorkspace(worktreePath: string, branchName: string): Promise<void> {
+	async cleanupShadowWorkspace(
+		worktreePath: string,
+		branchName: string,
+	): Promise<void> {
+		this.activeWorktrees.delete(worktreePath);
 		await execAsync(`git worktree remove --force ${worktreePath}`, {
 			cwd: this.mainDir,
 		}).catch(() => {});
-		await execAsync(`git branch -D ${branchName}`, { cwd: this.mainDir }).catch(() => {});
+		await execAsync(`git branch -D ${branchName}`, { cwd: this.mainDir }).catch(
+			() => {},
+		);
 	}
 
 	/**
@@ -92,18 +152,19 @@ export class SelfHealingManager {
 	parseFailureOutput(output: string): string {
 		// A simple heuristic: extract lines containing 'error:', 'failed', or stack trace patterns.
 		// For a more robust implementation, we could parse specific testing framework outputs.
-		const lines = output.split('\n');
-		const errorLines = lines.filter(line => 
-			line.toLowerCase().includes('error') || 
-			line.toLowerCase().includes('failed') || 
-			/^\s+at\s/.test(line) // Matches stack trace lines
+		const lines = output.split("\n");
+		const errorLines = lines.filter(
+			(line) =>
+				line.toLowerCase().includes("error") ||
+				line.toLowerCase().includes("failed") ||
+				/^\s+at\s/.test(line), // Matches stack trace lines
 		);
 
 		if (errorLines.length === 0) {
 			return `Validation failed. Full output:\n${output.substring(0, 1000)}`;
 		}
 
-		return `Validation failed with the following errors/stack traces:\n\n${errorLines.join('\n')}\n\nPlease analyze these failures and suggest a fix.`;
+		return `Validation failed with the following errors/stack traces:\n\n${errorLines.join("\n")}\n\nPlease analyze these failures and suggest a fix.`;
 	}
 
 	/**
@@ -114,7 +175,7 @@ export class SelfHealingManager {
 		if (result.success) {
 			return "Validation successful. No failures to inject.";
 		}
-		
+
 		const parsed = this.parseFailureOutput(result.output);
 		return `<validation_failure>\n${parsed}\n</validation_failure>`;
 	}

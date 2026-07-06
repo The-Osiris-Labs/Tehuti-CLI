@@ -32,8 +32,8 @@ import { getTool } from "../tools/registry.js";
 import { setParentContext } from "../tools/system.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
-import { processToolCalls } from "./tool-processing.js";
 import { SelfHealingManager } from "./self-healing.js";
+import { processToolCalls } from "./tool-processing.js";
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -90,12 +90,12 @@ export async function runAgentLoop(
 		if (ctx.messages.length === 0) {
 			ctx.messages.push({
 				role: "system",
-				content: buildSystemPrompt(ctx, userMessage),
+				content: await buildSystemPrompt(ctx, userMessage),
 				timestamp: Date.now(),
 				internalId: randomUUID(),
 			});
 		} else if (ctx.messages[0]?.role === "system") {
-			ctx.messages[0].content = buildSystemPrompt(ctx, userMessage);
+			ctx.messages[0].content = await buildSystemPrompt(ctx, userMessage);
 		}
 
 		addUserMessage(ctx, userMessage);
@@ -131,7 +131,7 @@ export async function runAgentLoop(
 		const maxIterations = ctx.config.maxIterations;
 		let totalContent = "";
 		let totalToolCalls = 0;
-		const selfHealer = new SelfHealingManager(ctx, client);
+		const selfHealer = new SelfHealingManager(ctx.cwd);
 
 		while (iteration < maxIterations) {
 			iteration++;

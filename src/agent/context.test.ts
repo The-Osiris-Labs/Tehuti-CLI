@@ -12,6 +12,10 @@ vi.mock("./memory/graph.js", () => ({
 	searchGraph: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("./memory/personality.js", () => ({
+	getPersonalityPromptBlock: vi.fn().mockResolvedValue(""),
+}));
+
 import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import {
@@ -100,32 +104,32 @@ describe("Agent Context", () => {
 	describe("buildSystemPrompt", () => {
 		it("should include working directory", async () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
-			const prompt = buildSystemPrompt(ctx);
+			const prompt = await buildSystemPrompt(ctx);
 			expect(prompt).toContain(process.cwd());
 		});
 
 		it("should include max iterations", async () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
-			const prompt = buildSystemPrompt(ctx);
+			const prompt = await buildSystemPrompt(ctx);
 			expect(prompt).toContain("Maximum iterations: 10");
 		});
 
 		it("should include max tokens", async () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
-			const prompt = buildSystemPrompt(ctx);
+			const prompt = await buildSystemPrompt(ctx);
 			expect(prompt).toContain("Maximum tokens per response: 4096");
 		});
 
 		it("should include model name", async () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
-			const prompt = buildSystemPrompt(ctx);
+			const prompt = await buildSystemPrompt(ctx);
 			expect(prompt).toContain("Model: test/model");
 		});
 
 		it("should include project instructions if present", async () => {
 			const ctx = await createAgentContext(process.cwd(), baseConfig);
 			ctx.projectInstructions = "Custom instructions";
-			const prompt = buildSystemPrompt(ctx);
+			const prompt = await buildSystemPrompt(ctx);
 			expect(prompt).toContain("Custom instructions");
 			expect(prompt).toContain("## Project Instructions");
 		});

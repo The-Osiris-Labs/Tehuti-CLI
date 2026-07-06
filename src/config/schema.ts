@@ -102,44 +102,49 @@ export const KILOCODE_ADVANCED_SCHEMA = z.object({
 	memoryBank: z
 		.object({
 			enabled: z.boolean().default(false),
-			sessionId: z.string().optional(),
+			sessionId: z.string().optional().default("default"),
 			persistence: z.enum(["memory", "disk"]).default("memory"),
 		})
-		.optional(),
+		.optional()
+		.default({}),
 	streamingOptions: z
 		.object({
 			thinking: z.boolean().default(true),
 			codeReviews: z.boolean().default(false),
 		})
-		.optional(),
+		.optional()
+		.default({}),
 	contextManagement: z
 		.object({
 			autoSummarize: z.boolean().default(true),
-			maxContextLength: z.number().int().positive().default(32000),
+			maxContextLength: z.number().int().positive().default(200000),
 		})
-		.optional(),
+		.optional()
+		.default({}),
 });
 
 export const GREPAI_ADVANCED_SCHEMA = z.object({
 	memoryBank: z
 		.object({
 			enabled: z.boolean().default(false),
-			path: z.string().optional(),
+			path: z.string().optional().default(".grepai"),
 			compression: z.boolean().default(true),
 		})
-		.optional(),
+		.optional()
+		.default({}),
 	indexing: z
 		.object({
 			parallel: z.boolean().default(false),
 			maxWorkers: z.number().int().positive().default(4),
 		})
-		.optional(),
+		.optional()
+		.default({}),
 });
 
 export const COLLABORATION_SCHEMA = z.object({
 	enabled: z.boolean().default(false),
-	sessionId: z.string().optional(),
-	peers: z.array(z.string()).optional(),
+	sessionId: z.string().optional().default("default"),
+	peers: z.array(z.string()).optional().default([]),
 	realTime: z.boolean().default(true),
 });
 
@@ -159,7 +164,9 @@ export const SELF_HEALING_CONFIG_SCHEMA = z.object({
 });
 
 export const PERSONALITY_CONFIG_SCHEMA = z.object({
-	style: z.enum(["professional", "casual", "strict", "helpful"]).default("helpful"),
+	style: z
+		.enum(["professional", "casual", "strict", "helpful"])
+		.default("helpful"),
 	verbosity: z.enum(["low", "medium", "high"]).default("medium"),
 });
 
@@ -240,14 +247,14 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	telemetry: z.boolean().default(false),
 	hooks: HOOKS_CONFIG_SCHEMA.optional().default({}),
 	// Advanced features
-	kilocode: KILOCODE_ADVANCED_SCHEMA.optional(),
-	grepai: GREPAI_ADVANCED_SCHEMA.optional(),
-	collaboration: COLLABORATION_SCHEMA.optional(),
+	kilocode: KILOCODE_ADVANCED_SCHEMA.optional().default({}),
+	grepai: GREPAI_ADVANCED_SCHEMA.optional().default({}),
+	collaboration: COLLABORATION_SCHEMA.optional().default({}),
 	http: HTTP_CONFIG_SCHEMA.optional().default({}),
-	daemon: DAEMON_CONFIG_SCHEMA.optional(),
-	messaging: MESSAGING_CONFIG_SCHEMA.optional(),
-	selfHealing: SELF_HEALING_CONFIG_SCHEMA.optional(),
-	personality: PERSONALITY_CONFIG_SCHEMA.optional(),
+	daemon: DAEMON_CONFIG_SCHEMA.optional().default({}),
+	messaging: MESSAGING_CONFIG_SCHEMA.optional().default({}),
+	selfHealing: SELF_HEALING_CONFIG_SCHEMA.optional().default({}),
+	personality: PERSONALITY_CONFIG_SCHEMA.optional().default({}),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;

@@ -222,7 +222,18 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		if (key.return && input.trim()) {
+		// Shift+Enter: insert a newline
+		if (key.shift && key.return) {
+			if (loading) return;
+			const before = input.slice(0, cursorPos);
+			const after = input.slice(cursorPos);
+			setInput(before + "\n" + after);
+			setCursorPos(cursorPos + 1);
+			setHistoryIndex(-1);
+			return;
+		}
+
+		if (key.return && !key.shift && input.trim()) {
 			if (loading) return;
 			const newHistory = [
 				input.trim(),

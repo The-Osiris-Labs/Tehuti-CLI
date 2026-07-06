@@ -118,9 +118,9 @@ const mockCompleteChat = vi.fn().mockImplementation(async (messages: any[], opti
 	};
 });
 
-vi.mock("../../../src/api/openrouter.js", () => {
+vi.mock("../../../src/api/standard-client.js", () => {
 	return {
-		OpenRouterClient: {
+		StandardAPIClient: {
 			getInstance: () => ({
 				streamChat: mockStreamChat,
 				completeChat: mockCompleteChat,

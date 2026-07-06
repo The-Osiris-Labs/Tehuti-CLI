@@ -17,46 +17,77 @@ export class SessionResolver {
 	 * @returns The persistent Tehuti session ID for this sender
 	 */
 	public resolveSession(platformSenderId: string): string {
-		const stmt = db.prepare(
-			"SELECT tehuti_session_id FROM messaging_sessions WHERE platform_sender_id = ?",
-		);
-		const row = stmt.get(platformSenderId) as { tehuti_session_id: string } | undefined;
-
-		if (row) {
-			// Update last_active
-			const updateStmt = db.prepare(
-				"UPDATE messaging_sessions SET last_active = cast(strftime('%s', 'now') as integer) WHERE platform_sender_id = ?",
+		try {
+			const stmt = db.prepare(
+				"SELECT tehuti_session_id FROM messaging_sessions WHERE platform_sender_id = ?",
 			);
-			updateStmt.run(platformSenderId);
-			return row.tehuti_session_id;
+			const row = stmt.get(platformSenderId) as
+				| { tehuti_session_id: string }
+				| undefined;
+
+			if (row) {
+				// Update last_active
+				const updateStmt = db.prepare(
+					"UPDATE messaging_sessions SET last_active = cast(strftime('%s', 'now') as integer) WHERE platform_sender_id = ?",
+				);
+				updateStmt.run(platformSenderId);
+				return row.tehuti_session_id;
+			}
+
+			// Create new session
+			const newSessionId = randomUUID();
+			const insertStmt = db.prepare(
+				"INSERT INTO messaging_sessions (platform_sender_id, tehuti_session_id) VALUES (?, ?)",
+			);
+			insertStmt.run(platformSenderId, newSessionId);
+
+			return newSessionId;
+		} catch (error: any) {
+			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
+				throw new Error(
+					`Database is currently locked (SQLITE_BUSY). Failed to resolve session for platform sender: ${platformSenderId}`,
+				);
+			}
+			throw error;
 		}
-
-		// Create new session
-		const newSessionId = randomUUID();
-		const insertStmt = db.prepare(
-			"INSERT INTO messaging_sessions (platform_sender_id, tehuti_session_id) VALUES (?, ?)",
-		);
-		insertStmt.run(platformSenderId, newSessionId);
-
-		return newSessionId;
 	}
 
 	/**
 	 * Retrieves all active sessions.
 	 */
 	public getAllSessions(): MessagingSession[] {
-		const stmt = db.prepare("SELECT * FROM messaging_sessions");
-		return stmt.all() as MessagingSession[];
+		try {
+			const stmt = db.prepare("SELECT * FROM messaging_sessions");
+			return stmt.all() as MessagingSession[];
+		} catch (error: any) {
+			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
+				throw new Error(
+					"Database is currently locked. Failed to get all sessions.",
+				);
+			}
+			throw error;
+		}
 	}
 
 	/**
 	 * Retrieves the platform sender ID for a given Tehuti session ID.
 	 */
 	public getPlatformSenderId(tehutiSessionId: string): string | null {
-		const stmt = db.prepare(
-			"SELECT platform_sender_id FROM messaging_sessions WHERE tehuti_session_id = ?",
-		);
-		const row = stmt.get(tehutiSessionId) as { platform_sender_id: string } | undefined;
-		return row ? row.platform_sender_id : null;
+		try {
+			const stmt = db.prepare(
+				"SELECT platform_sender_id FROM messaging_sessions WHERE tehuti_session_id = ?",
+			);
+			const row = stmt.get(tehutiSessionId) as
+				| { platform_sender_id: string }
+				| undefined;
+			return row ? row.platform_sender_id : null;
+		} catch (error: any) {
+			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
+				throw new Error(
+					`Database is currently locked. Failed to get platform sender for session: ${tehutiSessionId}`,
+				);
+			}
+			throw error;
+		}
 	}
 }

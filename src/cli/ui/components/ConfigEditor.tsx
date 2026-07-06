@@ -118,7 +118,9 @@ function ConfigFieldRow({
 								) : (
 									<Text color={CORAL}>{editValue}</Text>
 								)}
-								<Text backgroundColor="white" color="black"> </Text>
+								<Text backgroundColor="white" color="black">
+									{" "}
+								</Text>
 							</Text>
 						) : null}
 					</Box>

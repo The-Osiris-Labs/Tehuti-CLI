@@ -41,6 +41,7 @@ export interface ParallelExecutionOptions {
 	ctx: AgentContext;
 	toolContext: Parameters<typeof executeTool>[2];
 	signal?: AbortSignal;
+	selfHealer?: any;
 }
 
 export interface ClassifiedToolCalls {
@@ -83,6 +84,7 @@ async function executeToolCall(
 	toolContext: Parameters<typeof executeTool>[2],
 	cache: ReturnType<typeof getToolCache>,
 	telemetry: ReturnType<typeof getTelemetry>,
+	selfHealer?: any,
 ): Promise<ToolResult> {
 	const toolName = tc.function.name;
 	let args: unknown;
@@ -113,7 +115,11 @@ async function executeToolCall(
 	}
 
 	const startTime = Date.now();
-	const result = await executeTool(toolName, args, toolContext);
+	let result = await executeTool(toolName, args, toolContext);
+	
+	if (result && !result.success && selfHealer) {
+		result = await selfHealer.wrapToolFailure(toolName, args, result);
+	}
 	const durationMs = Date.now() - startTime;
 
 	telemetry.recordToolExecution(toolName, durationMs, result.success, false);
@@ -153,6 +159,7 @@ export async function executeToolsParallel(
 		ctx,
 		toolContext,
 		signal: optionsSignal,
+		selfHealer,
 	} = options;
 
 	const activeSignal = signal ?? optionsSignal;
@@ -251,6 +258,7 @@ export async function executeToolsParallel(
 								toolContext,
 								cache,
 								telemetry,
+								selfHealer,
 							);
 
 							await mutex.runExclusive(async () => {
@@ -311,6 +319,7 @@ export async function executeToolsParallel(
 					toolContext,
 					cache,
 					telemetry,
+					selfHealer,
 				);
 
 				let resultStr =

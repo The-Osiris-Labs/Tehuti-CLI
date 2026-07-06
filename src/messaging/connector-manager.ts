@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-
+import { SessionResolver } from "./session-resolver.js";
 export interface UnifiedMessageEvent {
 	platform: "slack" | "discord" | "telegram" | "whatsapp";
 	senderId: string;
@@ -60,6 +60,8 @@ export class ConnectorManager extends EventEmitter {
 		console.log("Registering WhatsApp Webhook endpoint...");
 	}
 
+	private sessionResolver = new SessionResolver();
+
 	/**
 	 * Resolves the inbound sender ID to a persistent session ID
 	 * (e.g. from SQLite `messaging_sessions`).
@@ -68,8 +70,7 @@ export class ConnectorManager extends EventEmitter {
 		platform: string,
 		senderId: string,
 	): Promise<string> {
-		// Mock session resolution
-		return `${platform}_session_${senderId}`;
+		return this.sessionResolver.resolveSession(`${platform}_${senderId}`);
 	}
 
 	/**

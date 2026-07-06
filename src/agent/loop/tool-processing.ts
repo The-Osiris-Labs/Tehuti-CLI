@@ -195,6 +195,7 @@ export async function processToolCalls(
 						addToolResult(c, id, name, resultStr);
 					},
 					signal,
+					selfHealer,
 				},
 				signal,
 			);
@@ -376,26 +377,32 @@ export async function processToolCalls(
 				if (!result) {
 					result = await executeTool(tc.function.name, args, contextForTools);
 					if (result && !result.success && selfHealer) {
-						result = await selfHealer.wrapToolFailure(tc.function.name, args, result);
-					}
-					const durationMs = Date.now() - startTime;
-					telemetry.recordToolExecution(
-						tc.function.name,
-						durationMs,
-						result.success,
-						false,
-					);
-
-					if (
-						shouldCacheTool(
-							getTool(tc.function.name),
+						result = await selfHealer.wrapToolFailure(
 							tc.function.name,
 							args,
-						) &&
-						result.success
-					) {
-						cache.set(tc.function.name, args, result);
+							result,
+						);
 					}
+				}
+
+				if (!result) {
+					throw new Error(
+						`Tool execution for ${tc.function.name} failed to return a result.`,
+					);
+				}
+
+				const durationMs = Date.now() - startTime;
+				telemetry.recordToolExecution(
+					tc.function.name,
+					durationMs,
+					result.success,
+					false,
+				);
+
+				if (
+					shouldCacheTool(getTool(tc.function.name), tc.function.name, args)
+				) {
+					cache.set(tc.function.name, args, result);
 				}
 
 				const resultStr = stringifyToolResult(result);

@@ -204,12 +204,19 @@ export function exportState(): any {
 export function importState(state: any): void {
 	if (!state) return;
 	for (const [id, taskData] of Object.entries(state)) {
-		const status = (taskData as any).status === "running" ? "failed" : (taskData as any).status;
+		const status =
+			(taskData as any).status === "running"
+				? "failed"
+				: (taskData as any).status;
 		activeTasks.set(id, {
 			...(taskData as any),
 			status,
-			startTime: (taskData as any).startTime ? new Date((taskData as any).startTime) : undefined,
-			endTime: (taskData as any).endTime ? new Date((taskData as any).endTime) : undefined,
+			startTime: (taskData as any).startTime
+				? new Date((taskData as any).startTime)
+				: undefined,
+			endTime: (taskData as any).endTime
+				? new Date((taskData as any).endTime)
+				: undefined,
 		} as SubagentTask);
 	}
 }

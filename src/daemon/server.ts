@@ -1,59 +1,123 @@
-import { EventEmitter } from 'node:events';
-import * as fs from 'node:fs';
-import * as net from 'node:net';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { EventEmitter } from "node:events";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import * as os from "node:os";
+import * as path from "node:path";
 
-export const SOCKET_PATH = path.join(os.homedir(), '.tehuti', 'tehutid.sock');
+export const SOCKET_PATH = path.join(os.homedir(), ".tehuti", "tehutid.sock");
 
 export class TehutiDaemonServer extends EventEmitter {
-  private server: net.Server;
+	private server: net.Server;
 
-  constructor() {
-    super();
-    this.server = net.createServer((socket: net.Socket) => {
-      this.emit('connection', socket);
+	constructor() {
+		super();
+		this.server = net.createServer((socket: net.Socket) => {
+			this.emit("connection", socket);
 
-      socket.on('data', (data: Buffer) => {
-        this.emit('data', socket, data);
-      });
+			let buffer = "";
 
-      socket.on('error', (err: Error) => {
-        this.emit('clientError', err);
-      });
+			socket.on("data", (data: Buffer) => {
+				buffer += data.toString("utf-8");
+				
+				// Prevent memory leak from unbounded buffer
+				if (buffer.length > 1024 * 1024 * 10) { // 10MB limit
+					socket.destroy(new Error("Buffer size limit exceeded"));
+					return;
+				}
 
-      socket.on('end', () => {
-        this.emit('clientDisconnect');
-      });
-    });
+				let newlineIndex;
+				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+					const line = buffer.slice(0, newlineIndex).trim();
+					buffer = buffer.slice(newlineIndex + 1);
+					
+					if (line) {
+						try {
+							const msg = JSON.parse(line);
+							if (msg.type === "ping") {
+								// Count connected sockets by asking the server
+								this.server.getConnections((err, count) => {
+									socket.write(
+										JSON.stringify({
+											type: "pong",
+											pid: process.pid,
+											uptime: process.uptime(),
+											clients: count || 0,
+										}) + "\n",
+									);
+								});
+								continue;
+							}
+							if (msg.type === "stop") {
+								socket.write(JSON.stringify({ type: "stopping" }) + "\n");
+								this.stop();
+								setTimeout(() => process.exit(0), 100);
+								return;
+							}
+							this.emit("message", socket, msg);
+						} catch (e) {
+							// Not JSON, just emit as normal data
+							this.emit("data", socket, Buffer.from(line));
+						}
+					}
+				}
+			});
 
-    this.server.on('error', (err: Error) => {
-      this.emit('error', err);
-    });
-  }
+			socket.on("error", (err: Error) => {
+				this.emit("clientError", err);
+			});
 
-  public start(): void {
-    const socketDir = path.dirname(SOCKET_PATH);
-    if (!fs.existsSync(socketDir)) {
-      fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
-    }
+			socket.on("end", () => {
+				this.emit("clientDisconnect");
+			});
+		});
 
-    if (fs.existsSync(SOCKET_PATH)) {
-      fs.unlinkSync(SOCKET_PATH);
-    }
+		this.server.on("error", (err: Error) => {
+			this.emit("error", err);
+		});
+	}
 
-    this.server.listen(SOCKET_PATH, () => {
-      fs.chmodSync(SOCKET_PATH, 0o600);
-      this.emit('listening', SOCKET_PATH);
-    });
-  }
+	public start(): void {
+		const socketDir = path.dirname(SOCKET_PATH);
+		if (!fs.existsSync(socketDir)) {
+			fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+		}
 
-  public stop(): void {
-    this.server.close(() => {
-      if (fs.existsSync(SOCKET_PATH)) {
-        fs.unlinkSync(SOCKET_PATH);
-      }
-      this.emit('close');
-    });
-  }
+		if (fs.existsSync(SOCKET_PATH)) {
+			const client = net.createConnection({ path: SOCKET_PATH });
+			client.on("connect", () => {
+				client.end();
+				this.emit("error", new Error("EADDRINUSE"));
+			});
+			client.on("error", (err: any) => {
+				if (err.code === "ECONNREFUSED") {
+					try {
+						fs.unlinkSync(SOCKET_PATH);
+					} catch (e) {
+						// ignore if already removed
+					}
+					this.listen();
+				} else {
+					this.emit("error", err);
+				}
+			});
+		} else {
+			this.listen();
+		}
+	}
+
+	private listen(): void {
+		this.server.listen(SOCKET_PATH, () => {
+			fs.chmodSync(SOCKET_PATH, 0o600);
+			this.emit("listening", SOCKET_PATH);
+		});
+	}
+
+	public stop(): void {
+		this.server.close(() => {
+			if (fs.existsSync(SOCKET_PATH)) {
+				fs.unlinkSync(SOCKET_PATH);
+			}
+			this.emit("close");
+		});
+	}
 }

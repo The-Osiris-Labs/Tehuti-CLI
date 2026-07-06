@@ -9,7 +9,7 @@ import { debug } from "../utils/debug.js";
 
 export interface StateEngineConfig {
 	watchDirs?: string[];
-	cronSchedules?: Array<{ cron: string; action: () => void }>;
+	cronSchedules?: Array<{ cron: string; action: () => void | Promise<void> }>;
 	pollIntervalMs?: number;
 }
 
@@ -46,7 +46,7 @@ export class DaemonStateEngine extends EventEmitter {
 				persistent: true,
 			});
 
-			this.fsWatcher.on("all", (event, path) => {
+			this.fsWatcher.on("all", (event: string, path: string) => {
 				const msg = `FS Event: ${event} on ${path}`;
 				debug.log("daemon", msg);
 				agentEventBus.emit("wakeup", msg);
@@ -55,9 +55,9 @@ export class DaemonStateEngine extends EventEmitter {
 
 		if (this.config.cronSchedules) {
 			for (const schedule of this.config.cronSchedules) {
-				const task = cron.schedule(schedule.cron, () => {
+				const task = cron.schedule(schedule.cron, async () => {
 					try {
-						schedule.action();
+						await Promise.resolve(schedule.action());
 					} catch (error) {
 						debug.log(
 							"daemon",
@@ -76,13 +76,16 @@ export class DaemonStateEngine extends EventEmitter {
 		this.isRunning = false;
 		if (this.pollInterval) {
 			clearInterval(this.pollInterval);
+			this.pollInterval = undefined;
 		}
 		if (this.fsWatcher) {
 			await this.fsWatcher.close();
+			this.fsWatcher = undefined;
 		}
 		for (const task of this.cronTasks) {
 			task.stop();
 		}
+		this.cronTasks = [];
 
 		debug.log("daemon", "Daemon State Engine stopped");
 	}

@@ -14,7 +14,7 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ## 🌟 Core Architecture
 
-- **Interactive Terminal UI:** Built on React 19 and Ink 6, featuring a virtual sliding viewport, mouse-aware command palettes, and real-time ANSI token streaming.
+- **Interactive Terminal UI:** Built on React 19 and Ink 6, featuring a virtual sliding viewport, mouse-aware command palettes, an Interactive Sessions UI with virtual scrolling, Vim keybindings (j/k/d/r), and mouse hover support, alongside real-time ANSI token streaming.
 - **High-Performance Networking:** Utilizes a highly optimized `fetch` + Server-Sent Events (SSE) implementation over HTTP/3. It features `undici` connection pooling to establish direct, low-latency communication with LLM providers while seamlessly handling automated network backpressure and QUIC fallback retries.
 - **Native Semantic Engine:** Leverages a native Rust `.node` binary (`tehuti-core`) to bypass JavaScript overhead, enabling ultra-fast, parallel semantic `grep` operations directly against the filesystem.
 - **Context & Memory Graph:** Replaces naive array slicing with deterministic `semantic compaction`. Tehuti maps conversation histories into an asynchronous SQLite graph, isolating long-term insights and dynamically compressing context to stay rigorously within model token limits.
@@ -76,7 +76,7 @@ npm run start
 ## 🛠️ Execution Modes
 
 ### Interactive Mode
-The default mode. Features deep workflow persistence, expandable tool outputs, reasoning spinners, and full command palette support.
+The default mode. Features deep workflow persistence, an Interactive Sessions UI (with virtual scrolling, Vim keybindings, and mouse support), expandable tool outputs, reasoning spinners, and full command palette support.
 
 ### One-Shot & Scripting Mode
 Tehuti can be utilized as a standard UNIX utility for single-prompt automation.

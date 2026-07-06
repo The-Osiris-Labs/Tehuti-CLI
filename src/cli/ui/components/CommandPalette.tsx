@@ -497,9 +497,19 @@ export function CommandPalette({
 						Text,
 						null,
 						query.length === 0
-							? React.createElement(Text, { color: "gray" }, menuStack.length > 0 ? "filter options..." : "type a command...")
+							? React.createElement(
+									Text,
+									{ color: "gray" },
+									menuStack.length > 0
+										? "filter options..."
+										: "type a command...",
+								)
 							: React.createElement(Text, { color: "cyan" }, query),
-						React.createElement(Text, { backgroundColor: "white", color: "black" }, " ")
+						React.createElement(
+							Text,
+							{ backgroundColor: "white", color: "black" },
+							" ",
+						),
 					),
 		),
 		!isLoading && filteredCommands.length === 0

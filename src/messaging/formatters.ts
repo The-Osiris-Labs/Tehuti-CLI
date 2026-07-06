@@ -8,38 +8,63 @@ import type { Platform } from "./types.js";
  * - Converts # Headers to *Headers*
  */
 export function formatForSlack(markdown: string): string {
-  const codeBlocks: string[] = [];
-  let text = markdown.replace(/```([\s\S]*?)```/g, (match, p1) => {
-    codeBlocks.push(`\`\`\`${p1}\`\`\``);
-    return `__CODEBLOCK_${codeBlocks.length - 1}__`;
-  });
+	const codeBlocks: string[] = [];
+	let text = markdown.replace(/```([\s\S]*?)```/g, (match, p1) => {
+		codeBlocks.push(`\`\`\`${p1}\`\`\``);
+		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
+	});
 
-  const inlineCode: string[] = [];
-  text = text.replace(/`(.*?)`/g, (match, p1) => {
-    inlineCode.push(`\`${p1}\``);
-    return `__INLINECODE_${inlineCode.length - 1}__`;
-  });
+	const inlineCode: string[] = [];
+	text = text.replace(/`(.*?)`/g, (match, p1) => {
+		inlineCode.push(`\`${p1}\``);
+		return `@@INLINECODE_${inlineCode.length - 1}@@`;
+	});
 
-  // Extract Links
-  const links: string[] = [];
-  text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
-    links.push(`<${p2}|${p1}>`);
-    return `__LINK_${links.length - 1}__`;
-  });
+	// Protect URLs in Markdown links
+	const urls: string[] = [];
+	text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
+		urls.push(p2);
+		return `[${p1}](@@URL_${urls.length - 1}@@)`;
+	});
 
-  // Bold
-  text = text.replace(/\*\*(.*?)\*\*/g, "*$1*");
-  // Strikethrough
-  text = text.replace(/~~(.*?)~~/g, "~$1~");
-  // Headers
-  text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
+	// Protect bare URLs
+	const bareUrls: string[] = [];
+	text = text.replace(/(https?:\/\/[^\s]+)/g, (match) => {
+		if (match.includes("@@URL_")) return match;
+		bareUrls.push(match);
+		return `@@BAREURL_${bareUrls.length - 1}@@`;
+	});
 
-  // Restore placeholders
-  text = text.replace(/__LINK_(\d+)__/g, (match, p1) => links[parseInt(p1, 10)]);
-  text = text.replace(/__INLINECODE_(\d+)__/g, (match, p1) => inlineCode[parseInt(p1, 10)]);
-  text = text.replace(/__CODEBLOCK_(\d+)__/g, (match, p1) => codeBlocks[parseInt(p1, 10)]);
+	// Bold and Italic
+	text = text.replace(/\*\*(.*?)\*\*/g, "@@BOLD@@$1@@BOLD@@");
+	text = text.replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(/@@BOLD@@(.*?)@@BOLD@@/g, "*$1*");
+	// Strikethrough
+	text = text.replace(/~~(.*?)~~/g, "~$1~");
+	// Headers
+	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
 
-  return text;
+	// Convert links
+	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (match, p1, p2) => {
+		const url = urls[parseInt(p2, 10)];
+		return `<${url}|${p1}>`;
+	});
+
+	// Restore placeholders
+	text = text.replace(
+		/@@BAREURL_(\d+)@@/g,
+		(match, p1) => bareUrls[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@INLINECODE_(\d+)@@/g,
+		(match, p1) => inlineCode[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@CODEBLOCK_(\d+)@@/g,
+		(match, p1) => codeBlocks[parseInt(p1, 10)],
+	);
+
+	return text;
 }
 
 /**
@@ -48,33 +73,77 @@ export function formatForSlack(markdown: string): string {
  * This function splits the message into chunks <= 2000 chars, ideally breaking at newlines.
  */
 export function formatForDiscord(markdown: string): string[] {
-  const MAX_LEN = 2000;
-  if (markdown.length <= MAX_LEN) {
-    return [markdown];
-  }
+	const MAX_LEN = 2000;
+	if (markdown.length <= MAX_LEN) {
+		return [markdown];
+	}
 
-  const chunks: string[] = [];
-  let current = markdown;
+	const chunks: string[] = [];
+	let remaining = markdown;
+	let inCodeBlock = false;
+	let codeLanguage = "";
 
-  while (current.length > 0) {
-    if (current.length <= MAX_LEN) {
-      chunks.push(current);
-      break;
-    }
+	while (remaining.length > 0) {
+		let prefix = "";
+		if (inCodeBlock) {
+			prefix = `\`\`\`${codeLanguage}\n`;
+		}
 
-    // Find the last newline before the MAX_LEN limit
-    let splitIndex = current.lastIndexOf("
-", MAX_LEN);
-    if (splitIndex === -1) {
-      // If no newline is found, split exactly at MAX_LEN
-      splitIndex = MAX_LEN;
-    }
+		// reserve 4 chars for "\n```" just in case we need to close a block
+		const maxTake = MAX_LEN - prefix.length - 4;
 
-    chunks.push(current.substring(0, splitIndex));
-    current = current.substring(splitIndex).trimStart();
-  }
+		if (prefix.length + remaining.length <= MAX_LEN) {
+			chunks.push(prefix + remaining);
+			break;
+		}
 
-  return chunks;
+		// Find the last newline before the maxTake limit
+		let splitIndex = remaining.lastIndexOf("\n", maxTake);
+		if (splitIndex === -1 || splitIndex === 0) {
+			// If no newline is found, split exactly at maxTake
+			splitIndex = maxTake;
+		}
+
+		// Prevent splitting right on a backtick sequence
+		while (
+			splitIndex > 0 &&
+			splitIndex < remaining.length &&
+			remaining[splitIndex - 1] === "\`" &&
+			remaining[splitIndex] === "\`"
+		) {
+			splitIndex--;
+		}
+		if (splitIndex === 0) {
+			splitIndex = maxTake;
+		}
+
+		let chunkContent = remaining.substring(0, splitIndex);
+
+		// Track code block state changes in this chunk
+		const codeBlockMatches = [
+			...chunkContent.matchAll(/```([a-zA-Z0-9-]*)/g),
+		];
+		for (const match of codeBlockMatches) {
+			inCodeBlock = !inCodeBlock;
+			if (inCodeBlock) {
+				codeLanguage = match[1] || "";
+			} else {
+				codeLanguage = "";
+			}
+		}
+
+		let chunk = prefix + chunkContent;
+		if (inCodeBlock) {
+			if (!chunk.endsWith("\n")) chunk += "\n";
+			chunk += "```";
+		}
+		chunks.push(chunk);
+
+		remaining = remaining.substring(splitIndex);
+		if (remaining.startsWith("\n")) remaining = remaining.substring(1);
+	}
+
+	return chunks;
 }
 
 /**
@@ -82,46 +151,68 @@ export function formatForDiscord(markdown: string): string[] {
  * Telegram supports basic HTML tags: <b>, <i>, <u>, <s>, <a href="url">, <code>, <pre>
  */
 export function formatForTelegram(markdown: string): string {
-  // First, escape HTML characters to prevent malformed tags
-  let text = markdown
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+	// First, escape HTML characters to prevent malformed tags
+	let text = markdown
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
 
-  const codeBlocks: string[] = [];
-  text = text.replace(/```([\s\S]*?)```/g, (match, p1) => {
-    codeBlocks.push(`<pre>${p1}</pre>`);
-    return `__CODEBLOCK_${codeBlocks.length - 1}__`;
-  });
+	const codeBlocks: string[] = [];
+	text = text.replace(/```([\s\S]*?)```/g, (match, p1) => {
+		codeBlocks.push(`<pre>${p1}</pre>`);
+		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
+	});
 
-  const inlineCode: string[] = [];
-  text = text.replace(/`(.*?)`/g, (match, p1) => {
-    inlineCode.push(`<code>${p1}</code>`);
-    return `__INLINECODE_${inlineCode.length - 1}__`;
-  });
+	const inlineCode: string[] = [];
+	text = text.replace(/`(.*?)`/g, (match, p1) => {
+		inlineCode.push(`<code>${p1}</code>`);
+		return `@@INLINECODE_${inlineCode.length - 1}@@`;
+	});
 
-  const links: string[] = [];
-  text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
-    links.push(`<a href="${p2}">${p1}</a>`);
-    return `__LINK_${links.length - 1}__`;
-  });
+	const urls: string[] = [];
+	text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
+		urls.push(p2);
+		return `[${p1}](@@URL_${urls.length - 1}@@)`;
+	});
 
-  // Bold
-  text = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
-  
-  // Italic (ignoring intra-word underscores to be safer)
-  text = text.replace(/(?<!\w)_(.*?)_(?!\w)/g, "<i>$1</i>");
-  text = text.replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, "<i>$1</i>");
-  
-  // Strikethrough
-  text = text.replace(/~~(.*?)~~/g, "<s>$1</s>");
+	const bareUrls: string[] = [];
+	text = text.replace(/(https?:\/\/[^\s]+)/g, (match) => {
+		if (match.includes("@@URL_")) return match;
+		bareUrls.push(match);
+		return `@@BAREURL_${bareUrls.length - 1}@@`;
+	});
 
-  // Restore placeholders
-  text = text.replace(/__LINK_(\d+)__/g, (match, p1) => links[parseInt(p1, 10)]);
-  text = text.replace(/__INLINECODE_(\d+)__/g, (match, p1) => inlineCode[parseInt(p1, 10)]);
-  text = text.replace(/__CODEBLOCK_(\d+)__/g, (match, p1) => codeBlocks[parseInt(p1, 10)]);
+	// Bold
+	text = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
 
-  return text;
+	// Italic (ignoring intra-word underscores to be safer)
+	text = text.replace(/(?<!\w)_(.*?)_(?!\w)/g, "<i>$1</i>");
+	text = text.replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, "<i>$1</i>");
+
+	// Strikethrough
+	text = text.replace(/~~(.*?)~~/g, "<s>$1</s>");
+
+	// Convert links
+	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (match, p1, p2) => {
+		const safeUrl = urls[parseInt(p2, 10)].replace(/"/g, "&quot;");
+		return `<a href="${safeUrl}">${p1}</a>`;
+	});
+
+	// Restore placeholders
+	text = text.replace(
+		/@@BAREURL_(\d+)@@/g,
+		(match, p1) => bareUrls[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@INLINECODE_(\d+)@@/g,
+		(match, p1) => inlineCode[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@CODEBLOCK_(\d+)@@/g,
+		(match, p1) => codeBlocks[parseInt(p1, 10)],
+	);
+
+	return text;
 }
 
 /**
@@ -132,56 +223,79 @@ export function formatForTelegram(markdown: string): string {
  * - Converts # Headers to *Headers*
  */
 export function formatForWhatsApp(markdown: string): string {
-  const codeBlocks: string[] = [];
-  let text = markdown.replace(/```([\s\S]*?)```/g, (match, p1) => {
-    codeBlocks.push(`\`\`\`${p1}\`\`\``);
-    return `__CODEBLOCK_${codeBlocks.length - 1}__`;
-  });
+	const codeBlocks: string[] = [];
+	let text = markdown.replace(/```([\s\S]*?)```/g, (match, p1) => {
+		codeBlocks.push(`\`\`\`${p1}\`\`\``);
+		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
+	});
 
-  const inlineCode: string[] = [];
-  text = text.replace(/`(.*?)`/g, (match, p1) => {
-    inlineCode.push(`\`${p1}\``);
-    return `__INLINECODE_${inlineCode.length - 1}__`;
-  });
+	const inlineCode: string[] = [];
+	text = text.replace(/`(.*?)`/g, (match, p1) => {
+		inlineCode.push(`\`${p1}\``);
+		return `@@INLINECODE_${inlineCode.length - 1}@@`;
+	});
 
-  const links: string[] = [];
-  text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
-    links.push(`${p1} (${p2})`);
-    return `__LINK_${links.length - 1}__`;
-  });
+	const urls: string[] = [];
+	text = text.replace(/\[(.*?)\]\((.*?)\)/g, (match, p1, p2) => {
+		urls.push(p2);
+		return `[${p1}](@@URL_${urls.length - 1}@@)`;
+	});
 
-  // Bold
-  text = text.replace(/\*\*(.*?)\*\*/g, "*$1*");
-  // Strikethrough
-  text = text.replace(/~~(.*?)~~/g, "~$1~");
-  // Headers
-  text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
+	const bareUrls: string[] = [];
+	text = text.replace(/(https?:\/\/[^\s]+)/g, (match) => {
+		if (match.includes("@@URL_")) return match;
+		bareUrls.push(match);
+		return `@@BAREURL_${bareUrls.length - 1}@@`;
+	});
 
-  // Restore placeholders
-  text = text.replace(/__LINK_(\d+)__/g, (match, p1) => links[parseInt(p1, 10)]);
-  text = text.replace(/__INLINECODE_(\d+)__/g, (match, p1) => inlineCode[parseInt(p1, 10)]);
-  text = text.replace(/__CODEBLOCK_(\d+)__/g, (match, p1) => codeBlocks[parseInt(p1, 10)]);
+	// Bold and Italic
+	text = text.replace(/\*\*(.*?)\*\*/g, "@@BOLD@@$1@@BOLD@@");
+	text = text.replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(/@@BOLD@@(.*?)@@BOLD@@/g, "*$1*");
+	// Strikethrough
+	text = text.replace(/~~(.*?)~~/g, "~$1~");
+	// Headers
+	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
 
-  return text;
+	// Convert links
+	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (match, p1, p2) => {
+		return `${p1} (${urls[parseInt(p2, 10)]})`;
+	});
+
+	// Restore placeholders
+	text = text.replace(
+		/@@BAREURL_(\d+)@@/g,
+		(match, p1) => bareUrls[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@INLINECODE_(\d+)@@/g,
+		(match, p1) => inlineCode[parseInt(p1, 10)],
+	);
+	text = text.replace(
+		/@@CODEBLOCK_(\d+)@@/g,
+		(match, p1) => codeBlocks[parseInt(p1, 10)],
+	);
+
+	return text;
 }
 
 /**
  * Main dispatcher function to format a markdown message for a specific platform.
  */
 export function formatMessage(
-  platform: Platform,
-  markdown: string,
+	platform: Platform,
+	markdown: string,
 ): string | string[] {
-  switch (platform) {
-    case "slack":
-      return formatForSlack(markdown);
-    case "discord":
-      return formatForDiscord(markdown);
-    case "telegram":
-      return formatForTelegram(markdown);
-    case "whatsapp":
-      return formatForWhatsApp(markdown);
-    default:
-      return markdown;
-  }
+	switch (platform) {
+		case "slack":
+			return formatForSlack(markdown);
+		case "discord":
+			return formatForDiscord(markdown);
+		case "telegram":
+			return formatForTelegram(markdown);
+		case "whatsapp":
+			return formatForWhatsApp(markdown);
+		default:
+			return markdown;
+	}
 }
