@@ -41,6 +41,7 @@ export interface AgentLoopOptions {
 	onToolResult?: (id: string, name: string, result: unknown) => void;
 	onThinking?: (content: string) => void;
 	onProgress?: (progress: number, label: string) => void;
+	onCheckpoint?: (event: string, ctx: AgentContext) => void | Promise<void>;
 	signal?: AbortSignal;
 }
 
@@ -75,8 +76,15 @@ export async function runAgentLoop(
 	syncMCPToolRegistry: () => void,
 	options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
-	const { onToken, onToolCall, onToolResult, onThinking, onProgress, signal } =
-		options;
+	const {
+		onToken,
+		onToolCall,
+		onToolResult,
+		onThinking,
+		onProgress,
+		onCheckpoint,
+		signal,
+	} = options;
 
 	try {
 		let totalTokensGenerated = 0;
@@ -101,6 +109,7 @@ export async function runAgentLoop(
 		}
 
 		addUserMessage(ctx, userMessage);
+		await onCheckpoint?.("user_message_added", ctx);
 
 		let selectedModel = ctx.config.model;
 		if (ctx.config.provider !== "custom") {
@@ -326,6 +335,9 @@ export async function runAgentLoop(
 				for (const count of midStreamCounts) {
 					totalToolCalls += count;
 				}
+				if (midStreamCounts.some((count) => count > 0)) {
+					await onCheckpoint?.("mid_stream_tools_processed", ctx);
+				}
 
 				const toolCalls = getToolCallsFromState(state);
 
@@ -343,6 +355,7 @@ export async function runAgentLoop(
 					}
 					ctx.messages.push(...newMessages);
 				}
+				await onCheckpoint?.("assistant_message_added", ctx);
 
 				if (state.usage) {
 					ctx.metadata.tokensUsed += state.usage.totalTokens;
@@ -423,6 +436,7 @@ export async function runAgentLoop(
 						signal,
 					);
 					totalToolCalls += processedCount;
+					await onCheckpoint?.("tools_processed", ctx);
 				}
 			} catch (error) {
 				if (

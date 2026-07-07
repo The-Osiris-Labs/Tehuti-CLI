@@ -10,6 +10,11 @@ import type { AgentContext } from "./context.js";
 import { getPrefetcher } from "./prefetcher.js";
 import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
+import {
+	applySelfHealingSafely,
+	makeToolErrorResult,
+	type ToolFailureHealer,
+} from "./tools/result-utils.js";
 
 const MODEL_TOOL_RESULT_MAX_CHARS = 20000;
 
@@ -41,7 +46,7 @@ export interface ParallelExecutionOptions {
 	ctx: AgentContext;
 	toolContext: Parameters<typeof executeTool>[2];
 	signal?: AbortSignal;
-	selfHealer?: any;
+	selfHealer?: ToolFailureHealer;
 }
 
 export interface ClassifiedToolCalls {
@@ -84,7 +89,7 @@ async function executeToolCall(
 	toolContext: Parameters<typeof executeTool>[2],
 	cache: ReturnType<typeof getToolCache>,
 	telemetry: ReturnType<typeof getTelemetry>,
-	selfHealer?: any,
+	selfHealer?: ToolFailureHealer,
 ): Promise<ToolResult> {
 	const toolName = tc.function.name;
 	let args: unknown;
@@ -92,10 +97,8 @@ async function executeToolCall(
 	try {
 		args = JSON.parse(tc.function.arguments);
 	} catch {
-		return {
-			success: false,
-			output: `Failed to parse arguments for ${toolName}`,
-		};
+		const message = `Failed to parse arguments for ${toolName}`;
+		return makeToolErrorResult(message, message);
 	}
 
 	if (shouldCacheTool(getTool(toolName), toolName, args)) {
@@ -116,10 +119,7 @@ async function executeToolCall(
 
 	const startTime = Date.now();
 	let result = await executeTool(toolName, args, toolContext);
-
-	if (result && !result.success && selfHealer) {
-		result = await selfHealer.wrapToolFailure(toolName, args, result);
-	}
+	result = await applySelfHealingSafely(toolName, args, result, selfHealer);
 	const durationMs = Date.now() - startTime;
 
 	telemetry.recordToolExecution(toolName, durationMs, result.success, false);

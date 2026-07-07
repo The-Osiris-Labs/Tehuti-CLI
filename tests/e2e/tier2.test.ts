@@ -1,5 +1,7 @@
 import * as fsDirect from "node:fs";
 import * as path from "node:path";
+import { Readable, Writable } from "node:stream";
+import { MouseProvider } from "@ink-tools/ink-mouse";
 import * as fs from "fs-extra";
 import { render } from "ink";
 import React from "react";
@@ -83,6 +85,42 @@ vi.mock("os", async (importOriginal) => {
 const mockState = vi.hoisted(() => ({
 	inMemoryGraph: { nodes: [], edges: [] }
 }));
+
+class TestStdin extends Readable {
+	isTTY = true;
+
+	_read(): void {}
+
+	setRawMode(): this {
+		return this;
+	}
+
+	setEncoding(): this {
+		return this;
+	}
+
+	ref(): this {
+		return this;
+	}
+
+	unref(): this {
+		return this;
+	}
+}
+
+class TestStdout extends Writable {
+	columns = 80;
+	rows = 24;
+	isTTY = true;
+
+	_write(
+		_chunk: unknown,
+		_encoding: BufferEncoding,
+		callback: (error?: Error | null) => void,
+	): void {
+		callback();
+	}
+}
 
 vi.mock("../../src/agent/memory/graph.js", () => {
 	return {
@@ -1015,15 +1053,23 @@ describe("Tehuti CLI Tier 2 E2E Suite", () => {
 
 			let rendered: any;
 			const TestWrapper = () => {
-				return React.createElement(CommandPalette, {
-					commands,
-					onSelect,
-					onClose,
-					visible: true,
-				});
+				return React.createElement(
+					MouseProvider,
+					{ autoEnable: false },
+					React.createElement(CommandPalette, {
+						commands,
+						onSelect,
+						onClose,
+						visible: true,
+					}),
+				);
 			};
 
-			const { cleanup } = render(React.createElement(TestWrapper));
+			const { cleanup } = render(React.createElement(TestWrapper), {
+				stdin: new TestStdin() as any,
+				stdout: new TestStdout() as any,
+				stderr: new TestStdout() as any,
+			});
 			cleanup();
 			expect(onSelect).not.toHaveBeenCalled();
 		});

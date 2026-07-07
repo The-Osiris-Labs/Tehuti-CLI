@@ -170,6 +170,7 @@ export interface AgentLoopOptions {
 	onToolResult?: (id: string, name: string, result: unknown) => void;
 	onThinking?: (content: string) => void;
 	onProgress?: (progress: number, label: string) => void;
+	onCheckpoint?: (event: string, ctx: AgentContext) => void | Promise<void>;
 	signal?: AbortSignal;
 }
 

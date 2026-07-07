@@ -95,7 +95,12 @@ export function summarizeToolOutput(
 		result !== null &&
 		"output" in result
 	) {
-		output = String((result as Record<string, unknown>).output);
+		const record = result as Record<string, unknown>;
+		const outputValue = String(record.output ?? "");
+		output =
+			record.success === false && !outputValue && record.error !== undefined
+				? String(record.error)
+				: outputValue;
 	} else if (
 		result &&
 		typeof result === "object" &&

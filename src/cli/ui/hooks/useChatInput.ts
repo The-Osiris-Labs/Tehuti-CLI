@@ -578,13 +578,20 @@ export function useChatInput(props: UseChatInputProps) {
 
 		if (key.ctrl && k === "d") {
 			if (input.length === 0) {
-				if (sessionId && ctxRef.current) {
-					sessionManager.saveSession(sessionId, ctxRef.current);
-				}
-				console.log();
-				console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
-				onExit();
-				exit();
+				const performExit = async () => {
+					if (sessionId && ctxRef.current) {
+						try {
+							await sessionManager.saveSession(sessionId, ctxRef.current);
+						} catch (e) {
+							console.error("Failed to save session:", e);
+						}
+					}
+					console.log();
+					console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
+					onExit();
+					exit();
+				};
+				void performExit();
 			} else {
 				if (hasSelection) {
 					deleteSelection();

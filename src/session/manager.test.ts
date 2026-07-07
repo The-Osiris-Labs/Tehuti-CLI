@@ -319,6 +319,18 @@ describe("SessionManager", () => {
 
 			await fs.remove(otherDir);
 		});
+
+		it("should not resume a session from a different cwd", async () => {
+			const otherDir = path.join(os.tmpdir(), "tehuti-test-other-only");
+			await fs.ensureDir(otherDir);
+
+			await sessionManager.createSession(otherDir, "model-other");
+
+			const recentId = await sessionManager.getRecentSession(testDir);
+			expect(recentId).toBeNull();
+
+			await fs.remove(otherDir);
+		});
 	});
 
 	describe("session ID management", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createCommands, formatHelpOutput } from "./CommandPalette.js";
 
 describe("CommandPalette helpers", () => {
@@ -18,6 +18,31 @@ describe("CommandPalette helpers", () => {
 		expect(
 			commands.find((command) => command.id === "/help")?.shortcut,
 		).toBeUndefined();
+	});
+
+	it("passes the full saved session id from the load submenu", async () => {
+		const onLoad = vi.fn();
+		const fullId = "12345678-1234-4234-8234-123456789abc";
+		const commands = createCommands({
+			onCost: () => {},
+			onModel: () => {},
+			onClear: () => {},
+			onExit: () => {},
+			onHelp: () => {},
+			onSessions: () => {},
+			onModels: () => {},
+			onProviders: () => {},
+			onLoad,
+			getSavedSessions: async () => [
+				{ id: fullId, name: "Important Session", date: "today" },
+			],
+		});
+
+		const loadCommand = commands.find((command) => command.id === "/load");
+		const children = await loadCommand?.submenu?.();
+		await children?.[0]?.action?.();
+
+		expect(onLoad).toHaveBeenCalledWith(fullId);
 	});
 
 	it("documents only the shortcuts that the input loop actually supports", () => {

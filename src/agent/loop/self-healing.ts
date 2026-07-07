@@ -13,6 +13,9 @@ export interface ValidationResult {
 }
 
 export class SelfHealingManager {
+	private static instances = new Set<SelfHealingManager>();
+	private static cleanupHandlersRegistered = false;
+
 	private mainDir: string;
 	private activeWorktrees: Map<
 		string,
@@ -21,8 +24,17 @@ export class SelfHealingManager {
 
 	constructor(mainDir: string) {
 		this.mainDir = mainDir;
+		SelfHealingManager.instances.add(this);
 		this.cleanupOrphanedWorktrees();
-		this.registerCleanupHandlers();
+		SelfHealingManager.registerCleanupHandlers();
+	}
+
+	async wrapToolFailure<T extends { success: boolean }>(
+		_toolName: string,
+		_args: unknown,
+		result: T,
+	): Promise<T> {
+		return result;
 	}
 
 	private cleanupOrphanedWorktrees() {
@@ -49,36 +61,46 @@ export class SelfHealingManager {
 		}
 	}
 
-	private registerCleanupHandlers() {
-		const cleanup = () => {
-			for (const {
-				worktreePath,
-				branchName,
-			} of this.activeWorktrees.values()) {
-				try {
-					spawnSync("git", ["worktree", "remove", "--force", worktreePath], {
-						cwd: this.mainDir,
-						stdio: "ignore",
-					});
-					spawnSync("git", ["branch", "-D", branchName], {
-						cwd: this.mainDir,
-						stdio: "ignore",
-					});
-				} catch (e) {}
-			}
-			this.activeWorktrees.clear();
-		};
+	private cleanupActiveWorktrees() {
+		for (const { worktreePath, branchName } of this.activeWorktrees.values()) {
+			try {
+				spawnSync("git", ["worktree", "remove", "--force", worktreePath], {
+					cwd: this.mainDir,
+					stdio: "ignore",
+				});
+				spawnSync("git", ["branch", "-D", branchName], {
+					cwd: this.mainDir,
+					stdio: "ignore",
+				});
+			} catch (e) {}
+		}
+		this.activeWorktrees.clear();
+	}
 
-		process.on("exit", cleanup);
+	private static cleanupAllActiveWorktrees() {
+		for (const manager of SelfHealingManager.instances) {
+			manager.cleanupActiveWorktrees();
+		}
+	}
+
+	private static registerCleanupHandlers() {
+		if (SelfHealingManager.cleanupHandlersRegistered) {
+			return;
+		}
+		SelfHealingManager.cleanupHandlersRegistered = true;
+
+		process.on("exit", () => {
+			SelfHealingManager.cleanupAllActiveWorktrees();
+		});
 
 		// Ensure we gracefully clean up on common termination signals
 		process.on("SIGINT", () => {
-			cleanup();
+			SelfHealingManager.cleanupAllActiveWorktrees();
 			process.exit(130);
 		});
 
 		process.on("SIGTERM", () => {
-			cleanup();
+			SelfHealingManager.cleanupAllActiveWorktrees();
 			process.exit(143);
 		});
 	}

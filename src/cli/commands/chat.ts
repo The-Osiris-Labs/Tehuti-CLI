@@ -56,6 +56,10 @@ import {
 import { TehutiDaemonClient } from "../../daemon/client.js";
 import { mcpManager } from "../../mcp/index.js";
 import { setPermissionResolver } from "../../permissions/prompts.js";
+import {
+	checkSessionHealth,
+	formatSessionHealthSummary,
+} from "../../session/health.js";
 import { sessionManager } from "../../session/manager.js";
 import {
 	createStreamingOutputManager,
@@ -109,6 +113,28 @@ import { renderMarkdown } from "../ui/markdown-mapper.js";
 import { companionCommand } from "./companion.js";
 import { daemonCommand } from "./daemon.js";
 
+interface PendingSessionFlush {
+	sessionId: string;
+	ctx: AgentContext;
+}
+
+let pendingSessionFlush: PendingSessionFlush | null = null;
+
+export function setPendingSessionFlush(
+	pending: PendingSessionFlush | null,
+): void {
+	pendingSessionFlush = pending;
+}
+
+async function flushPendingSession(): Promise<void> {
+	if (!pendingSessionFlush) return;
+	const { sessionId, ctx } = pendingSessionFlush;
+	try {
+		await sessionManager.saveSession(sessionId, ctx);
+	} catch (err) {
+		debug.log("chat", "Final flush failed:", err);
+	}
+}
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
 const GREEN = BRANDING.colors?.green || "#22C55E";
@@ -304,7 +330,12 @@ function formatToolResult(
 		result !== null &&
 		"output" in result
 	) {
-		output = String((result as Record<string, unknown>).output);
+		const record = result as Record<string, unknown>;
+		const outputValue = String(record.output ?? "");
+		output =
+			record.success === false && !outputValue && record.error !== undefined
+				? String(record.error)
+				: outputValue;
 	} else {
 		output = safeStringify(result);
 	}
@@ -478,13 +509,18 @@ function getEnhancedToolName(name: string, description?: string): string {
 	return base;
 }
 
-function getToolRenderStatus(result: unknown): "pending" | "success" | "error" {
+export function getToolRenderStatus(
+	result: unknown,
+): "pending" | "success" | "error" {
 	if (result === "[Compacted]") return "success";
 	if (result === null) return "pending";
 	if (result && typeof result === "object" && "success" in result) {
 		return (result as { success?: unknown }).success === false
 			? "error"
 			: "success";
+	}
+	if (result && typeof result === "object" && "error" in result) {
+		return "error";
 	}
 	return "success";
 }
@@ -869,11 +905,6 @@ function ChatUI({
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const streamingContentRef = useRef<string>("");
 	const streamingMsgIdRef = useRef<number | null>(null);
-	const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-	const [activeSessionLabel, setActiveSessionLabel] = useState<string | null>(
-		null,
-	);
-
 	const daemonClientRef = useRef<TehutiDaemonClient | null>(null);
 
 	// Initialize daemon client in companion mode
@@ -957,7 +988,7 @@ function ChatUI({
 	useEffect(() => {
 		const AUTO_SAVE_INTERVAL_MS = 60_000;
 		const timer = setInterval(() => {
-			const sid = activeSessionId;
+			const sid = sessionId;
 			const ctx = ctxRef.current;
 			if (sid && ctx) {
 				sessionManager.saveSession(sid, ctx).catch((err: unknown) => {
@@ -966,7 +997,18 @@ function ChatUI({
 			}
 		}, AUTO_SAVE_INTERVAL_MS);
 		return () => clearInterval(timer);
-	}, [activeSessionId]);
+	}, [sessionId]);
+
+	// Keep module-level pending-flush registry in sync so the active session can
+	// be persisted on SIGINT/SIGTERM/uncaughtException. Runs on every render so
+	// the latest in-memory ctx is available to the cleanup handlers.
+	useEffect(() => {
+		if (sessionId && ctxRef.current) {
+			setPendingSessionFlush({ sessionId, ctx: ctxRef.current });
+		} else {
+			setPendingSessionFlush(null);
+		}
+	});
 
 	const scrollContainerRef = useRef(null);
 	useOnWheel(scrollContainerRef, (event) => {
@@ -1423,6 +1465,21 @@ function ChatUI({
 			try {
 				const data = await sessionManager.loadSession(id);
 				if (data && data.messages.length > 0) {
+					const health = await checkSessionHealth(data, process.cwd(), {
+						allowFallbackCwd: true,
+					});
+					if (health.status === "blocked") {
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: `Cannot load session safely:\n${formatSessionHealthSummary(health)}`,
+							},
+						]);
+						return;
+					}
+
 					const loadedProvider = data.metadata.provider?.trim().toLowerCase();
 					const loadedBaseUrl = data.metadata.baseUrl?.trim();
 					const loadedCustomProvider = normalizeCustomProvider(
@@ -1444,9 +1501,13 @@ function ChatUI({
 
 					const loadedMsgs: UiMessage[] = [];
 					let uiMsgId = 0;
+					const historyMessages =
+						data.appendOnlyLog && data.appendOnlyLog.length > 0
+							? data.appendOnlyLog
+							: data.messages;
 
-					for (let i = 0; i < data.messages.length; i++) {
-						const m = data.messages[i];
+					for (let i = 0; i < historyMessages.length; i++) {
+						const m = historyMessages[i];
 						if (m.role === "system" || m.role === "tool") continue;
 
 						const contentStr =
@@ -1470,7 +1531,7 @@ function ChatUI({
 
 							if (m.tool_calls && m.tool_calls.length > 0) {
 								for (const tc of m.tool_calls) {
-									const toolMsg = data.messages.find(
+									const toolMsg = historyMessages.find(
 										(msg) => msg.role === "tool" && msg.tool_call_id === tc.id,
 									);
 									let toolResultStr: string | null = null;
@@ -1515,7 +1576,7 @@ function ChatUI({
 					costTracker.reset();
 					setSessionCost(0);
 					ctxRef.current = await createAgentContext(
-						process.cwd(),
+						health.resumeCwd,
 						{
 							...getActiveConfig(),
 							provider: resolvedState.provider,
@@ -1582,6 +1643,15 @@ function ChatUI({
 					}
 					setMessages((m) => [
 						...m,
+						...(health.status === "warning"
+							? [
+									{
+										id: msgIdRef.current++,
+										role: "system" as const,
+										content: `Session resume check:\n${formatSessionHealthSummary(health)}`,
+									},
+								]
+							: []),
 						{
 							id: msgIdRef.current++,
 							role: "system",
@@ -1834,80 +1904,8 @@ function ChatUI({
 					? await sessionManager.getRecentSession(process.cwd())
 					: null;
 				if (recentId && mounted && !controller.signal.aborted) {
-					const data = await sessionManager.loadSession(recentId);
-					if (
-						data &&
-						data.messages.length > 0 &&
-						mounted &&
-						!controller.signal.aborted
-					) {
-						const loadedProvider = data.metadata.provider?.trim().toLowerCase();
-						const loadedBaseUrl = data.metadata.baseUrl?.trim();
-						const loadedCustomProvider = normalizeCustomProvider(
-							data.metadata.customProvider,
-						);
-						const nextProvider = loadedProvider || runtimeProvider;
-						const nextState = resolveRuntimeProviderState(nextProvider, {
-							baseUrl: loadedBaseUrl || "",
-							customProvider:
-								loadedCustomProvider ||
-								runtimeCustomProvider ||
-								normalizeCustomProvider(cfg.customProvider),
-						});
-						applyRuntimeProviderState(nextState);
-
-						const loadedMsgs = data.messages
-							.filter((m) => m.role === "user" || m.role === "assistant")
-							.map((m, i) => ({
-								id: i,
-								role: m.role,
-								content:
-									typeof m.content === "string"
-										? m.content
-										: JSON.stringify(m.content),
-							}));
-						if (loadedMsgs.length > 0) {
-							setMessages(loadedMsgs);
-							msgIdRef.current = loadedMsgs.length;
-							setShowWelcome(false);
-							setSessionId(recentId);
-							if (data.metadata.model) {
-								setCtxModel(data.metadata.model);
-							}
-
-							// Seed the AgentContext behind the scenes
-							ctxRef.current = await createAgentContext(
-								process.cwd(),
-								{
-									...getActiveConfig(),
-									provider: nextState.provider,
-									baseUrl: nextState.baseUrl,
-									apiKey: nextState.apiKey,
-									customProvider:
-										nextState.provider === "custom" &&
-										nextState.customProvider?.baseUrl
-											? nextState.customProvider
-											: undefined,
-									model: data.metadata.model || ctxModel,
-									maxIterations: 50,
-									maxTokens: 4096,
-									permissions: {
-										defaultMode: "trust",
-										alwaysAllow: [],
-										alwaysDeny: [],
-										trustedMode: true,
-									},
-								},
-								diffPreview,
-								companionMode,
-							);
-							ctxRef.current.messages = JSON.parse(
-								JSON.stringify(data.messages),
-							);
-
-							return;
-						}
-					}
+					await loadSessionById(recentId);
+					return;
 				}
 
 				if (mounted && !controller.signal.aborted) {
@@ -1946,21 +1944,12 @@ function ChatUI({
 		};
 	}, [
 		continueSession,
-		runtimeProvider,
-		runtimeCustomProvider,
-		cfg.customProvider,
+		loadSessionById,
 		resolveRuntimeProviderState,
-		applyRuntimeProviderState,
 		ctxModel,
 		setHistory,
-		setMessages,
-		setShowWelcome,
 		setSessionId,
-		setCtxModel,
 		abortActiveRequest,
-		diffPreview,
-		getActiveConfig,
-		companionMode,
 	]);
 
 	useEffect(() => {
@@ -2724,6 +2713,20 @@ function ChatUI({
 					}
 					setProgress(progress);
 					setOperationLabel(label);
+				},
+				onCheckpoint: async (_event: string, checkpointCtx: AgentContext) => {
+					if (
+						!isCurrentRequest(requestId, requestController.signal) ||
+						requestController.signal.aborted ||
+						!sessionId
+					) {
+						return;
+					}
+					try {
+						await sessionManager.saveSession(sessionId, checkpointCtx);
+					} catch (err) {
+						debug.log("chat", "Checkpoint save failed:", err);
+					}
 				},
 				signal: globalAbortController.signal,
 			};
@@ -3855,7 +3858,11 @@ export function createProgram(): Command {
 											typeof result === "object" &&
 											"success" in result
 												? (result as { success: boolean }).success
-												: true;
+												: !(
+														result &&
+														typeof result === "object" &&
+														"error" in result
+													);
 										const statusIcon = success
 											? chalk.green("✓")
 											: chalk.red("✗");
@@ -3942,7 +3949,9 @@ export function createProgram(): Command {
 						},
 					}),
 				);
-				registerCleanupHandler(() => {
+				registerCleanupHandler(async () => {
+					// Persist in-flight session before tearing down.
+					await flushPendingSession();
 					unmount();
 				});
 				await waitUntilExit();

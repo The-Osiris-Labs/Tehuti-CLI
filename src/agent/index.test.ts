@@ -166,6 +166,14 @@ describe("Agent Loop", () => {
 			});
 			expect(thinkingCalls.length).toBeGreaterThanOrEqual(0);
 		});
+
+		it("should checkpoint durable turn milestones", async () => {
+			const onCheckpoint = vi.fn();
+			await runAgentLoop(ctx, "Hello", { onCheckpoint });
+
+			expect(onCheckpoint).toHaveBeenCalledWith("user_message_added", ctx);
+			expect(onCheckpoint).toHaveBeenCalledWith("assistant_message_added", ctx);
+		});
 	});
 
 	describe("configureHooks", () => {

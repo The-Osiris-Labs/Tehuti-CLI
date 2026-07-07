@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBlocks, parseContentBlocks } from "./chat.js";
+import {
+	getToolRenderStatus,
+	normalizeBlocks,
+	parseContentBlocks,
+} from "./chat.js";
 
 describe("Chat Parsing and Normalization", () => {
+	describe("getToolRenderStatus", () => {
+		it("treats error-only tool results as failed", () => {
+			expect(getToolRenderStatus({ error: "wrapper failed" })).toBe("error");
+		});
+
+		it("treats explicit failed tool results as failed", () => {
+			expect(getToolRenderStatus({ success: false, output: "" })).toBe("error");
+		});
+	});
+
 	describe("parseContentBlocks", () => {
 		it("should handle content without any think tags", () => {
 			const content = "Hello world! This is a simple response.";

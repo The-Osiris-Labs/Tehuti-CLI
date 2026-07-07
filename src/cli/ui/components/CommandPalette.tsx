@@ -191,7 +191,7 @@ function CommandItemRow({
 				{ color: active ? "black" : CORAL, bold: active },
 				active ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
 			),
-			React.createElement(Text, null, label),
+			React.createElement(Text, null, ...label),
 			cmd.shortcut &&
 				React.createElement(
 					Text,
@@ -563,11 +563,11 @@ export function CommandPalette({
 					React.createElement(
 						Box,
 						{ flexDirection: "column" },
-						...orderedGroups.flatMap(([category, cmds]) => [
+						...orderedGroups.flatMap(([category, cmds], groupIndex) => [
 							React.createElement(
 								Text,
 								{
-									key: `cat-${category}`,
+									key: `cat-${groupIndex}-${category}`,
 									dimColor: true,
 									color: SAND,
 									bold: true,
@@ -581,7 +581,7 @@ export function CommandPalette({
 								const isSelected = cmdIndex === selectedIndex;
 
 								return React.createElement(CommandItemRow, {
-									key: cmd.id,
+									key: `cmd-${category}-${cmdIndex}-${cmd.id}`,
 									cmd,
 									cmdIndex,
 									isSelected,
@@ -594,7 +594,11 @@ export function CommandPalette({
 						hasMore &&
 							React.createElement(
 								Text,
-								{ color: GRAY, dimColor: true },
+								{
+									key: "more-indicator",
+									color: GRAY,
+									dimColor: true,
+								},
 								`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
 							),
 					),

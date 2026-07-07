@@ -206,4 +206,35 @@ describe("useChatInput hook", () => {
 		consoleSpy.mockRestore();
 		unmount();
 	});
+
+	it("should await session save before exiting on Ctrl+D with empty input", async () => {
+		props.input = "";
+		props.cursorPos = 0;
+		let resolveSave: () => void = () => {};
+		props.sessionManager.saveSession = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveSave = resolve;
+				}),
+		);
+		const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("d", { ctrl: true });
+		await Promise.resolve();
+
+		expect(props.sessionManager.saveSession).toHaveBeenCalledWith(
+			"session-1",
+			props.ctxRef.current,
+		);
+		expect(props.exit).not.toHaveBeenCalled();
+
+		resolveSave();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(props.exit).toHaveBeenCalled();
+		consoleSpy.mockRestore();
+		unmount();
+	});
 });
