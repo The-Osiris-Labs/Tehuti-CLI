@@ -22,7 +22,7 @@ async function main() {
 	await initHighlighter();
 	showUpdateNotification();
 	const program = createProgram();
-	program.parse(process.argv);
+	await program.parseAsync(process.argv);
 }
 
 main().catch((err) => {

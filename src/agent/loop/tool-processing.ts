@@ -26,9 +26,10 @@ function stringifyToolResult(result: unknown): string {
 		result && typeof result === "object"
 			? (result as Record<string, unknown>)
 			: undefined;
+	const outStr = String(record?.output ?? "");
 	const resultStr = record?.success
-		? String(record.output ?? "")
-		: `Error: ${String(record?.error ?? "Tool failed")}`;
+		? outStr
+		: `Error: ${String(record?.error ?? "Tool failed")}\nOutput: ${outStr}`;
 	if (resultStr.length <= MODEL_TOOL_RESULT_MAX_CHARS) {
 		return resultStr;
 	}
@@ -118,13 +119,18 @@ export async function processToolCalls(
 					? (args as Record<string, unknown>).file_path
 					: undefined;
 
-			const preHookResult = await hookExecutor.executeHook("PreToolUse", {
-				toolName: tc.function.name,
-				args,
-				filePath: typeof filePath === "string" ? filePath : undefined,
-				cwd: ctx.cwd,
-				env: process.env as Record<string, string>,
-			});
+			let preHookResult = { proceed: true, error: undefined as string | undefined };
+			try {
+				preHookResult = await hookExecutor.executeHook("PreToolUse", {
+					toolName: tc.function.name,
+					args,
+					filePath: typeof filePath === "string" ? filePath : undefined,
+					cwd: ctx.cwd,
+					env: process.env as Record<string, string>,
+				});
+			} catch (e) {
+				preHookResult = { proceed: false, error: e instanceof Error ? e.message : String(e) };
+			}
 
 			if (!preHookResult.proceed) {
 				blockedCalls.push({
@@ -217,14 +223,18 @@ export async function processToolCalls(
 						? (args as Record<string, unknown>).file_path
 						: undefined;
 
-				await hookExecutor.executeHook("PostToolUse", {
-					toolName: tc.function.name,
-					args,
-					result,
-					filePath: typeof filePath === "string" ? filePath : undefined,
-					cwd: ctx.cwd,
-					env: process.env as Record<string, string>,
-				});
+				try {
+					await hookExecutor.executeHook("PostToolUse", {
+						toolName: tc.function.name,
+						args,
+						result,
+						filePath: typeof filePath === "string" ? filePath : undefined,
+						cwd: ctx.cwd,
+						env: process.env as Record<string, string>,
+					});
+				} catch (e) {
+					debug.log("agent", "PostToolUse hook failed:", e);
+				}
 			}
 		}
 	} else {
@@ -295,13 +305,18 @@ export async function processToolCalls(
 					? (args as Record<string, unknown>).file_path
 					: undefined;
 
-			const preHookResult = await hookExecutor.executeHook("PreToolUse", {
-				toolName: tc.function.name,
-				args,
-				filePath: typeof filePath === "string" ? filePath : undefined,
-				cwd: ctx.cwd,
-				env: process.env as Record<string, string>,
-			});
+			let preHookResult = { proceed: true, error: undefined as string | undefined };
+			try {
+				preHookResult = await hookExecutor.executeHook("PreToolUse", {
+					toolName: tc.function.name,
+					args,
+					filePath: typeof filePath === "string" ? filePath : undefined,
+					cwd: ctx.cwd,
+					env: process.env as Record<string, string>,
+				});
+			} catch (e) {
+				preHookResult = { proceed: false, error: e instanceof Error ? e.message : String(e) };
+			}
 
 			if (!preHookResult.proceed) {
 				debug.log("agent", `Hook blocked: ${tc.function.name}`);
@@ -407,14 +422,18 @@ export async function processToolCalls(
 
 				const resultStr = stringifyToolResult(result);
 
-				await hookExecutor.executeHook("PostToolUse", {
-					toolName: tc.function.name,
-					args,
-					result,
-					filePath: typeof filePath === "string" ? filePath : undefined,
-					cwd: ctx.cwd,
-					env: process.env as Record<string, string>,
-				});
+				try {
+					await hookExecutor.executeHook("PostToolUse", {
+						toolName: tc.function.name,
+						args,
+						result,
+						filePath: typeof filePath === "string" ? filePath : undefined,
+						cwd: ctx.cwd,
+						env: process.env as Record<string, string>,
+					});
+				} catch (e) {
+					debug.log("agent", "PostToolUse hook failed:", e);
+				}
 
 				invalidateOnWrite(getTool(tc.function.name), tc.function.name, args);
 

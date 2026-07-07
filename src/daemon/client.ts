@@ -24,7 +24,7 @@ export class TehutiDaemonClient {
 
 	public send(data: any): void {
 		if (this.client) {
-			const payload = typeof data === "string" ? data : JSON.stringify(data);
+			const payload = JSON.stringify(data);
 			this.client.write(`${payload}\n`);
 		} else {
 			throw new Error("Not connected");
@@ -54,16 +54,18 @@ export class TehutiDaemonClient {
 
 				let newlineIndex;
 				while ((newlineIndex = this.buffer.indexOf("\n")) !== -1) {
-					const line = this.buffer.slice(0, newlineIndex).trim();
+					const line = this.buffer.slice(0, newlineIndex);
 					this.buffer = this.buffer.slice(newlineIndex + 1);
 					if (line) {
+						let parsed: any;
 						try {
-							const parsed = JSON.parse(line);
-							callback(parsed);
+							parsed = JSON.parse(line);
 						} catch (err) {
 							// If not JSON, just return the raw string
 							callback(line);
+							continue;
 						}
+						callback(parsed);
 					}
 				}
 			});

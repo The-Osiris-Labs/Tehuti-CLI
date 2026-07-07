@@ -22,6 +22,7 @@ export class TehutiDaemonServer extends EventEmitter {
 			this.emit("connection", socket);
 
 			socket.setEncoding("utf8");
+			socket.setTimeout(300000, () => socket.destroy(new Error("Idle Timeout")));
 			let buffer = "";
 
 			socket.on("data", (chunk: string) => {
@@ -36,12 +37,20 @@ export class TehutiDaemonServer extends EventEmitter {
 
 				let newlineIndex;
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-					const line = buffer.slice(0, newlineIndex).trim();
+					const line = buffer.slice(0, newlineIndex);
 					buffer = buffer.slice(newlineIndex + 1);
 
 					if (line) {
+						let msg: any;
 						try {
-							const msg = JSON.parse(line);
+							msg = JSON.parse(line);
+						} catch (e) {
+							// Not JSON, just emit as normal data
+							this.emit("data", socket, Buffer.from(line));
+							continue;
+						}
+
+						if (typeof msg === "object" && msg !== null) {
 							if (msg.type === "ping") {
 								// Count connected sockets by asking the server
 								this.server.getConnections((err, count) => {
@@ -61,17 +70,18 @@ export class TehutiDaemonServer extends EventEmitter {
 							}
 							if (msg.type === "stop") {
 								if (!socket.destroyed) {
-									socket.write(JSON.stringify({ type: "stopping" }) + "\n");
+									socket.write(JSON.stringify({ type: "stopping" }) + "\n", () => {
+										this.stop();
+										setTimeout(() => process.exit(0), 100);
+									});
+								} else {
+									this.stop();
+									setTimeout(() => process.exit(0), 100);
 								}
-								this.stop();
-								setTimeout(() => process.exit(0), 100);
 								return;
 							}
-							this.emit("message", socket, msg);
-						} catch (e) {
-							// Not JSON, just emit as normal data
-							this.emit("data", socket, Buffer.from(line));
 						}
+						this.emit("message", socket, msg);
 					}
 				}
 			});
@@ -102,6 +112,7 @@ export class TehutiDaemonServer extends EventEmitter {
 
 		if (fs.existsSync(SOCKET_PATH)) {
 			const client = net.createConnection({ path: SOCKET_PATH });
+			client.setTimeout(2000, () => client.destroy(new Error("Timeout")));
 			client.on("connect", () => {
 				client.end();
 				this.emit("error", new Error("EADDRINUSE"));
@@ -148,6 +159,11 @@ export class TehutiDaemonServer extends EventEmitter {
 
 		process.on("uncaughtException", (err) => {
 			console.error("Uncaught exception in daemon:", err);
+			cleanup();
+		});
+
+		process.on("unhandledRejection", (reason, promise) => {
+			console.error("Unhandled Rejection at:", promise, "reason:", reason);
 			cleanup();
 		});
 	}

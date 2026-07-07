@@ -356,16 +356,16 @@ async function readFile(
 	}
 
 	try {
-		const stats = await fs.lstat(resolvedPath);
-
-		if (stats.isSymbolicLink()) {
-			const realPath = await fs.realpath(resolvedPath);
+		const symlinkCheck = await checkSymlinkSafety(resolvedPath, ctx.cwd);
+		if (!symlinkCheck.safe) {
 			return {
 				success: false,
 				output: "",
-				error: `File is a symlink pointing to: ${realPath}. Direct access to symlinks is restricted for security.`,
+				error: `Security error: ${symlinkCheck.reason}`,
 			};
 		}
+
+		const stats = await fs.lstat(resolvedPath);
 
 		if (!stats.isFile()) {
 			return {

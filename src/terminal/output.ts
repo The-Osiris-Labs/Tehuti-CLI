@@ -328,12 +328,13 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	lines += 1; // Role header
 
 	const blocks =
-		msg.blocks ||
-		(Array.isArray(msg.content)
-			? msg.content
-			: typeof msg.content === "string"
-				? parseContentBlocks(msg.content)
-				: []);
+		(msg.blocks && msg.blocks.length > 0)
+			? msg.blocks
+			: Array.isArray(msg.content)
+				? msg.content
+				: typeof msg.content === "string"
+					? parseContentBlocks(msg.content)
+					: [];
 
 	if (blocks && blocks.length > 0) {
 		blocks.forEach((block: any) => {
@@ -541,7 +542,13 @@ function wrapLongWord(
 	return lines;
 }
 
-const ANSI_REGEX_GLOBAL = /\x1b\[[0-9;]*[a-zA-Z]/g;
+const ANSI_REGEX_GLOBAL = new RegExp(
+	[
+		"[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+		"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))",
+	].join("|"),
+	"g"
+);
 
 function stripAnsi(str: string): string {
 	return str.replace(ANSI_REGEX_GLOBAL, "");

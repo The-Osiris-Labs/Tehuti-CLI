@@ -39,11 +39,11 @@ export function formatForSlack(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(/\*\*([\s\S]+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
-	text = text.replace(/(?<!\*)\*(?!\*)([\s\S]+?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
+	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "_$1_");
 	text = text.replace(/@@BOLD@@([\s\S]+?)@@BOLD@@/g, "*$1*");
 	// Strikethrough
-	text = text.replace(/~~([\s\S]+?)~~/g, "~$1~");
+	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
 	// Headers
 	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
 
@@ -200,14 +200,14 @@ export function formatForTelegram(markdown: string): string {
 	);
 
 	// Bold
-	text = text.replace(/\*\*([\s\S]+?)\*\*(?!\*)/g, "<b>$1</b>");
+	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "<b>$1</b>");
 
 	// Italic (ignoring intra-word underscores to be safer)
-	text = text.replace(/(?<!\w)_([\s\S]+?)_(?!\w)/g, "<i>$1</i>");
-	text = text.replace(/(?<!\*)\*(?!\*)([\s\S]+?)(?<!\*)\*(?!\*)/g, "<i>$1</i>");
+	text = text.replace(/(?<!\w)_((?:(?!\n\n)[\s\S])+?)_(?!\w)/g, "<i>$1</i>");
+	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "<i>$1</i>");
 
 	// Strikethrough
-	text = text.replace(/~~([\s\S]+?)~~/g, "<s>$1</s>");
+	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "<s>$1</s>");
 
 	// Convert links
 	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (_match, p1, p2) => {
@@ -269,11 +269,11 @@ export function formatForWhatsApp(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(/\*\*([\s\S]+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
-	text = text.replace(/(?<!\*)\*(?!\*)([\s\S]+?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
+	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "_$1_");
 	text = text.replace(/@@BOLD@@([\s\S]+?)@@BOLD@@/g, "*$1*");
 	// Strikethrough
-	text = text.replace(/~~([\s\S]+?)~~/g, "~$1~");
+	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
 	// Headers
 	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
 

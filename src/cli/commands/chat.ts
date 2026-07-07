@@ -895,9 +895,6 @@ function ChatUI({
 	const terminalWidth = terminalSize.columns;
 	const headerHeight = 3;
 	const inputHeight = 3;
-	const shouldShowHeader =
-		showWelcome && scrollOffset === 0 && messages.length > 0;
-	const headerScrollHeight = shouldShowHeader ? 14 : 0;
 	const warningsHeight = configWarnings.length * 4;
 
 	messagesRef.current = messages;
@@ -1707,7 +1704,6 @@ function ChatUI({
 			headerHeight -
 			inputHeight -
 			4 -
-			headerScrollHeight -
 			warningsHeight -
 			suggestionsCount -
 			paletteHeight,
@@ -1941,24 +1937,37 @@ function ChatUI({
 		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
 		const estimateMsgLines = (msg: any) => {
 			let l = 1;
-			const blocks = msg.blocks;
+			const blocks = (msg.blocks && msg.blocks.length > 0)
+				? msg.blocks
+				: Array.isArray(msg.content)
+					? msg.content
+					: [];
+			
 			if (blocks && blocks.length > 0) {
 				for (const block of blocks) {
 					if (block.type === "text") {
-						const text =
-							typeof block.content === "string"
-								? block.content
-								: String(block.content || "");
+						let textContent = "";
+						if (Array.isArray(block.content)) {
+							textContent = block.content.map((c: any) => c.text || (typeof c === "string" ? c : JSON.stringify(c))).join("");
+						} else {
+							textContent = String(block.content || block.text || "");
+						}
 						l +=
-							Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
-							(text.match(/\n/g) || []).length;
+							Math.max(1, Math.ceil(textContent.length / avgCharsPerLine)) +
+							(textContent.match(/\n/g) || []).length;
 					} else if (block.type === "reasoning") {
+						let reasoningContent = "";
+						if (Array.isArray(block.content)) {
+							reasoningContent = block.content.map((c: any) => c.text || (typeof c === "string" ? c : JSON.stringify(c))).join("");
+						} else {
+							reasoningContent = String(block.content || block.text || "");
+						}
 						l +=
 							2 +
 							Math.max(
 								1,
 								Math.ceil(
-									String(block.content || "").length /
+									reasoningContent.length /
 										Math.max(10, contentMaxWidth - 5),
 								),
 							);
@@ -1972,6 +1981,14 @@ function ChatUI({
 					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
 					(text.match(/\n/g) || []).length;
 			}
+
+			if (msg.toolCalls && msg.toolCalls.length > 0) {
+				const hasToolBlock = blocks?.some((b: any) => b.type === "tool");
+				if (!hasToolBlock) {
+					l += msg.toolCalls.length * 8;
+				}
+			}
+
 			return l + 1;
 		};
 		let accumulatedLines = 0;
@@ -1981,9 +1998,7 @@ function ChatUI({
 			sliceIndex = i;
 			if (accumulatedLines >= linesNeeded) break;
 		}
-		return messages.slice(
-			Math.min(sliceIndex, Math.max(0, messages.length - 50)),
-		);
+		return messages.slice(Math.max(0, sliceIndex - 10));
 	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
 
 	const scrollToBottom = useCallback(() => {
@@ -3566,7 +3581,7 @@ function App({
 
 	return React.createElement(
 		MouseProvider,
-		{ autoEnable: mouseEnabled },
+		{ autoEnable: false },
 		React.createElement(ChatUI, {
 			apiKey,
 			model,

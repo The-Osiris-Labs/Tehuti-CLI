@@ -132,8 +132,8 @@ export async function loadConfig(
 
 	try {
 		const result = await explorer.search(cwd);
-		if (result?.config) {
-			fileConfig = result.config;
+		if (result && typeof result.config === "object" && result.config !== null) {
+			fileConfig = result.config as Record<string, unknown>;
 			consola.debug(`Loaded config from: ${result.filepath}`);
 		}
 	} catch (error) {

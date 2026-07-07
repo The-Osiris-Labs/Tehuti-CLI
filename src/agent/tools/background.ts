@@ -145,6 +145,10 @@ async function startBackground(
 		};
 	}
 
+	for (const [pId, proc] of backgroundProcesses) {
+		if (proc.status !== "running") backgroundProcesses.delete(pId);
+	}
+
 	if (backgroundProcesses.size >= MAX_PROCESSES) {
 		return {
 			success: false,
@@ -396,7 +400,7 @@ export function cleanupAllProcesses(): void {
 	for (const [pid, proc] of backgroundProcesses) {
 		if (proc.status === "running") {
 			try {
-				process.kill(-pid, "SIGTERM");
+				process.kill(-pid, "SIGKILL");
 			} catch {}
 		}
 	}

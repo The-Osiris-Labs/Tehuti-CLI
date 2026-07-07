@@ -1,7 +1,14 @@
 import chalk from "chalk";
 import { useInput } from "ink";
 import React from "react";
-import { isMouseSequence } from "../../../utils/mouse.js";
+import {
+	isMouseSequence,
+	isMouseSequenceFragment,
+	isMouseSequenceTail,
+} from "../../../utils/mouse.js";
+
+// Maximum time to wait for a mouse sequence fragment to complete before flushing.
+const MOUSE_BUFFER_TIMEOUT_MS = 50;
 
 export interface UseChatInputProps {
 	input: string;
@@ -85,14 +92,102 @@ export function useChatInput(props: UseChatInputProps) {
 	const pendingQuestionRef = React.useRef(pendingQuestion);
 	const showSessionListRef = React.useRef(showSessionList);
 
+	const inputRef = React.useRef(input);
+	const cursorPosRef = React.useRef(cursorPos);
+	const selectionStartRef = React.useRef(selectionStart);
+	const selectionEndRef = React.useRef(selectionEnd);
+	const historyRef = React.useRef(history);
+	const historyIndexRef = React.useRef(historyIndex);
+	const loadingRef = React.useRef(loading);
+	// Buffer for split mouse sequence fragments arriving across multiple useInput() callbacks.
+	const mouseBufferRef = React.useRef<string>("");
+	const mouseBufferTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+
 	React.useEffect(() => {
 		showCommandPaletteRef.current = showCommandPalette;
 		showConfigEditorRef.current = showConfigEditor;
 		pendingQuestionRef.current = pendingQuestion;
 		showSessionListRef.current = showSessionList;
-	}, [showCommandPalette, showConfigEditor, pendingQuestion, showSessionList]);
+		inputRef.current = input;
+		cursorPosRef.current = cursorPos;
+		selectionStartRef.current = selectionStart;
+		selectionEndRef.current = selectionEnd;
+		historyRef.current = history;
+		historyIndexRef.current = historyIndex;
+		loadingRef.current = loading;
+	}, [
+		showCommandPalette,
+		showConfigEditor,
+		pendingQuestion,
+		showSessionList,
+		input,
+		cursorPos,
+		selectionStart,
+		selectionEnd,
+		history,
+		historyIndex,
+		loading,
+	]);
+
+	// Cleanup the mouse buffer timer on unmount.
+	React.useEffect(() => {
+		return () => {
+			if (mouseBufferTimerRef.current) {
+				clearTimeout(mouseBufferTimerRef.current);
+				mouseBufferTimerRef.current = null;
+			}
+		};
+	}, []);
+
+	const flushMouseBuffer = React.useCallback(() => {
+		mouseBufferRef.current = "";
+		if (mouseBufferTimerRef.current) {
+			clearTimeout(mouseBufferTimerRef.current);
+			mouseBufferTimerRef.current = null;
+		}
+	}, []);
+
+	const absorbMouseFragment = React.useCallback(
+		(k: string): boolean => {
+			// True if the chunk was absorbed into the mouse buffer (caller should return early).
+			if (isMouseSequenceTail(k) || k.endsWith("M") || k.endsWith("m")) {
+				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
+				flushMouseBuffer();
+				return true;
+			}
+			if (isMouseSequenceFragment(k)) {
+				mouseBufferRef.current += k;
+				// Reset the timeout — if no more data arrives, drop the buffer.
+				if (mouseBufferTimerRef.current) {
+					clearTimeout(mouseBufferTimerRef.current);
+				}
+				mouseBufferTimerRef.current = setTimeout(
+					flushMouseBuffer,
+					MOUSE_BUFFER_TIMEOUT_MS,
+				);
+				return true;
+			}
+			// Complete mouse sequence in one chunk.
+			if (isMouseSequence(k)) {
+				flushMouseBuffer();
+				return true;
+			}
+			return false;
+		},
+		[flushMouseBuffer],
+	);
 
 	useInput((k, key) => {
+		const input = inputRef.current;
+		const cursorPos = cursorPosRef.current;
+		const selectionStart = selectionStartRef.current;
+		const selectionEnd = selectionEndRef.current;
+		const history = historyRef.current;
+		const historyIndex = historyIndexRef.current;
+		const loading = loadingRef.current;
+
 		if (k?.startsWith("\x1b[<64;")) {
 			scrollLineUp();
 			return;
@@ -101,6 +196,11 @@ export function useChatInput(props: UseChatInputProps) {
 			scrollLineDown();
 			return;
 		}
+		// Absorb split mouse sequence fragments before they can pollute the input.
+		if (absorbMouseFragment(k)) {
+			return;
+		}
+		// Final safety net: a complete mouse sequence we missed.
 		if (isMouseSequence(k)) {
 			return;
 		}
@@ -210,13 +310,20 @@ export function useChatInput(props: UseChatInputProps) {
 
 		if (key.ctrl && k === "c") {
 			if (input.length === 0) {
-				if (sessionId && ctxRef.current) {
-					sessionManager.saveSession(sessionId, ctxRef.current);
-				}
-				console.log();
-				console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
-				onExit();
-				exit();
+				const performExit = async () => {
+					if (sessionId && ctxRef.current) {
+						try {
+							await sessionManager.saveSession(sessionId, ctxRef.current);
+						} catch (e) {
+							console.error("Failed to save session:", e);
+						}
+					}
+					console.log();
+					console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
+					onExit();
+					exit();
+				};
+				void performExit();
 			} else if (hasSelection) {
 				const [start, end] = [
 					Math.min(selectionStart!, selectionEnd!),
@@ -236,8 +343,21 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		// Shift+Enter: insert a newline
-		if (key.shift && key.return) {
+		// Shift+Enter / Alt+Enter / Ctrl+Enter: insert a newline.
+		// Handle both the Ink key flag (some terminals) and the raw CSI escape
+		// (others, e.g. Ghostty, iTerm2 with xterm modifyOtherKeys mode).
+		const isModifiedEnter =
+			(key.shift && key.return) ||
+			(key.meta && key.return) ||
+			(key.ctrl && key.return) ||
+			k === "\x1b[13;2~" || // Shift+Enter
+			k === "\x1b[13;3~" || // Alt+Enter
+			k === "\x1b[13;4~" || // Alt+Shift+Enter
+			k === "\x1b[13;5~" || // Ctrl+Enter
+			k === "\x1b[13;6~" || // Ctrl+Shift+Enter
+			k === "\x1b[27;2;13~" || // Shift+Enter (xterm modifyOtherKeys=2)
+			k === "\x1b[27;5;13~"; // Ctrl+Enter (xterm modifyOtherKeys=2)
+		if (isModifiedEnter) {
 			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
@@ -541,19 +661,16 @@ export function useChatInput(props: UseChatInputProps) {
 				.replace(/[\x00-\x1F\x7F]/g, "")
 				.replace(/\r?\n/g, " ");
 			if (sanitized.length > 0) {
-				let targetText = input;
-				let targetPos = cursorPos;
 				if (hasSelection) {
-					const res = deleteSelection();
-					targetText = res.text;
-					targetPos = res.pos;
+					deleteSelection();
 				}
-				setInput(
-					targetText.slice(0, targetPos) +
-						sanitized +
-						targetText.slice(targetPos),
+				// B3 fix: use functional setters so rapid keystrokes cannot clobber
+				// intermediate values via stale closure.
+				const insertAt = cursorPos;
+				setInput((prev: string) =>
+					prev.slice(0, insertAt) + sanitized + prev.slice(insertAt),
 				);
-				setCursorPos(targetPos + sanitized.length);
+				setCursorPos((p: number) => p + sanitized.length);
 				setHistoryIndex(-1);
 			}
 		}

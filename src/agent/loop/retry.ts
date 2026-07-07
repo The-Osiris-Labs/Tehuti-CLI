@@ -34,7 +34,11 @@ export async function withRetry<T>(
 				error.message?.includes("500") ||
 				error.message?.includes("502") ||
 				error.message?.includes("503") ||
-				error.message?.includes("504");
+				error.message?.includes("504") ||
+				error.message?.includes("fetch failed") ||
+				error.message?.includes("ECONNRESET") ||
+				error.message?.includes("ECONNREFUSED") ||
+				error.message?.includes("socket hang up");
 
 			if ((isTimeout || isRateLimit || isServerErr) && attempt < maxRetries) {
 				debug.log(

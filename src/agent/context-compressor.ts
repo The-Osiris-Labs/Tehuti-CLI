@@ -79,7 +79,10 @@ export function compressContext(
 	const opts = { ..._DEFAULT_OPTIONS, ...options };
 	const originalTokens = estimateTokens(messages);
 
-	if (messages.length <= opts.keepFirstN + opts.keepLastN) {
+	const systemMessages = messages.filter((m) => m.role === "system");
+	const nonSystemMessages = messages.filter((m) => m.role !== "system");
+
+	if (nonSystemMessages.length <= opts.keepFirstN + opts.keepLastN) {
 		return {
 			messages,
 			removedCount: 0,
@@ -90,9 +93,9 @@ export function compressContext(
 		};
 	}
 
-	const systemMessages = messages.slice(0, opts.keepFirstN);
-	const recentMessages = messages.slice(-opts.keepLastN);
-	const midMessages = messages.slice(opts.keepFirstN, -opts.keepLastN);
+	const firstN = nonSystemMessages.slice(0, opts.keepFirstN);
+	const recentMessages = nonSystemMessages.slice(-opts.keepLastN);
+	const midMessages = nonSystemMessages.slice(opts.keepFirstN, -opts.keepLastN);
 
 	let summaryContent = `[${midMessages.length} earlier messages compacted for context efficiency]\n\n`;
 
@@ -137,7 +140,7 @@ export function compressContext(
 		content: summaryContent,
 	};
 
-	const newMessages = [...systemMessages, compressedMessage, ...recentMessages];
+	const newMessages = [...systemMessages, ...firstN, compressedMessage, ...recentMessages];
 	const newTokens = estimateTokens(newMessages);
 
 	return {

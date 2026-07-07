@@ -60,7 +60,9 @@ export class ConnectorManager extends EventEmitter {
 
 				if (attempt >= maxRetries) {
 					console.error(`[${platform}] Exhausted max retries (${maxRetries}): ${errMessage}`);
-					this.emit("error", new Error(`Max retries reached for ${platform}`));
+					if (this.listenerCount("error") > 0) {
+						this.emit("error", new Error(`Max retries reached for ${platform}`));
+					}
 					return;
 				}
 
@@ -83,11 +85,17 @@ export class ConnectorManager extends EventEmitter {
 	private initSlackSocketMode(): void {
 		if (!this.config.slackAppToken) return;
 
-		this.connectWithBackoff("Slack", async () => {
-			console.log("Initializing Slack Socket Mode...");
-			// In a real implementation, this would throw on connection failure
-			// e.g. await slackClient.start();
-		}).catch((err) => {
+		const start = async () => {
+			while (true) {
+				await this.connectWithBackoff("Slack", async () => {
+					console.log("Initializing Slack Socket Mode...");
+					// In a real implementation, this would throw on connection failure
+					// e.g. await slackClient.start();
+				});
+				await new Promise(resolve => setTimeout(resolve, 5000));
+			}
+		};
+		start().catch((err) => {
 			console.error("Slack backoff wrapper threw an unexpected error", err);
 		});
 	}
@@ -95,11 +103,17 @@ export class ConnectorManager extends EventEmitter {
 	private initDiscordGateway(): void {
 		if (!this.config.discordToken) return;
 
-		this.connectWithBackoff("Discord", async () => {
-			console.log("Initializing Discord Gateway...");
-			// In a real implementation, this would throw on connection failure
-			// e.g. await discordClient.login(this.config.discordToken);
-		}).catch((err) => {
+		const start = async () => {
+			while (true) {
+				await this.connectWithBackoff("Discord", async () => {
+					console.log("Initializing Discord Gateway...");
+					// In a real implementation, this would throw on connection failure
+					// e.g. await discordClient.login(this.config.discordToken);
+				});
+				await new Promise(resolve => setTimeout(resolve, 5000));
+			}
+		};
+		start().catch((err) => {
 			console.error("Discord backoff wrapper threw an unexpected error", err);
 		});
 	}
@@ -139,11 +153,17 @@ export class ConnectorManager extends EventEmitter {
 	): Promise<void> {
 		const sessionId = await this.resolveSessionId(platform, senderId);
 
+		let normalizedContent = content;
+		if (platform === "slack" || platform === "discord") {
+			// Normalize platform-specific mention syntax (e.g., <@U12345>, <@!12345>) to a standard bot mention
+			normalizedContent = normalizedContent.replace(/<@!?[A-Z0-9]+>/ig, "@Tehuti");
+		}
+
 		const event: UnifiedMessageEvent = {
 			platform,
 			senderId,
 			sessionId,
-			content,
+			content: normalizedContent,
 			rawPayload,
 		};
 

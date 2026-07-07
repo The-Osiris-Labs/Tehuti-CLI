@@ -245,11 +245,17 @@ export async function executeToolsParallel(
 					chunk.map(async (tc) => {
 						try {
 							if (activeSignal?.aborted) {
-								return {
+								const result = {
 									success: false,
 									output: "",
 									error: "Execution aborted by user",
 								};
+								await mutex.runExclusive(async () => {
+									let resultStr = `Error: ${result.error}\nOutput: `;
+									resultStr = truncateToolResultForModel(resultStr);
+									addToolResult(ctx, tc.id, tc.function.name, resultStr);
+								});
+								return result;
 							}
 
 							const result = await executeToolCall(
@@ -262,10 +268,10 @@ export async function executeToolsParallel(
 							);
 
 							await mutex.runExclusive(async () => {
-								let resultStr =
-									typeof result.output === "string"
-										? result.output
-										: JSON.stringify(result.output ?? "");
+								const outStr = typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+								let resultStr = result.success
+									? outStr
+									: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
 								resultStr = truncateToolResultForModel(resultStr);
 								addToolResult(ctx, tc.id, tc.function.name, resultStr);
 							});
@@ -278,6 +284,11 @@ export async function executeToolsParallel(
 								output: "",
 								error: `Parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
 							};
+							await mutex.runExclusive(async () => {
+								let resultStr = `Error: ${result.error}\nOutput: `;
+								resultStr = truncateToolResultForModel(resultStr);
+								addToolResult(ctx, tc.id, tc.function.name, resultStr);
+							});
 							onToolResult?.(tc.id, tc.function.name, result);
 							return result;
 						}
@@ -322,10 +333,10 @@ export async function executeToolsParallel(
 					selfHealer,
 				);
 
-				let resultStr =
-					typeof result.output === "string"
-						? result.output
-						: JSON.stringify(result.output ?? "");
+				const outStr = typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+				let resultStr = result.success
+					? outStr
+					: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
 				resultStr = truncateToolResultForModel(resultStr);
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 
@@ -341,6 +352,9 @@ export async function executeToolsParallel(
 					output: "",
 					error: `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
 				};
+				let resultStr = `Error: ${result.error}\nOutput: `;
+				resultStr = truncateToolResultForModel(resultStr);
+				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 				onToolResult?.(tc.id, tc.function.name, result);
 				const globalIndex = toolCalls.indexOf(tc);
 				if (globalIndex >= 0) {

@@ -113,6 +113,10 @@ function green(text: string): string {
 	return applyStyle(text, COLORS.green);
 }
 
+function red(text: string): string {
+	return applyStyle(text, COLORS.red);
+}
+
 function gold(text: string): string {
 	return applyStyle(text, COLORS.gold);
 }
@@ -386,7 +390,7 @@ export function formatDiff(diffOutput: string, _filename?: string): string {
 				!line.startsWith("---") &&
 				!line.startsWith("-@@")
 			) {
-				return `\x1b[31m${line}\x1b[0m`;
+				return red(line);
 			} else if (line.startsWith("@@")) {
 				return cyan(line);
 			} else if (line.startsWith("diff --git") || line.startsWith("index ")) {
@@ -407,6 +411,7 @@ export {
 	dim,
 	cyan,
 	green,
+	red,
 	gold,
 	coral,
 	blue,

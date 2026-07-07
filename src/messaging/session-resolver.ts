@@ -63,6 +63,9 @@ export class SessionResolver {
 	 * @returns The persistent Tehuti session ID for this sender
 	 */
 	public resolveSession(platformSenderId: string): string {
+		if (!platformSenderId) {
+			throw new Error("platformSenderId is required and cannot be empty.");
+		}
 		const cachedSessionId = this.getFromCache(platformSenderId);
 		if (cachedSessionId) {
 			return cachedSessionId;
@@ -126,6 +129,7 @@ export class SessionResolver {
 	 * Retrieves the platform sender ID for a given Tehuti session ID.
 	 */
 	public getPlatformSenderId(tehutiSessionId: string): string | null {
+		if (!tehutiSessionId) return null;
 		const cachedSenderId = this.getFromReverseCache(tehutiSessionId);
 		if (cachedSenderId) {
 			return cachedSenderId;

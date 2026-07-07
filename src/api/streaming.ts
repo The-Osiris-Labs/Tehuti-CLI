@@ -110,17 +110,21 @@ export function processStreamChunk(
 			const index = tc.index;
 			const existing = state.toolCalls.get(index);
 
+			const newArgs = tc.function?.arguments ?? "";
+			const currentArgs = existing?.arguments ?? "";
+			const mergedArgs = currentArgs + newArgs;
+
 			if (tc.id) {
 				state.toolCalls.set(index, {
 					id: tc.id,
 					name: tc.function?.name ?? existing?.name ?? "",
-					arguments: tc.function?.arguments ?? existing?.arguments ?? "",
+					arguments: mergedArgs,
 				});
 			} else if (tc.function?.name) {
 				state.toolCalls.set(index, {
 					id: existing?.id ?? "",
 					name: tc.function.name,
-					arguments: tc.function.arguments ?? existing?.arguments ?? "",
+					arguments: mergedArgs,
 				});
 			} else if (tc.function?.arguments) {
 				if (existing) {

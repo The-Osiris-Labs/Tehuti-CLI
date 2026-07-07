@@ -102,7 +102,7 @@ describe("File System Tools", () => {
 			const result = await readTool?.execute({ file_path: linkFile }, ctx);
 
 			expect(result.success).toBe(false);
-			expect(result.error).toContain("symlink");
+			expect(result.error?.toLowerCase()).toContain("symlink");
 		});
 
 		it("should handle non-existent files", async () => {

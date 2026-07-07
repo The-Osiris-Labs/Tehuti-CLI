@@ -26,14 +26,18 @@ export async function manageContextWindow(
 
 		// Deterministic truncation: keep head (system prompts) and tail (recent messages)
 		// We remove the oldest non-system messages until under target
-		while (currentTokens > targetTokens && ctx.messages.length > 2) {
-			const nonSystemIndex = ctx.messages.findIndex((m) => m.role !== "system");
-			if (nonSystemIndex !== -1) {
-				ctx.messages.splice(nonSystemIndex, 1);
-			} else {
-				// Fallback if all are system messages (unlikely)
-				ctx.messages.splice(1, 1);
+		const keepLastN = 10;
+		while (currentTokens > targetTokens && ctx.messages.length > keepLastN + 1) {
+			const endIndex = ctx.messages.length - keepLastN;
+			let removed = false;
+			for (let i = 0; i < endIndex; i++) {
+				if (ctx.messages[i].role !== "system") {
+					ctx.messages.splice(i, 1);
+					removed = true;
+					break;
+				}
 			}
+			if (!removed) break; // Only system messages remain before the keep window
 			currentTokens = estimateTokens(ctx.messages);
 		}
 	}

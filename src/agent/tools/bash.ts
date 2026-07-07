@@ -544,6 +544,15 @@ export function cleanupAllProcesses(): void {
 		}
 	}
 	backgroundProcesses.clear();
+
+	for (const proc of foregroundProcesses) {
+		try {
+			if (proc.pid) process.kill(-proc.pid, "SIGKILL");
+		} catch {
+			// Process might already be dead
+		}
+	}
+	foregroundProcesses.clear();
 }
 
 export function pruneExitedProcesses(): number {
@@ -557,9 +566,13 @@ export function pruneExitedProcesses(): number {
 	return pruned;
 }
 
-process.on("exit", () => {
-	cleanupAllProcesses();
-});
+if (process.listeners("exit").length === 0) {
+	process.on("exit", () => {
+		cleanupAllProcesses();
+	});
+}
+
+const foregroundProcesses = new Set<ChildProcess>();
 
 async function executeBash(
 	args: unknown,
@@ -613,6 +626,8 @@ async function executeBash(
 			detached: true,
 		});
 
+		foregroundProcesses.add(proc);
+
 		let stdoutLength = 0;
 		const stdoutChunks: Buffer[] = [];
 		let stderrLength = 0;
@@ -626,7 +641,7 @@ async function executeBash(
 			resolved = true;
 			try {
 				if (proc.pid) {
-					process.kill(-proc.pid, "SIGTERM");
+					process.kill(-proc.pid, "SIGKILL");
 				}
 			} catch {}
 			resolve({
@@ -662,7 +677,7 @@ async function executeBash(
 				cleanup();
 				resolved = true;
 				try {
-					if (proc.pid) process.kill(-proc.pid);
+					if (proc.pid) process.kill(-proc.pid, "SIGKILL");
 				} catch {}
 				resolve({
 					success: false,
@@ -681,7 +696,7 @@ async function executeBash(
 				cleanup();
 				resolved = true;
 				try {
-					if (proc.pid) process.kill(-proc.pid);
+					if (proc.pid) process.kill(-proc.pid, "SIGKILL");
 				} catch {}
 				resolve({
 					success: false,
@@ -697,7 +712,7 @@ async function executeBash(
 			cleanup();
 			resolved = true;
 			try {
-				if (proc.pid) process.kill(-proc.pid);
+				if (proc.pid) process.kill(-proc.pid, "SIGKILL");
 			} catch {}
 			resolve({
 				success: false,
@@ -707,12 +722,17 @@ async function executeBash(
 		}, timeoutMs);
 
 		proc.on("close", (code: number | null) => {
+			foregroundProcesses.delete(proc);
 			if (resolved) return;
 			cleanup();
 			resolved = true;
 			const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
 			const stderr = Buffer.concat(stderrChunks).toString("utf-8");
-			const output = stdout || stderr || "(no output)";
+			let output = stdout;
+			if (stderr) {
+				output += (output ? "\n" : "") + stderr;
+			}
+			output = output || "(no output)";
 
 			resolve({
 				success: code === 0,

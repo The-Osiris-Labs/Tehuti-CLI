@@ -641,9 +641,15 @@ export abstract class BaseAPIClient {
 			while (true) {
 				const { done, value } = await reader.read();
 
-				if (done) break;
+				if (value) {
+					buffer += decoder.decode(value, { stream: !done });
+				} else if (done) {
+					buffer += decoder.decode(new Uint8Array(), { stream: false });
+				}
 
-				buffer += decoder.decode(value, { stream: true });
+				if (done && buffer.trim() && !buffer.endsWith("\n")) {
+					buffer += "\n";
+				}
 
 				let newlineIndex: number;
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
@@ -679,11 +685,13 @@ export abstract class BaseAPIClient {
 						);
 						if (parseErrorCount >= MAX_PARSE_ERRORS) {
 							throw new APIError(
-								`Too many stream parse errors (${parseErrorCount}), aborting`,
+								`Too many stream parse errors (${parseErrorCount}), aborting (502 stream interruption)`,
 							);
 						}
 					}
 				}
+
+				if (done) break;
 			}
 		} catch (error) {
 			if (error instanceof Error) {
@@ -705,6 +713,7 @@ export abstract class BaseAPIClient {
 		} finally {
 			if (reader) {
 				try {
+					await reader.cancel().catch(() => {});
 					reader.releaseLock();
 				} catch {}
 			}

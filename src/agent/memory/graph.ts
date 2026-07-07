@@ -93,7 +93,12 @@ export async function addEdge(
 
 // Map db row to Node
 function mapRowToNode(row: any): Node {
-	const meta = row.metadata ? JSON.parse(row.metadata) : {};
+	let meta: any = {};
+	try {
+		meta = row.metadata ? JSON.parse(row.metadata) : {};
+	} catch (err) {
+		meta = {};
+	}
 	return {
 		id: row.id,
 		type: row.type,
@@ -370,36 +375,48 @@ export async function optimizeInsights(
 					accessCount: newAccessCount,
 				};
 
-				updateStmt.run({
-					metadata: JSON.stringify(newMeta),
-					id: nodeA.id,
-				});
+				const executeMerge = db.transaction(() => {
+					updateStmt.run({
+						metadata: JSON.stringify(newMeta),
+						id: nodeA.id,
+					});
 
-				// Re-route edges from B to A
-				const edgesStmt = db.prepare(
-					`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
-				);
-				const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
+					// Re-route edges from B to A
+					const edgesStmt = db.prepare(
+						`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
+					);
+					const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
 
-				for (const edge of oldEdges) {
-					const newSource =
-						edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
-					const newTarget =
-						edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
+					for (const edge of oldEdges) {
+						const newSource =
+							edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
+						const newTarget =
+							edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
 
-					// Avoid self-loops if the edge was between A and B
-					if (newSource !== newTarget) {
-						await addEdge(
-							newSource,
-							newTarget,
-							edge.relation_type,
-							edge.weight,
-						);
+						// Avoid self-loops if the edge was between A and B
+						if (newSource !== newTarget) {
+							const insertEdgeStmt = db.prepare(`
+								INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
+								VALUES (@id, @source, @target, @relation, @weight, @now)
+								ON CONFLICT(id) DO UPDATE SET weight = @weight
+							`);
+							const edgeId = `${newSource}->${newTarget}:${edge.relation_type}`;
+							insertEdgeStmt.run({
+								id: edgeId,
+								source: newSource,
+								target: newTarget,
+								relation: edge.relation_type,
+								weight: edge.weight,
+								now: Date.now()
+							});
+						}
+
+						const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
+						delEdgeStmt.run(edge.id);
 					}
-
-					const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
-					delEdgeStmt.run(edge.id);
-				}
+				});
+				
+				executeMerge();
 
 				mergedCount++;
 			}
@@ -407,17 +424,24 @@ export async function optimizeInsights(
 	}
 
 	if (toRemove.size > 0) {
+		for (const id of toRemove) {
+			try {
+				await vectorStore.removeEmbedding(id);
+			} catch (err) {
+				console.error(`Failed to remove vector embedding for ${id}`);
+			}
+		}
+
 		const placeholders = Array.from(toRemove)
 			.map(() => "?")
 			.join(",");
 		const deleteStmt = db.prepare(
 			`DELETE FROM nodes WHERE id IN (${placeholders})`,
 		);
-		deleteStmt.run(...Array.from(toRemove));
-		
-		for (const id of toRemove) {
-			await vectorStore.removeEmbedding(id);
-		}
+		const executeDeletions = db.transaction((ids: string[]) => {
+			deleteStmt.run(...ids);
+		});
+		executeDeletions(Array.from(toRemove));
 		
 		removedCount = toRemove.size;
 	}

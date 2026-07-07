@@ -186,12 +186,21 @@ export async function runAgentLoop(
 				let midStreamPromises: Promise<number>[] = [];
 				let dispatchedToolIds = new Set<string>();
 				const streamStartMessageCount = ctx.messages.length;
+				const preRetryTotalContent = totalContent;
+				const preRetryTokensGenerated = totalTokensGenerated;
 
 				await withRetry(
 					async () => {
+						// Await any pending mid-stream promises before retrying to prevent orphaned parallel tools
+						if (midStreamPromises.length > 0) {
+							await Promise.allSettled(midStreamPromises);
+						}
+
 						state = createStreamingState(modelId);
 						midStreamPromises = [];
 						dispatchedToolIds = new Set<string>();
+						totalContent = preRetryTotalContent;
+						totalTokensGenerated = preRetryTokensGenerated;
 						if (ctx.messages.length > streamStartMessageCount) {
 							ctx.messages.length = streamStartMessageCount;
 						}
@@ -201,79 +210,92 @@ export async function runAgentLoop(
 							tools,
 							undefined,
 							signal,
-						);
-
-						if (isReasoningModel(modelId)) {
-							debug.log("agent", `Using reasoning model: \${modelId}`);
+						);						if (isReasoningModel(modelId)) {
+							debug.log("agent", `Using reasoning model: ${modelId}`);
 						}
 
-						for await (const chunk of stream) {
-							if (signal?.aborted) {
-								client.abort();
-								throw new AgentError("Execution aborted by user", "execution");
-							}
-
-							const { hasContent, newContent, hasThinking, newThinking } =
-								processStreamChunk(
-									state,
-									chunk as unknown as Parameters<typeof processStreamChunk>[1],
-									modelId,
-								);
-
-							if (hasContent && newContent) {
-								onToken?.(newContent);
-								totalTokensGenerated++;
-								const progress = Math.min(
-									Math.round((totalTokensGenerated / maxTokens) * 90),
-									90,
-								);
-								onProgress?.(progress, "Generating response...");
-								totalContent += newContent;
-							}
-
-							if (hasThinking && newThinking) {
-								onThinking?.(newThinking);
-							}
-
-							const currentToolCalls = getToolCallsFromState(state);
-							for (const tc of currentToolCalls) {
-								if (dispatchedToolIds.has(tc.id)) continue;
-
-								let args: unknown;
-								try {
-									args = JSON.parse(tc.function.arguments);
-								} catch {
-									continue;
+						try {
+							for await (const chunk of stream) {
+								if (signal?.aborted) {
+									client.abort();
+									throw new AgentError("Execution aborted by user", "execution");
 								}
 
-								const toolDef = getTool(tc.function.name);
-								if (toolDef?.intent === "read-only") {
-									dispatchedToolIds.add(tc.id);
-									debug.log(
-										"agent",
-										`Mid-stream dispatching read-only tool: ${tc.function.name}`,
+								const { hasContent, newContent, hasThinking, newThinking } =
+									processStreamChunk(
+										state,
+										chunk as unknown as Parameters<typeof processStreamChunk>[1],
+										modelId,
 									);
 
-									const tcTyped: ToolCall = {
-										id: tc.id,
-										function: {
-											name: tc.function.name,
-											arguments: tc.function.arguments,
-										},
-									};
+								if (hasContent && newContent) {
+									onToken?.(newContent);
+									totalTokensGenerated++;
+									const progress = Math.min(
+										Math.round((totalTokensGenerated / maxTokens) * 90),
+										90,
+									);
+									onProgress?.(progress, "Generating response...");
+									totalContent += newContent;
+								}
 
-									const p = processToolCalls(
-										ctx,
-										[tcTyped],
-										{ onToolCall, onToolResult, onProgress, selfHealer },
-										signal,
-									).catch((err) => {
-										debug.log("agent", "Mid-stream tool error:", err);
-										return 0;
-									});
-									midStreamPromises.push(p);
+								if (hasThinking && newThinking) {
+									onThinking?.(newThinking);
+								}
+
+								const currentToolCalls = getToolCallsFromState(state);
+								for (const tc of currentToolCalls) {
+									if (dispatchedToolIds.has(tc.id)) continue;
+
+									let args: unknown;
+									try {
+										args = JSON.parse(tc.function.arguments);
+									} catch {
+										continue;
+									}
+
+									const toolDef = getTool(tc.function.name);
+									if (toolDef?.intent === "read-only") {
+										dispatchedToolIds.add(tc.id);
+										debug.log(
+											"agent",
+											`Mid-stream dispatching read-only tool: ${tc.function.name}`,
+										);
+
+										const tcTyped: ToolCall = {
+											id: tc.id,
+											function: {
+												name: tc.function.name,
+												arguments: tc.function.arguments,
+											},
+										};
+
+										const p = processToolCalls(
+											ctx,
+											[tcTyped],
+											{ onToolCall, onToolResult, onProgress, selfHealer },
+											signal,
+										).catch((err) => {
+											debug.log("agent", "Mid-stream tool error:", err);
+											return 0;
+										});
+										midStreamPromises.push(p);
+									}
 								}
 							}
+						} catch (streamError) {
+							const estimatedPromptTokens = Math.floor(JSON.stringify(ctx.messages).length / 4);
+							const estimatedCompletionTokens = Math.floor((state.content?.length || 0) / 4);
+							
+							costTracker.trackRequest(modelId, {
+								promptTokens: estimatedPromptTokens,
+								completionTokens: estimatedCompletionTokens,
+								totalTokens: estimatedPromptTokens + estimatedCompletionTokens,
+								cacheReadTokens: 0,
+								cacheWriteTokens: 0,
+							});
+							
+							throw streamError;
 						}
 					},
 					{ signal, maxRetries: 3, initialDelayMs: 2000 },

@@ -95,7 +95,11 @@ describe("useChatInput hook", () => {
 
 		triggerInput("/", { ctrl: false, meta: false });
 		expect(props.setShowCommandPalette).not.toHaveBeenCalled();
-		expect(props.setInput).toHaveBeenCalledWith("hello/");
+		expect(props.setInput).toHaveBeenCalled();
+		const lastCall = (props.setInput as any).mock.calls.at(-1);
+		const updater = lastCall[0];
+		expect(typeof updater).toBe("function");
+		expect(updater("hello")).toBe("hello/");
 		unmount();
 	});
 
