@@ -953,6 +953,21 @@ function ChatUI({
 		};
 	}, [stdout]);
 
+	// Periodic auto-save every 60 seconds while a session is active
+	useEffect(() => {
+		const AUTO_SAVE_INTERVAL_MS = 60_000;
+		const timer = setInterval(() => {
+			const sid = activeSessionId;
+			const ctx = ctxRef.current;
+			if (sid && ctx) {
+				sessionManager.saveSession(sid, ctx).catch((err: unknown) => {
+					debug.log("chat", "Periodic auto-save failed:", err);
+				});
+			}
+		}, AUTO_SAVE_INTERVAL_MS);
+		return () => clearInterval(timer);
+	}, [activeSessionId]);
+
 	const scrollContainerRef = useRef(null);
 	useOnWheel(scrollContainerRef, (event) => {
 		if (event.button === "wheel-up") {
@@ -2174,8 +2189,8 @@ function ChatUI({
 			setQueuedMessages((prev) => prev.slice(1));
 			void send(nextMessage);
 		}
-		// biome-ignore lint/correctness/useExhaustiveDependencies: send does not need to be a dependency
-	}, [loading, queuedMessages, setQueuedMessages]);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: send is a stable ref; using it as dep would re-fire the effect on identity churn
+	}, [loading, queuedMessages, setQueuedMessages, send]);
 
 	async function send(text: string) {
 		setInput("");

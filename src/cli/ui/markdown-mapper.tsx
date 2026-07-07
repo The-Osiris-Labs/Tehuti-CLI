@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type { Token } from "marked";
 import { marked } from "marked";
+import markedKatex from "marked-katex-extension";
 import React from "react";
 import stringWidth from "string-width";
 import { BRANDING } from "../../branding/index.js";
@@ -9,6 +10,8 @@ import {
 	isHighlighterReady,
 } from "../../terminal/highlighter.js";
 import { MediaViewer } from "./components/MediaViewer.js";
+
+marked.use(markedKatex({ throwOnError: false }));
 
 const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
@@ -338,6 +341,41 @@ export function renderInlineToken(
 
 		case "escape": {
 			return token.text;
+		}
+
+		case "inlineKatex": {
+			return React.createElement(
+				Text,
+				{ key: getKey(), color: CYAN, italic: true },
+				token.text || "",
+			);
+		}
+
+		case "blockKatex": {
+			return React.createElement(
+				Box,
+				{
+					key: getKey(),
+					flexDirection: "column",
+					marginTop: 0.5,
+					marginBottom: 0.5,
+					paddingLeft: 0,
+					paddingRight: 0,
+				},
+				React.createElement(
+					Text,
+					{ color: CYAN, italic: true },
+					token.text || "",
+				),
+			);
+		}
+
+		case "html": {
+			return React.createElement(
+				Text,
+				{ key: getKey(), wrap: "wrap" },
+				token.text || "",
+			);
 		}
 
 		default:

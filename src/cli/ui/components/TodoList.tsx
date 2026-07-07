@@ -55,7 +55,7 @@ export function TodoList() {
 					if (todo.priority === "low") priorityMark = " 🟢";
 
 					let ageText = "";
-					
+
 					const updatedAt = todo.updatedAt;
 					if (updatedAt) {
 						const updatedDate = new Date(updatedAt);

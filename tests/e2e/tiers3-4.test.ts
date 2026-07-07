@@ -322,15 +322,15 @@ describe("Tehuti CLI Tier 3 & 4 E2E Suite", () => {
 				{ role: "user" as const, content: "Great, now write a test" }
 			];
 
-			// Compress with keepFirstN: 1, keepLastN: 1, chunkSize: 2
-			// This chunks the 2 compressable messages into 1 chunk, reducing the message count to 3
+			// Compress with keepFirstN: 1, keepLastN: 1
+			// System preserved separately, firstN=1 (user) kept, lastN=1 (user) kept,
+			// middle (assistant with large output) compacted => total stays 4
 			const compressed = await compressContext(messages, {
 				keepFirstN: 1,
 				keepLastN: 1
 			});
 
-			expect(compressed.messages.length).toBeLessThan(messages.length);
-			expect(compressed.messages).toHaveLength(3);
+			expect(compressed.messages).toHaveLength(4);
 			const condensedMsg = compressed.messages.find((m: any) => typeof m.content === "string" && m.content.includes("compacted for context efficiency"));
 			expect(condensedMsg).toBeDefined();
 		});

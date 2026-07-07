@@ -309,6 +309,7 @@ export function CommandPalette({
 		return groups;
 	}, [filteredCommands]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: setSelectedIndex from useVirtualScroll has stable identity across renders
 	useEffect(() => {
 		if (visible) {
 			const initQ = initialQuery || "";
@@ -324,7 +325,6 @@ export function CommandPalette({
 			setQuery("");
 			setError(null);
 		}
-		// biome-ignore lint/correctness/useExhaustiveDependencies: setSelectedIndex is initialized later
 	}, [visible, initialQuery, menuStack.length, query]);
 
 	const MAX_DISPLAY = 9;

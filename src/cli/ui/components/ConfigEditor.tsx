@@ -80,8 +80,8 @@ function ConfigFieldRow({
 	fieldValue,
 	onHover,
 	onClick,
-	onEditValueChange,
-	onEditCommit,
+	onEditValueChange: _onEditValueChange,
+	onEditCommit: _onEditCommit,
 }: {
 	field: any;
 	isSelected: boolean;
