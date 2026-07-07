@@ -219,9 +219,12 @@ export function useChatInput(props: UseChatInputProps) {
 	const absorbMouseFragment = React.useCallback(
 		(k: string): boolean => {
 			// True if the chunk was absorbed into the mouse buffer (caller should return early).
+			// NOTE: Bare "M"/"m" is NOT treated as a tail — that would eat literal
+			// letter M/m typed by the user (the old isMouseSequence() bare-tail check
+			// was removed in mouse.ts for the same reason).
 			if (
 				mouseBufferRef.current.length > 0 &&
-				(isMouseSequenceTail(k) || k.endsWith("M") || k.endsWith("m"))
+				(isMouseSequenceTail(k) || (k.length > 1 && (k.endsWith("M") || k.endsWith("m"))))
 			) {
 				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
 				flushMouseBuffer();

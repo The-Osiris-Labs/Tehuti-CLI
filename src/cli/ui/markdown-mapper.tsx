@@ -5,6 +5,48 @@ import markedKatex from "marked-katex-extension";
 import React from "react";
 import stringWidth from "string-width";
 import { BRANDING } from "../../branding/index.js";
+
+/**
+ * Wrap `text` to a target visual width, breaking on whitespace when possible.
+ * Preserves explicit \n boundaries. If a single token is wider than `width`,
+ * it is hard-broken at the width boundary.
+ */
+function wrapText(text: string, width: number): string {
+	if (width <= 0) return text;
+	const out: string[] = [];
+	for (const paragraph of text.split("\n")) {
+		if (paragraph.length === 0) {
+			out.push("");
+			continue;
+		}
+		const words = paragraph.split(/(\s+)/);
+		let line = "";
+		let lineWidth = 0;
+		for (const word of words) {
+			if (word === "") continue;
+			const wordWidth = stringWidth(word);
+			if (lineWidth + wordWidth <= width) {
+				line += word;
+				lineWidth += wordWidth;
+			} else if (lineWidth === 0) {
+				// Word longer than width: hard-break it.
+				let remaining = word;
+				while (stringWidth(remaining) > width) {
+					out.push(remaining.slice(0, Math.max(1, width)));
+					remaining = remaining.slice(Math.max(1, width));
+				}
+				line = remaining;
+				lineWidth = stringWidth(remaining);
+			} else {
+				out.push(line);
+				line = word.trimStart();
+				lineWidth = stringWidth(line);
+			}
+		}
+		if (line) out.push(line);
+	}
+	return out.join("\n");
+}
 import {
 	highlightToAnsi,
 	isHighlighterReady,
@@ -101,13 +143,17 @@ export function renderToken(
 					paddingLeft: 1,
 					paddingRight: 1,
 					borderStyle: "round",
-					borderColor: GRAY,
+					borderColor: GOLD,
 					width: codeWidth,
 				},
-				React.createElement(Text, { dimColor: true }, lang),
 				React.createElement(
 					Text,
-					{ wrap: "wrap", dimColor: true },
+					{ color: CORAL, bold: true },
+					`◆ ${lang}`,
+				),
+				React.createElement(
+					Text,
+					{ wrap: "wrap" },
 					formattedCode,
 				),
 			);
@@ -199,54 +245,97 @@ export function renderToken(
 		case "table": {
 			const header = token.header || [];
 			const rows = token.rows || [];
+			const tableWidth = maxWidth ? Math.max(20, maxWidth - 2) : 80;
 
-			const widths: number[] = header.map((h: Token, i: number) => {
-				const headerLen =
-					"text" in h && typeof h.text === "string" ? stringWidth(h.text) : 0;
-				const rowLens = rows.map((r: Token[]) => {
-					const cell = r[i];
-					return cell && "text" in cell && typeof cell.text === "string"
-						? stringWidth(cell.text)
-						: 0;
-				});
-				return Math.max(headerLen, ...rowLens);
-			});
+			const cellText = (cell: Token | undefined): string =>
+				cell && "text" in cell && typeof cell.text === "string"
+					? cell.text
+					: "";
 
-			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
+			const allRows: string[][] = [
+				header.map(cellText),
+				...rows.map((r) => r.map(cellText)),
+			];
+			const colCount = Math.max(1, ...allRows.map((r) => r.length));
+			// Borders: leading space + trailing space per cell (2*colCount)
+			// plus one `│` per column (colCount - 1) plus two outer corners.
+			const innerWidth = Math.max(10, tableWidth - 2 - colCount * 2 - (colCount - 1));
+			const minColWidth = 3;
+			const perCol = Math.floor(innerWidth / colCount);
+			let colWidths = new Array<number>(colCount).fill(minColWidth + perCol);
 
-			const padEndWidth = (text: string, width: number): string => {
-				const visibleWidth = stringWidth(text);
-				if (visibleWidth >= width) return text;
-				return text + " ".repeat(width - visibleWidth);
-			};
-
-			let result = "\n";
-			result += `┌${border.join("┬")}┐\n`;
-
-			const headerCells: string[] = header.map((h: Token, i: number) => {
-				const text = "text" in h && typeof h.text === "string" ? h.text : "";
-				const width = widths[i];
-				return `│ ${padEndWidth(text, width)} `;
-			});
-			result += `${headerCells.join("")}│\n`;
-
-			result += `├${border.join("┼")}┤\n`;
-
-			for (const row of rows) {
-				const cells: string[] = row.map((cell: Token, i: number) => {
-					const text =
-						cell && "text" in cell && typeof cell.text === "string"
-							? cell.text
-							: "";
-					const width = widths[i];
-					return `│ ${padEndWidth(text, width)} `;
-				});
-				result += `${cells.join("")}│\n`;
+			// Wrap cells to current widths, then grow any column that needs more.
+			const wrapAll = (widths: number[]): string[][] =>
+				allRows.map((row) => row.map((text, i) => wrapText(text, widths[i] || minColWidth)));
+			let wrapped = wrapAll(colWidths);
+			for (let pass = 0; pass < 2; pass++) {
+				let grew = false;
+				for (let c = 0; c < colCount; c++) {
+					let maxLine = colWidths[c];
+					for (const row of wrapped) {
+						const cell = row[c];
+						if (!cell) continue;
+						for (const line of cell.split("\n")) {
+							const w = stringWidth(line);
+							if (w > maxLine) {
+								maxLine = w;
+								grew = true;
+							}
+						}
+					}
+					if (maxLine > colWidths[c]) colWidths[c] = maxLine;
+				}
+				if (grew) wrapped = wrapAll(colWidths);
 			}
 
-			result += `└${border.join("┴")}┘\n`;
+			const padRight = (text: string, width: number): string => {
+				return text
+					.split("\n")
+					.map((line) => {
+						const w = stringWidth(line);
+						if (w >= width) return line;
+						return line + " ".repeat(width - w);
+					})
+					.join("\n");
+			};
 
-			return React.createElement(Text, { key: getKey(), wrap: "wrap" }, result);
+			const horiz = (left: string, mid: string, right: string, fill: string) => {
+				const segments = colWidths.map((w) => fill.repeat(w + 2));
+				return `${left}${segments.join(mid)}${right}`;
+			};
+
+			const top = horiz("╭", "┬", "╮", "─");
+			const sep = horiz("├", "┼", "┤", "─");
+			const bot = horiz("╰", "┴", "╯", "─");
+
+			const formatRow = (cells: string[]): string => {
+				const paddedCells = cells.map((c, i) => padRight(c, colWidths[i]));
+				const lineCount = Math.max(...paddedCells.map((c) => c.split("\n").length));
+				const out: string[] = [];
+				for (let li = 0; li < lineCount; li++) {
+					const segments = paddedCells.map((c, i) => {
+						const cellLines = c.split("\n");
+						const line = cellLines[li] || " ".repeat(colWidths[i]);
+						return ` ${line} `;
+					});
+					out.push(`│${segments.join("│")}│`);
+				}
+				return out.join("\n");
+			};
+
+			const headerRow = formatRow(wrapped[0] || []);
+			const dataRows = wrapped
+				.slice(1)
+				.map((row) => formatRow(row))
+				.join(`\n${sep}\n`);
+
+			const result = `\n${top}\n${headerRow}\n${sep}\n${dataRows}\n${bot}\n`;
+
+			return React.createElement(
+				Box,
+				{ key: getKey(), flexDirection: "column", marginY: 0.5 },
+				React.createElement(Text, { wrap: "wrap", color: GOLD }, result),
+			);
 		}
 
 		case "space": {

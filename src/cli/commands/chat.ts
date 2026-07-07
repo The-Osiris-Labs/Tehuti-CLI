@@ -145,21 +145,85 @@ const SAND = BRANDING.colors?.sand || "#8B7355";
 const PURPLE = BRANDING.colors?.purple || "#A855F7";
 
 const TOOL_ICONS: Record<string, string> = {
+	// File operations
 	read: "📖",
 	read_file: "📖",
 	write: "✏️",
 	write_file: "✏️",
 	edit: "📝",
 	edit_file: "📝",
-	bash: "⚡",
+	apply_diff: "🩹",
+	apply_patch: "🩹",
+	// Search
 	glob: "📁",
 	grep: "🔍",
+	grepai: "🧠",
+	search: "🔍",
+	ast_grep: "🌳",
+	// Shell
+	bash: "⚡",
+	bash_background: "⏳",
+	service: "🔌",
+	env: "🛠️",
+	// Web
 	webfetch: "🌐",
 	web_search: "🔍",
+	// Memory / knowledge
+	store_insight: "𓂀",
+	query_memory: "𓂀",
+	acp_message: "📨",
+	aci: "🛡️",
+	// Planning / tasks
 	question: "❓",
+	todowrite: "☑️",
+	task: "🎯",
+	task_done: "✅",
+	plan_mode: "🗺️",
+	create_plan: "🗺️",
+	write_plan: "🗺️",
+	// Filesystem
 	list_directory: "📂",
 	list_files: "📂",
+	list_sessions: "🗂️",
+	delete_file: "🗑️",
+	move_file: "↔️",
+	copy_file: "📋",
+	// Subagents / swarm
+	spawn_subagent: "🐝",
+	swarm: "🐝",
+	check_subagent: "🐝",
+	kill_subagent: "💀",
+	// Background
+	list_background: "📜",
+	check_background: "📜",
+	stop_background: "🛑",
+	// Skills
+	list_skills: "🎴",
+	activate_skill: "🎴",
+	deactivate_skill: "🎴",
+	get_skill: "🎴",
+	// Network
+	network: "🌍",
+	http: "🌍",
+	// Misc
+	think: "💭",
+	self_heal: "🩺",
+	compact_context: "🧹",
+	exit: "🚪",
+	help: "❔",
+	config: "⚙️",
+	debug: "🐞",
+	test_speculatively: "🧪",
+	delegate_task: "👥",
+	custom_provider: "🔧",
+	headers: "📝",
+	pricing: "💰",
+	code_search: "🔎",
+	commit: "📌",
+	// Fallback
+	default: "🔧",
 };
+
 
 type RuntimeCustomProvider = {
 	name: string;
@@ -227,7 +291,10 @@ function normalizeCustomProvider(
 }
 
 function formatToolCall(toolName: string, args: unknown): string {
-	const icon = TOOL_ICONS[toolName] || "🔧";
+	const icon =
+		TOOL_ICONS[toolName] ||
+		TOOL_ICONS[toolName.replace(/_background$|_file$|_tool$/, "")] ||
+		TOOL_ICONS.default;
 
 	switch (toolName) {
 		case "read":
@@ -323,6 +390,8 @@ function formatToolResult(
 	}
 
 	let output: string;
+	let errorMsg: string | null = null;
+	let isFailed = false;
 	if (typeof result === "string") {
 		output = result;
 	} else if (
@@ -332,45 +401,89 @@ function formatToolResult(
 	) {
 		const record = result as Record<string, unknown>;
 		const outputValue = String(record.output ?? "");
-		output =
-			record.success === false && !outputValue && record.error !== undefined
-				? String(record.error)
-				: outputValue;
+		const errValue =
+			record.error !== undefined ? String(record.error) : null;
+		if (record.success === false) {
+			isFailed = true;
+			// Prefer error when output is empty, otherwise show both.
+			if (!outputValue && errValue) {
+				output = errValue;
+				errorMsg = errValue;
+			} else if (errValue) {
+				output = `${outputValue}\n[Error: ${errValue}]`;
+				errorMsg = errValue;
+			} else {
+				output = outputValue;
+			}
+		} else {
+			output = outputValue;
+		}
+	} else if (
+		typeof result === "object" &&
+		result !== null &&
+		"error" in result
+	) {
+		isFailed = true;
+		const errValue = String((result as { error: unknown }).error);
+		output = errValue;
+		errorMsg = errValue;
 	} else {
 		output = safeStringify(result);
 	}
-	output = truncateMiddle(
-		output,
-		TOOL_RESULT_PREVIEW_CHARS,
-		"truncated for display",
-	);
 
-	const lines = output.split("\n");
-	const isTruncated = lines.length > previewLinesCount;
-	const displayLines = isTruncated ? lines.slice(0, previewLinesCount) : lines;
+	// Line-based truncation (NEVER split mid-token).
+	const allLines = output.split("\n");
+	let isTruncated = false;
+	let displayLines = allLines;
+	if (allLines.length > previewLinesCount) {
+		displayLines = allLines.slice(0, previewLinesCount);
+		isTruncated = true;
+	}
+	// Additionally cap by total character count to keep the preview short.
+	const MAX_PREVIEW_CHARS = TOOL_RESULT_PREVIEW_CHARS;
+	let charCount = 0;
+	const cappedLines: string[] = [];
+	for (const line of displayLines) {
+		if (charCount + line.length + 1 > MAX_PREVIEW_CHARS) {
+			isTruncated = true;
+			break;
+		}
+		cappedLines.push(line);
+		charCount += line.length + 1;
+	}
+	displayLines = cappedLines;
 
-	const formatLines = (lineArray: string[]): string => {
-		return lineArray
-			.map((line) => {
-				const truncated =
-					line.length > maxWidth - 4
-						? `${line.slice(0, maxWidth - 7)}...`
-						: line;
-				return `  │ ${truncated}`;
-			})
-			.join("\n");
+	const visibleWidth = Math.max(20, maxWidth - 4);
+	const truncateLine = (line: string): string => {
+		if (line.length > visibleWidth - 3) {
+			return `${line.slice(0, Math.max(1, visibleWidth - 3))}…`;
+		}
+		return line;
 	};
 
-	const preview = isTruncated
-		? `${formatLines(displayLines)}\n  │ ... (${lines.length - previewLinesCount} more lines)`
-		: formatLines(displayLines);
+	const prefix = isFailed ? "  ✗ " : "  │ ";
+	const headerLine = isFailed && errorMsg
+		? `  ✗ ${truncateLine(errorMsg)}`
+		: null;
+
+	const formattedBody = displayLines
+		.map((line) => `${prefix}${truncateLine(line)}`)
+		.join("\n");
+
+	const truncationNote = isTruncated
+		? `\n${prefix}… (${allLines.length - displayLines.length} more lines)`
+		: "";
+
+	const preview = headerLine
+		? `${headerLine}\n${formattedBody}${truncationNote}`
+		: `${formattedBody}${truncationNote}`;
 
 	return {
 		preview,
 		full: preview,
 		isTruncated,
-		linesCount: lines.length,
-		truncatedLinesCount: isTruncated ? lines.length - previewLinesCount : 0,
+		linesCount: allLines.length,
+		truncatedLinesCount: isTruncated ? allLines.length - displayLines.length : 0,
 	};
 }
 
@@ -3079,7 +3192,7 @@ function ChatUI({
 												React.createElement(
 													Text,
 													{ color: "gray" },
-													`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+													`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
 												),
 											),
 										),
@@ -3127,7 +3240,7 @@ function ChatUI({
 										React.createElement(
 											Text,
 											{ color: "gray" },
-											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
 										),
 									),
 								),
@@ -3208,7 +3321,7 @@ function ChatUI({
 										React.createElement(
 											Text,
 											{ color: "gray" },
-											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 4))}`,
+											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
 										),
 									),
 								),
@@ -3217,11 +3330,21 @@ function ChatUI({
 					});
 
 					if (m.toolCalls && m.toolCalls.length > 0) {
+						const toolCount = m.toolCalls.length;
+						// For 2+ tools, lay them out side-by-side in a flex row so the
+						// viewport is not dominated by a vertical stack. For 1 tool,
+						// keep the original full-width layout.
+						const isParallel = toolCount >= 2;
+						const cardWidth = isParallel
+							? Math.max(40, Math.floor(contentMaxWidth / toolCount) - 2)
+							: contentMaxWidth;
 						const toolElements = React.createElement(
 							Box,
 							{
-								flexDirection: "column",
+								flexDirection: isParallel ? "row" : "column",
+								flexWrap: isParallel ? "wrap" : undefined,
 								marginTop: 1,
+								gap: isParallel ? 1 : 0,
 								key: `tool-calls-${m.id}`,
 							},
 							...m.toolCalls.map((tc, idx) =>
@@ -3232,7 +3355,7 @@ function ChatUI({
 										tc.description || "",
 									),
 									result: tc.result,
-									maxWidth: contentMaxWidth,
+									maxWidth: cardWidth,
 									status: getToolRenderStatus(tc.result),
 								}),
 							),

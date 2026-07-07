@@ -32,9 +32,10 @@ export function isMouseSequence(k: string): boolean {
 	if (COORD_FRAGMENT_LEFT_BRACKET.test(k)) return true;
 	if (COORD_FRAGMENT_DIGITS.test(k)) return true;
 	if (COORD_FRAGMENT_TAIL.test(k)) return true;
-	// Bare M/m tail — single-char SGR release leak.
-	// Single-char M/m is not a printable key the user types intentionally.
-	if (COORD_BARE_TAIL.test(k)) return true;
+	// Bare M/m tail was previously caught here, but that caused isMouseSequence()
+	// to eat every literal "m" or "M" the user typed. The buffered approach in
+	// absorbMouseFragment() in useChatInput.ts handles split mouse sequences
+	// correctly without false-positive letters.
 
 	// Fallback: contains "<" and ends with M/m
 	if (k.includes("<") && (k.endsWith("M") || k.endsWith("m"))) return true;
