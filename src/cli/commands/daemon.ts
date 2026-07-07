@@ -96,14 +96,14 @@ export function daemonCommand(): Command {
 						const uptimeStr = formatUptime(msg.uptime);
 						// Format as a simple ASCII table
 						console.log("\n  Daemon Status");
-						console.log("  " + "=".repeat(35));
+						console.log(`  ${"=".repeat(35)}`);
 						console.log(`  PID              | ${msg.pid}`);
 						console.log(`  Uptime           | ${uptimeStr}`);
 						if (msg.session_start_time) {
 							console.log(`  Session Start    | ${msg.session_start_time}`);
 						}
 						console.log(`  Active Clients   | ${msg.clients}`);
-						console.log("  " + "=".repeat(35) + "\n");
+						console.log(`  ${"=".repeat(35)}\n`);
 						client.disconnect();
 						process.exit(0);
 					}

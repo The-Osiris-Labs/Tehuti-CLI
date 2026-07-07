@@ -3,6 +3,8 @@ import { EventEmitter } from "node:events";
 export interface AgentEvents {
 	wakeup: (message: string) => void;
 	error: (error: Error) => void;
+	memoryEvent: (data: { type: string; message: string }) => void;
+	streamEvent: (data: any) => void;
 }
 
 export class TypedEventEmitter<TEvents extends Record<string, any>> {
@@ -79,3 +81,35 @@ export class WakeupQueue {
 }
 
 export const wakeupQueue = new WakeupQueue();
+
+// Queue for mid-flight context injection (e.g. /btw)
+export class InjectionQueue {
+	private queue: string[] = [];
+
+	public push(message: string) {
+		this.queue.push(message);
+	}
+
+	public consumeAll(): string[] {
+		const msgs = [...this.queue];
+		this.queue = [];
+		return msgs;
+	}
+
+	public clear() {
+		this.queue = [];
+	}
+}
+
+export const injectionQueue = new InjectionQueue();
+
+// Global abort controller for interrupting the agent loop
+export let globalAbortController = new AbortController();
+
+export function resetGlobalAbortController() {
+	globalAbortController = new AbortController();
+}
+
+export function interruptAgent() {
+	globalAbortController.abort();
+}

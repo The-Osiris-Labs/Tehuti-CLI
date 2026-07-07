@@ -39,7 +39,10 @@ export async function runAciLinter(
 	}
 }
 
-export async function createBackup(filePath: string, content: string): Promise<void> {
+export async function createBackup(
+	filePath: string,
+	content: string,
+): Promise<void> {
 	try {
 		const timestamp = Date.now();
 		const bakPath = `${filePath}.${timestamp}.bak`;
@@ -50,11 +53,11 @@ export async function createBackup(filePath: string, content: string): Promise<v
 		const dir = path.dirname(filePath);
 		const basename = path.basename(filePath);
 		const files = await fs.readdir(dir);
-		
-		const escapedBasename = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const bakPattern = new RegExp("^" + escapedBasename + "\\.\\d+\\.bak$");
+
+		const escapedBasename = basename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const bakPattern = new RegExp(`^${escapedBasename}\\.\\d+\\.bak$`);
 		const bakFiles = files.filter((f) => bakPattern.test(f));
-		
+
 		const MAX_BACKUPS = 5;
 		const TTL = 24 * 60 * 60 * 1000;
 		const now = Date.now();
@@ -67,7 +70,9 @@ export async function createBackup(filePath: string, content: string): Promise<v
 			}),
 		);
 
-		const validStats = stats.filter((s): s is { path: string; mtimeMs: number } => s !== null);
+		const validStats = stats.filter(
+			(s): s is { path: string; mtimeMs: number } => s !== null,
+		);
 		validStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
 		for (let i = 0; i < validStats.length; i++) {

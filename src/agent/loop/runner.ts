@@ -23,7 +23,7 @@ import {
 	normalizeToolMessageHistory,
 	warnOnContextLimit,
 } from "../context.js";
-import { wakeupQueue } from "../events.js";
+import { injectionQueue, wakeupQueue } from "../events.js";
 import { classifyTask, selectModelForClassification } from "../model-router.js";
 import type { ToolCall } from "../parallel-executor.js";
 import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
@@ -171,6 +171,17 @@ export async function runAgentLoop(
 					continue;
 				}
 
+				const injectedMessages = injectionQueue.consumeAll();
+				for (const msg of injectedMessages) {
+					ctx.messages.push({
+						role: "user",
+						content: msg,
+						timestamp: Date.now(),
+						internalId: randomUUID(),
+					});
+					debug.log("agent", `Injected mid-flight message: ${msg}`);
+				}
+
 				await manageContextWindow(ctx, client);
 
 				ctx.messages = normalizeToolMessageHistory(ctx.messages);
@@ -210,7 +221,8 @@ export async function runAgentLoop(
 							tools,
 							undefined,
 							signal,
-						);						if (isReasoningModel(modelId)) {
+						);
+						if (isReasoningModel(modelId)) {
 							debug.log("agent", `Using reasoning model: ${modelId}`);
 						}
 
@@ -218,13 +230,18 @@ export async function runAgentLoop(
 							for await (const chunk of stream) {
 								if (signal?.aborted) {
 									client.abort();
-									throw new AgentError("Execution aborted by user", "execution");
+									throw new AgentError(
+										"Execution aborted by user",
+										"execution",
+									);
 								}
 
 								const { hasContent, newContent, hasThinking, newThinking } =
 									processStreamChunk(
 										state,
-										chunk as unknown as Parameters<typeof processStreamChunk>[1],
+										chunk as unknown as Parameters<
+											typeof processStreamChunk
+										>[1],
 										modelId,
 									);
 
@@ -284,9 +301,13 @@ export async function runAgentLoop(
 								}
 							}
 						} catch (streamError) {
-							const estimatedPromptTokens = Math.floor(JSON.stringify(ctx.messages).length / 4);
-							const estimatedCompletionTokens = Math.floor((state.content?.length || 0) / 4);
-							
+							const estimatedPromptTokens = Math.floor(
+								JSON.stringify(ctx.messages).length / 4,
+							);
+							const estimatedCompletionTokens = Math.floor(
+								(state.content?.length || 0) / 4,
+							);
+
 							costTracker.trackRequest(modelId, {
 								promptTokens: estimatedPromptTokens,
 								completionTokens: estimatedCompletionTokens,
@@ -294,7 +315,7 @@ export async function runAgentLoop(
 								cacheReadTokens: 0,
 								cacheWriteTokens: 0,
 							});
-							
+
 							throw streamError;
 						}
 					},

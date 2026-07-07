@@ -56,18 +56,24 @@ export class ConnectorManager extends EventEmitter {
 				return;
 			} catch (error) {
 				attempt++;
-				const errMessage = error instanceof Error ? error.message : String(error);
+				const errMessage =
+					error instanceof Error ? error.message : String(error);
 
 				if (attempt >= maxRetries) {
-					console.error(`[${platform}] Exhausted max retries (${maxRetries}): ${errMessage}`);
+					console.error(
+						`[${platform}] Exhausted max retries (${maxRetries}): ${errMessage}`,
+					);
 					if (this.listenerCount("error") > 0) {
-						this.emit("error", new Error(`Max retries reached for ${platform}`));
+						this.emit(
+							"error",
+							new Error(`Max retries reached for ${platform}`),
+						);
 					}
 					return;
 				}
 
 				// Exponential backoff: baseDelay * 2^(attempt - 1)
-				const delay = Math.min(maxDelay, baseDelay * Math.pow(2, attempt - 1));
+				const delay = Math.min(maxDelay, baseDelay * 2 ** (attempt - 1));
 				// Add jitter: random between 0 and 500ms
 				const jitter = Math.random() * 500;
 				const sleepTime = delay + jitter;
@@ -92,7 +98,7 @@ export class ConnectorManager extends EventEmitter {
 					// In a real implementation, this would throw on connection failure
 					// e.g. await slackClient.start();
 				});
-				await new Promise(resolve => setTimeout(resolve, 5000));
+				await new Promise((resolve) => setTimeout(resolve, 5000));
 			}
 		};
 		start().catch((err) => {
@@ -110,7 +116,7 @@ export class ConnectorManager extends EventEmitter {
 					// In a real implementation, this would throw on connection failure
 					// e.g. await discordClient.login(this.config.discordToken);
 				});
-				await new Promise(resolve => setTimeout(resolve, 5000));
+				await new Promise((resolve) => setTimeout(resolve, 5000));
 			}
 		};
 		start().catch((err) => {
@@ -156,7 +162,10 @@ export class ConnectorManager extends EventEmitter {
 		let normalizedContent = content;
 		if (platform === "slack" || platform === "discord") {
 			// Normalize platform-specific mention syntax (e.g., <@U12345>, <@!12345>) to a standard bot mention
-			normalizedContent = normalizedContent.replace(/<@!?[A-Z0-9]+>/ig, "@Tehuti");
+			normalizedContent = normalizedContent.replace(
+				/<@!?[A-Z0-9]+>/gi,
+				"@Tehuti",
+			);
 		}
 
 		const event: UnifiedMessageEvent = {

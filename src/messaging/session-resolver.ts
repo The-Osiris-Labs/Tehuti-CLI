@@ -142,7 +142,7 @@ export class SessionResolver {
 			const row = stmt.get(tehutiSessionId) as
 				| { platform_sender_id: string }
 				| undefined;
-			
+
 			if (row) {
 				this.updateCache(row.platform_sender_id, tehutiSessionId);
 				return row.platform_sender_id;

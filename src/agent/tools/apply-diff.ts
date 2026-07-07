@@ -5,12 +5,12 @@ import { z } from "zod";
 import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
 import {
 	checkSymlinkSafety,
+	createBackup,
 	hasFileBeenRead,
 	markFileAsRead,
 	resolvePath,
 	runAciLinter,
 	validatePathSecurity,
-	createBackup,
 } from "./fs.js";
 import type {
 	AnyToolExecutor,

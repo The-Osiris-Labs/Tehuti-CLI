@@ -1,6 +1,6 @@
+import { type ChildProcess, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { fork, type ChildProcess } from "node:child_process";
 import { debug } from "../../utils/debug.js";
 import { agentEventBus } from "../events.js";
 import type { AgentLoopResult } from "../index.js";

@@ -22,8 +22,8 @@ export async function initMemory(): Promise<void> {
 	}
 }
 
+export * from "./consolidation.js";
 export * from "./db.js";
 export * from "./env-bootstrap.js";
 export * from "./graph.js";
 export * from "./vector-store.js";
-export * from "./consolidation.js";

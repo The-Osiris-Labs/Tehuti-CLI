@@ -103,7 +103,10 @@ export function compressContext(
 		let preview = "";
 		if (typeof msg.content === "string") {
 			// Safely respect reasoning block boundaries
-			let c = msg.content.replace(/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g, "[Thought Process]");
+			const c = msg.content.replace(
+				/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g,
+				"[Thought Process]",
+			);
 
 			// Never accidentally slice a JSON tool_call object mid-string during heavy compression
 			const trimmed = c.trim();
@@ -140,7 +143,12 @@ export function compressContext(
 		content: summaryContent,
 	};
 
-	const newMessages = [...systemMessages, ...firstN, compressedMessage, ...recentMessages];
+	const newMessages = [
+		...systemMessages,
+		...firstN,
+		compressedMessage,
+		...recentMessages,
+	];
 	const newTokens = estimateTokens(newMessages);
 
 	return {

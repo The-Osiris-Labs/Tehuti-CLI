@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "fs-extra";
 import type { StandardMessage, StandardToolCall } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
+import { TehutiDaemonClient } from "../daemon/client.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
 import {
@@ -14,7 +15,6 @@ import { initMemory } from "./memory/index.js";
 import { getPersonalityPromptBlock } from "./memory/personality.js";
 import { getSkillsManager } from "./skills/manager.js";
 import type { DiffPreviewOptions } from "./tools/registry.js";
-import { TehutiDaemonClient } from "../daemon/client.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -28,7 +28,10 @@ const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
 export function stripReasoningTokens(content: string): string {
-	return content.replace(/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g, "");
+	return content.replace(
+		/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g,
+		"",
+	);
 }
 
 export function estimateTokens(messages: StandardMessage[]): number {
@@ -345,7 +348,7 @@ export async function buildSystemPrompt(
 		const uptimeH = Math.floor((pong.uptime % 86400) / 3600);
 		const uptimeM = Math.floor((pong.uptime % 3600) / 60);
 		const uptimeS = Math.floor(pong.uptime % 60);
-		
+
 		const parts = [];
 		if (uptimeD > 0) parts.push(`${uptimeD}d`);
 		if (uptimeH > 0) parts.push(`${uptimeH}h`);
@@ -462,7 +465,9 @@ export function addUserMessage(ctx: AgentContext, content: string): void {
 export function addAssistantMessage(ctx: AgentContext, content: string): void {
 	const timePrefix = getTimestampPrefix();
 	const stripped = stripReasoningTokens(content);
-	const finalContent = stripped ? `${timePrefix}${stripped}` : timePrefix.trim();
+	const finalContent = stripped
+		? `${timePrefix}${stripped}`
+		: timePrefix.trim();
 	const msg: StandardMessage = {
 		role: "assistant",
 		content: finalContent,
@@ -481,7 +486,9 @@ export function addAssistantMessageWithTools(
 ): void {
 	const timePrefix = getTimestampPrefix();
 	const stripped = stripReasoningTokens(content);
-	const finalContent = stripped ? `${timePrefix}${stripped}` : timePrefix.trim();
+	const finalContent = stripped
+		? `${timePrefix}${stripped}`
+		: timePrefix.trim();
 	const message: StandardMessage = {
 		role: "assistant",
 		content: finalContent,

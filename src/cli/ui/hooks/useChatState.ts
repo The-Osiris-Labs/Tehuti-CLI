@@ -116,6 +116,7 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 		resolve: (allowed: boolean) => void;
 		reject: (error: Error) => void;
 	} | null>(null);
+	const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
 	const questionResolverRef = useRef<
 		((questions: QuestionData[]) => Promise<string[]>) | null
 	>(null);
@@ -185,5 +186,7 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 		setShowConfigEditor,
 		questionResolverRef,
 		permissionResolverRef,
+		queuedMessages,
+		setQueuedMessages,
 	};
 }

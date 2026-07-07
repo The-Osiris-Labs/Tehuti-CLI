@@ -122,7 +122,7 @@ export function SessionList({
 		},
 		onRename: () => {
 			// Stub for future rename support
-		}
+		},
 	});
 
 	// Keyboard navigation
@@ -211,7 +211,8 @@ export function SessionList({
 				<Text dimColor>↑/↓: Navigate • Enter/Click: Select • Esc: Close</Text>
 				<Text dimColor>
 					Showing {windowStart + 1}-
-					{Math.min(windowStart + PAGE_SIZE, sessions.length)} of {sessions.length}
+					{Math.min(windowStart + PAGE_SIZE, sessions.length)} of{" "}
+					{sessions.length}
 				</Text>
 			</Box>
 		</Box>

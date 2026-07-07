@@ -1,4 +1,5 @@
 import { logger } from "../../utils/logger.js";
+import { agentEventBus } from "../events.js";
 import db from "./db.js";
 
 // Type definitions
@@ -114,6 +115,10 @@ export function updateProjectProfile(
 			JSON.stringify(formattingHabits),
 			JSON.stringify(commandPatterns),
 		);
+		agentEventBus.emit("memoryEvent", {
+			type: "learning",
+			message: "Learned new styling habits",
+		});
 	} catch (error) {
 		logger.error(`Failed to update project profile: ${error}`);
 	}

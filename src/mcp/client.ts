@@ -146,7 +146,7 @@ export class MCPClientManager {
 	private statusCallback: ConnectionStatusCallback | null = null;
 	private samplingHandler: SamplingHandler | null = null;
 	private intentionalDisconnects: Set<string> = new Set();
-	
+
 	// Infinite loop protection for sampling
 	private samplingDepth = 0;
 	private samplingRequests = 0;

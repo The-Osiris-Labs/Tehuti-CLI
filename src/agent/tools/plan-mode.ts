@@ -154,7 +154,7 @@ async function listPlansTool(
 	}
 	const files = await fs.readdir(plansDir);
 	const planFiles = files.filter((f) => f.endsWith(".md"));
-	
+
 	if (planFiles.length === 0) {
 		return { success: true, output: "No plans found." };
 	}
@@ -166,7 +166,7 @@ async function listPlansTool(
 			// Fallback to mtime if birthtime is not available/reliable
 			const createdAt = stat.birthtimeMs === 0 ? stat.mtime : stat.birthtime;
 			return { filename, createdAt };
-		})
+		}),
 	);
 
 	// Sort chronologically (oldest to newest)
@@ -189,7 +189,10 @@ async function readPlanTool(
 	const planFile = path.resolve(plansDir, filename);
 
 	if (!planFile.startsWith(plansDir)) {
-		return { success: false, output: "Invalid filename. Path traversal not allowed." };
+		return {
+			success: false,
+			output: "Invalid filename. Path traversal not allowed.",
+		};
 	}
 
 	if (!(await fs.pathExists(planFile))) {

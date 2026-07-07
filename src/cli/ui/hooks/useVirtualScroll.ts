@@ -11,11 +11,22 @@ export function useVirtualScroll({
 	maxVisibleWindow = 15,
 	initialSelectedIndex = 0,
 }: UseVirtualScrollOptions) {
-	const safeTotalItems = Math.max(0, Number.isNaN(totalItems) ? 0 : Number(totalItems));
-	const safeMaxWindow = Math.max(1, Number.isNaN(maxVisibleWindow) ? 15 : Number(maxVisibleWindow));
+	const safeTotalItems = Math.max(
+		0,
+		Number.isNaN(totalItems) ? 0 : Number(totalItems),
+	);
+	const safeMaxWindow = Math.max(
+		1,
+		Number.isNaN(maxVisibleWindow) ? 15 : Number(maxVisibleWindow),
+	);
 
 	const [selectedIndex, setSelectedIndex] = useState(() =>
-		safeTotalItems === 0 ? 0 : Math.min(Math.max(0, initialSelectedIndex), Math.max(0, safeTotalItems - 1)),
+		safeTotalItems === 0
+			? 0
+			: Math.min(
+					Math.max(0, initialSelectedIndex),
+					Math.max(0, safeTotalItems - 1),
+				),
 	);
 
 	const [windowStart, setWindowStart] = useState(() => {

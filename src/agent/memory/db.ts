@@ -71,7 +71,7 @@ if (currentVersion === 0) {
 	    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
 	  );
 	`);
-	
+
 	db.pragma("user_version = 1");
 }
 

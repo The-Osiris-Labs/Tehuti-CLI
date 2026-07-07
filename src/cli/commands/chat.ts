@@ -19,6 +19,11 @@ import React, {
 import { saveCacheToDisk } from "../../agent/cache/index.js";
 import { compactContext, estimateTokens } from "../../agent/context.js";
 import {
+	agentEventBus,
+	globalAbortController,
+	resetGlobalAbortController,
+} from "../../agent/events.js";
+import {
 	type AgentContext,
 	createAgentContext,
 	isPlanMode,
@@ -48,6 +53,7 @@ import {
 	getProviderInfo,
 	resolveBaseUrlForProvider,
 } from "../../config/providers.js";
+import { TehutiDaemonClient } from "../../daemon/client.js";
 import { mcpManager } from "../../mcp/index.js";
 import { setPermissionResolver } from "../../permissions/prompts.js";
 import { sessionManager } from "../../session/manager.js";
@@ -88,14 +94,15 @@ import {
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { HieroglyphSpinner } from "../ui/components/HieroglyphSpinner.js";
+import { MemoryIndicator } from "../ui/components/MemoryIndicator.js";
 import { PermissionPrompt } from "../ui/components/PermissionPrompt.js";
 import { ProgressBar } from "../ui/components/ProgressBar.js";
 import { QuestionPrompt } from "../ui/components/QuestionPrompt.js";
 import { SessionList } from "../ui/components/SessionList.js";
 import { StatusIndicator } from "../ui/components/StatusIndicator.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
-import { TodoList } from "../ui/components/TodoList.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
+import { TodoList } from "../ui/components/TodoList.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
@@ -389,23 +396,26 @@ export function parseContentBlocks(
 ): Array<{ type: "text" | "reasoning"; content: string }> {
 	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
 	const regex = /<(think|thinking|reasoning)>([\s\S]*?)(?:<\/\1>|$)/g;
-	
+
 	let lastIndex = 0;
-	let match;
-	
+	let match: RegExpExecArray | null;
+
 	while ((match = regex.exec(content)) !== null) {
 		if (match.index > lastIndex) {
-			blocks.push({ type: "text", content: content.slice(lastIndex, match.index) });
+			blocks.push({
+				type: "text",
+				content: content.slice(lastIndex, match.index),
+			});
 		}
-		
+
 		blocks.push({ type: "reasoning", content: match[2] });
 		lastIndex = regex.lastIndex;
 	}
-	
+
 	if (lastIndex < content.length) {
 		blocks.push({ type: "text", content: content.slice(lastIndex) });
 	}
-	
+
 	return blocks;
 }
 
@@ -561,6 +571,8 @@ function ChatUI({
 		pendingPermission,
 		setPendingPermission,
 		permissionResolverRef,
+		queuedMessages,
+		setQueuedMessages,
 	} = useChatState(model, apiKey, cfg);
 	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] =
 		React.useState("");
@@ -747,7 +759,7 @@ function ChatUI({
 		);
 		ctxRef.current = ctx;
 		return ctx;
-	}, [diffPreview, getActiveConfig]);
+	}, [diffPreview, getActiveConfig, companionMode]);
 
 	const requestGenerationRef = useRef(0);
 	const requestControllerRef = useRef<AbortController | null>(null);
@@ -758,6 +770,7 @@ function ChatUI({
 			requestControllerRef.current.abort();
 			requestControllerRef.current = null;
 		}
+		resetGlobalAbortController();
 	}, []);
 
 	const beginRequest = useCallback(() => {
@@ -856,6 +869,64 @@ function ChatUI({
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const streamingContentRef = useRef<string>("");
 	const streamingMsgIdRef = useRef<number | null>(null);
+	const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+	const [activeSessionLabel, setActiveSessionLabel] = useState<string | null>(
+		null,
+	);
+
+	const daemonClientRef = useRef<TehutiDaemonClient | null>(null);
+
+	// Initialize daemon client in companion mode
+	useEffect(() => {
+		if (companionMode) {
+			const client = new TehutiDaemonClient();
+			client
+				.connect()
+				.then(() => {
+					daemonClientRef.current = client;
+
+					client.onMessage((msg: any) => {
+						if (!msg || typeof msg !== "object") return;
+
+						// Route daemon messages to the UI state
+						if (msg.type === "token") {
+							// Update streaming state
+							agentEventBus.emit("streamEvent", {
+								type: "token",
+								text: msg.text,
+							});
+						} else if (msg.type === "toolCall") {
+							agentEventBus.emit("streamEvent", {
+								type: "toolCall",
+								name: msg.name,
+								args: msg.args,
+							});
+						} else if (msg.type === "toolResult") {
+							agentEventBus.emit("streamEvent", {
+								type: "toolResult",
+								name: msg.name,
+								result: msg.result,
+							});
+						} else if (msg.type === "completion") {
+							agentEventBus.emit("streamEvent", {
+								type: "completion",
+								result: msg.result,
+							});
+						} else if (msg.type === "error") {
+							setError(msg.message);
+						}
+					});
+				})
+				.catch((err) => {
+					setError(`Failed to connect to daemon: ${err.message}`);
+				});
+
+			return () => {
+				client.disconnect();
+				daemonClientRef.current = null;
+			};
+		}
+	}, [companionMode, setError]);
 
 	const [terminalSize, setTerminalSize] = useState({
 		rows: stdout?.rows || 24,
@@ -1544,6 +1615,7 @@ function ChatUI({
 			setLoading,
 			setCtxModel,
 			diffPreview,
+			companionMode,
 		],
 	);
 
@@ -1873,6 +1945,7 @@ function ChatUI({
 		abortActiveRequest,
 		diffPreview,
 		getActiveConfig,
+		companionMode,
 	]);
 
 	useEffect(() => {
@@ -1937,18 +2010,24 @@ function ChatUI({
 		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
 		const estimateMsgLines = (msg: any) => {
 			let l = 1;
-			const blocks = (msg.blocks && msg.blocks.length > 0)
-				? msg.blocks
-				: Array.isArray(msg.content)
-					? msg.content
-					: [];
-			
+			const blocks =
+				msg.blocks && msg.blocks.length > 0
+					? msg.blocks
+					: Array.isArray(msg.content)
+						? msg.content
+						: [];
+
 			if (blocks && blocks.length > 0) {
 				for (const block of blocks) {
 					if (block.type === "text") {
 						let textContent = "";
 						if (Array.isArray(block.content)) {
-							textContent = block.content.map((c: any) => c.text || (typeof c === "string" ? c : JSON.stringify(c))).join("");
+							textContent = block.content
+								.map(
+									(c: any) =>
+										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
+								)
+								.join("");
 						} else {
 							textContent = String(block.content || block.text || "");
 						}
@@ -1958,7 +2037,12 @@ function ChatUI({
 					} else if (block.type === "reasoning") {
 						let reasoningContent = "";
 						if (Array.isArray(block.content)) {
-							reasoningContent = block.content.map((c: any) => c.text || (typeof c === "string" ? c : JSON.stringify(c))).join("");
+							reasoningContent = block.content
+								.map(
+									(c: any) =>
+										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
+								)
+								.join("");
 						} else {
 							reasoningContent = String(block.content || block.text || "");
 						}
@@ -1967,8 +2051,7 @@ function ChatUI({
 							Math.max(
 								1,
 								Math.ceil(
-									reasoningContent.length /
-										Math.max(10, contentMaxWidth - 5),
+									reasoningContent.length / Math.max(10, contentMaxWidth - 5),
 								),
 							);
 					} else if (block.type === "tool") {
@@ -2081,7 +2164,18 @@ function ChatUI({
 		showConfigEditor,
 		showSessionList,
 		pendingQuestion,
+		queuedMessages,
+		setQueuedMessages,
 	});
+
+	useEffect(() => {
+		if (!loading && queuedMessages.length > 0) {
+			const nextMessage = queuedMessages[0];
+			setQueuedMessages((prev) => prev.slice(1));
+			void send(nextMessage);
+		}
+		// biome-ignore lint/correctness/useExhaustiveDependencies: send does not need to be a dependency
+	}, [loading, queuedMessages, setQueuedMessages]);
 
 	async function send(text: string) {
 		setInput("");
@@ -2321,20 +2415,33 @@ function ChatUI({
 			}
 
 			if (text.toLowerCase().startsWith("/export")) {
-				const format = text.slice(7).trim().toLowerCase() === "json" ? "json" : "md";
-				const sessionIdStr = sessionId ? sessionId.slice(0, 8) : Date.now().toString().slice(-8);
-				const filename = path.join(process.cwd(), `tehuti-session-${sessionIdStr}.${format}`);
+				const format =
+					text.slice(7).trim().toLowerCase() === "json" ? "json" : "md";
+				const sessionIdStr = sessionId
+					? sessionId.slice(0, 8)
+					: Date.now().toString().slice(-8);
+				const filename = path.join(
+					process.cwd(),
+					`tehuti-session-${sessionIdStr}.${format}`,
+				);
 
 				try {
 					let exportData = "";
 					if (format === "json") {
-						exportData = JSON.stringify(ctxRef.current?.messages || [], null, 2);
+						exportData = JSON.stringify(
+							ctxRef.current?.messages || [],
+							null,
+							2,
+						);
 					} else {
 						exportData = `# Tehuti Session Export\n\n`;
 						const messages = ctxRef.current?.messages || [];
 						for (const msg of messages) {
 							const role = msg.role.toUpperCase();
-							const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content, null, 2);
+							const content =
+								typeof msg.content === "string"
+									? msg.content
+									: JSON.stringify(msg.content, null, 2);
 							exportData += `## ${role}\n\n${content}\n\n---\n\n`;
 						}
 					}
@@ -2421,7 +2528,7 @@ function ChatUI({
 		const requestController = request.controller;
 
 		setMessages((m) => [
-			...m, 
+			...m,
 			{ id: userMsgId, role: "user", content: text },
 			{
 				id: assistantMsgId,
@@ -2429,7 +2536,7 @@ function ChatUI({
 				content: "",
 				toolCalls: [],
 				blocks: [],
-			}
+			},
 		]);
 		setLoading(true);
 		setError("");
@@ -2471,8 +2578,8 @@ function ChatUI({
 				isExpanded: boolean;
 			}> = [];
 
-			const result = await runAgentLoop(ctxRef.current, text, {
-				onToken: (t) => {
+			const loopOptions = {
+				onToken: (t: string) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2482,7 +2589,7 @@ function ChatUI({
 					response += t;
 					batchToken(t);
 				},
-				onToolCall: (id, name, args) => {
+				onToolCall: (id: string, name: string, args: unknown) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2517,7 +2624,7 @@ function ChatUI({
 					setThinking(`  ${toolDesc}`);
 					setShowThinking(true);
 				},
-				onToolResult: (id, _name, result) => {
+				onToolResult: (id: string, _name: string, result: unknown) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2553,7 +2660,7 @@ function ChatUI({
 					setThinking("");
 					setShowThinking(false);
 				},
-				onThinking: (content) => {
+				onThinking: (content: string) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2593,7 +2700,7 @@ function ChatUI({
 						);
 					}
 				},
-				onProgress: (progress, label) => {
+				onProgress: (progress: number, label: string) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted
@@ -2603,8 +2710,51 @@ function ChatUI({
 					setProgress(progress);
 					setOperationLabel(label);
 				},
-				signal: requestController.signal,
-			});
+				signal: globalAbortController.signal,
+			};
+
+			let result: any;
+			if (companionMode && daemonClientRef.current) {
+				const client = daemonClientRef.current;
+				client.send({
+					type: "agent_message",
+					text,
+				});
+
+				result = await new Promise((resolve) => {
+					const handler = (msg: any) => {
+						if (
+							!isCurrentRequest(requestId, requestController.signal) ||
+							requestController.signal.aborted
+						) {
+							agentEventBus.off("streamEvent", handler);
+							return;
+						}
+
+						if (msg.type === "token") {
+							loopOptions.onToken(msg.text);
+						} else if (msg.type === "toolCall") {
+							loopOptions.onToolCall(msg.id, msg.name, msg.args);
+						} else if (msg.type === "toolResult") {
+							loopOptions.onToolResult(msg.id, msg.name, msg.result);
+						} else if (msg.type === "completion") {
+							agentEventBus.off("streamEvent", handler);
+							resolve(msg.result || { success: true, content: response });
+						} else if (msg.type === "error") {
+							agentEventBus.off("streamEvent", handler);
+							resolve({ success: false, error: msg.message });
+						}
+					};
+					agentEventBus.on("streamEvent", handler);
+
+					requestController.signal.addEventListener("abort", () => {
+						agentEventBus.off("streamEvent", handler);
+						resolve({ success: false, error: "Aborted" });
+					});
+				});
+			} else {
+				result = await runAgentLoop(ctxRef.current, text, loopOptions);
+			}
 
 			if (!isCurrentRequest(requestId, requestController.signal)) {
 				streamingMsgIdRef.current = null;
@@ -3104,7 +3254,7 @@ function ChatUI({
 				),
 			);
 		});
-	}, [deferredVisibleMessages, contentMaxWidth, loadSessionById]);
+	}, [deferredVisibleMessages, contentMaxWidth]);
 
 	const commandSuggestions = null;
 
@@ -3337,6 +3487,7 @@ function ChatUI({
 						),
 					),
 					showDashboard && React.createElement(SwarmVisualizer, null),
+					React.createElement(MemoryIndicator, null),
 					React.createElement(TodoList, null),
 					messages.length === 0
 						? React.createElement(
@@ -3524,7 +3675,23 @@ function ChatUI({
 										onAnswer: (ans) => _handleQuestionAnswer(0, ans),
 										onCancel: _handleQuestionCancel,
 									})
-								: renderInput,
+								: React.createElement(
+										Box,
+										{ flexDirection: "column" },
+										queuedMessages.length > 0 &&
+											React.createElement(
+												Box,
+												{ flexDirection: "column", marginBottom: 1 },
+												...queuedMessages.map((msg, i) =>
+													React.createElement(
+														Text,
+														{ key: i, color: "gray", dimColor: true },
+														`[Queued] ${msg}`,
+													),
+												),
+											),
+										renderInput,
+									),
 					showCommandPalette || showConfigEditor ? null : commandSuggestions,
 				),
 				React.createElement(CommandPalette, {

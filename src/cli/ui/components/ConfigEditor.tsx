@@ -2,10 +2,10 @@ import { useOnClick, useOnMouseEnter } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
-import { useVimInput } from "../hooks/useVimInput.js";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import { useVimInput } from "../hooks/useVimInput.js";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 
 const GOLD = BRANDING.colors.gold;
 const GRAY = BRANDING.colors.gray;

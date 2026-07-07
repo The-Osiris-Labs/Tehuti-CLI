@@ -175,7 +175,10 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			? () => {}
 			: () => {
 					setIsHovered(false);
-					GlobalInputState.hoveredComponentCount = Math.max(0, GlobalInputState.hoveredComponentCount - 1);
+					GlobalInputState.hoveredComponentCount = Math.max(
+						0,
+						GlobalInputState.hoveredComponentCount - 1,
+					);
 				},
 	);
 
@@ -206,21 +209,11 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const width = Math.max(40, maxWidth);
 	const summary = useMemo(
-		() =>
-			summarizeToolOutput(
-				result,
-				width - 4,
-				4,
-			),
+		() => summarizeToolOutput(result, width - 4, 4),
 		[result, width],
 	);
 
-	const {
-		windowStart,
-		windowEnd,
-		moveUp,
-		moveDown,
-	} = useVirtualScroll({
+	const { windowStart, windowEnd, moveUp, moveDown } = useVirtualScroll({
 		totalItems: expanded ? summary.rawLines.length : 0,
 		maxVisibleWindow: 40,
 	});
@@ -276,7 +269,10 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		: BRANDING.colors.gray;
 
 	const language = useMemo(() => {
-		if (toolName === "write_plan" || (typeof result === "object" && result !== null && "uiOutput" in result)) {
+		if (
+			toolName === "write_plan" ||
+			(typeof result === "object" && result !== null && "uiOutput" in result)
+		) {
 			return "markdown";
 		}
 		try {
@@ -290,16 +286,26 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const displayContent = useMemo(() => {
 		if (!expanded) return summary.displayContent;
-		
+
 		const visibleLines = summary.rawLines.slice(windowStart, windowEnd);
-		const formatted = visibleLines.map(line => {
-			return stringWidth(line) > width - 4
-				? `${sliceAnsi(line, width - 7)}...`
-				: line;
-		}).join("\n");
-		
+		const formatted = visibleLines
+			.map((line) => {
+				return stringWidth(line) > width - 4
+					? `${sliceAnsi(line, width - 7)}...`
+					: line;
+			})
+			.join("\n");
+
 		return highlightToAnsi(formatted, language);
-	}, [expanded, summary.displayContent, summary.rawLines, windowStart, windowEnd, width, language]);
+	}, [
+		expanded,
+		summary.displayContent,
+		summary.rawLines,
+		windowStart,
+		windowEnd,
+		width,
+		language,
+	]);
 
 	const expandedIcon = expanded ? "▼" : "▶";
 
@@ -347,4 +353,3 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		</Box>
 	);
 });
-

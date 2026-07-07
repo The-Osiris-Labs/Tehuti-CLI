@@ -52,7 +52,7 @@ export class TehutiDaemonClient {
 					return;
 				}
 
-				let newlineIndex;
+				let newlineIndex: number;
 				while ((newlineIndex = this.buffer.indexOf("\n")) !== -1) {
 					const line = this.buffer.slice(0, newlineIndex);
 					this.buffer = this.buffer.slice(newlineIndex + 1);

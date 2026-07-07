@@ -98,8 +98,8 @@ describe("useChatInput hook", () => {
 		expect(props.setInput).toHaveBeenCalled();
 		const lastCall = (props.setInput as any).mock.calls.at(-1);
 		const updater = lastCall[0];
-		expect(typeof updater).toBe("function");
-		expect(updater("hello")).toBe("hello/");
+		expect(typeof updater).toBe("string");
+		expect(updater).toBe("hello/");
 		unmount();
 	});
 
@@ -144,8 +144,8 @@ describe("useChatInput hook", () => {
 		triggerInput("\x1b[3~", { delete: true });
 		expect(props.setInput).toHaveBeenCalled();
 		const setInputCall = (props.setInput as any).mock.calls[0][0];
-		expect(typeof setInputCall).toBe("function");
-		expect(setInputCall("hello")).toBe("helo");
+		expect(typeof setInputCall).toBe("string");
+		expect(setInputCall).toBe("helo");
 		unmount();
 	});
 

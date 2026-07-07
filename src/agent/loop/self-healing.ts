@@ -70,13 +70,13 @@ export class SelfHealingManager {
 		};
 
 		process.on("exit", cleanup);
-		
+
 		// Ensure we gracefully clean up on common termination signals
 		process.on("SIGINT", () => {
 			cleanup();
 			process.exit(130);
 		});
-		
+
 		process.on("SIGTERM", () => {
 			cleanup();
 			process.exit(143);
@@ -93,7 +93,7 @@ export class SelfHealingManager {
 	}> {
 		const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
 		await fs.promises.mkdir(shadowsDir, { recursive: true }).catch(() => {});
-		
+
 		const epoch = Date.now();
 		const worktreeName = `tehuti-shadow-${epoch}`;
 		const worktreePath = path.join(shadowsDir, worktreeName);
@@ -138,13 +138,22 @@ export class SelfHealingManager {
 			}
 
 			if (filesToCopy.length > 0) {
-				const filesListPath = path.join(os.tmpdir(), `rsync-files-${Date.now()}.txt`);
-				await fs.promises.writeFile(filesListPath, filesToCopy.join("\n") + "\n");
+				const filesListPath = path.join(
+					os.tmpdir(),
+					`rsync-files-${Date.now()}.txt`,
+				);
+				await fs.promises.writeFile(
+					filesListPath,
+					`${filesToCopy.join("\n")}\n`,
+				);
 				try {
 					// Use rsync to robustly copy modified/untracked files while preserving permissions, symlinks, etc.
-					await execAsync(`rsync -a --files-from="${filesListPath}" . "${worktreePath}"`, {
-						cwd: this.mainDir,
-					});
+					await execAsync(
+						`rsync -a --files-from="${filesListPath}" . "${worktreePath}"`,
+						{
+							cwd: this.mainDir,
+						},
+					);
 				} catch (rsyncErr) {
 					// Fallback to manual copy if rsync fails
 					for (const file of filesToCopy) {

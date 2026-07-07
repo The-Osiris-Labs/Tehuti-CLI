@@ -80,7 +80,8 @@ export class BM25VectorStore implements VectorStore {
 		this.documents.delete(id);
 		this.documentCount--;
 		this.totalTokens -= doc.tokens.length;
-		this.avgdl = this.documentCount > 0 ? this.totalTokens / this.documentCount : 0;
+		this.avgdl =
+			this.documentCount > 0 ? this.totalTokens / this.documentCount : 0;
 
 		const uniqueTokens = new Set(doc.tokens);
 		for (const token of uniqueTokens) {

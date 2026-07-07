@@ -57,7 +57,11 @@ export function safeStringify(
 	}
 }
 
-export function compactToolResultForUi(value: unknown, depth = 0, isUiOutputField = false): unknown {
+export function compactToolResultForUi(
+	value: unknown,
+	depth = 0,
+	isUiOutputField = false,
+): unknown {
 	if (typeof value === "string") {
 		if (isUiOutputField) {
 			return truncateMiddle(value, 500000, "truncated for UI memory");
@@ -95,7 +99,11 @@ export function compactToolResultForUi(value: unknown, depth = 0, isUiOutputFiel
 			compacted.__omitted__ = "additional object keys omitted for UI memory";
 			break;
 		}
-		compacted[key] = compactToolResultForUi(nested, depth + 1, key === "uiOutput");
+		compacted[key] = compactToolResultForUi(
+			nested,
+			depth + 1,
+			key === "uiOutput",
+		);
 		count++;
 	}
 	return compacted;

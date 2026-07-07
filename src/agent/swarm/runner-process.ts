@@ -1,7 +1,7 @@
 import { loadConfig } from "../../config/index.js";
+import { agentEventBus } from "../events.js";
 import { createAgentContext, runAgentLoop } from "../index.js";
 import { sendChunkedMessage, serializeError } from "./serialization.js";
-import { agentEventBus } from "../events.js";
 
 export function startRunner() {
 	process.on("message", async (msg: any) => {
@@ -17,7 +17,7 @@ export function startRunner() {
 					},
 					onProgress: (progress, label) => {
 						process.send?.({ type: "progress", payload: { progress, label } });
-					}
+					},
 				});
 
 				sendChunkedMessage(process, "completed", result);

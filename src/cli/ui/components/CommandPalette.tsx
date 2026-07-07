@@ -1,13 +1,17 @@
-import { useOnClick, useOnMouseEnter, useOnMouseLeave } from "@ink-tools/ink-mouse";
+import {
+	useOnClick,
+	useOnMouseEnter,
+	useOnMouseLeave,
+} from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useVimInput } from "../hooks/useVimInput.js";
-import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import { useVimInput } from "../hooks/useVimInput.js";
+import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 
 const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
@@ -320,6 +324,7 @@ export function CommandPalette({
 			setQuery("");
 			setError(null);
 		}
+		// biome-ignore lint/correctness/useExhaustiveDependencies: setSelectedIndex is initialized later
 	}, [visible, initialQuery, menuStack.length, query]);
 
 	const MAX_DISPLAY = 9;

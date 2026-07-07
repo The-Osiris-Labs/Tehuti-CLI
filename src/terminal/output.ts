@@ -244,23 +244,26 @@ function parseContentBlocks(
 ): Array<{ type: "text" | "reasoning"; content: string }> {
 	const blocks: Array<{ type: "text" | "reasoning"; content: string }> = [];
 	const regex = /<(think|thinking|reasoning)>([\s\S]*?)(?:<\/\1>|$)/g;
-	
+
 	let lastIndex = 0;
-	let match;
-	
+	let match: RegExpExecArray | null;
+
 	while ((match = regex.exec(content)) !== null) {
 		if (match.index > lastIndex) {
-			blocks.push({ type: "text", content: content.slice(lastIndex, match.index) });
+			blocks.push({
+				type: "text",
+				content: content.slice(lastIndex, match.index),
+			});
 		}
-		
+
 		blocks.push({ type: "reasoning", content: match[2] });
 		lastIndex = regex.lastIndex;
 	}
-	
+
 	if (lastIndex < content.length) {
 		blocks.push({ type: "text", content: content.slice(lastIndex) });
 	}
-	
+
 	return blocks;
 }
 
@@ -328,7 +331,7 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	lines += 1; // Role header
 
 	const blocks =
-		(msg.blocks && msg.blocks.length > 0)
+		msg.blocks && msg.blocks.length > 0
 			? msg.blocks
 			: Array.isArray(msg.content)
 				? msg.content
@@ -547,7 +550,7 @@ const ANSI_REGEX_GLOBAL = new RegExp(
 		"[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
 		"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))",
 	].join("|"),
-	"g"
+	"g",
 );
 
 function stripAnsi(str: string): string {

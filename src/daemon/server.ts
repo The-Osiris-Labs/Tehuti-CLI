@@ -22,7 +22,9 @@ export class TehutiDaemonServer extends EventEmitter {
 			this.emit("connection", socket);
 
 			socket.setEncoding("utf8");
-			socket.setTimeout(300000, () => socket.destroy(new Error("Idle Timeout")));
+			socket.setTimeout(300000, () =>
+				socket.destroy(new Error("Idle Timeout")),
+			);
 			let buffer = "";
 
 			socket.on("data", (chunk: string) => {
@@ -35,7 +37,7 @@ export class TehutiDaemonServer extends EventEmitter {
 					return;
 				}
 
-				let newlineIndex;
+				let newlineIndex: number;
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
 					const line = buffer.slice(0, newlineIndex);
 					buffer = buffer.slice(newlineIndex + 1);
@@ -53,16 +55,16 @@ export class TehutiDaemonServer extends EventEmitter {
 						if (typeof msg === "object" && msg !== null) {
 							if (msg.type === "ping") {
 								// Count connected sockets by asking the server
-								this.server.getConnections((err, count) => {
+								this.server.getConnections((_err, count) => {
 									if (!socket.destroyed) {
 										socket.write(
-											JSON.stringify({
+											`${JSON.stringify({
 												type: "pong",
 												pid: process.pid,
 												uptime: process.uptime(),
 												session_start_time: this.daemonStartTime,
 												clients: count || 0,
-											}) + "\n",
+											})}\n`,
 										);
 									}
 								});
@@ -70,10 +72,13 @@ export class TehutiDaemonServer extends EventEmitter {
 							}
 							if (msg.type === "stop") {
 								if (!socket.destroyed) {
-									socket.write(JSON.stringify({ type: "stopping" }) + "\n", () => {
-										this.stop();
-										setTimeout(() => process.exit(0), 100);
-									});
+									socket.write(
+										`${JSON.stringify({ type: "stopping" })}\n`,
+										() => {
+											this.stop();
+											setTimeout(() => process.exit(0), 100);
+										},
+									);
 								} else {
 									this.stop();
 									setTimeout(() => process.exit(0), 100);
@@ -180,13 +185,13 @@ export class TehutiDaemonServer extends EventEmitter {
 	private startGarbageCollector(): void {
 		// Run a sweep immediately
 		sweepCacheDir().catch(() => {});
-		
+
 		// Run a sweep every 12 hours
 		const GC_INTERVAL = 12 * 60 * 60 * 1000;
 		this.gcInterval = setInterval(() => {
 			sweepCacheDir().catch(() => {});
 		}, GC_INTERVAL);
-		
+
 		if (this.gcInterval?.unref) {
 			this.gcInterval.unref();
 		}

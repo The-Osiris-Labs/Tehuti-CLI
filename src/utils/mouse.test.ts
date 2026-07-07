@@ -39,10 +39,10 @@ describe("Mouse Sequence Filter Utility", () => {
 		expect(isMouseSequence("")).toBe(false);
 	});
 
-it('should catch bare M/m tails from split SGR releases', () => {
-	expect(isMouseSequence('M')).toBe(true);
-	expect(isMouseSequence('m')).toBe(true);
-});
+	it("should catch bare M/m tails from split SGR releases", () => {
+		expect(isMouseSequence("M")).toBe(true);
+		expect(isMouseSequence("m")).toBe(true);
+	});
 
 	it("isMouseSequenceFragment flags partials that should be buffered", () => {
 		expect(isMouseSequenceFragment("<")).toBe(true);

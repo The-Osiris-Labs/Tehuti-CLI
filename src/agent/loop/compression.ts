@@ -27,7 +27,10 @@ export async function manageContextWindow(
 		// Deterministic truncation: keep head (system prompts) and tail (recent messages)
 		// We remove the oldest non-system messages until under target
 		const keepLastN = 10;
-		while (currentTokens > targetTokens && ctx.messages.length > keepLastN + 1) {
+		while (
+			currentTokens > targetTokens &&
+			ctx.messages.length > keepLastN + 1
+		) {
 			const endIndex = ctx.messages.length - keepLastN;
 			let removed = false;
 			for (let i = 0; i < endIndex; i++) {

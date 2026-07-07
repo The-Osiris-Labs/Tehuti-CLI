@@ -268,7 +268,10 @@ export async function executeToolsParallel(
 							);
 
 							await mutex.runExclusive(async () => {
-								const outStr = typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+								const outStr =
+									typeof result.output === "string"
+										? result.output
+										: JSON.stringify(result.output ?? "");
 								let resultStr = result.success
 									? outStr
 									: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
@@ -333,7 +336,10 @@ export async function executeToolsParallel(
 					selfHealer,
 				);
 
-				const outStr = typeof result.output === "string" ? result.output : JSON.stringify(result.output ?? "");
+				const outStr =
+					typeof result.output === "string"
+						? result.output
+						: JSON.stringify(result.output ?? "");
 				let resultStr = result.success
 					? outStr
 					: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;

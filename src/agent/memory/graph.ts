@@ -211,7 +211,8 @@ function formatRelativeTime(timestamp: number): string {
 	const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
 	if (diffSeconds < 60) return `${diffSeconds} seconds ago`;
 	const diffMinutes = Math.floor(diffSeconds / 60);
-	if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+	if (diffMinutes < 60)
+		return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
 	const diffHours = Math.floor(diffMinutes / 60);
 	if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
 	const diffDays = Math.floor(diffHours / 24);
@@ -219,7 +220,8 @@ function formatRelativeTime(timestamp: number): string {
 	const diffWeeks = Math.floor(diffDays / 7);
 	if (diffWeeks < 4) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
 	const diffMonths = Math.floor(diffDays / 30);
-	if (diffMonths < 12) return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
+	if (diffMonths < 12)
+		return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
 	const diffYears = Math.floor(diffDays / 365);
 	return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
 }
@@ -297,14 +299,14 @@ export async function optimizeInsights(
 
 		const lastAccess = node.lastAccessed || node.timestamp || now;
 		const daysOld = Math.max(0, (now - lastAccess) / (1000 * 60 * 60 * 24));
-		
+
 		const p = node.priority ?? 0;
 		const i = node.importance ?? 0;
 		const accessCount = node.accessCount ?? 1;
-		
-		const baseScore = (p * 10) + (i * 10) + accessCount;
+
+		const baseScore = p * 10 + i * 10 + accessCount;
 		const decayedScore = baseScore * Math.exp(-DECAY_RATE * daysOld);
-		
+
 		if (decayedScore < OBSOLETE_THRESHOLD) {
 			toRemove.add(node.id);
 		}
@@ -407,7 +409,7 @@ export async function optimizeInsights(
 								target: newTarget,
 								relation: edge.relation_type,
 								weight: edge.weight,
-								now: Date.now()
+								now: Date.now(),
 							});
 						}
 
@@ -415,7 +417,7 @@ export async function optimizeInsights(
 						delEdgeStmt.run(edge.id);
 					}
 				});
-				
+
 				executeMerge();
 
 				mergedCount++;
@@ -442,7 +444,7 @@ export async function optimizeInsights(
 			deleteStmt.run(...ids);
 		});
 		executeDeletions(Array.from(toRemove));
-		
+
 		removedCount = toRemove.size;
 	}
 

@@ -119,7 +119,9 @@ export async function processToolCalls(
 					? (args as Record<string, unknown>).file_path
 					: undefined;
 
-			let preHookResult = { proceed: true, error: undefined as string | undefined };
+			let preHookResult: { proceed: boolean; error?: string } = {
+				proceed: true,
+			};
 			try {
 				preHookResult = await hookExecutor.executeHook("PreToolUse", {
 					toolName: tc.function.name,
@@ -129,7 +131,10 @@ export async function processToolCalls(
 					env: process.env as Record<string, string>,
 				});
 			} catch (e) {
-				preHookResult = { proceed: false, error: e instanceof Error ? e.message : String(e) };
+				preHookResult = {
+					proceed: false,
+					error: e instanceof Error ? e.message : String(e),
+				};
 			}
 
 			if (!preHookResult.proceed) {
@@ -305,7 +310,9 @@ export async function processToolCalls(
 					? (args as Record<string, unknown>).file_path
 					: undefined;
 
-			let preHookResult = { proceed: true, error: undefined as string | undefined };
+			let preHookResult: { proceed: boolean; error?: string } = {
+				proceed: true,
+			};
 			try {
 				preHookResult = await hookExecutor.executeHook("PreToolUse", {
 					toolName: tc.function.name,
@@ -315,7 +322,10 @@ export async function processToolCalls(
 					env: process.env as Record<string, string>,
 				});
 			} catch (e) {
-				preHookResult = { proceed: false, error: e instanceof Error ? e.message : String(e) };
+				preHookResult = {
+					proceed: false,
+					error: e instanceof Error ? e.message : String(e),
+				};
 			}
 
 			if (!preHookResult.proceed) {

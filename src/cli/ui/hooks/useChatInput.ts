@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { useInput } from "ink";
 import React from "react";
+import { injectionQueue, interruptAgent } from "../../../agent/events.js";
 import {
 	isMouseSequence,
 	isMouseSequenceFragment,
@@ -46,20 +47,22 @@ export interface UseChatInputProps {
 	showConfigEditor?: boolean;
 	pendingQuestion?: any;
 	showSessionList?: boolean;
+	queuedMessages: string[];
+	setQueuedMessages: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 export function useChatInput(props: UseChatInputProps) {
 	const {
 		input,
-		setInput,
+		setInput: originalSetInput,
 		cursorPos,
-		setCursorPos,
+		setCursorPos: originalSetCursorPos,
 		showCommandPalette,
 		setShowCommandPalette,
 		history,
-		setHistory,
+		setHistory: originalSetHistory,
 		historyIndex,
-		setHistoryIndex,
+		setHistoryIndex: originalSetHistoryIndex,
 		inputBeforeHistoryRef,
 		commands,
 		sessionId,
@@ -69,9 +72,9 @@ export function useChatInput(props: UseChatInputProps) {
 		onExit,
 		exit,
 		selectionStart,
-		setSelectionStart,
+		setSelectionStart: originalSetSelectionStart,
 		selectionEnd,
-		setSelectionEnd,
+		setSelectionEnd: originalSetSelectionEnd,
 		loading,
 		scrollPageUp,
 		scrollPageDown,
@@ -85,6 +88,8 @@ export function useChatInput(props: UseChatInputProps) {
 		showConfigEditor,
 		pendingQuestion,
 		showSessionList,
+		queuedMessages,
+		setQueuedMessages,
 	} = props;
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
@@ -101,8 +106,70 @@ export function useChatInput(props: UseChatInputProps) {
 	const loadingRef = React.useRef(loading);
 	// Buffer for split mouse sequence fragments arriving across multiple useInput() callbacks.
 	const mouseBufferRef = React.useRef<string>("");
-	const mouseBufferTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-		null,
+	const mouseBufferTimerRef = React.useRef<ReturnType<
+		typeof setTimeout
+	> | null>(null);
+
+	const setInput = React.useCallback(
+		(newVal: string | ((prev: string) => string)) => {
+			const next =
+				typeof newVal === "function" ? newVal(inputRef.current) : newVal;
+			inputRef.current = next;
+			originalSetInput(next);
+		},
+		[originalSetInput],
+	);
+
+	const setCursorPos = React.useCallback(
+		(newVal: number | ((prev: number) => number)) => {
+			const next =
+				typeof newVal === "function" ? newVal(cursorPosRef.current) : newVal;
+			cursorPosRef.current = next;
+			originalSetCursorPos(next);
+		},
+		[originalSetCursorPos],
+	);
+
+	const setSelectionStart = React.useCallback(
+		(newVal: number | null | ((prev: number | null) => number | null)) => {
+			const next =
+				typeof newVal === "function"
+					? newVal(selectionStartRef.current)
+					: newVal;
+			selectionStartRef.current = next;
+			originalSetSelectionStart(next);
+		},
+		[originalSetSelectionStart],
+	);
+
+	const setSelectionEnd = React.useCallback(
+		(newVal: number | null | ((prev: number | null) => number | null)) => {
+			const next =
+				typeof newVal === "function" ? newVal(selectionEndRef.current) : newVal;
+			selectionEndRef.current = next;
+			originalSetSelectionEnd(next);
+		},
+		[originalSetSelectionEnd],
+	);
+
+	const setHistoryIndex = React.useCallback(
+		(newVal: number | ((prev: number) => number)) => {
+			const next =
+				typeof newVal === "function" ? newVal(historyIndexRef.current) : newVal;
+			historyIndexRef.current = next;
+			originalSetHistoryIndex(next);
+		},
+		[originalSetHistoryIndex],
+	);
+
+	const setHistory = React.useCallback(
+		(newVal: string[] | ((prev: string[]) => string[])) => {
+			const next =
+				typeof newVal === "function" ? newVal(historyRef.current) : newVal;
+			historyRef.current = next;
+			originalSetHistory(next);
+		},
+		[originalSetHistory],
 	);
 
 	React.useEffect(() => {
@@ -152,7 +219,10 @@ export function useChatInput(props: UseChatInputProps) {
 	const absorbMouseFragment = React.useCallback(
 		(k: string): boolean => {
 			// True if the chunk was absorbed into the mouse buffer (caller should return early).
-			if (isMouseSequenceTail(k) || k.endsWith("M") || k.endsWith("m")) {
+			if (
+				mouseBufferRef.current.length > 0 &&
+				(isMouseSequenceTail(k) || k.endsWith("M") || k.endsWith("m"))
+			) {
 				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
 				flushMouseBuffer();
 				return true;
@@ -256,7 +326,6 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Bracketed paste handling
 		if (k?.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
-			if (loading) return;
 			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
 			let targetText = input;
 			let targetPos = cursorPos;
@@ -283,7 +352,6 @@ export function useChatInput(props: UseChatInputProps) {
 			k === "\x08" ||
 			(key.delete && k !== "\x1b[3~")
 		) {
-			if (loading) return;
 			if (hasSelection) {
 				deleteSelection();
 				return;
@@ -297,7 +365,6 @@ export function useChatInput(props: UseChatInputProps) {
 
 		// Delete handling (forward delete)
 		if ((key.delete && k === "\x1b[3~") || k === "\x1b[3~") {
-			if (loading) return;
 			if (hasSelection) {
 				deleteSelection();
 				return;
@@ -309,6 +376,27 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "c") {
+			if (hasSelection) {
+				const [start, end] = [
+					Math.min(selectionStart!, selectionEnd!),
+					Math.max(selectionStart!, selectionEnd!),
+				];
+				const selectedText = input.slice(start, end);
+				console.log(
+					`\x1B]52;;${Buffer.from(selectedText).toString("base64")}\x07`,
+				);
+				setSelectionStart(null);
+				setSelectionEnd(null);
+				return;
+			}
+
+			if (loading) {
+				interruptAgent();
+				setInput("");
+				setCursorPos(0);
+				return;
+			}
+
 			if (input.length === 0) {
 				const performExit = async () => {
 					if (sessionId && ctxRef.current) {
@@ -324,22 +412,11 @@ export function useChatInput(props: UseChatInputProps) {
 					exit();
 				};
 				void performExit();
-			} else if (hasSelection) {
-				const [start, end] = [
-					Math.min(selectionStart!, selectionEnd!),
-					Math.max(selectionStart!, selectionEnd!),
-				];
-				const selectedText = input.slice(start, end);
-				console.log(
-					`\x1B]52;;${Buffer.from(selectedText).toString("base64")}\x07`,
-				);
-				setSelectionStart(null);
-				setSelectionEnd(null);
-			} else {
-				if (loading) return;
-				setInput("");
-				setCursorPos(0);
+				return;
 			}
+
+			setInput("");
+			setCursorPos(0);
 			return;
 		}
 
@@ -358,25 +435,36 @@ export function useChatInput(props: UseChatInputProps) {
 			k === "\x1b[27;2;13~" || // Shift+Enter (xterm modifyOtherKeys=2)
 			k === "\x1b[27;5;13~"; // Ctrl+Enter (xterm modifyOtherKeys=2)
 		if (isModifiedEnter) {
-			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
-			setInput(before + "\n" + after);
+			setInput(`${before}\n${after}`);
 			setCursorPos(cursorPos + 1);
 			setHistoryIndex(-1);
 			return;
 		}
 
 		if (key.return && !key.shift && input.trim()) {
-			if (loading) return;
-			const newHistory = [
-				input.trim(),
-				...history.filter((h) => h !== input.trim()),
-			].slice(0, 100);
+			const text = input.trim();
+
+			if (loading) {
+				if (text.startsWith("/btw ")) {
+					injectionQueue.push(text.slice(5));
+				} else {
+					setQueuedMessages((prev) => [...prev, text]);
+				}
+				setInput("");
+				setCursorPos(0);
+				return;
+			}
+
+			const newHistory = [text, ...history.filter((h) => h !== text)].slice(
+				0,
+				100,
+			);
 			setHistory(newHistory);
 			saveHistory(newHistory);
 			setHistoryIndex(-1);
-			void send(input.trim());
+			void send(text);
 			return;
 		}
 
@@ -442,13 +530,11 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "l") {
-			if (loading) return;
 			void resetConversation();
 			return;
 		}
 
 		if (key.ctrl && k === "u") {
-			if (loading) return;
 			setInput(input.slice(cursorPos));
 			setCursorPos(0);
 			setHistoryIndex(-1);
@@ -470,7 +556,6 @@ export function useChatInput(props: UseChatInputProps) {
 			((key.meta || key.ctrl) && (k === "\x7f" || k === "\b")) ||
 			(key.ctrl && k === "w")
 		) {
-			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
 			const match = before.match(/\S+\s*$/);
@@ -486,7 +571,6 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "k") {
-			if (loading) return;
 			setInput(input.slice(0, cursorPos));
 			setCursorPos(cursorPos);
 			return;
@@ -502,7 +586,6 @@ export function useChatInput(props: UseChatInputProps) {
 				onExit();
 				exit();
 			} else {
-				if (loading) return;
 				if (hasSelection) {
 					deleteSelection();
 				} else {
@@ -513,7 +596,6 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "x") {
-			if (loading) return;
 			if (hasSelection) {
 				const [start, end] = [
 					Math.min(selectionStart!, selectionEnd!),
@@ -536,7 +618,6 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.ctrl && k === "t") {
-			if (loading) return;
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);
 			if (before.length > 0) {
@@ -617,7 +698,6 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		if (key.escape) {
-			if (loading) return;
 			setInput("");
 			setCursorPos(0);
 			setHistoryIndex(-1);
@@ -649,7 +729,7 @@ export function useChatInput(props: UseChatInputProps) {
 			) {
 				return;
 			}
-			if (loading) return;
+
 			// Trigger Command Palette automatically when typing '/' as the first character
 			if (k === "/" && input.trim() === "" && cursorPos === 0) {
 				showCommandPaletteRef.current = true;
@@ -667,8 +747,9 @@ export function useChatInput(props: UseChatInputProps) {
 				// B3 fix: use functional setters so rapid keystrokes cannot clobber
 				// intermediate values via stale closure.
 				const insertAt = cursorPos;
-				setInput((prev: string) =>
-					prev.slice(0, insertAt) + sanitized + prev.slice(insertAt),
+				setInput(
+					(prev: string) =>
+						prev.slice(0, insertAt) + sanitized + prev.slice(insertAt),
 				);
 				setCursorPos((p: number) => p + sanitized.length);
 				setHistoryIndex(-1);

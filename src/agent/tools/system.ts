@@ -23,7 +23,10 @@ const TODO_WRITE_SCHEMA = z.object({
 				priority: z
 					.enum(["high", "medium", "low"])
 					.describe("Priority level of the task"),
-				createdAt: z.string().datetime().describe("ISO 8601 creation timestamp"),
+				createdAt: z
+					.string()
+					.datetime()
+					.describe("ISO 8601 creation timestamp"),
 				updatedAt: z.string().datetime().describe("ISO 8601 update timestamp"),
 			}),
 		)

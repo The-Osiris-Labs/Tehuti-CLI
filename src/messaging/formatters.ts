@@ -39,8 +39,14 @@ export function formatForSlack(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
-	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(
+		/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g,
+		"@@BOLD@@$1@@BOLD@@",
+	);
+	text = text.replace(
+		/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g,
+		"_$1_",
+	);
 	text = text.replace(/@@BOLD@@([\s\S]+?)@@BOLD@@/g, "*$1*");
 	// Strikethrough
 	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
@@ -204,7 +210,10 @@ export function formatForTelegram(markdown: string): string {
 
 	// Italic (ignoring intra-word underscores to be safer)
 	text = text.replace(/(?<!\w)_((?:(?!\n\n)[\s\S])+?)_(?!\w)/g, "<i>$1</i>");
-	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "<i>$1</i>");
+	text = text.replace(
+		/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g,
+		"<i>$1</i>",
+	);
 
 	// Strikethrough
 	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "<s>$1</s>");
@@ -269,8 +278,14 @@ export function formatForWhatsApp(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "@@BOLD@@$1@@BOLD@@");
-	text = text.replace(/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g, "_$1_");
+	text = text.replace(
+		/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g,
+		"@@BOLD@@$1@@BOLD@@",
+	);
+	text = text.replace(
+		/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g,
+		"_$1_",
+	);
 	text = text.replace(/@@BOLD@@([\s\S]+?)@@BOLD@@/g, "*$1*");
 	// Strikethrough
 	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
@@ -307,7 +322,10 @@ export function formatMessage(
 	markdown: string,
 ): string | string[] {
 	// Strip the internal [Timestamp: HH:MM:SS] prefix before sending to external platforms
-	const cleanedMarkdown = markdown.replace(/^\[Timestamp: \d{2}:\d{2}:\d{2}\]\n?/, "");
+	const cleanedMarkdown = markdown.replace(
+		/^\[Timestamp: \d{2}:\d{2}:\d{2}\]\n?/,
+		"",
+	);
 
 	switch (platform) {
 		case "slack":
