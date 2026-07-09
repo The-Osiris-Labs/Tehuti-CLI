@@ -201,10 +201,16 @@ async function runCleanupHandlers(): Promise<void> {
 		}
 	})();
 
-	// Timeout after 2 seconds to prevent hanging on exit
+	// Timeout after 30 seconds to prevent hanging on exit. 2 seconds was
+	// insufficient for large sessions: a multi-MB session.json can take
+	// 5-10+ seconds to serialize+write+rename, and a killed mid-write would
+	// corrupt the file. With the atomic write fix in place (see
+	// saveSessionMetadata), a partial write is safe (the previous final file
+	// remains), but we still want to give the handler time to complete so the
+	// new state is durable.
 	await Promise.race([
 		cleanupPromise,
-		new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+		new Promise<void>((resolve) => setTimeout(resolve, 30000)),
 	]);
 }
 
