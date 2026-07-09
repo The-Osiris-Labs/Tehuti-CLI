@@ -1241,7 +1241,11 @@ function ChatUI({
 	const terminalHeight = terminalSize.rows;
 	const terminalWidth = terminalSize.columns;
 	const headerHeight = 3;
-	const inputHeight = 3;
+	// Reserve space for the input bar. The input is multi-line aware (Shift+Enter
+	// inserts newlines, paste preserves newlines), so the rendered height can
+	// grow. Cap at 8 lines so the chat viewport never shrinks to nothing.
+	const inputLineCount = Math.max(1, input.split("\n").length);
+	const inputHeight = Math.min(8, 1 + inputLineCount);
 	const warningsHeight = configWarnings.length * 4;
 
 	messagesRef.current = messages;
