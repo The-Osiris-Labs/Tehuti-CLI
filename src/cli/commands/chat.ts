@@ -1097,6 +1097,11 @@ function ChatUI({
 	const msgIdRef = useRef(0);
 	const messagesRef = useRef<typeof messages>([]);
 	const messagesEndRef = useRef<boolean>(true);
+	// Number of messages that have arrived while the user is scrolled up.
+	// Shown as a "↓ N new" badge above the input bar. Reset to 0 when the
+	// user scrolls back to the bottom.
+	const newMessageCountRef = useRef<number>(0);
+	const [newMessageCount, setNewMessageCount] = useState(0);
 	const inputBeforeHistoryRef = useRef<string>("");
 	const batchedTokensRef = useRef<string>("");
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -2331,6 +2336,22 @@ function ChatUI({
 	useEffect(() => {
 		if (messagesEndRef.current) {
 			scrollToBottom();
+			// Reset the new-message counter when we successfully stay at the
+			// bottom (e.g. user pressed End, or scrolled to the latest message).
+			if (newMessageCountRef.current !== 0) {
+				newMessageCountRef.current = 0;
+				setNewMessageCount(0);
+			}
+		} else {
+			// User is scrolled up — count the new message that triggered this
+			// effect. We don't double-count: only increment if this is a new
+			// arrival (the effect fires once per render, but the parent re-renders
+			// on every token chunk during streaming, so we need a guard).
+			const lastSeenId = messagesRef.current.length;
+			if (lastSeenId > 0) {
+				newMessageCountRef.current = lastSeenId;
+				setNewMessageCount(lastSeenId);
+			}
 		}
 	}, [scrollToBottom]);
 
@@ -3455,6 +3476,17 @@ function ChatUI({
 				)
 			: null;
 
+	// "↓ N new" badge shown when the user is scrolled up and new messages
+	// have arrived. Clicking/pressing End dismisses it and scrolls to bottom.
+	const newMessagesBadge =
+		newMessageCount > 0 && !messagesEndRef.current
+			? React.createElement(
+					Text,
+					{ color: GOLD, bold: true, backgroundColor: undefined },
+					` ↓ ${newMessageCount} new message${newMessageCount === 1 ? "" : "s"} (press End to jump) `,
+				)
+			: null;
+
 	if (showSessionList) {
 		return React.createElement(SessionList, {
 			sessions: savedSessions,
@@ -3811,6 +3843,7 @@ function ChatUI({
 													),
 												),
 											),
+										newMessagesBadge,
 										renderInput,
 									),
 					showCommandPalette || showConfigEditor ? null : commandSuggestions,
