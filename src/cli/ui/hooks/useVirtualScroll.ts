@@ -89,6 +89,48 @@ export function useVirtualScroll({
 		});
 	}, [safeTotalItems, safeMaxWindow]);
 
+	const movePageUp = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		setSelectedIndex((prevIndex) => {
+			const newIndex = Math.max(0, prevIndex - safeMaxWindow);
+
+			setWindowStart((prevStart) => {
+				// Scroll the window by one page, but never past 0
+				return Math.max(0, prevStart - safeMaxWindow);
+			});
+
+			return newIndex;
+		});
+	}, [safeTotalItems, safeMaxWindow]);
+
+	const movePageDown = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		setSelectedIndex((prevIndex) => {
+			const newIndex = Math.min(safeTotalItems - 1, prevIndex + safeMaxWindow);
+
+			setWindowStart((prevStart) => {
+				// Scroll the window by one page, but never past the last valid start
+				const maxStart = Math.max(0, safeTotalItems - safeMaxWindow);
+				return Math.min(maxStart, prevStart + safeMaxWindow);
+			});
+
+			return newIndex;
+		});
+	}, [safeTotalItems, safeMaxWindow]);
+
+	const moveToStart = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		setSelectedIndex(0);
+		setWindowStart(0);
+	}, [safeTotalItems]);
+
+	const moveToEnd = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		const lastIndex = safeTotalItems - 1;
+		setSelectedIndex(lastIndex);
+		setWindowStart(Math.max(0, safeTotalItems - safeMaxWindow));
+	}, [safeTotalItems, safeMaxWindow]);
+
 	const getVisibleItems = useCallback(
 		<T>(items: T[]): T[] => {
 			return items.slice(windowStart, windowEnd);
@@ -103,6 +145,10 @@ export function useVirtualScroll({
 		visibleSelectedIndex: Math.max(0, selectedIndex - windowStart),
 		moveUp,
 		moveDown,
+		movePageUp,
+		movePageDown,
+		moveToStart,
+		moveToEnd,
 		getVisibleItems,
 		setSelectedIndex,
 	};

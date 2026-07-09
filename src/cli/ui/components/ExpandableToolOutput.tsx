@@ -227,7 +227,16 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		[result, width],
 	);
 
-	const { windowStart, windowEnd, moveUp, moveDown } = useVirtualScroll({
+	const {
+		windowStart,
+		windowEnd,
+		moveUp,
+		moveDown,
+		movePageUp,
+		movePageDown,
+		moveToStart,
+		moveToEnd,
+	} = useVirtualScroll({
 		totalItems: expanded ? summary.rawLines.length : 0,
 		maxVisibleWindow: 40,
 	});
@@ -236,6 +245,13 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		if (!isHovered || !expanded) return;
 		if (key.upArrow) moveUp();
 		if (key.downArrow) moveDown();
+		if (key.pageUp) movePageUp();
+		if (key.pageDown) movePageDown();
+		if (key.home) moveToStart();
+		if (key.end) moveToEnd();
+		if (_input === "q" || _input === "Q" || key.escape) {
+			setExpanded(false);
+		}
 	});
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
@@ -273,7 +289,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		status === "pending"
 			? "running..."
 			: expanded && summary.rawLines.length > 40
-				? `Lines ${windowStart + 1}-${windowEnd} of ${summary.lineCount} (hover & use ↑/↓ to scroll)`
+				? `Lines ${windowStart + 1}-${windowEnd} of ${summary.lineCount} (hover & use ↑/↓/PgUp/PgDn/Home/End, q to close)`
 				: summary.isTruncated && !expanded
 					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
 					: `completed`;
