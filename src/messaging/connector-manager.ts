@@ -9,11 +9,21 @@ export interface UnifiedMessageEvent {
 	rawPayload: unknown;
 }
 
-export interface ConnectorConfig {
+export interface MessagingCredentials {
+	enabled?: boolean;
+	historySize?: number;
 	slackAppToken?: string;
+	slackBotToken?: string;
 	discordToken?: string;
+	telegramBotToken?: string;
 	telegramWebhookSecret?: string;
+	whatsappToken?: string;
 	whatsappWebhookSecret?: string;
+	whatsappPhoneNumberId?: string;
+}
+
+export interface ConnectorConfig extends MessagingCredentials {
+	messaging?: MessagingCredentials;
 }
 
 export class ConnectorManager extends EventEmitter {
@@ -26,20 +36,47 @@ export class ConnectorManager extends EventEmitter {
 	}
 
 	/**
+	 * Starts all messaging platform connectors, catching and logging any connection
+	 * or implementation errors per-platform so remaining platforms can still connect.
+	 */
+	public async start(): Promise<void> {
+		const platforms: Array<{ name: string; fn: () => Promise<void> }> = [
+			{ name: "Slack", fn: () => this.initSlackSocketMode() },
+			{ name: "Discord", fn: () => this.initDiscordGateway() },
+			{ name: "Telegram", fn: () => this.registerTelegramWebhook() },
+			{ name: "WhatsApp", fn: () => this.registerWhatsAppWebhook() },
+		];
+
+		for (const platform of platforms) {
+			try {
+				await platform.fn();
+			} catch (error) {
+				const errMessage =
+					error instanceof Error ? error.message : String(error);
+				console.error(
+					`[${platform.name}] Failed to start connector: ${errMessage}`,
+				);
+			}
+		}
+	}
+
+	/**
 	 * Initializes WebSocket clients for Slack and Discord,
 	 * and registers HTTP endpoints for Telegram and WhatsApp webhooks.
 	 */
 	public async initialize(): Promise<void> {
-		this.initSlackSocketMode();
-		this.initDiscordGateway();
-		this.registerTelegramWebhook();
-		this.registerWhatsAppWebhook();
+		await this.start();
 	}
 
 	/**
 	 * Connects to a WebSocket-based service using an exponential backoff strategy
 	 * with jitter to prevent reconnect storms.
+	 *
+	 * NOTE: Currently unused after the messaging refactor. Kept for the next
+	 * iteration of `init*` methods that will replace their "throw new Error" stubs
+	 * with real connection logic.
 	 */
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: slated for use by next iteration of init* methods
 	private async connectWithBackoff(
 		platform: string,
 		connectFn: () => Promise<void>,
@@ -88,52 +125,75 @@ export class ConnectorManager extends EventEmitter {
 		}
 	}
 
-	private initSlackSocketMode(): void {
-		if (!this.config.slackAppToken) return;
+	private async initSlackSocketMode(): Promise<void> {
+		const slackAppToken =
+			this.config.messaging?.slackAppToken ?? this.config.slackAppToken;
+		const slackBotToken =
+			this.config.messaging?.slackBotToken ?? this.config.slackBotToken;
 
-		const start = async () => {
-			while (true) {
-				await this.connectWithBackoff("Slack", async () => {
-					console.log("Initializing Slack Socket Mode...");
-					// In a real implementation, this would throw on connection failure
-					// e.g. await slackClient.start();
-				});
-				await new Promise((resolve) => setTimeout(resolve, 5000));
-			}
-		};
-		start().catch((err) => {
-			console.error("Slack backoff wrapper threw an unexpected error", err);
-		});
+		if (!slackAppToken || !slackBotToken) {
+			console.warn(
+				"[Slack] Missing required credentials (slackAppToken and/or slackBotToken). Skipping Slack connection.",
+			);
+			return;
+		}
+
+		console.log("[Slack] Connecting to Slack Socket Mode...");
+		throw new Error("Not yet implemented: real Slack connection");
 	}
 
-	private initDiscordGateway(): void {
-		if (!this.config.discordToken) return;
+	private async initDiscordGateway(): Promise<void> {
+		const discordToken =
+			this.config.messaging?.discordToken ?? this.config.discordToken;
 
-		const start = async () => {
-			while (true) {
-				await this.connectWithBackoff("Discord", async () => {
-					console.log("Initializing Discord Gateway...");
-					// In a real implementation, this would throw on connection failure
-					// e.g. await discordClient.login(this.config.discordToken);
-				});
-				await new Promise((resolve) => setTimeout(resolve, 5000));
-			}
-		};
-		start().catch((err) => {
-			console.error("Discord backoff wrapper threw an unexpected error", err);
-		});
+		if (!discordToken) {
+			console.warn(
+				"[Discord] Missing required credentials (discordToken). Skipping Discord connection.",
+			);
+			return;
+		}
+
+		console.log("[Discord] Connecting to Discord Gateway...");
+		throw new Error("Not yet implemented: real Discord connection");
 	}
 
-	private registerTelegramWebhook(): void {
-		if (!this.config.telegramWebhookSecret) return;
-		// Mock implementation for Telegram Webhook
-		console.log("Registering Telegram Webhook endpoint...");
+	private async registerTelegramWebhook(): Promise<void> {
+		const telegramBotToken =
+			this.config.messaging?.telegramBotToken ?? this.config.telegramBotToken;
+		const telegramWebhookSecret =
+			this.config.messaging?.telegramWebhookSecret ??
+			this.config.telegramWebhookSecret;
+
+		if (!telegramBotToken || !telegramWebhookSecret) {
+			console.warn(
+				"[Telegram] Missing required credentials (telegramBotToken and/or telegramWebhookSecret). Skipping Telegram connection.",
+			);
+			return;
+		}
+
+		console.log("[Telegram] Connecting to Telegram Webhook endpoint...");
+		throw new Error("Not yet implemented: real Telegram connection");
 	}
 
-	private registerWhatsAppWebhook(): void {
-		if (!this.config.whatsappWebhookSecret) return;
-		// Mock implementation for WhatsApp Webhook
-		console.log("Registering WhatsApp Webhook endpoint...");
+	private async registerWhatsAppWebhook(): Promise<void> {
+		const whatsappToken =
+			this.config.messaging?.whatsappToken ?? this.config.whatsappToken;
+		const whatsappWebhookSecret =
+			this.config.messaging?.whatsappWebhookSecret ??
+			this.config.whatsappWebhookSecret;
+		const whatsappPhoneNumberId =
+			this.config.messaging?.whatsappPhoneNumberId ??
+			this.config.whatsappPhoneNumberId;
+
+		if (!whatsappToken || !whatsappWebhookSecret || !whatsappPhoneNumberId) {
+			console.warn(
+				"[WhatsApp] Missing required credentials (whatsappToken, whatsappWebhookSecret, and/or whatsappPhoneNumberId). Skipping WhatsApp connection.",
+			);
+			return;
+		}
+
+		console.log("[WhatsApp] Connecting to WhatsApp Webhook endpoint...");
+		throw new Error("Not yet implemented: real WhatsApp connection");
 	}
 
 	/**
