@@ -68,6 +68,8 @@ describe("useChatInput hook", () => {
 			resetConversation: vi.fn(),
 			send: vi.fn(),
 			saveHistory: vi.fn(),
+			queuedMessages: [],
+			setQueuedMessages: vi.fn(),
 		};
 	});
 
@@ -235,6 +237,23 @@ describe("useChatInput hook", () => {
 
 		expect(props.exit).toHaveBeenCalled();
 		consoleSpy.mockRestore();
+		unmount();
+	});
+
+	it("should preserve newlines in bracketed paste (multi-line paste)", () => {
+		props.input = "";
+		props.cursorPos = 0;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		// Simulate a multi-line paste via bracketed paste mode
+		const pastePayload = "\x1b[200~line1\nline2\nline3\x1b[201~";
+		triggerInput(pastePayload, {});
+
+		// The pasted text should be inserted with newlines preserved
+		expect(props.setInput).toHaveBeenCalledWith("line1\nline2\nline3");
+		expect(props.setCursorPos).toHaveBeenCalledWith(
+			"line1\nline2\nline3".length,
+		);
 		unmount();
 	});
 });

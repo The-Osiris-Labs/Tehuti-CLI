@@ -328,9 +328,11 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 		}
 
-		// Bracketed paste handling
+		// Bracketed paste handling. Preserve newlines so multi-line content
+		// (e.g. code snippets, stack traces, lists) survives the round-trip
+		// to the model. Strip only the surrounding paste-mode escape sequences.
 		if (k?.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
-			const pastedText = k.slice(7, -6).replace(/\r?\n/g, " ");
+			const pastedText = k.slice(6, -6);
 			let targetText = input;
 			let targetPos = cursorPos;
 			if (hasSelection) {
