@@ -41,10 +41,14 @@ export class BM25VectorStore implements VectorStore {
 	}
 
 	private tokenize(text: string): string[] {
-		// Simple word tokenizer
+		// Unicode-aware word tokenizer. The previous regex stripped all
+		// non-ASCII characters, making memory items in non-Latin scripts
+		// (Arabic, Chinese, Japanese, Korean, etc.) completely unsearchable
+		// in BM25. The new regex keeps Unicode letters and digits, so any
+		// script is tokenized correctly.
 		return text
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, " ")
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
 			.split(/\s+/)
 			.filter((t) => t.length >= 2);
 	}
