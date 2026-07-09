@@ -559,33 +559,32 @@ export async function runAgentLoop(
 			const commandsRun = ctx.metadata.commandsRun || [];
 			const filesWritten = ctx.metadata.filesWritten || [];
 
-			Promise.resolve()
-				.then(async () => {
-					const fs = await import("node:fs");
-					const path = await import("node:path");
-					let diff = "";
-					const filesToRead = filesWritten.slice(0, 20);
-					for (const filePath of filesToRead) {
-						try {
-							const absPath = path.resolve(cwd, filePath);
-							if (fs.existsSync(absPath)) {
-								const stat = fs.statSync(absPath);
-								// Skip files over 200KB to keep this lightweight
-								if (stat.size > 200 * 1024) continue;
-								const content = fs.readFileSync(absPath, "utf-8");
-								const relativePath = path.relative(cwd, absPath);
-								diff += `+++ b/${relativePath}\n`;
-								for (const line of content.split("\n")) {
-									diff += `+${line}\n`;
-								}
+			try {
+				const fs = await import("node:fs");
+				const path = await import("node:path");
+				let diff = "";
+				const filesToRead = filesWritten.slice(0, 20);
+				for (const filePath of filesToRead) {
+					try {
+						const absPath = path.resolve(cwd, filePath);
+						if (fs.existsSync(absPath)) {
+							const stat = fs.statSync(absPath);
+							if (stat.size > 200 * 1024) continue;
+							const content = fs.readFileSync(absPath, "utf-8");
+							const relativePath = path.relative(cwd, absPath);
+							diff += `+++ b/${relativePath}\n`;
+							for (const line of content.split("\n")) {
+								diff += `+${line}\n`;
 							}
-						} catch {
-							// Skip files that can't be read (deleted, binary, etc.)
 						}
+					} catch {
+						// Skip files that can't be read (deleted, binary, etc.)
 					}
-					updateProjectProfile(cwd, diff, commandsRun);
-				})
-				.catch(() => {});
+				}
+				await updateProjectProfile(cwd, diff, commandsRun);
+			} catch {
+				// Best-effort profile update — never crash on this
+			}
 		} catch {}
 
 		resetPrefetcher();
