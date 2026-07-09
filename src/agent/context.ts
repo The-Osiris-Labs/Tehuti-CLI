@@ -75,6 +75,16 @@ export function compactContext(
 
 	ctx.messages = result.messages;
 
+	// Keep appendOnlyLog bounded to match ctx.messages length. Without this
+	// the log grows without limit (it's pushed on every message addition),
+	// and the save payload serializes the full log on every checkpoint.
+	// We keep the most recent N entries (matching ctx.messages) and the
+	// same first entry to preserve session context anchors.
+	if (ctx.appendOnlyLog.length > ctx.messages.length) {
+		const overflow = ctx.appendOnlyLog.length - ctx.messages.length;
+		ctx.appendOnlyLog.splice(0, overflow);
+	}
+
 	debug.log(
 		"context",
 		`Context compacted: ${currentTokens} -> ${result.newTokens} tokens (Saved ${result.savedTokens} tokens)`,
