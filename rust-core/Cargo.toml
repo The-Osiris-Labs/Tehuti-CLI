@@ -5,7 +5,7 @@ edition = "2021"
 
 # NOTE: Currently built as a .node binary.
 # Prepared for future compilation to `wasm32-wasip1-threads`.
-# When migrating, ensure dependencies (e.g., rayon, tokio) support WASI threads.
+# When migrating, ensure dependencies (e.g., tokio) support WASI threads.
 
 [lib]
 crate-type = ["cdylib"]
@@ -13,7 +13,6 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "2.16.14", default-features = false, features = ["napi4", "async", "tokio_rt"] }
 napi-derive = "2.16.12"
-rayon = "1.10.0"
 ignore = "0.4.23"
 
 [build-dependencies]

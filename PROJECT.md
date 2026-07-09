@@ -2,7 +2,7 @@
 
 Tehuti CLI is a TypeScript/Node.js terminal coding assistant with an Ink/React TUI, an OpenAI-compatible agent loop, and a large native tool registry. It targets developers who want a local, configurable harness—not a hosted IDE plugin. Default provider is **OpenCode Go** (`opencode`); the HTTP client is OpenAI-compatible and works with OpenRouter, local Ollama/LM Studio, and custom base URLs.
 
-**What it is not:** It is not a hosted IDE plugin. The project runs completely locally. Subagent and swarm delegation features are fully operational. Legacy grepai-named tool files are present in the source tree but not registered, as the primary semantic search functionality is handled by the registered `semantic` tools.
+**What it is not:** It is not a hosted IDE plugin. The project runs completely locally. Subagent and swarm delegation features are fully operational: `delegate_task` spawns subagents via `fork()` for process isolation, with status tracking and message passing. Legacy grepai-named tool files are present in the source tree but not registered, as the primary semantic search functionality is handled by the registered `semantic` tools.
 
 ---
 
@@ -24,16 +24,16 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
               |                     |                     |
    +----------v---------+  +--------v--------+  +--------v--------+
    |    Agent Core      |  |  Config/Session |  |  API Layer      |
-   |  loop/runner.ts    |  |  permissions    |  |  OpenRouterClient|
-   |  parallel executor |  |  hooks, MCP     |  |  (misnomer: any |
-   |  compressor        |  |                 |  |  OAI-compat URL)|
+   |  loop/runner.ts    |  |  permissions    |  | StandardAPIClient|
+   |  parallel executor |  |  hooks, MCP     |  |  (any OpenAI    |
+   |  compressor        |  |                 |  |  compat endpoint)|
    |  prefetcher        |  +-----------------+  +-----------------+
    |  memory graph      |
    +----------+---------+
               |
    +----------v---------+
    |   Tool Registry    |
-   |  73 native + MCP   |
+   |  79 native + MCP   |
    | dynamic at runtime |
    +--------------------+
 ```
@@ -63,7 +63,7 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
 - Model routing is heuristic (`classifyTask`), not learned.
 - Context compression may call the LLM; falls back to structural truncation on failure.
 - Prefetcher is rule-based; predictions can be wrong or stale.
-- `OpenRouterClient` name is historical—it wraps any OpenAI-compatible endpoint configured in `TehutiConfig`.
+- `StandardAPIClient` wraps any OpenAI-compatible endpoint configured in `TehutiConfig`.
 - Anthropic-native format is not first-class; non-compatible providers throw at client creation.
 - Subagent `delegate_task` spawns in-process workers; not a full multi-agent orchestration platform.
 - Plan mode gates tools but is opt-in state, not enforced sandboxing.
@@ -117,13 +117,13 @@ Palette uses Fuse.js fuzzy search. Egyptian palette (gold/obsidian/sand/coral) v
 
 Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`, `web`, `mcp`, `system`, `git`, `search`, `development`.
 
-### Native inventory (73 registered in src/agent/index.ts)
+### Native inventory (79 registered in src/agent/index.ts)
 
 | Category | Count | Examples |
 |----------|------:|----------|
 | Filesystem | 12 | `read`, `write`, `edit`, `list_dir`, `read_image`, `read_pdf`, … |
 | Search | 4 | `glob`, `grep`, `find_references`, `go_to_definition` |
-| AST / repo | 2 | `parse_ast`, `repo_map` |
+| AST / repo | 3 | `parse_ast`, `apply_diff`, `repo_map` |
 | Semantic (grepai CLI) | 4 | `semantic`, `semantic_init`, `semantic_status`, `semantic_trace` |
 | Bash | 1 | `bash` |
 | Web | 3 | `web_fetch`, `web_search`, `code_search` |
@@ -131,14 +131,19 @@ Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`,
 | Background | 4 | `start_background`, `list_processes`, … |
 | System | 4 | `todo_write`, `task`, `question`, `wait_for_event` |
 | Memory | 2 | `store_insight`, `query_memory` |
-| Plan mode | 2 | `write_plan`, `exit_plan_mode` |
+| Plan mode | 4 | `write_plan`, `exit_plan_mode`, `list_plans`, `read_plan` |
 | Skills | 6 | `list_skills`, `activate_skill`, `create_reusable_skill` … |
 | MCP prompts | 2 | `mcp_get_prompt`, `mcp_list_prompts` |
-| Swarm | 4 | `delegate_task`, `check_subagent_status`, `abort_subagent` … |
-| KiloCode / custom | 10 | provider-specific configurators |
-| Collaboration | 3 | collaboration session helpers |
+| Env | 1 | `env_inspect` |
+| Network | 1 | `network_check` |
+| Service | 1 | `service_status` |
+| Swarm | 4 | `delegate_task`, `check_subagent_status`, `abort_subagent`, `send_message_to_subagent` |
+| KiloCode | 3 | `configure_memory_bank`, `clear_memory`, `configure_streaming` |
+| KiloCode Advanced | 3 | `configure_context_management`, `review_code`, `summarize_context` |
+| Custom Provider | 4 | `configure_custom_provider`, `set_custom_header`, `remove_custom_header`, `get_custom_provider_info` |
+| Collaboration | 3 | `configure_collaboration`, `invite_collaborator`, `leave_collaboration` |
 | Shadow Workspace | 1 | `test_speculatively` |
-| **Total native** | **73** | |
+| **Total native** | **79** | |
 
 ### MCP (dynamic)
 
@@ -146,11 +151,7 @@ Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`,
 
 ### Dead / unregistered code
 
-These files define tools but are **not** in `registerTools([...])`:
-
-- `grepai.ts`, `grepai-cache.ts`, `grepai-mcp.ts`, `grepai-advanced.ts` (~17 duplicate/overlapping grepai wrappers)
-
-`semantic.ts` is the registered path; grepai files are legacy/duplicate.
+The legacy `grepai*.ts` tool files were purged as part of Phase 3 cleanup and no longer exist. The registered `semantic.ts` tools (`semantic`, `semantic_init`, `semantic_status`, `semantic_trace`) wrap the bundled `tools/grepai` binary.
 
 ---
 
@@ -158,7 +159,7 @@ These files define tools but are **not** in `registerTools([...])`:
 
 | File | Reality |
 |------|---------|
-| `api/openrouter.ts` | `OpenRouterClient`—generic OpenAI-compatible chat completions + streaming |
+| `api/standard-client.ts` | `StandardAPIClient`—generic OpenAI-compatible chat completions + streaming |
 | `api/custom-provider.ts` | Custom headers/base URL adapter |
 | `api/kilocode.ts` | KiloCode-specific client |
 | `config/schema.ts` | Default `provider: "opencode"`, `baseUrl: https://opencode.ai/zen/go/v1` |
@@ -225,8 +226,8 @@ Tests: unit co-located `src/**/*.test.ts`; E2E in `tests/e2e/**/*.test.ts`.
 2. **TUI:** `chat.ts` size (~3.7k lines) blocks maintainability; React duplicate-key warnings in some E2E renders.
 3. **Memory:** Edge relations stored but unused in retrieval/prompt injection.
 4. **Skills:** Built-in skill loader has `TODO`; activation is flag-only, not behavioral.
-5. **Tools:** ~17 grepai tool definitions exist but are not registered; overlap with `semantic.ts`.
-6. **Subagents:** `delegate_task` is basic in-process spawning, not isolated worker pools.
-7. **Provider naming:** `OpenRouterClient` used for OpenCode/default—confusing for contributors.
+5. **Tools:** Legacy `grepai*.ts` tool files were purged in Phase 3 cleanup; semantic search is handled by registered `semantic.ts` tools wrapping the `tools/grepai` binary.
+6. **Subagents:** `delegate_task` spawns subagents via `fork()` for process isolation; status tracking and message passing are functional.
+7. **Provider naming:** `StandardAPIClient` (`src/api/standard-client.ts`) handles OpenCode/default and any OpenAI-compatible provider.
 8. **M2 work:** Large uncommitted diff (agent loop, TUI, tools)—stability not yet merged/released.
 9. **No Tier 5:** Adversarial/red-team E2E suite planned under M5 only.

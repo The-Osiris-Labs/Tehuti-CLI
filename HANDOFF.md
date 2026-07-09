@@ -13,7 +13,7 @@ Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent powered b
 - **Agent loop:** `src/agent/loop/runner.ts` — stream LLM → execute tools → repeat
 - **API:** Custom `fetch` + SSE clients (HTTP/3) in `src/api/` (not Vercel AI SDK)
 - **Default provider:** OpenCode Go (`opencode` → `https://opencode.ai/zen/go/v1`, model `deepseek-v4-flash`)
-- **Tools:** 73 registered native tools + dynamic MCP tools at runtime
+- **Tools:** 79 registered native tools + dynamic MCP tools at runtime
 
 **Not in the shipped path:** ai / @openrouter/ai-sdk-provider / @aiter/core deps (unused in src/). (Note: `rust-core/` is actively compiled to a `.node` binary and dynamically loaded in `src/agent/tools/search.ts` for fast case-sensitive pattern grep).
 
@@ -29,7 +29,7 @@ Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent powered b
 | `src/agent/index.ts` | Tool registration, `runAgentLoop` / `runOneShot` public API |
 | `src/agent/loop/runner.ts` | Core agent iteration loop |
 | `src/agent/loop/tool-processing.ts` | Permissions (IBAC), hooks, cache, parallel/sequential dispatch |
-| `src/api/openrouter.ts` | `OpenRouterClient` — generic OpenAI-compatible client (misnomer; handles OpenCode, OpenRouter, etc.) |
+| `src/api/standard-client.ts` | `StandardAPIClient` — generic OpenAI-compatible client (handles OpenCode, OpenRouter, etc.) |
 | `src/mcp/client.ts` | MCP manager (stdio, http, sse, websocket) |
 | `src/config/loader.ts` | Config merge precedence |
 | `src/terminal/output.ts` | `computeMessageLines()` for viewport height estimation |

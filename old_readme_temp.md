@@ -1,3 +1,9 @@
+# ⚠️ STALE DRAFT — DO NOT USE
+
+This document is a stale draft and does not reflect the current codebase state. See [README.md](./README.md) for the canonical version.
+
+---
+
 𓅞 Thoth, Tongue of Ra
 
 Halls of Records • Balance of Ma'at • Architect of Truth

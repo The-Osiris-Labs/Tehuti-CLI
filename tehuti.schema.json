@@ -11,7 +11,7 @@
     },
     "fallbackModel": { 
       "type": "string", 
-      "default": "minimax/minimax-m2.5:free",
+      "default": "deepseek-v4-flash",
       "description": "Fallback model if primary fails"
     },
     "apiKey": { 
@@ -20,14 +20,14 @@
     },
     "baseUrl": {
       "type": "string",
-      "default": "https://api.kilo.ai/api/gateway",
+      "default": "https://opencode.ai/zen/go/v1",
       "description": "API base URL"
     },
     "provider": {
       "type": "string",
       "description": "AI provider to use",
-      "enum": ["openrouter", "kilocode", "custom"],
-      "default": "kilocode"
+      "enum": ["openrouter", "kilocode", "opencode", "custom"],
+      "default": "opencode"
     },
     "customProvider": {
       "type": "object",
@@ -48,7 +48,7 @@
       "type": "integer", 
       "default": 32000,
       "minimum": 1,
-      "description": "Maximum tokens per completion"
+      "description": "Fallback maximum tokens per completion; overridden by live model data when available"
     },
     "maxIterations": { 
       "type": "integer", 
@@ -184,6 +184,16 @@
         "realTime": { "type": "boolean", "default": true }
       },
       "required": ["enabled"]
+    },
+    "modelCapabilities": {
+      "type": "object",
+      "description": "Live model capabilities injected at runtime; overrides default maxTokens",
+      "properties": {
+        "contextLength": { "type": "integer", "minimum": 1 },
+        "maxOutputTokens": { "type": "integer", "minimum": 1 },
+        "supportsVision": { "type": "boolean" },
+        "supportsTools": { "type": "boolean" }
+      }
     }
   },
   "required": ["model", "provider"],

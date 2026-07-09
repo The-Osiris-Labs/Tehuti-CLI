@@ -29,3 +29,7 @@ scratch/
 # AI Agent Layer
 .agents/
 AGENTS.md
+
+# Agent backup / scratch files (timestamped .bak created by some harness tooling)
+*.bak
+**/*.bak

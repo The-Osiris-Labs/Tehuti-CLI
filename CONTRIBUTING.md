@@ -157,7 +157,7 @@ Tehuti is a TypeScript-only Node.js agent CLI. Default API target is OpenCode Go
 | Module | Role |
 |--------|------|
 | `agent/` | Agent loop (`loop/runner.ts`), tools, cache, memory, skills |
-| `api/` | Provider clients (`openrouter.ts` is generic, despite the name) |
+| `api/` | Provider clients (`standard-client.ts` is the generic OpenAI-compatible client) |
 | `cli/` | Commander entry + Ink TUI (`commands/chat.ts`) |
 | `config/` | Schema, loader, wizard, provider metadata |
 | `mcp/` | MCP client (4 transports) + dynamic tool adapter |

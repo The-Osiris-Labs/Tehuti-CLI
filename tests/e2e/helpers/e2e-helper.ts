@@ -125,6 +125,7 @@ vi.mock("../../../src/api/standard-client.js", () => {
 				streamChat: mockStreamChat,
 				completeChat: mockCompleteChat,
 				abort: vi.fn(),
+				setMaxTokens: vi.fn(),
 			}),
 			resetInstance: vi.fn(),
 		}
