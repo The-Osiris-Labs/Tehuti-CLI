@@ -254,7 +254,7 @@ export function renderToken(
 
 			const allRows: string[][] = [
 				header.map(cellText),
-				...rows.map((r) => r.map(cellText)),
+				...rows.map((r: any[]) => r.map(cellText)),
 			];
 			const colCount = Math.max(1, ...allRows.map((r) => r.length));
 			// Borders: leading space + trailing space per cell (2*colCount)

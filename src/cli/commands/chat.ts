@@ -112,6 +112,7 @@ import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
 import { companionCommand } from "./companion.js";
 import { daemonCommand } from "./daemon.js";
+import { sessionCommand } from "./session.js";
 
 interface PendingSessionFlush {
 	sessionId: string;
@@ -4229,6 +4230,7 @@ export function createProgram(): Command {
 
 	program.addCommand(daemonCommand());
 	program.addCommand(companionCommand());
+	program.addCommand(sessionCommand());
 
 	return program;
 }
