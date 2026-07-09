@@ -16,8 +16,21 @@ export async function initMemory(
 	if (isInitialized) return;
 	isInitialized = true;
 
-	const stmt = db.prepare(`SELECT * FROM nodes`);
-	const rows = stmt.all() as any[];
+	// Cap the startup reload so a memory bank with thousands of nodes doesn't
+	// block CLI startup. Older/lower-priority nodes are still in the DB and
+	// will be loaded on demand by memory_search.
+	const MAX_RELOAD_NODES = 5000;
+	const stmt = db.prepare(
+		`SELECT * FROM nodes ORDER BY importance DESC, created_at DESC LIMIT ?`,
+	);
+	const rows = stmt.all(MAX_RELOAD_NODES) as any[];
+
+	if (rows.length === MAX_RELOAD_NODES) {
+		debug.log(
+			"memory",
+			`Memory reload capped at ${MAX_RELOAD_NODES} nodes; older nodes will be loaded on demand`,
+		);
+	}
 
 	for (const row of rows) {
 		const meta = row.metadata ? JSON.parse(row.metadata) : {};
