@@ -107,6 +107,36 @@ class SessionManager {
 		await fs.ensureDir(this.sessionsDir);
 	}
 
+	/**
+	 * Removes orphaned .tmp files left behind by interrupted atomic writes.
+	 * Safe to run on every startup: the .tmp files are only written via the
+	 * temp+rename pattern in saveSession/saveSessionMetadata/renameSession, and
+	 * if they're still around it means the previous run was killed mid-write.
+	 * Removing them is correct because the corresponding final file is already
+	 * in its previous valid state (rename hadn't happened yet).
+	 */
+	private async cleanupOrphanedTempFiles(): Promise<void> {
+		try {
+			const dirs = await fs.readdir(this.sessionsDir);
+			for (const dir of dirs) {
+				const sessionDir = path.join(this.sessionsDir, dir);
+				const stat = await fs.stat(sessionDir).catch(() => null);
+				if (!stat?.isDirectory()) continue;
+				for (const tmpName of [
+					"session.json.tmp",
+					"metadata.json.tmp",
+				]) {
+					const tmpFile = path.join(sessionDir, tmpName);
+					if (await fs.pathExists(tmpFile)) {
+						await fs.remove(tmpFile);
+					}
+				}
+			}
+		} catch {
+			// Best-effort cleanup; never fail startup on this
+		}
+	}
+
 	generateAutoName(
 		cwd: string,
 		_model: string,
@@ -300,7 +330,21 @@ class SessionManager {
 		const sessionDir = path.join(this.sessionsDir, id);
 		await fs.ensureDir(sessionDir);
 		const metaFile = path.join(sessionDir, "metadata.json");
-		await fs.writeJson(metaFile, metadata, { spaces: 2 });
+		// Atomic write: temp file + rename. A SIGKILL or power loss during the
+		// write leaves the previous metadata.json intact (or the temp file
+		// orphaned, which is harmless and overwritten on the next save).
+		const tempFile = path.join(sessionDir, "metadata.json.tmp");
+		await fs.writeJson(tempFile, metadata, { spaces: 2 });
+		try {
+			await fs.rename(tempFile, metaFile);
+		} catch (error: any) {
+			if (error?.code === "EXDEV") {
+				fs.copyFileSync(tempFile, metaFile);
+				fs.unlinkSync(tempFile);
+			} else {
+				throw error;
+			}
+		}
 	}
 
 	async renameSession(id: string, name: string): Promise<void> {
@@ -323,7 +367,23 @@ class SessionManager {
 			if (await fs.pathExists(sessionFile)) {
 				const data = (await fs.readJson(sessionFile)) as SessionData;
 				data.metadata.name = name;
-				await fs.writeJson(sessionFile, data, { spaces: 2 });
+				// Atomic write: temp + rename (same pattern as saveSession).
+				const sessionTempFile = path.join(
+					this.sessionsDir,
+					id,
+					"session.json.tmp",
+				);
+				await fs.writeJson(sessionTempFile, data, { spaces: 2 });
+				try {
+					await fs.rename(sessionTempFile, sessionFile);
+				} catch (renameError: any) {
+					if (renameError?.code === "EXDEV") {
+						fs.copyFileSync(sessionTempFile, sessionFile);
+						fs.unlinkSync(sessionTempFile);
+					} else {
+						throw renameError;
+					}
+				}
 			}
 			debug.log("session", `Renamed session: ${id} to "${name}"`);
 		} catch (error) {
@@ -333,6 +393,7 @@ class SessionManager {
 
 	async listSessions(): Promise<SessionMetadata[]> {
 		await this.ensureSessionsDir();
+		await this.cleanupOrphanedTempFiles();
 
 		const dirs = await fs.readdir(this.sessionsDir);
 		const sessions: SessionMetadata[] = [];
