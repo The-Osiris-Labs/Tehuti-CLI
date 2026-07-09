@@ -3428,7 +3428,7 @@ function ChatUI({
 				before,
 				React.createElement(
 					Text,
-					{ backgroundColor: "gray", color: "black" },
+					{ inverse: true },
 					selected,
 				),
 				after,
