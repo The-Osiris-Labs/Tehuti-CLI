@@ -530,6 +530,13 @@ const HISTORY_PATH = path.join(os.homedir(), ".tehuti", "history.json");
 
 function loadHistory(): string[] {
 	try {
+		// Clean up any orphaned temp file from a previous interrupted write.
+		const tmpFile = `${HISTORY_PATH}.tmp`;
+		if (fs.existsSync(tmpFile)) {
+			try {
+				fs.unlinkSync(tmpFile);
+			} catch {}
+		}
 		if (fs.existsSync(HISTORY_PATH)) {
 			return JSON.parse(fs.readFileSync(HISTORY_PATH, "utf-8")) as string[];
 		}
@@ -540,10 +547,20 @@ function loadHistory(): string[] {
 function saveHistory(history: string[]): void {
 	try {
 		fs.mkdirSync(path.dirname(HISTORY_PATH), { recursive: true });
-		fs.writeFileSync(
-			HISTORY_PATH,
-			JSON.stringify(history.slice(0, 1000), null, 2),
-		);
+		// Atomic write: temp file + rename. Mirrors the pattern used for
+		// session.json so a crash mid-write cannot corrupt the history file.
+		const tmpFile = `${HISTORY_PATH}.tmp`;
+		fs.writeFileSync(tmpFile, JSON.stringify(history.slice(0, 1000), null, 2));
+		try {
+			fs.renameSync(tmpFile, HISTORY_PATH);
+		} catch (renameError: any) {
+			if (renameError?.code === "EXDEV") {
+				fs.copyFileSync(tmpFile, HISTORY_PATH);
+				fs.unlinkSync(tmpFile);
+			} else {
+				throw renameError;
+			}
+		}
 	} catch {}
 }
 
@@ -3426,11 +3443,7 @@ function ChatUI({
 				historyIndicator,
 				" ",
 				before,
-				React.createElement(
-					Text,
-					{ inverse: true },
-					selected,
-				),
+				React.createElement(Text, { inverse: true }, selected),
 				after,
 			);
 		}
