@@ -122,10 +122,7 @@ class SessionManager {
 				const sessionDir = path.join(this.sessionsDir, dir);
 				const stat = await fs.stat(sessionDir).catch(() => null);
 				if (!stat?.isDirectory()) continue;
-				for (const tmpName of [
-					"session.json.tmp",
-					"metadata.json.tmp",
-				]) {
+				for (const tmpName of ["session.json.tmp", "metadata.json.tmp"]) {
 					const tmpFile = path.join(sessionDir, tmpName);
 					if (await fs.pathExists(tmpFile)) {
 						await fs.remove(tmpFile);
