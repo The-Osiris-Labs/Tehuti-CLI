@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TehutiConfig } from "../config/schema.js";
+import { debug } from "../utils/debug.js";
 import type { AgentContext } from "./context.js";
 import { configureHooks, createAgentContext, runAgentLoop } from "./index.js";
 
@@ -26,7 +27,18 @@ vi.mock("../api/standard-client.js", () => ({
 			};
 		}),
 		abort: vi.fn(),
+		setMaxTokens: vi.fn(),
 	})),
+}));
+
+vi.mock("./model-capability-resolver.js", () => ({
+	resolveModelCapabilities: vi.fn().mockResolvedValue({
+		contextLength: 200000,
+		maxOutputTokens: 32000,
+		supportsVision: true,
+		supportsTools: true,
+		supportsCaching: true,
+	}),
 }));
 
 vi.mock("./tools/index.js", () => ({
@@ -138,15 +150,22 @@ describe("Agent Loop", () => {
 			expect(result.finishReason).toBe("aborted");
 		});
 
-		it("should reject known incompatible providers before dispatching to the OpenAI-compatible runtime", async () => {
+		it("should log a warning and fall back to StandardAPIClient for incompatible providers", async () => {
+			const logSpy = vi.spyOn(debug, "log");
 			const incompatibleCtx = await createAgentContext(process.cwd(), {
 				...baseConfig,
 				provider: "google",
 			});
 
-			await expect(runAgentLoop(incompatibleCtx, "Hello")).rejects.toThrow(
-				'Provider "google" is not supported by the current OpenAI-compatible runtime',
+			const result = await runAgentLoop(incompatibleCtx, "Hello");
+			expect(result).toBeDefined();
+			expect(logSpy).toHaveBeenCalledWith(
+				"provider",
+				expect.stringContaining(
+					"Warning: google is not marked as OpenAI-compatible",
+				),
 			);
+			logSpy.mockRestore();
 		});
 
 		it("should return usage statistics", async () => {

@@ -23,7 +23,6 @@ const PROJECT_INSTRUCTION_FILES = [
 	".tehuti.md",
 	"AGENTS.md",
 ];
-const _MAX_CONTEXT_TOKENS = 100000;
 const COMPACT_THRESHOLD = 0.85;
 const MIN_MESSAGES_TO_KEEP = 6;
 
@@ -41,10 +40,15 @@ export function estimateTokens(messages: StandardMessage[]): number {
 export function compactContext(
 	ctx: AgentContext,
 	targetTokens?: number,
+	maxContext?: number,
 ): boolean {
-	const maxContext =
-		ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
-	const target = targetTokens ?? Math.floor(maxContext * COMPACT_THRESHOLD);
+	const effectiveMaxContext =
+		maxContext ??
+		ctx.modelContextLength ??
+		ctx.config.kilocode?.contextManagement?.maxContextLength ??
+		128000;
+	const target =
+		targetTokens ?? Math.floor(effectiveMaxContext * COMPACT_THRESHOLD);
 	const currentTokens = estimateTokens(ctx.messages);
 
 	if (currentTokens <= target) {
@@ -81,11 +85,13 @@ export function compactContext(
 
 export function warnOnContextLimit(ctx: AgentContext): boolean {
 	const maxContext =
-		ctx.config.kilocode?.contextManagement?.maxContextLength ?? 100000;
+		ctx.modelContextLength ??
+		ctx.config.kilocode?.contextManagement?.maxContextLength ??
+		128000;
 	const tokens = estimateTokens(ctx.messages);
 	const ratio = tokens / maxContext;
 
-	if (ratio > 0.95) {
+	if (ratio > 0.9) {
 		debug.log(
 			"context",
 			`Context at ${Math.round(ratio * 100)}% capacity (${tokens} tokens)`,
@@ -189,6 +195,8 @@ export interface AgentContext {
 	personalityBlockPromise?: Promise<string>;
 	readFilesThisSession: Set<string>;
 	isSleeping?: boolean;
+	/** Live model context length resolved from provider API (overrides config fallback) */
+	modelContextLength?: number;
 	metadata: {
 		startTime: Date;
 		sessionCost?: number;
@@ -227,9 +235,9 @@ export async function createAgentContext(
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
 	const systemMemoryPromise = getSystemPromptMemory(resolvedCwd);
-	const personalityBlockPromise = initMemory().then(() =>
-		getPersonalityPromptBlock(resolvedCwd),
-	);
+	const personalityBlockPromise = initMemory(
+		config.memory?.consolidationIntervalMs,
+	).then(() => getPersonalityPromptBlock(resolvedCwd));
 
 	return {
 		cwd: resolvedCwd,

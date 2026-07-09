@@ -47,6 +47,7 @@ function wrapText(text: string, width: number): string {
 	}
 	return out.join("\n");
 }
+
 import {
 	highlightToAnsi,
 	isHighlighterReady,
@@ -146,16 +147,8 @@ export function renderToken(
 					borderColor: GOLD,
 					width: codeWidth,
 				},
-				React.createElement(
-					Text,
-					{ color: CORAL, bold: true },
-					`◆ ${lang}`,
-				),
-				React.createElement(
-					Text,
-					{ wrap: "wrap" },
-					formattedCode,
-				),
+				React.createElement(Text, { color: CORAL, bold: true }, `◆ ${lang}`),
+				React.createElement(Text, { wrap: "wrap" }, formattedCode),
 			);
 		}
 
@@ -259,14 +252,19 @@ export function renderToken(
 			const colCount = Math.max(1, ...allRows.map((r) => r.length));
 			// Borders: leading space + trailing space per cell (2*colCount)
 			// plus one `│` per column (colCount - 1) plus two outer corners.
-			const innerWidth = Math.max(10, tableWidth - 2 - colCount * 2 - (colCount - 1));
+			const innerWidth = Math.max(
+				10,
+				tableWidth - 2 - colCount * 2 - (colCount - 1),
+			);
 			const minColWidth = 3;
 			const perCol = Math.floor(innerWidth / colCount);
-			let colWidths = new Array<number>(colCount).fill(minColWidth + perCol);
+			const colWidths = new Array<number>(colCount).fill(minColWidth + perCol);
 
 			// Wrap cells to current widths, then grow any column that needs more.
 			const wrapAll = (widths: number[]): string[][] =>
-				allRows.map((row) => row.map((text, i) => wrapText(text, widths[i] || minColWidth)));
+				allRows.map((row) =>
+					row.map((text, i) => wrapText(text, widths[i] || minColWidth)),
+				);
 			let wrapped = wrapAll(colWidths);
 			for (let pass = 0; pass < 2; pass++) {
 				let grew = false;
@@ -299,7 +297,12 @@ export function renderToken(
 					.join("\n");
 			};
 
-			const horiz = (left: string, mid: string, right: string, fill: string) => {
+			const horiz = (
+				left: string,
+				mid: string,
+				right: string,
+				fill: string,
+			) => {
 				const segments = colWidths.map((w) => fill.repeat(w + 2));
 				return `${left}${segments.join(mid)}${right}`;
 			};
@@ -310,7 +313,9 @@ export function renderToken(
 
 			const formatRow = (cells: string[]): string => {
 				const paddedCells = cells.map((c, i) => padRight(c, colWidths[i]));
-				const lineCount = Math.max(...paddedCells.map((c) => c.split("\n").length));
+				const lineCount = Math.max(
+					...paddedCells.map((c) => c.split("\n").length),
+				);
 				const out: string[] = [];
 				for (let li = 0; li < lineCount; li++) {
 					const segments = paddedCells.map((c, i) => {

@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import * as net from "node:net";
+import type * as net from "node:net";
 import * as path from "node:path";
 import { Command } from "commander";
 import { consola } from "consola";
+import { loadConfig } from "../../config/index.js";
 import { SOCKET_PATH, TehutiDaemonClient } from "../../daemon/client.js";
 import { installLaunchAgent } from "../../daemon/launch-agent.js";
 import { TehutiDaemonServer } from "../../daemon/server.js";
+import { DaemonStateEngine } from "../../daemon/state-engine.js";
 
 export function daemonCommand(): Command {
 	const daemon = new Command("daemon").description(
@@ -135,10 +137,68 @@ export function daemonCommand(): Command {
 			}
 		});
 
-	daemon.command("_run_server", { hidden: true }).action(() => {
+	daemon.command("_run_server", { hidden: true }).action(async () => {
+		const cfg = await loadConfig();
 		const server = new TehutiDaemonServer();
 		server.start();
 		consola.info(`Daemon server started on ${SOCKET_PATH}`);
+
+		const stateEngine = new DaemonStateEngine(cfg as any);
+		stateEngine.start();
+
+		server.on("message", async (dataOrSocket: any, socketOrData: any) => {
+			const socket: net.Socket =
+				dataOrSocket && typeof dataOrSocket.write === "function"
+					? dataOrSocket
+					: socketOrData;
+			const data: any =
+				dataOrSocket && typeof dataOrSocket.write === "function"
+					? socketOrData
+					: dataOrSocket;
+
+			if (!data || typeof data !== "object" || !socket) return;
+
+			if (data.type === "agent_message" && typeof data.text === "string") {
+				try {
+					const { createAgentContext, runAgentLoop } = await import(
+						"../../agent/index.js"
+					);
+					const ctx = await createAgentContext(
+						process.cwd(),
+						cfg,
+						undefined,
+						true,
+					);
+					const result = await runAgentLoop(ctx, data.text);
+					if (!socket.destroyed) {
+						socket.write(
+							`${JSON.stringify({
+								type: "agent_response",
+								content: result.content,
+							})}\n`,
+						);
+					}
+				} catch (error) {
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					if (!socket.destroyed) {
+						socket.write(
+							`${JSON.stringify({
+								type: "error",
+								message: errorMessage,
+							})}\n`,
+						);
+					}
+				}
+			}
+		});
+
+		const shutdown = () => {
+			stateEngine.stop();
+		};
+		server.on("close", shutdown);
+		process.on("SIGINT", shutdown);
+		process.on("SIGTERM", shutdown);
 	});
 
 	return daemon;

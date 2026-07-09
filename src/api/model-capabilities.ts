@@ -4,6 +4,8 @@ export interface ModelCapabilityInfo {
 	provider: string;
 	isReasoning: boolean;
 	reasoningField: "reasoning" | "thinking" | "none";
+	contextLength?: number;
+	maxOutputTokens?: number;
 }
 
 export function isReasoningModel(modelId: string): boolean {
@@ -53,7 +55,14 @@ export function supportsPromptCaching(modelId: string): boolean {
 export function getReasoningField(
 	modelId: string,
 ): "reasoning" | "thinking" | "none" {
-	return isReasoningModel(modelId) ? "reasoning" : "none";
+	if (!isReasoningModel(modelId)) {
+		return "none";
+	}
+	const lowerId = modelId.toLowerCase();
+	if (lowerId.includes("claude") || lowerId.includes("anthropic")) {
+		return "thinking";
+	}
+	return "reasoning";
 }
 
 export function getModelCapabilities(
@@ -69,6 +78,38 @@ export function getModelCapabilities(
 		name,
 		provider,
 		isReasoning,
-		reasoningField: isReasoning ? "reasoning" : "none",
+		reasoningField: getReasoningField(modelId),
 	};
+}
+
+/**
+ * Resolve live model limits (contextLength, maxOutputTokens) from the provider
+ * API. Fetches the model list and finds the selected model. Returns undefined
+ * for any field the provider doesn't advertise.
+ *
+ * Falls back gracefully — returns an empty object on any error so callers can
+ * safely destructure and apply their own defaults.
+ */
+export async function resolveModelCapabilities(
+	modelId: string,
+	provider: string,
+	config: {
+		apiKey?: string;
+		baseUrl?: string;
+	},
+): Promise<{ contextLength?: number; maxOutputTokens?: number }> {
+	try {
+		const { listModelsForProvider, getLiveModelInfo } = await import(
+			"./models.js"
+		);
+		const models = await listModelsForProvider(provider, config);
+		const info = getLiveModelInfo(models, modelId);
+		return {
+			contextLength: info?.contextLength,
+			maxOutputTokens: info?.maxOutputTokens,
+		};
+	} catch {
+		// Graceful fallback — caller uses their own defaults
+		return {};
+	}
 }

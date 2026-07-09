@@ -2,6 +2,18 @@ import { z } from "zod";
 import type { AgentContext } from "../context.js";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
+/**
+ * @status stub — planned for future: real-time multi-user collaboration
+ *
+ * Writes collaboration config to memory (enabled, sessionId, peers, realTime)
+ * but there is no actual collaboration transport behind it.
+ * No WebSocket, no peer-to-peer signaling, no shared session multiplexing.
+ * The COLLABORATION_SCHEMA exists in config/schema.ts but nothing reads it
+ * to establish real-time connections.
+ *
+ * @deprecated Use separate session-isolated agent instances instead until
+ *   collaboration transport is implemented.
+ */
 export const configureCollaborationTool = createTool({
 	name: "configure_collaboration",
 	description:
@@ -43,7 +55,10 @@ export const configureCollaborationTool = createTool({
 			return {
 				success: true,
 				output: JSON.stringify({
-					message: `Collaboration ${enabled ? "enabled" : "disabled"}`,
+					message:
+						"This tool is not yet implemented. Planned functionality: real-time multi-user collaboration with shared session state. Config was written to memory but no transport layer exists yet.",
+					configWritten: true,
+					enabled,
 					sessionId,
 					peers: peers.length,
 					realTime,
@@ -59,6 +74,13 @@ export const configureCollaborationTool = createTool({
 	},
 });
 
+/**
+ * @status stub — planned for future: invite other agents/users to a session
+ *
+ * Pushes a peer name into an in-memory array on the config object but
+ * does not actually send any invitation. No notification mechanism,
+ * no WebSocket handshake, no access control beyond the in-memory flag.
+ */
 export const inviteCollaboratorTool = createTool({
 	name: "invite_collaborator",
 	description: "Invite a collaborator to the current session.",
@@ -86,7 +108,7 @@ export const inviteCollaboratorTool = createTool({
 					success: false,
 					output: "",
 					error:
-						"Collaboration is not enabled. Please enable collaboration first.",
+						"Collaboration is not enabled. Please enable collaboration first. Note: collaboration transport is not yet implemented — this is a stub.",
 				};
 			}
 
@@ -101,7 +123,10 @@ export const inviteCollaboratorTool = createTool({
 			return {
 				success: true,
 				output: JSON.stringify({
-					message: `Collaborator ${peer} invited as ${role}`,
+					message:
+						"This tool is not yet implemented. Planned functionality: send real-time invitation to peer via WebSocket/signaling. Peer name was recorded in-memory only.",
+					peerRecorded: peer,
+					role,
 					sessionId: agentCtx.config.collaboration?.sessionId,
 					peers: agentCtx.config.collaboration?.peers.length,
 				}),
@@ -116,6 +141,13 @@ export const inviteCollaboratorTool = createTool({
 	},
 });
 
+/**
+ * @status stub — planned for future: gracefully leave a real-time session
+ *
+ * Flips the `enabled` flag to false on the in-memory config object.
+ * No actual teardown of connections, no peer notification, no cleanup
+ * of shared state. Just an in-memory flag flip.
+ */
 export const leaveCollaborationTool = createTool({
 	name: "leave_collaboration",
 	description: "Leave the current collaboration session.",
@@ -135,7 +167,8 @@ export const leaveCollaborationTool = createTool({
 			return {
 				success: true,
 				output: JSON.stringify({
-					message: "Left collaboration session",
+					message:
+						"This tool is not yet implemented. Planned functionality: gracefully leave real-time collaboration session, notify peers, and clean up shared state. Config flag was flipped in-memory only.",
 				}),
 			};
 		} catch (error) {

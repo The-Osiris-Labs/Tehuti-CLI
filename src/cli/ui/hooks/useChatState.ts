@@ -2,49 +2,11 @@ import { useRef, useState } from "react";
 import type { QuestionData } from "../../../agent/tools/system.js";
 import type { PermissionRequest } from "../../../permissions/prompts.js";
 
-// We'll use any for types imported from chat.ts to avoid circular dependencies for now,
-// or just copy the types.
-type RuntimeCustomProvider = {
-	name: string;
-	baseUrl: string;
-	apiKey?: string;
-	headers?: Record<string, string>;
-};
-
-function normalizeCustomProvider(
-	value: unknown,
-): RuntimeCustomProvider | undefined {
-	if (!value || typeof value !== "object") return undefined;
-	const record = value as Record<string, unknown>;
-	const name = typeof record.name === "string" ? record.name.trim() : "";
-	const baseUrl =
-		typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
-	if (!name || !baseUrl) return undefined;
-	const apiKey =
-		typeof record.apiKey === "string" && record.apiKey.trim().length > 0
-			? record.apiKey.trim()
-			: undefined;
-	const rawHeaders =
-		typeof record.headers === "object" && record.headers !== null
-			? (record.headers as Record<string, unknown>)
-			: undefined;
-	const headers =
-		rawHeaders &&
-		Object.entries(rawHeaders).every(([, value]) => typeof value === "string")
-			? (Object.fromEntries(
-					Object.entries(rawHeaders).map(([key, value]) => [
-						key,
-						String(value),
-					]),
-				) as Record<string, string>)
-			: undefined;
-	return {
-		name,
-		baseUrl,
-		...(apiKey ? { apiKey } : {}),
-		...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-	};
-}
+import {
+	normalizeCustomProvider,
+	type RuntimeCustomProvider,
+} from "../utils/custom-provider.js";
+export type { RuntimeCustomProvider };
 
 export function useChatState(model: string, apiKey: string, cfg: any) {
 	const [messages, setMessages] = useState<

@@ -10,13 +10,17 @@ import { estimateTokens } from "../context-compressor.js";
 export async function manageContextWindow(
 	ctx: AgentContext,
 	_client: StandardAPIClient | KiloCodeClient | CustomProviderClient,
+	maxContext?: number,
 ): Promise<void> {
 	let currentTokens = estimateTokens(ctx.messages);
-	const maxContext =
-		ctx.config.kilocode?.contextManagement?.maxContextLength || 32000;
+	const effectiveMaxContext =
+		maxContext ??
+		ctx.modelContextLength ??
+		ctx.config.kilocode?.contextManagement?.maxContextLength ??
+		128000;
 	// Trigger compression at 85% of max context
-	const triggerThreshold = Math.floor(maxContext * 0.85);
-	const targetTokens = Math.floor(maxContext * 0.8);
+	const triggerThreshold = Math.floor(effectiveMaxContext * 0.85);
+	const targetTokens = Math.floor(effectiveMaxContext * 0.8);
 
 	if (currentTokens > triggerThreshold) {
 		debug.log(

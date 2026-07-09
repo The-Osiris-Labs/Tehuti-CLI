@@ -16,6 +16,7 @@ import React, {
 	useRef,
 	useState,
 } from "react";
+import stringWidth from "string-width";
 import { saveCacheToDisk } from "../../agent/cache/index.js";
 import { compactContext, estimateTokens } from "../../agent/context.js";
 import {
@@ -110,6 +111,10 @@ import { TodoList } from "../ui/components/TodoList.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
+import {
+	normalizeCustomProvider,
+	type RuntimeCustomProvider,
+} from "../ui/utils/custom-provider.js";
 import { companionCommand } from "./companion.js";
 import { daemonCommand } from "./daemon.js";
 import { sessionCommand } from "./session.js";
@@ -146,7 +151,7 @@ const SAND = BRANDING.colors?.sand || "#8B7355";
 const PURPLE = BRANDING.colors?.purple || "#A855F7";
 
 const TOOL_ICONS: Record<string, string> = {
-	// File operations
+	// ── File operations ──
 	read: "📖",
 	read_file: "📖",
 	write: "✏️",
@@ -155,82 +160,139 @@ const TOOL_ICONS: Record<string, string> = {
 	edit_file: "📝",
 	apply_diff: "🩹",
 	apply_patch: "🩹",
-	// Search
+	create_dir: "📁",
+	delete_dir: "🗑️",
+	delete_file: "🗑️",
+	move_file: "↔️",
+	copy_file: "📋",
+	copy: "📋",
+	move: "📦",
+	list_dir: "📂",
+	list_directory: "📂",
+	list_files: "📂",
+	file_info: "ℹ️",
+	read_image: "🖼️",
+	read_pdf: "📄",
+	// ── Search ──
 	glob: "📁",
 	grep: "🔍",
 	grepai: "🧠",
 	search: "🔍",
 	ast_grep: "🌳",
-	// Shell
+	find_references: "🔗",
+	go_to_definition: "🎯",
+	// ── Shell ──
 	bash: "⚡",
 	bash_background: "⏳",
+	// ── Services ──
 	service: "🔌",
+	service_status: "📊",
+	// ── Environment ──
 	env: "🛠️",
-	// Web
+	env_inspect: "🔍",
+	// ── Web ──
 	webfetch: "🌐",
+	web_fetch: "🌐",
 	web_search: "🔍",
-	// Memory / knowledge
-	store_insight: "𓂀",
-	query_memory: "𓂀",
-	acp_message: "📨",
-	aci: "🛡️",
-	// Planning / tasks
+	code_search: "🔎",
+	// ── Memory / knowledge ──
+	store_insight: "💾",
+	query_memory: "💾",
+	configure_memory_bank: "🧠",
+	clear_memory: "🧹",
+	// ── Configuration ──
+	config: "⚙️",
+	configure_streaming: "⚡",
+	configure_context_management: "⚙️",
+	configure_custom_provider: "⚙️",
+	set_custom_header: "📝",
+	remove_custom_header: "🗑️",
+	get_custom_provider_info: "ℹ️",
+	custom_provider: "🔧",
+	// ── Planning / tasks ──
 	question: "❓",
 	todowrite: "☑️",
+	todo_write: "☑️",
 	task: "🎯",
 	task_done: "✅",
 	plan_mode: "🗺️",
 	create_plan: "🗺️",
 	write_plan: "🗺️",
-	// Filesystem
-	list_directory: "📂",
-	list_files: "📂",
+	list_plans: "📋",
+	read_plan: "📖",
+	exit_plan_mode: "🚪",
+	// ── Sessions ──
 	list_sessions: "🗂️",
-	delete_file: "🗑️",
-	move_file: "↔️",
-	copy_file: "📋",
-	// Subagents / swarm
+	// ── Subagents / swarm ──
 	spawn_subagent: "🐝",
 	swarm: "🐝",
+	delegate_task: "👥",
 	check_subagent: "🐝",
+	check_subagent_status: "🐝",
 	kill_subagent: "💀",
-	// Background
+	abort_subagent: "🛑",
+	send_message_to_subagent: "📨",
+	// ── Background processes ──
+	start_background: "⏳",
 	list_background: "📜",
+	list_processes: "📜",
 	check_background: "📜",
+	read_output: "📤",
 	stop_background: "🛑",
-	// Skills
+	kill_process: "💀",
+	// ── Git ──
+	git_status: "📊",
+	git_diff: "📜",
+	git_log: "📋",
+	git_add: "➕",
+	git_commit: "💾",
+	git_branch: "🌿",
+	git_remote: "🌐",
+	git_pull: "⬇️",
+	git_push: "⬆️",
+	// ── Collaboration ──
+	configure_collaboration: "👥",
+	invite_collaborator: "📨",
+	leave_collaboration: "🚪",
+	acp_message: "📨",
+	aci: "🛡️",
+	// ── Skills ──
 	list_skills: "🎴",
 	activate_skill: "🎴",
 	deactivate_skill: "🎴",
 	get_skill: "🎴",
-	// Network
+	find_skills: "🔍",
+	// ── Semantic / code analysis ──
+	semantic: "🔬",
+	semantic_init: "🏗️",
+	semantic_status: "📊",
+	semantic_trace: "🔍",
+	parse_ast: "🌳",
+	review_code: "🔍",
+	summarize_context: "📝",
+	// ── Network ──
 	network: "🌍",
 	http: "🌍",
-	// Misc
+	network_check: "🌍",
+	// ── MCP ──
+	mcp_get_prompt: "📥",
+	mcp_list_prompts: "📋",
+	// ── Repo map ──
+	repo_map: "🗺️",
+	// ── Misc ──
 	think: "💭",
 	self_heal: "🩺",
 	compact_context: "🧹",
 	exit: "🚪",
 	help: "❔",
-	config: "⚙️",
 	debug: "🐞",
 	test_speculatively: "🧪",
-	delegate_task: "👥",
-	custom_provider: "🔧",
 	headers: "📝",
 	pricing: "💰",
-	code_search: "🔎",
 	commit: "📌",
+	wait_for_event: "⏱️",
 	// Fallback
 	default: "🔧",
-};
-
-
-type RuntimeCustomProvider = {
-	name: string;
-	baseUrl: string;
-	apiKey?: string;
-	headers?: Record<string, string>;
 };
 
 type RuntimeProviderState = {
@@ -246,50 +308,6 @@ type ChatCommandOptions = {
 	continue?: boolean;
 	[key: string]: unknown;
 };
-
-function normalizeCustomProvider(
-	value: unknown,
-): RuntimeCustomProvider | undefined {
-	if (!value || typeof value !== "object") {
-		return undefined;
-	}
-
-	const record = value as Record<string, unknown>;
-	const name = typeof record.name === "string" ? record.name.trim() : "";
-	const baseUrl =
-		typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
-
-	if (!name || !baseUrl) {
-		return undefined;
-	}
-
-	const apiKey =
-		typeof record.apiKey === "string" && record.apiKey.trim().length > 0
-			? record.apiKey.trim()
-			: undefined;
-	const rawHeaders =
-		typeof record.headers === "object" && record.headers !== null
-			? (record.headers as Record<string, unknown>)
-			: undefined;
-
-	const headers =
-		rawHeaders &&
-		Object.entries(rawHeaders).every(([, value]) => typeof value === "string")
-			? (Object.fromEntries(
-					Object.entries(rawHeaders).map(([key, value]) => [
-						key,
-						String(value),
-					]),
-				) as Record<string, string>)
-			: undefined;
-
-	return {
-		name,
-		baseUrl,
-		...(apiKey ? { apiKey } : {}),
-		...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-	};
-}
 
 function formatToolCall(toolName: string, args: unknown): string {
 	const icon =
@@ -402,8 +420,7 @@ function formatToolResult(
 	) {
 		const record = result as Record<string, unknown>;
 		const outputValue = String(record.output ?? "");
-		const errValue =
-			record.error !== undefined ? String(record.error) : null;
+		const errValue = record.error !== undefined ? String(record.error) : null;
 		if (record.success === false) {
 			isFailed = true;
 			// Prefer error when output is empty, otherwise show both.
@@ -456,23 +473,35 @@ function formatToolResult(
 
 	const visibleWidth = Math.max(20, maxWidth - 4);
 	const truncateLine = (line: string): string => {
-		if (line.length > visibleWidth - 3) {
-			return `${line.slice(0, Math.max(1, visibleWidth - 3))}…`;
+		if (stringWidth(line) > visibleWidth - 3) {
+			// Preserve ANSI when slicing; fall back to conservative byte-slice
+			let sliced = "";
+			let w = 0;
+			for (const ch of line) {
+				const cw = stringWidth(ch);
+				if (w + cw > visibleWidth - 3) break;
+				w += cw;
+				sliced += ch;
+			}
+			return `${sliced}…`;
 		}
 		return line;
 	};
 
-	const prefix = isFailed ? "  ✗ " : "  │ ";
-	const headerLine = isFailed && errorMsg
-		? `  ✗ ${truncateLine(errorMsg)}`
-		: null;
+	const prefix = isFailed
+		? `  ${chalk.hex(RED)("✗")} `
+		: `  ${chalk.hex(CYAN)("│")} `;
+	const headerLine =
+		isFailed && errorMsg
+			? `  ${chalk.hex(RED)(`✗ ${truncateLine(errorMsg)}`)}`
+			: null;
 
 	const formattedBody = displayLines
 		.map((line) => `${prefix}${truncateLine(line)}`)
 		.join("\n");
 
 	const truncationNote = isTruncated
-		? `\n${prefix}… (${allLines.length - displayLines.length} more lines)`
+		? `\n  ${chalk.hex(CYAN)("│")} … (${allLines.length - displayLines.length} more lines)`
 		: "";
 
 	const preview = headerLine
@@ -484,7 +513,9 @@ function formatToolResult(
 		full: preview,
 		isTruncated,
 		linesCount: allLines.length,
-		truncatedLinesCount: isTruncated ? allLines.length - displayLines.length : 0,
+		truncatedLinesCount: isTruncated
+			? allLines.length - displayLines.length
+			: 0,
 	};
 }
 
@@ -637,6 +668,58 @@ export function getToolRenderStatus(
 		return "error";
 	}
 	return "success";
+}
+
+/**
+ * Render a reasoning block with symmetric top and bottom borders.
+ * The label is embedded in the top border; both borders span the same width.
+ */
+function renderReasoningBlock(
+	content: string,
+	contentMaxWidth: number,
+	key: string,
+): React.ReactNode {
+	const label = `${DECORATIVE.eye} Reasoning`;
+	const labelWidth = stringWidth(label);
+	// Top border: "  ┌─[ " (6 chars) + label + " ]" (2 chars) + dashes
+	const topDashLen = Math.max(10, contentMaxWidth - 8 - labelWidth);
+	// Bottom border: "  └─" (4 chars) + dashes
+	const bottomDashLen = Math.max(10, contentMaxWidth - 4);
+
+	return React.createElement(
+		Box,
+		{
+			flexDirection: "column",
+			marginTop: 0.5,
+			marginBottom: 0.5,
+			key,
+		},
+		React.createElement(
+			Box,
+			{ flexDirection: "row", alignItems: "center" },
+			React.createElement(Text, { color: "gray" }, "  ┌─[ "),
+			React.createElement(Text, { color: "cyan" }, label),
+			React.createElement(
+				Text,
+				{ color: "gray" },
+				` ]${"─".repeat(topDashLen)}`,
+			),
+		),
+		React.createElement(
+			Box,
+			{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
+			...renderMarkdown(content, contentMaxWidth - 4, `${key}-md`),
+		),
+		React.createElement(
+			Box,
+			{ flexDirection: "row" },
+			React.createElement(
+				Text,
+				{ color: "gray" },
+				`  └─${"─".repeat(bottomDashLen)}`,
+			),
+		),
+	);
 }
 
 function ChatUI({
@@ -1361,18 +1444,23 @@ function ChatUI({
 
 	const handleShowSessions = useCallback(async () => {
 		setLoading(true);
-		const sessions = await sessionManager.listSessions();
-		const table = formatSessionsTable(sessions);
-		setMessages((m) => [
-			...m,
-			{
-				id: msgIdRef.current++,
-				role: "system",
-				content: sessions.length > 0 ? table : "No saved sessions",
-			},
-		]);
-		setLoading(false);
-	}, [setLoading, setMessages]);
+		try {
+			const sessions = await sessionManager.listSessions();
+			setSavedSessions(sessions);
+			setShowSessionList(true);
+		} catch (err) {
+			setMessages((m) => [
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `❌ Error loading sessions: ${err}`,
+				},
+			]);
+		} finally {
+			setLoading(false);
+		}
+	}, [setLoading, setSavedSessions, setShowSessionList, setMessages]);
 
 	const handleShowModels = useCallback(
 		async (opts?: { provider?: string; apiKey?: string; baseUrl?: string }) => {
@@ -3151,99 +3239,21 @@ function ChatUI({
 										),
 									);
 								} else if (subBlock.type === "reasoning") {
-									const borderLine = "─".repeat(
-										Math.max(10, contentMaxWidth - 22),
-									);
 									content.push(
-										React.createElement(
-											Box,
-											{
-												flexDirection: "column",
-												marginTop: 0.5,
-												marginBottom: 0.5,
-												key: `msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
-											},
-											React.createElement(
-												Box,
-												{ flexDirection: "row", alignItems: "center" },
-												React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-												React.createElement(
-													Text,
-													{ color: "cyan" },
-													`${DECORATIVE.eye} Reasoning`,
-												),
-												React.createElement(
-													Text,
-													{ color: "gray" },
-													` ]${borderLine}`,
-												),
-											),
-											React.createElement(
-												Box,
-												{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-												...renderMarkdown(
-													subBlock.content,
-													contentMaxWidth - 4,
-													`msg-${m.id}-reasoning-${bIdx}-${sbIdx}-md`,
-												),
-											),
-											React.createElement(
-												Box,
-												{ flexDirection: "row" },
-												React.createElement(
-													Text,
-													{ color: "gray" },
-													`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
-												),
-											),
+										renderReasoningBlock(
+											subBlock.content,
+											contentMaxWidth,
+											`msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
 										),
 									);
 								}
 							});
 						} else if (block.type === "reasoning") {
-							const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
 							content.push(
-								React.createElement(
-									Box,
-									{
-										flexDirection: "column",
-										marginTop: 0.5,
-										marginBottom: 0.5,
-										key: `msg-${m.id}-reasoning-${bIdx}`,
-									},
-									React.createElement(
-										Box,
-										{ flexDirection: "row", alignItems: "center" },
-										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-										React.createElement(
-											Text,
-											{ color: "cyan" },
-											`${DECORATIVE.eye} Reasoning`,
-										),
-										React.createElement(
-											Text,
-											{ color: "gray" },
-											` ]${borderLine}`,
-										),
-									),
-									React.createElement(
-										Box,
-										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(
-											block.content,
-											contentMaxWidth - 4,
-											`msg-${m.id}-reasoning-${bIdx}-md`,
-										),
-									),
-									React.createElement(
-										Box,
-										{ flexDirection: "row" },
-										React.createElement(
-											Text,
-											{ color: "gray" },
-											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
-										),
-									),
+								renderReasoningBlock(
+									block.content,
+									contentMaxWidth,
+									`msg-${m.id}-reasoning-${bIdx}`,
 								),
 							);
 						} else if (block.type === "tool") {
@@ -3282,49 +3292,11 @@ function ChatUI({
 								),
 							);
 						} else if (subBlock.type === "reasoning") {
-							const borderLine = "─".repeat(Math.max(10, contentMaxWidth - 22));
 							content.push(
-								React.createElement(
-									Box,
-									{
-										flexDirection: "column",
-										marginTop: 0.5,
-										marginBottom: 0.5,
-										key: `msg-${m.id}-reasoning-fallback-${sbIdx}`,
-									},
-									React.createElement(
-										Box,
-										{ flexDirection: "row", alignItems: "center" },
-										React.createElement(Text, { color: "gray" }, "  ┌─[ "),
-										React.createElement(
-											Text,
-											{ color: "cyan" },
-											`${DECORATIVE.eye} Reasoning`,
-										),
-										React.createElement(
-											Text,
-											{ color: "gray" },
-											` ]${borderLine}`,
-										),
-									),
-									React.createElement(
-										Box,
-										{ paddingLeft: 2, marginY: 0, flexDirection: "column" },
-										...renderMarkdown(
-											subBlock.content,
-											contentMaxWidth - 4,
-											`msg-${m.id}-reasoning-fallback-${sbIdx}-md`,
-										),
-									),
-									React.createElement(
-										Box,
-										{ flexDirection: "row" },
-										React.createElement(
-											Text,
-											{ color: "gray" },
-											`  └─${"─".repeat(Math.max(10, contentMaxWidth - 22))}`,
-										),
-									),
+								renderReasoningBlock(
+									subBlock.content,
+									contentMaxWidth,
+									`msg-${m.id}-reasoning-fallback-${sbIdx}`,
 								),
 							);
 						}
@@ -3474,7 +3446,14 @@ function ChatUI({
 		loading,
 	]);
 
-	const scrollIndicator = null;
+	const scrollIndicator =
+		scrollOffset > 0
+			? React.createElement(
+					Text,
+					{ color: SAND, dimColor: true },
+					`↑ ${Math.round((scrollOffset / Math.max(1, totalMessageLines - chatViewportHeight)) * 100)}%`,
+				)
+			: null;
 
 	if (showSessionList) {
 		return React.createElement(SessionList, {
@@ -3998,15 +3977,15 @@ export function createProgram(): Command {
 
 										if (formattedResult.preview) {
 											outputManager?.writeLine(
-												chalk.dim(`  ┌─ ${name} result:`),
+												chalk.hex(GOLD)(`  ┌─ ${name} result:`),
 											);
 											outputManager?.writeLine(
-												chalk.dim(formattedResult.preview),
+												chalk.hex(SAND)(formattedResult.preview),
 											);
-											outputManager?.writeLine(chalk.dim("  └─"));
+											outputManager?.writeLine(chalk.hex(GOLD)("  └─"));
 										} else {
 											outputManager?.writeLine(
-												chalk.dim(`  ${statusIcon} ${name} completed`),
+												chalk.hex(GRAY)(`  ${statusIcon} ${name} completed`),
 											);
 										}
 									},

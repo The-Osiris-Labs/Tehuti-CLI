@@ -3,7 +3,10 @@ import {
 	KiloCodeClient,
 	StandardAPIClient,
 } from "../api/index.js";
-import { supportsOpenAICompatibleRuntime } from "../config/providers.js";
+import {
+	getProviderInfo,
+	supportsOpenAICompatibleRuntime,
+} from "../config/providers.js";
 import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
 import { mcpManager } from "../mcp/client.js";
 import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
@@ -12,6 +15,12 @@ import { APIError } from "../utils/errors.js";
 import { loadCacheFromDisk, saveCacheToDisk } from "./cache/index.js";
 import type { AgentContext } from "./context.js";
 import { createAgentContext } from "./context.js";
+import type { ModelCapabilities } from "./model-capability-resolver.js";
+import {
+	clearCapabilityCache,
+	getCachedCapabilities,
+	resolveModelCapabilities,
+} from "./model-capability-resolver.js";
 import { shadowWorkspaceTool } from "./shadow-workspace.js";
 import { skillsTools } from "./skills/tools.js";
 import { applyDiffTool } from "./tools/apply-diff.js";
@@ -75,13 +84,16 @@ loadCacheFromDisk();
 function createProviderClient(
 	ctx: AgentContext,
 ): StandardAPIClient | KiloCodeClient | CustomProviderClient {
+	const provider = ctx.config.provider;
+	const providerInfo = getProviderInfo(provider);
 	if (
-		ctx.config.provider !== "kilocode" &&
-		ctx.config.provider !== "custom" &&
-		!supportsOpenAICompatibleRuntime(ctx.config.provider)
+		provider !== "kilocode" &&
+		provider !== "custom" &&
+		(!providerInfo || !providerInfo.isOpenAICompatible)
 	) {
-		throw new APIError(
-			`Provider "${ctx.config.provider}" is not supported by the current OpenAI-compatible runtime. Use an OpenAI-compatible provider/base URL, OpenRouter, OpenCode, KiloCode, or the custom provider adapter instead.`,
+		debug.log(
+			"provider" as any,
+			`Warning: ${provider} is not marked as OpenAI-compatible. Attempting StandardAPIClient as best-effort adapter.`,
 		);
 	}
 
@@ -205,6 +217,13 @@ export async function runAgentLoop(
 	options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
 	const client = createProviderClient(ctx);
+
+	// Resolve live model capabilities and inject maxOutputTokens.
+	// Falls back to config.maxTokens (default 32000) when no live data available.
+	const caps = ctx.config.modelCapabilities;
+	const resolvedMaxTokens = caps?.maxOutputTokens ?? ctx.config.maxTokens;
+	client.setMaxTokens(resolvedMaxTokens);
+
 	return await _runAgentLoop(
 		ctx,
 		userMessage,
@@ -225,3 +244,11 @@ export async function runOneShot(
 
 export { createAgentContext };
 export type { AgentContext };
+
+// Model capability resolver
+export {
+	resolveModelCapabilities,
+	clearCapabilityCache,
+	getCachedCapabilities,
+};
+export type { ModelCapabilities };

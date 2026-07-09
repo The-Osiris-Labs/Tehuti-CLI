@@ -3,6 +3,16 @@ import { CustomProviderClient } from "../../api/custom-provider.js";
 import type { AgentContext } from "../context.js";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
+/**
+ * @status implemented — configures a real OpenAI-compatible custom provider
+ *
+ * Delegates to CustomProviderClient (extends BaseAPIClient) which performs
+ * actual HTTP calls with retry, streaming, rate-limiting, etc.
+ * Resets the client singleton so the new config takes effect immediately.
+ *
+ * @note The apiKey parameter uses `z.string().optional().describe(...)`.
+ *   The execute function destructures apiKey as optional.
+ */
 export const configureCustomProviderTool = createTool({
 	name: "configure_custom_provider",
 	description:
@@ -62,6 +72,12 @@ export const configureCustomProviderTool = createTool({
 	},
 });
 
+/**
+ * @status implemented — sets custom HTTP headers on the custom provider client
+ *
+ * Validates that provider is "custom" and customProvider is configured,
+ * then adds/updates a header and resets the client singleton.
+ */
 export const setCustomHeaderTool = createTool({
 	name: "set_custom_header",
 	description: "Set a custom HTTP header for the configured custom provider.",
@@ -116,6 +132,12 @@ export const setCustomHeaderTool = createTool({
 	},
 });
 
+/**
+ * @status implemented — removes custom HTTP headers from the custom provider client
+ *
+ * Validates that provider is "custom" and the header exists,
+ * then removes it and resets the client singleton.
+ */
 export const removeCustomHeaderTool = createTool({
 	name: "remove_custom_header",
 	description:
@@ -167,6 +189,12 @@ export const removeCustomHeaderTool = createTool({
 	},
 });
 
+/**
+ * @status implemented — returns current custom provider configuration details
+ *
+ * Validates that provider is "custom" and customProvider is configured,
+ * then returns name, baseUrl, and headers (excluding apiKey for security).
+ */
 export const getCustomProviderInfoTool = createTool({
 	name: "get_custom_provider_info",
 	description:

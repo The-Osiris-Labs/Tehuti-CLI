@@ -7,7 +7,10 @@ import {
 	getToolCallsFromState,
 	processStreamChunk,
 } from "../../api/index.js";
-import { isReasoningModel } from "../../api/model-capabilities.js";
+import {
+	isReasoningModel,
+	resolveModelCapabilities,
+} from "../../api/model-capabilities.js";
 import type { StandardAPIClient } from "../../api/standard-client.js";
 
 import { debug } from "../../utils/debug.js";
@@ -88,7 +91,6 @@ export async function runAgentLoop(
 
 	try {
 		let totalTokensGenerated = 0;
-		const maxTokens = ctx.config.maxTokens ?? 4096;
 
 		setParentContext(ctx);
 
@@ -134,6 +136,23 @@ export async function runAgentLoop(
 				ctx.config.model = selectedModel;
 			}
 		}
+
+		// Resolve live model capabilities (contextLength, maxOutputTokens) from provider API.
+		// Falls back gracefully to config defaults on any failure.
+		const capabilities = await resolveModelCapabilities(
+			ctx.config.model,
+			ctx.config.provider,
+			{ apiKey: ctx.config.apiKey, baseUrl: ctx.config.baseUrl },
+		);
+		if (capabilities.contextLength) {
+			ctx.modelContextLength = capabilities.contextLength;
+			debug.log(
+				"agent",
+				`Model context length: ${capabilities.contextLength} (live)`,
+			);
+		}
+		const maxTokens =
+			capabilities.maxOutputTokens ?? ctx.config.maxTokens ?? 4096;
 
 		syncMCPToolRegistry();
 		const tools = getToolDefinitions() as StandardTool[];
@@ -191,7 +210,7 @@ export async function runAgentLoop(
 					debug.log("agent", `Injected mid-flight message: ${msg}`);
 				}
 
-				await manageContextWindow(ctx, client);
+				await manageContextWindow(ctx, client, ctx.modelContextLength);
 
 				ctx.messages = normalizeToolMessageHistory(ctx.messages);
 
@@ -531,6 +550,44 @@ export async function runAgentLoop(
 			sessionStats: costTracker.getSessionStats(),
 		};
 	} finally {
+		// Post-session personality learning (non-blocking)
+		try {
+			const { updateProjectProfile } = await import(
+				"../../agent/memory/personality.js"
+			);
+			const cwd = ctx.cwd || process.cwd();
+			const commandsRun = ctx.metadata.commandsRun || [];
+			const filesWritten = ctx.metadata.filesWritten || [];
+
+			Promise.resolve()
+				.then(async () => {
+					const fs = await import("node:fs");
+					const path = await import("node:path");
+					let diff = "";
+					const filesToRead = filesWritten.slice(0, 20);
+					for (const filePath of filesToRead) {
+						try {
+							const absPath = path.resolve(cwd, filePath);
+							if (fs.existsSync(absPath)) {
+								const stat = fs.statSync(absPath);
+								// Skip files over 200KB to keep this lightweight
+								if (stat.size > 200 * 1024) continue;
+								const content = fs.readFileSync(absPath, "utf-8");
+								const relativePath = path.relative(cwd, absPath);
+								diff += `+++ b/${relativePath}\n`;
+								for (const line of content.split("\n")) {
+									diff += `+${line}\n`;
+								}
+							}
+						} catch {
+							// Skip files that can't be read (deleted, binary, etc.)
+						}
+					}
+					updateProjectProfile(cwd, diff, commandsRun);
+				})
+				.catch(() => {});
+		} catch {}
+
 		resetPrefetcher();
 	}
 }

@@ -31,9 +31,7 @@ export function sessionCommand(): Command {
 			}
 
 			console.log();
-			console.log(
-				chalk.hex(BRANDING.colors.primary)("  𓆣 Sessions"),
-			);
+			console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Sessions"));
 			console.log();
 
 			// Sort newest first explicitly (listSessions already sorts by updatedAt
@@ -131,11 +129,7 @@ export function sessionCommand(): Command {
 		.description(
 			"Keep the most recent <keep> sessions and delete the rest (default 10).",
 		)
-		.argument(
-			"[keep]",
-			"Number of most-recent sessions to keep",
-			"10",
-		)
+		.argument("[keep]", "Number of most-recent sessions to keep", "10")
 		.option("--dry-run", "Show what would be deleted without deleting", false)
 		.action(async (keepArg: string, opts: { dryRun?: boolean }) => {
 			const keep = Number.parseInt(keepArg, 10);

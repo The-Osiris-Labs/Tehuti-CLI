@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import Conf from "conf";
@@ -41,12 +42,14 @@ const globalConfig = new Conf<{
 	},
 });
 
+const _require = createRequire(import.meta.url);
+
 let yamlParser: ((content: string) => unknown) | null = null;
 
 function getYamlParser(): ((content: string) => unknown) | null {
 	if (yamlParser) return yamlParser;
 	try {
-		yamlParser = require("yaml").parse;
+		yamlParser = _require("yaml").parse;
 		return yamlParser;
 	} catch {
 		return null;
@@ -175,6 +178,10 @@ export async function loadConfig(
 		}
 	}
 
+	// Merge order: DEFAULT_CONFIG (base defaults including modelCapabilities)
+	// → global config → file config → env vars.
+	// modelCapabilities are seeded from defaults but replaced at runtime
+	// by live model data; they are NOT persisted in global or file config.
 	const mergedConfig: Record<string, unknown> = {
 		...DEFAULT_CONFIG,
 		...(globalConfig.get("model") && { model: globalConfig.get("model") }),

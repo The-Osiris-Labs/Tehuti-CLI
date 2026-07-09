@@ -12,6 +12,14 @@ export interface ValidationResult {
 	error?: string;
 }
 
+/**
+ * SelfHealingManager creates ephemeral git worktrees to validate tool failures.
+ * It runs a configurable validation command (default: npm test) and appends
+ * failure output to tool errors.
+ *
+ * NOTE: This is a VALIDATOR, not an auto-fixer — it detects failures but does
+ * not automatically apply corrections.
+ */
 export class SelfHealingManager {
 	private static instances = new Set<SelfHealingManager>();
 	private static cleanupHandlersRegistered = false;
@@ -22,18 +30,70 @@ export class SelfHealingManager {
 		{ worktreePath: string; branchName: string }
 	> = new Map();
 
-	constructor(mainDir: string) {
+	public config?: any;
+
+	constructor(mainDir: string, config?: any) {
 		this.mainDir = mainDir;
+		this.config = config;
 		SelfHealingManager.instances.add(this);
 		this.cleanupOrphanedWorktrees();
 		SelfHealingManager.registerCleanupHandlers();
 	}
 
+	/**
+	 * Wraps a tool result to add validation context on failure.
+	 * When a tool reports success: false, this creates an ephemeral git worktree,
+	 * runs the configured validation command, and appends any failure output
+	 * to the tool's error message so the LLM sees what broke.
+	 *
+	 * NOTE: This validates and reports failures — it does NOT auto-fix or
+	 * retry the tool. Corrections must be requested from the LLM separately.
+	 */
 	async wrapToolFailure<T extends { success: boolean }>(
-		_toolName: string,
+		toolName: string,
 		_args: unknown,
 		result: T,
 	): Promise<T> {
+		if (result.success !== false) return result;
+		if (this.config?.selfHealing?.enabled === false) return result;
+		if (
+			![
+				"write",
+				"edit",
+				"bash",
+				"apply_diff",
+				"delete_file",
+				"delete_dir",
+				"move",
+				"copy",
+			].includes(toolName.toLowerCase())
+		)
+			return result;
+
+		let worktreeInfo: { worktreePath: string; branchName: string } | undefined;
+		try {
+			worktreeInfo = await this.createShadowWorkspace();
+			const validationCommand = this.config?.selfHealing?.command || "npm test";
+			const validation = await this.runValidation(
+				validationCommand,
+				worktreeInfo.worktreePath,
+			);
+			if (!validation.success) {
+				return {
+					...result,
+					error: `${(result as any).error || "Tool failed"}\n\n[Self-Healing Validation Failed]: ${validation.error || validation.output}`,
+				} as T;
+			}
+		} catch {
+			// Ignore self-healing system errors and return original result
+		} finally {
+			if (worktreeInfo) {
+				await this.cleanupShadowWorkspace(
+					worktreeInfo.worktreePath,
+					worktreeInfo.branchName,
+				);
+			}
+		}
 		return result;
 	}
 

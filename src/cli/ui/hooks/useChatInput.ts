@@ -224,7 +224,8 @@ export function useChatInput(props: UseChatInputProps) {
 			// was removed in mouse.ts for the same reason).
 			if (
 				mouseBufferRef.current.length > 0 &&
-				(isMouseSequenceTail(k) || (k.length > 1 && (k.endsWith("M") || k.endsWith("m"))))
+				(isMouseSequenceTail(k) ||
+					(k.length > 1 && (k.endsWith("M") || k.endsWith("m"))))
 			) {
 				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
 				flushMouseBuffer();

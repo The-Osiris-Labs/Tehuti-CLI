@@ -339,8 +339,9 @@ describe("StandardAPIClient", () => {
 		it("should respect Retry-After header with seconds", async () => {
 			const client = new StandardAPIClient({
 				...validConfig,
+				provider: "opencode",
 				maxRetries: 1,
-			});
+			} as any);
 			const mockFetch = vi
 				.spyOn(global, "fetch")
 				.mockImplementation(async () => {

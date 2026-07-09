@@ -97,10 +97,19 @@ export function summarizeToolOutput(
 	) {
 		const record = result as Record<string, unknown>;
 		const outputValue = String(record.output ?? "");
-		output =
-			record.success === false && !outputValue && record.error !== undefined
-				? String(record.error)
-				: outputValue;
+		const errValue = record.error !== undefined ? String(record.error) : null;
+		if (record.success === false) {
+			// Always show error prominently, with output as context below
+			if (errValue && outputValue) {
+				output = `[ERROR] ${errValue}\n\n${outputValue}`;
+			} else if (errValue) {
+				output = `[ERROR] ${errValue}`;
+			} else {
+				output = outputValue;
+			}
+		} else {
+			output = outputValue;
+		}
 	} else if (
 		result &&
 		typeof result === "object" &&

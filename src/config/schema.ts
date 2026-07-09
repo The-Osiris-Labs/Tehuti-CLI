@@ -170,6 +170,14 @@ export const PERSONALITY_CONFIG_SCHEMA = z.object({
 	verbosity: z.enum(["low", "medium", "high"]).default("medium"),
 });
 
+export const MEMORY_CONFIG_SCHEMA = z.object({
+	consolidationIntervalMs: z
+		.number()
+		.int()
+		.positive()
+		.default(15 * 60 * 1000),
+});
+
 export const HTTP_CONFIG_SCHEMA = z.object({
 	keepAliveTimeout: z.number().int().positive().default(60000),
 	keepAliveMaxTimeout: z.number().int().positive().default(600000),
@@ -219,6 +227,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 		})
 		.optional()
 		.default({}),
+	// Fallback maxTokens; overridden by live model data when available
 	maxTokens: z.number().int().positive().default(32000),
 	maxIterations: z.number().int().positive().default(50),
 	temperature: z.number().min(0).max(2).default(0.7),
@@ -255,6 +264,15 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	messaging: MESSAGING_CONFIG_SCHEMA.optional().default({}),
 	selfHealing: SELF_HEALING_CONFIG_SCHEMA.optional().default({}),
 	personality: PERSONALITY_CONFIG_SCHEMA.optional().default({}),
+	memory: MEMORY_CONFIG_SCHEMA.optional().default({}),
+	modelCapabilities: z
+		.object({
+			contextLength: z.number().int().positive().optional(),
+			maxOutputTokens: z.number().int().positive().optional(),
+			supportsVision: z.boolean().optional(),
+			supportsTools: z.boolean().optional(),
+		})
+		.optional(),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -264,6 +282,7 @@ export type MCPTransportType = z.infer<typeof MCPTransportTypeSchema>;
 export type BrandingConfig = z.infer<typeof BRANDING_CONFIG_SCHEMA>;
 export type ModelSelectionMode = z.infer<typeof MODEL_SELECTION_SCHEMA>;
 export type HttpConfig = z.infer<typeof HTTP_CONFIG_SCHEMA>;
+export type MemoryConfig = z.infer<typeof MEMORY_CONFIG_SCHEMA>;
 
 export const DEFAULT_CONFIG: TehutiConfig = {
 	model: "deepseek-v4-flash",
@@ -352,5 +371,14 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	personality: {
 		style: "helpful",
 		verbosity: "medium",
+	},
+	memory: {
+		consolidationIntervalMs: 15 * 60 * 1000,
+	},
+	modelCapabilities: {
+		contextLength: 200000,
+		maxOutputTokens: 32000,
+		supportsVision: true,
+		supportsTools: true,
 	},
 };

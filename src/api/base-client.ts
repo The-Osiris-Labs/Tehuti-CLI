@@ -249,6 +249,15 @@ export abstract class BaseAPIClient {
 		}
 	}
 
+	/**
+	 * Runtime override for maxTokens, typically called after model resolution
+	 * to inject the real maxOutputTokens from live model capabilities.
+	 */
+	public setMaxTokens(n: number): void {
+		this.validateMaxTokens(n);
+		this.maxTokens = n;
+	}
+
 	public validateMessages(messages: StandardMessage[]): void {
 		if (!Array.isArray(messages)) {
 			throw new APIError("Messages must be an array");

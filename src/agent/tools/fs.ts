@@ -1231,7 +1231,7 @@ Usage:
 					const record = args as Record<string, unknown>;
 					const filePath = record.file_path;
 					if (typeof filePath !== "string") return null;
-					return { dir_path: require("node:path").dirname(filePath) };
+					return { dir_path: path.dirname(filePath) };
 				},
 				priority: "low",
 			},
@@ -1242,11 +1242,11 @@ Usage:
 					const record = args as Record<string, unknown>;
 					const filePath = record.file_path;
 					if (typeof filePath !== "string") return null;
-					const ext = require("node:path").extname(filePath).slice(1);
+					const ext = path.extname(filePath).slice(1);
 					if (!ext) return null;
 					return {
 						pattern: "import|require|from",
-						path: require("node:path").dirname(filePath),
+						path: path.dirname(filePath),
 						include: `*.${ext}`,
 					};
 				},
@@ -1255,7 +1255,7 @@ Usage:
 					const record = args as Record<string, unknown>;
 					const filePath = record.file_path;
 					if (typeof filePath !== "string") return false;
-					const ext = require("node:path").extname(filePath).slice(1);
+					const ext = path.extname(filePath).slice(1);
 					return ["ts", "tsx", "js", "jsx", "py", "go", "rs"].includes(ext);
 				},
 				priority: "low",

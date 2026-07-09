@@ -3,6 +3,15 @@ import { KiloCodeClient } from "../../api/kilocode.js";
 import type { AgentContext } from "../context.js";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
+/**
+ * @status partial — stores context management settings but autoSummarize/maxContextLength are not wired
+ *
+ * Calls KiloCodeClient.configureContextManagement() which stores the options
+ * in `this.options.contextManagement`. However, these stored values are never
+ * read by buildRequestBody() or any summarization logic. Only the memoryBank
+ * portion of KiloCodeOptions is used. The autoSummarize and maxContextLength
+ * settings are accepted and stored but have no effect on behavior.
+ */
 export const configureContextManagementTool = createTool({
 	name: "configure_context_management",
 	description:
@@ -57,6 +66,18 @@ export const configureContextManagementTool = createTool({
 	},
 });
 
+/**
+ * @status implemented — sends code to KiloCode for review via real API calls
+ *
+ * Delegates to KiloCodeClient.reviewCode() which uses the BaseAPIClient
+ * HTTP stack (completeChat with retry, streaming, rate-limiting).
+ *
+ * @note The result parsing uses JSON.parse(content || "{}") which is fragile —
+ *   if the model returns non-JSON text, this will throw.
+ *   The language, reviewType, and guidelines parameters are passed to
+ *   KiloCodeClient.reviewCode() but the method ignores guidelines in the
+ *   system prompt it constructs.
+ */
 export const reviewCodeTool = createTool({
 	name: "review_code",
 	description:
@@ -121,6 +142,15 @@ export const reviewCodeTool = createTool({
 	},
 });
 
+/**
+ * @status implemented — summarizes conversation history via real KiloCode API calls
+ *
+ * Delegates to KiloCodeClient.summarizeContext() which uses the BaseAPIClient
+ * HTTP stack (completeChat with retry, streaming, rate-limiting).
+ *
+ * @note The result parsing uses JSON.parse(content || "{}") which is fragile —
+ *   if the model returns non-JSON text, this will throw.
+ */
 export const summarizeContextTool = createTool({
 	name: "summarize_context",
 	description:
