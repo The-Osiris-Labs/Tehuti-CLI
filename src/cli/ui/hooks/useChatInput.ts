@@ -427,19 +427,45 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 
 		// Shift+Enter / Alt+Enter / Ctrl+Enter: insert a newline.
-		// Handle both the Ink key flag (some terminals) and the raw CSI escape
-		// (others, e.g. Ghostty, iTerm2 with xterm modifyOtherKeys mode).
+		// Three delivery channels from Ink must all be recognized:
+		//   1. Ink key flags: key.shift/meta/ctrl && key.return (e.g. plain mode terminals)
+		//   2. Standard CSI (Ghostty, iTerm2, most xterms): \x1b[13;<mod>~ — Ink parses
+		//      these to key.code="[13~" with key.shift/ctrl/meta set, and DROPS the
+		//      string `k` to "" because the key name is a function key (f3/f4).
+		//   3. xterm modifyOtherKeys=2: \x1b[27;<mod>;13~ — Ink does not understand
+		//      this format (no name, no code), so it leaves the leading ESC-stripped
+		//      string as `k` and reports NO modifier flags. The handler must match
+		//      both with-ESC and without-ESC variants.
+		const kAny = k as unknown as string;
+		const keyAny = key as unknown as { code?: string };
 		const isModifiedEnter =
+			// Channel 1: Ink key flags
 			(key.shift && key.return) ||
 			(key.meta && key.return) ||
 			(key.ctrl && key.return) ||
-			k === "\x1b[13;2~" || // Shift+Enter
-			k === "\x1b[13;3~" || // Alt+Enter
-			k === "\x1b[13;4~" || // Alt+Shift+Enter
-			k === "\x1b[13;5~" || // Ctrl+Enter
-			k === "\x1b[13;6~" || // Ctrl+Shift+Enter
-			k === "\x1b[27;2;13~" || // Shift+Enter (xterm modifyOtherKeys=2)
-			k === "\x1b[27;5;13~"; // Ctrl+Enter (xterm modifyOtherKeys=2)
+			// Channel 2: standard CSI — match by Ink's decoded code (only non-return
+			// modifier keys are decoded to name="f3"/"f4", so key.return is false here)
+			(keyAny.code === "[13~" && (key.shift || key.meta || key.ctrl)) ||
+			// Channel 3: xterm modifyOtherKeys=2 — ESC byte gets stripped by Ink,
+			// so compare against the ESC-stripped literal.
+			k === "[27;2;13~" || // Shift+Enter
+			k === "[27;3;13~" || // Alt+Enter
+			k === "[27;4;13~" || // Alt+Shift+Enter
+			k === "[27;5;13~" || // Ctrl+Enter
+			k === "[27;6;13~" || // Ctrl+Shift+Enter
+			k === "[27;7;13~" || // Ctrl+Alt+Enter
+			// Defensive: if a terminal bypasses Ink's stripping, match the raw form too
+			kAny === "\x1b[13;2~" ||
+			kAny === "\x1b[13;3~" ||
+			kAny === "\x1b[13;4~" ||
+			kAny === "\x1b[13;5~" ||
+			kAny === "\x1b[13;6~" ||
+			kAny === "\x1b[27;2;13~" ||
+			kAny === "\x1b[27;3;13~" ||
+			kAny === "\x1b[27;4;13~" ||
+			kAny === "\x1b[27;5;13~" ||
+			kAny === "\x1b[27;6;13~" ||
+			kAny === "\x1b[27;7;13~";
 		if (isModifiedEnter) {
 			const before = input.slice(0, cursorPos);
 			const after = input.slice(cursorPos);

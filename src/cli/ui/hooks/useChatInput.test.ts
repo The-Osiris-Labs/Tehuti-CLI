@@ -256,4 +256,190 @@ describe("useChatInput hook", () => {
 		);
 		unmount();
 	});
+
+	describe("modified Enter (newline insertion)", () => {
+		// All modified-Enter variants must insert "\n" at the cursor and advance
+		// the cursor by 1. The initial state is `input="hello world"`, `cursorPos=5`
+		// so the expected new input is "hello\n world" (newline at index 5) and
+		// the new cursor position is 6.
+
+		it("CSI Shift+Enter raw: \\x1b[13;2~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[13;2~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			expect(props.setHistoryIndex).toHaveBeenCalledWith(-1);
+			unmount();
+		});
+
+		it("CSI Alt+Enter raw: \\x1b[13;3~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[13;3~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("CSI Alt+Shift+Enter raw: \\x1b[13;4~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[13;4~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("CSI Ctrl+Enter raw: \\x1b[13;5~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[13;5~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("CSI Ctrl+Shift+Enter raw: \\x1b[13;6~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[13;6~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("Ink CSI Shift+Enter (decoded): k=\"\" key.code=\"[13~\" key.shift=true", () => {
+			// This is what Ghostty/iTerm2 actually deliver via Ink: the input
+			// string is empty (Ink drops it because the key name is f3/f4),
+			// but key.code and key.shift are set.
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("", { shift: true, code: "[13~" } as any);
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("Ink CSI Ctrl+Enter (decoded): k=\"\" key.code=\"[13~\" key.ctrl=true", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("", { ctrl: true, code: "[13~" } as any);
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("Ink CSI Alt+Enter (decoded): k=\"\" key.code=\"[13~\" key.meta=true", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("", { meta: true, code: "[13~" } as any);
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("xterm modifyOtherKeys Shift+Enter (ESC-stripped): [27;2;13~", () => {
+			// Ink strips the leading ESC byte from xterm modifyOtherKeys=2
+			// sequences and leaves the rest in `k` with no modifier flags.
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("[27;2;13~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("xterm modifyOtherKeys Ctrl+Enter (ESC-stripped): [27;5;13~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("[27;5;13~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("xterm modifyOtherKeys Ctrl+Alt+Enter (ESC-stripped): [27;7;13~", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("[27;7;13~", {});
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("Ink key-flag Shift+Enter: k=\"\" key.shift=true key.return=true", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("", { shift: true, return: true });
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("Ink key-flag Ctrl+Enter: k=\"\" key.ctrl=true key.return=true", () => {
+			props.input = "hello world";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("", { ctrl: true, return: true });
+			expect(props.setInput).toHaveBeenCalledWith("hello\n world");
+			expect(props.setCursorPos).toHaveBeenCalledWith(6);
+			unmount();
+		});
+
+		it("REGRESSION: xterm modifyOtherKeys ESC-stripped text must NOT be inserted verbatim", () => {
+			// The bug we are fixing: when Ink strips the ESC from [27;2;13~,
+			// the resulting string "[27;2;13~" was falling through to the
+			// text-input branch and being inserted as literal text. This
+			// assertion guards against that regression.
+			props.input = "hello";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("[27;2;13~", {});
+			// The text-input branch would call setInput with a string
+			// containing "[27;2;13~" verbatim — that must NOT happen.
+			const calls = (props.setInput as any).mock.calls.map((c: any[]) => c[0]);
+			for (const call of calls) {
+				expect(call).not.toContain("[27;2;13~");
+			}
+			// Instead, the modified-Enter branch should have inserted "\n".
+			expect(props.setInput).toHaveBeenCalledWith("hello\n");
+			unmount();
+		});
+
+		it("plain Enter (\\n, return=true, shift=false) submits text, does NOT insert newline", () => {
+			props.input = "hello";
+			props.cursorPos = 5;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\n", { return: true, shift: false });
+			expect(props.send).toHaveBeenCalledWith("hello");
+			// Should NOT have inserted a newline
+			const calls = (props.setInput as any).mock.calls.map((c: any[]) => c[0]);
+			for (const call of calls) {
+				expect(call).not.toContain("\n");
+			}
+			unmount();
+		});
+
+		it("plain Enter on empty input is a no-op (does not submit, does not insert)", () => {
+			props.input = "";
+			props.cursorPos = 0;
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\n", { return: true, shift: false });
+			expect(props.send).not.toHaveBeenCalled();
+			unmount();
+		});
+	});
 });
