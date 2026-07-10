@@ -156,14 +156,23 @@ export function renderToken(
 		case "heading": {
 			const level = token.depth;
 			const color = level === 1 ? GOLD : level === 2 ? CORAL : GREEN;
-			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
 			const prefix = "=".repeat(Math.max(1, 7 - level));
 
-			const heading = React.createElement(
-				Text,
-				{ key: getKey(), bold: true, color, wrap: "wrap" },
-				...inlineElements,
-			);
+			let heading;
+			if (token.tokens && token.tokens.length > 0) {
+				const inlineElements = renderInlineTokens(token.tokens, getKey);
+				heading = React.createElement(
+					Text,
+					{ key: getKey(), bold: true, color, wrap: "wrap" },
+					...inlineElements,
+				);
+			} else {
+				heading = React.createElement(
+					Text,
+					{ key: getKey(), bold: true, color, wrap: "wrap" },
+					token.text,
+				);
+			}
 
 			if (level <= 2) {
 				const underlineLength = maxWidth ? Math.max(10, maxWidth - 4) : 80;
@@ -183,11 +192,18 @@ export function renderToken(
 		}
 
 		case "paragraph": {
-			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
+			if (token.tokens && token.tokens.length > 0) {
+				const inlineElements = renderInlineTokens(token.tokens, getKey);
+				return React.createElement(
+					Text,
+					{ key: getKey(), wrap: "wrap" },
+					...inlineElements,
+				);
+			}
 			return React.createElement(
 				Text,
 				{ key: getKey(), wrap: "wrap" },
-				...inlineElements,
+				token.text,
 			);
 		}
 
@@ -272,11 +288,18 @@ export function renderToken(
 		}
 
 		case "text": {
-			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
+			if (token.tokens && token.tokens.length > 0) {
+				const inlineElements = renderInlineTokens(token.tokens, getKey);
+				return React.createElement(
+					Text,
+					{ key: getKey(), wrap: "wrap" },
+					...inlineElements,
+				);
+			}
 			return React.createElement(
 				Text,
 				{ key: getKey(), wrap: "wrap" },
-				...inlineElements,
+				token.text,
 			);
 		}
 
