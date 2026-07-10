@@ -166,16 +166,20 @@ export async function searchGraph(
 		if (currentSet.size === 0) break;
 		const nextSet = new Set<string>();
 
-		const placeholders = Array.from(currentSet)
-			.map(() => "?")
-			.join(",");
-		if (placeholders.length === 0) break;
+		const currentArray = Array.from(currentSet);
+		if (currentArray.length === 0) break;
 
-		const edgesStmt = db.prepare(
-			`SELECT * FROM edges WHERE source_id IN (${placeholders}) OR target_id IN (${placeholders})`,
-		);
-		const params = Array.from(currentSet);
-		const edges = edgesStmt.all(...params, ...params) as any[];
+		const CHUNK_SIZE = 400; // Safe limit for SQLite limits (max 999 vars, 400*2 = 800)
+		let edges: any[] = [];
+		
+		for (let i = 0; i < currentArray.length; i += CHUNK_SIZE) {
+			const chunk = currentArray.slice(i, i + CHUNK_SIZE);
+			const placeholders = chunk.map(() => "?").join(",");
+			const edgesStmt = db.prepare(
+				`SELECT * FROM edges WHERE source_id IN (${placeholders}) OR target_id IN (${placeholders})`,
+			);
+			edges = edges.concat(edgesStmt.all(...chunk, ...chunk) as any[]);
+		}
 
 		for (const edge of edges) {
 			const neighborId = currentSet.has(edge.source_id)
@@ -297,8 +301,8 @@ export async function optimizeInsights(
 	const toRemove = new Set<string>();
 
 	const now = Date.now();
-	const DECAY_RATE = 0.05; // 5% decay per day
-	const OBSOLETE_THRESHOLD = 0.5;
+	const DECAY_RATE = 0.005; // 0.5% decay per day (extends to 60+ days)
+	const OBSOLETE_THRESHOLD = 0.1;
 
 	for (const node of nodes) {
 		if (node.type === "project_rule" || node.type === "critical_fact") {
@@ -329,6 +333,24 @@ export async function optimizeInsights(
 				.split(/\s+/)
 				.filter((x) => x.length >= 2),
 		);
+
+	const updateStmt = db.prepare(`
+		UPDATE nodes 
+		SET metadata = @metadata
+		WHERE id = @id
+	`);
+
+	const edgesStmt = db.prepare(
+		`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
+	);
+
+	const insertEdgeStmt = db.prepare(`
+		INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
+		VALUES (@id, @source, @target, @relation, @weight, @now)
+		ON CONFLICT(id) DO UPDATE SET weight = @weight
+	`);
+
+	const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
 
 	for (let i = 0; i < nodes.length; i++) {
 		if (i > 0 && i % 50 === 0) {
@@ -373,12 +395,6 @@ export async function optimizeInsights(
 				const newAccessCount =
 					(nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
 
-				const updateStmt = db.prepare(`
-					UPDATE nodes 
-					SET metadata = @metadata
-					WHERE id = @id
-				`);
-
 				const newMeta = {
 					cwd: nodeA.cwd,
 					priority: newPriority,
@@ -393,9 +409,6 @@ export async function optimizeInsights(
 					});
 
 					// Re-route edges from B to A
-					const edgesStmt = db.prepare(
-						`SELECT * FROM edges WHERE source_id = ? OR target_id = ?`,
-					);
 					const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
 
 					for (const edge of oldEdges) {
@@ -406,11 +419,6 @@ export async function optimizeInsights(
 
 						// Avoid self-loops if the edge was between A and B
 						if (newSource !== newTarget) {
-							const insertEdgeStmt = db.prepare(`
-								INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
-								VALUES (@id, @source, @target, @relation, @weight, @now)
-								ON CONFLICT(id) DO UPDATE SET weight = @weight
-							`);
 							const edgeId = `${newSource}->${newTarget}:${edge.relation_type}`;
 							insertEdgeStmt.run({
 								id: edgeId,
@@ -422,7 +430,6 @@ export async function optimizeInsights(
 							});
 						}
 
-						const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
 						delEdgeStmt.run(edge.id);
 					}
 				});
@@ -435,23 +442,22 @@ export async function optimizeInsights(
 	}
 
 	if (toRemove.size > 0) {
-		for (const id of toRemove) {
-			try {
-				await vectorStore.removeEmbedding(id);
-			} catch (err) {
-				console.error(`Failed to remove vector embedding for ${id}`);
-			}
-		}
-
 		const idsToRemove = Array.from(toRemove);
+		
+		await Promise.allSettled(
+			idsToRemove.map(async (id) => {
+				try {
+					await vectorStore.removeEmbedding(id);
+				} catch (err) {
+					console.error(`Failed to remove vector embedding for ${id}`);
+				}
+			})
+		);
+
+		const deleteNodeStmt = db.prepare(`DELETE FROM nodes WHERE id = ?`);
 		const executeDeletions = db.transaction((ids: string[]) => {
-			for (let i = 0; i < ids.length; i += 500) {
-				const batch = ids.slice(i, i + 500);
-				const placeholders = batch.map(() => "?").join(",");
-				const deleteStmt = db.prepare(
-					`DELETE FROM nodes WHERE id IN (${placeholders})`,
-				);
-				deleteStmt.run(...batch);
+			for (const id of ids) {
+				deleteNodeStmt.run(id);
 			}
 		});
 		executeDeletions(idsToRemove);

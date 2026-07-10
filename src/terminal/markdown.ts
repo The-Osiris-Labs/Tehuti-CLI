@@ -210,10 +210,10 @@ function renderInlineTokens(tokens: Token[]): string {
 				result += `\n${cyan(token.text)}\n`;
 				break;
 			default:
-				if ("text" in token && typeof token.text === "string") {
-					result += token.text;
-				} else if ("tokens" in token && Array.isArray(token.tokens)) {
+				if ("tokens" in token && Array.isArray(token.tokens)) {
 					result += renderInlineTokens(token.tokens);
+				} else if ("text" in token && typeof token.text === "string") {
+					result += token.text;
 				}
 		}
 	}
@@ -229,12 +229,11 @@ function renderToken(token: Token, indent: string = ""): string {
 		case "heading": {
 			const level = token.depth;
 			const text = renderInlineTokens(token.tokens || []);
-			const prefix = "=".repeat(Math.max(1, 7 - level));
 
 			if (level === 1) {
-				return `\n${gold(bold(text))}\n${dim(prefix.repeat(stringWidth(text)))}\n`;
+				return `\n${gold(bold(text))}\n${dim("=".repeat(stringWidth(text)))}\n`;
 			} else if (level === 2) {
-				return `\n${coral(bold(text))}\n${dim(prefix.repeat(stringWidth(text)))}\n`;
+				return `\n${coral(bold(text))}\n${dim("-".repeat(stringWidth(text)))}\n`;
 			} else {
 				return `\n${bold(text)}\n`;
 			}
@@ -310,9 +309,11 @@ function renderToken(token: Token, indent: string = ""): string {
 				return "";
 			};
 
-			const widths: number[] = header.map((h: Token, i: number) => {
-				const headerLen = stringWidth(getCellText(h));
-				const rowLens = rows.map((r: Token[]) => stringWidth(getCellText(r[i])));
+			const maxCols = header.length;
+
+			const widths: number[] = Array.from({ length: maxCols }).map((_, i: number) => {
+				const headerLen = stringWidth(getCellText(header[i]));
+				const rowLens = rows.map((r: Token[]) => stringWidth(getCellText(r && r[i])));
 				return Math.max(headerLen, ...rowLens);
 			});
 
@@ -327,8 +328,8 @@ function renderToken(token: Token, indent: string = ""): string {
 			let result = "\n";
 			result += `╭${border.join("┬")}╮\n`;
 
-			const headerCells: string[] = header.map((h: Token, i: number) => {
-				const text = getCellText(h);
+			const headerCells: string[] = Array.from({ length: maxCols }).map((_, i: number) => {
+				const text = getCellText(header[i]);
 				const width = widths[i];
 				return `│ ${bold(padEndWidth(text, width))} `;
 			});
@@ -337,8 +338,8 @@ function renderToken(token: Token, indent: string = ""): string {
 			result += `├${border.join("┼")}┤\n`;
 
 			for (const row of rows) {
-				const cells: string[] = row.map((cell: Token, i: number) => {
-					const text = getCellText(cell);
+				const cells: string[] = Array.from({ length: maxCols }).map((_, i: number) => {
+					const text = getCellText(row && row[i]);
 					const width = widths[i];
 					return `│ ${padEndWidth(text, width)} `;
 				});
@@ -351,11 +352,11 @@ function renderToken(token: Token, indent: string = ""): string {
 		}
 
 		default:
-			if ("text" in token && typeof token.text === "string") {
-				return token.text;
-			}
 			if ("tokens" in token && Array.isArray(token.tokens)) {
 				return renderInlineTokens(token.tokens);
+			}
+			if ("text" in token && typeof token.text === "string") {
+				return token.text;
 			}
 			return "";
 	}
@@ -437,4 +438,5 @@ export {
 	italic,
 	red,
 	strikethrough,
+	renderToken,
 };

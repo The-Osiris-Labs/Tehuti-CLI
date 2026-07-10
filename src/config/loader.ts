@@ -36,6 +36,7 @@ const globalConfig = new Conf<{
 }>({
 	projectName: MODULE_NAME,
 	...(CONFIG_CWD ? { cwd: CONFIG_CWD } : {}),
+	clearInvalidConfig: true,
 	defaults: {
 		initialized: false,
 		recentCommands: [],
@@ -106,6 +107,17 @@ function resolveEnvVars(value: string): string {
 	return value;
 }
 
+function resolveArrayEnvVars(arr: unknown[]): unknown[] {
+	return arr.map((item) => {
+		if (typeof item === "string") return resolveEnvVars(item);
+		if (Array.isArray(item)) return resolveArrayEnvVars(item);
+		if (typeof item === "object" && item !== null) {
+			return resolveConfigEnvVars(item as Record<string, unknown>);
+		}
+		return item;
+	});
+}
+
 function resolveConfigEnvVars(
 	config: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -120,6 +132,8 @@ function resolveConfigEnvVars(
 			!Array.isArray(value)
 		) {
 			resolved[key] = resolveConfigEnvVars(value as Record<string, unknown>);
+		} else if (Array.isArray(value)) {
+			resolved[key] = resolveArrayEnvVars(value);
 		} else {
 			resolved[key] = value;
 		}
@@ -275,16 +289,36 @@ export async function loadConfig(
 			.join(", "),
 	);
 
-	const salvagedConfig = { ...mergedConfig };
-	for (const err of result.error.errors) {
-		if (err.path.length > 0) {
-			const key = err.path[0] as keyof TehutiConfig;
-			salvagedConfig[key] = DEFAULT_CONFIG[key];
+	let salvagedConfig = structuredClone(mergedConfig);
+	let fallbackResult = TEHUTI_CONFIG_SCHEMA.safeParse(salvagedConfig);
+	let attempts = 0;
+
+	while (!fallbackResult.success && attempts < 10) {
+		for (const err of fallbackResult.error.errors) {
+			if (err.path.length > 0) {
+				let currentObj: any = salvagedConfig;
+				let currentDefault: any = DEFAULT_CONFIG;
+				for (let i = 0; i < err.path.length - 1; i++) {
+					const p = err.path[i] as string;
+					if (typeof currentObj[p] !== "object" || currentObj[p] === null) {
+						currentObj[p] = {};
+					}
+					currentObj = currentObj[p];
+					currentDefault = currentDefault ? currentDefault[p] : undefined;
+				}
+				const leafKey = err.path[err.path.length - 1] as string;
+				if (currentDefault && currentDefault[leafKey] !== undefined) {
+					currentObj[leafKey] = structuredClone(currentDefault[leafKey]);
+				} else {
+					delete currentObj[leafKey];
+				}
+			}
 		}
+		fallbackResult = TEHUTI_CONFIG_SCHEMA.safeParse(salvagedConfig);
+		attempts++;
 	}
 
-	const fallbackResult = TEHUTI_CONFIG_SCHEMA.safeParse(salvagedConfig);
-	return fallbackResult.success ? fallbackResult.data : DEFAULT_CONFIG;
+	return fallbackResult.success ? fallbackResult.data : (salvagedConfig as TehutiConfig);
 }
 
 export function saveGlobalConfig(updates: {

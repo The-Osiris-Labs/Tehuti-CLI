@@ -102,10 +102,10 @@ export function updateProjectProfile(
 
 	try {
 		const selectStmt = db.prepare(
-			"SELECT formatting_habits FROM project_profiles WHERE project_path = ?",
+			"SELECT formatting_habits, command_patterns FROM project_profiles WHERE project_path = ?",
 		);
 		const existingRow = selectStmt.get(projectPath) as
-			| { formatting_habits: string }
+			| { formatting_habits: string; command_patterns: string }
 			| undefined;
 
 		let formattingHabits: FormattingHabits = newFormattingHabits;
@@ -117,6 +117,17 @@ export function updateProjectProfile(
 				formattingHabits = {
 					...existingHabits,
 					...newFormattingHabits,
+				};
+			} catch (_err) {}
+		}
+
+		let finalCommandPatterns = commandPatterns;
+		if (existingRow?.command_patterns) {
+			try {
+				const existingPatterns = JSON.parse(existingRow.command_patterns) as CommandPatterns;
+				finalCommandPatterns = {
+					...existingPatterns,
+					frequentCommands: Array.from(new Set([...(existingPatterns.frequentCommands || []), ...commandPatterns.frequentCommands]))
 				};
 			} catch (_err) {}
 		}

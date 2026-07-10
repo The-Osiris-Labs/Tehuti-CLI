@@ -32,7 +32,7 @@ async function applyDiff(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,

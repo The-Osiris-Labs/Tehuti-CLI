@@ -637,7 +637,7 @@ export async function parseAST(
 ): Promise<ToolResult> {
 	try {
 		const resolvedPath = resolvePath(args.file_path, ctx.cwd);
-		const security = validatePathSecurity(resolvedPath, ctx.cwd);
+		const security = validatePathSecurity(resolvedPath);
 		if (!security.safe) {
 			return {
 				success: false,

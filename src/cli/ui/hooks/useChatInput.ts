@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { useInput } from "ink";
 import React from "react";
-import { injectionQueue, interruptAgent } from "../../../agent/events.js";
+import { interruptAgent } from "../../../agent/events.js";
 import {
 	isMouseSequence,
 	isMouseSequenceFragment,
@@ -106,6 +106,10 @@ export function useChatInput(props: UseChatInputProps) {
 	const loadingRef = React.useRef(loading);
 	// Buffer for split mouse sequence fragments arriving across multiple useInput() callbacks.
 	const mouseBufferRef = React.useRef<string>("");
+	const doubleClickTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+	const lastClickPosRef = React.useRef<number | null>(null);
+	const isPastingRef = React.useRef(false);
+	const pasteBufferRef = React.useRef("");
 	const mouseBufferTimerRef = React.useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
@@ -341,24 +345,60 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 		}
 
-		// Bracketed paste handling. Preserve newlines so multi-line content
-		// (e.g. code snippets, stack traces, lists) survives the round-trip
-		// to the model. Strip only the surrounding paste-mode escape sequences.
-		if (k?.startsWith("\x1b[200~") && k.endsWith("\x1b[201~")) {
-			const pastedText = k.slice(6, -6);
-			let targetText = input;
-			let targetPos = cursorPos;
-			if (hasSelection) {
-				const res = deleteSelection();
-				targetText = res.text;
-				targetPos = res.pos;
+		// Stateful Bracketed paste handling. Large payloads from Node stdin might arrive in multiple
+		// chunks. We must accumulate them until the closing tag arrives.
+		if (k?.startsWith("\x1b[200~") && !isPastingRef.current) {
+			if (k.endsWith("\x1b[201~")) {
+				// Single chunk paste
+				const pastedText = k.slice(6, -6);
+				let targetText = input;
+				let targetPos = cursorPos;
+				if (hasSelection) {
+					const res = deleteSelection();
+					targetText = res.text;
+					targetPos = res.pos;
+				}
+				setInput(
+					targetText.slice(0, targetPos) +
+						pastedText +
+						targetText.slice(targetPos),
+				);
+				setCursorPos(targetPos + pastedText.length);
+			} else {
+				// Multi-chunk paste start
+				isPastingRef.current = true;
+				pasteBufferRef.current = k.slice(6);
 			}
-			setInput(
-				targetText.slice(0, targetPos) +
-					pastedText +
-					targetText.slice(targetPos),
-			);
-			setCursorPos(targetPos + pastedText.length);
+			setHistoryIndex(-1);
+			return;
+		}
+
+		if (isPastingRef.current) {
+			if (k?.endsWith("\x1b[201~")) {
+				// Multi-chunk paste end
+				pasteBufferRef.current += k.slice(0, -6);
+				isPastingRef.current = false;
+				
+				const pastedText = pasteBufferRef.current;
+				pasteBufferRef.current = "";
+				
+				let targetText = input;
+				let targetPos = cursorPos;
+				if (hasSelection) {
+					const res = deleteSelection();
+					targetText = res.text;
+					targetPos = res.pos;
+				}
+				setInput(
+					targetText.slice(0, targetPos) +
+						pastedText +
+						targetText.slice(targetPos),
+				);
+				setCursorPos(targetPos + pastedText.length);
+			} else {
+				// Multi-chunk paste middle
+				pasteBufferRef.current += k ?? "";
+			}
 			setHistoryIndex(-1);
 			return;
 		}
@@ -493,7 +533,7 @@ export function useChatInput(props: UseChatInputProps) {
 
 			if (loading) {
 				if (text.startsWith("/btw ")) {
-					injectionQueue.push(text.slice(5));
+					ctxRef.current?.injectionQueue?.push(text.slice(5));
 				} else {
 					setQueuedMessages((prev) => [...prev, text]);
 				}

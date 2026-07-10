@@ -9,7 +9,7 @@ import type { Platform } from "./types.js";
  */
 export function formatForSlack(markdown: string): string {
 	const codeBlocks: string[] = [];
-	let text = markdown.replace(/```([\s\S]*?)```/g, (_match, p1) => {
+	let text = markdown.replace(/```[a-zA-Z0-9-]*\n?([\s\S]*?)```/g, (_match, p1) => {
 		codeBlocks.push(`\`\`\`${p1}\`\`\``);
 		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
 	});
@@ -39,10 +39,7 @@ export function formatForSlack(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(
-		/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g,
-		"@@BOLD@@$1@@BOLD@@",
-	);
+	text = text.replace(/(?:\*\*|__)((?:(?!\n\n)[\s\S])+?)(?:\*\*|__)(?!\*|_)/g, "@@BOLD@@$1@@BOLD@@");
 	text = text.replace(
 		/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g,
 		"_$1_",
@@ -51,7 +48,7 @@ export function formatForSlack(markdown: string): string {
 	// Strikethrough
 	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
 	// Headers
-	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
+	text = text.replace(/^#+\s*(.*)$/gm, "*$1*");
 
 	// Convert links
 	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (_match, p1, p2) => {
@@ -135,7 +132,12 @@ export function formatForDiscord(markdown: string): string[] {
 		if (splitIndex > 0 && splitIndex < remaining.length) {
 			const charCodeBefore = remaining.charCodeAt(splitIndex - 1);
 			if (charCodeBefore >= 0xd800 && charCodeBefore <= 0xdbff) {
+				// Make sure we break the loop if we keep shifting back
+				if (splitIndex <= 1) {
+					splitIndex = maxTake;
+				} else {
 				splitIndex--;
+				}
 			}
 		}
 
@@ -178,7 +180,7 @@ export function formatForTelegram(markdown: string): string {
 		.replace(/>/g, "&gt;");
 
 	const codeBlocks: string[] = [];
-	text = text.replace(/```([\s\S]*?)```/g, (_match, p1) => {
+	text = text.replace(/```[a-zA-Z0-9-]*\n?([\s\S]*?)```/g, (_match, p1) => {
 		codeBlocks.push(`<pre>${p1}</pre>`);
 		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
 	});
@@ -206,7 +208,7 @@ export function formatForTelegram(markdown: string): string {
 	);
 
 	// Bold
-	text = text.replace(/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g, "<b>$1</b>");
+	text = text.replace(/(?:\*\*|__)((?:(?!\n\n)[\s\S])+?)(?:\*\*|__)(?!\*|_)/g, "<b>$1</b>");
 
 	// Italic (ignoring intra-word underscores to be safer)
 	text = text.replace(/(?<!\w)_((?:(?!\n\n)[\s\S])+?)_(?!\w)/g, "<i>$1</i>");
@@ -250,7 +252,7 @@ export function formatForTelegram(markdown: string): string {
  */
 export function formatForWhatsApp(markdown: string): string {
 	const codeBlocks: string[] = [];
-	let text = markdown.replace(/```([\s\S]*?)```/g, (_match, p1) => {
+	let text = markdown.replace(/```[a-zA-Z0-9-]*\n?([\s\S]*?)```/g, (_match, p1) => {
 		codeBlocks.push(`\`\`\`${p1}\`\`\``);
 		return `@@CODEBLOCK_${codeBlocks.length - 1}@@`;
 	});
@@ -278,10 +280,7 @@ export function formatForWhatsApp(markdown: string): string {
 	);
 
 	// Bold and Italic
-	text = text.replace(
-		/\*\*((?:(?!\n\n)[\s\S])+?)\*\*(?!\*)/g,
-		"@@BOLD@@$1@@BOLD@@",
-	);
+	text = text.replace(/(?:\*\*|__)((?:(?!\n\n)[\s\S])+?)(?:\*\*|__)(?!\*|_)/g, "@@BOLD@@$1@@BOLD@@");
 	text = text.replace(
 		/(?<!\*)\*(?!\*)((?:(?!\n\n)[\s\S])+?)(?<!\*)\*(?!\*)/g,
 		"_$1_",
@@ -290,7 +289,7 @@ export function formatForWhatsApp(markdown: string): string {
 	// Strikethrough
 	text = text.replace(/~~((?:(?!\n\n)[\s\S])+?)~~/g, "~$1~");
 	// Headers
-	text = text.replace(/^#+\s+(.*)$/gm, "*$1*");
+	text = text.replace(/^#+\s*(.*)$/gm, "*$1*");
 
 	// Convert links
 	text = text.replace(/\[(.*?)\]\(@@URL_(\d+)@@\)/g, (_match, p1, p2) => {

@@ -166,7 +166,9 @@ export function createMCPToolDefinition(
 					result !== null &&
 					"content" in result
 				) {
-					const contentArray = (result as { content: unknown[] }).content;
+					const callResult = result as { content: unknown[]; isError?: boolean };
+					const contentArray = callResult.content;
+					const isError = !!callResult.isError;
 					if (Array.isArray(contentArray)) {
 						let output = "";
 						for (let i = 0; i < contentArray.length; i++) {
@@ -186,7 +188,7 @@ export function createMCPToolDefinition(
 						}
 
 						const finalResult = {
-							success: true,
+							success: !isError,
 							output,
 							metadata: { serverName, toolName: tool.name },
 						};

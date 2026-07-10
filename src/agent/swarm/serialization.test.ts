@@ -144,7 +144,8 @@ describe("swarm serialization", () => {
 				payload: "not json {",
 			} as any);
 			expect(out.complete).toBe(true);
-			expect(out.payload).toBeNull();
+			expect(out.payload).toHaveProperty("error", "Failed to parse JSON chunks");
+			expect(out.payload).toHaveProperty("details");
 		});
 	});
 });

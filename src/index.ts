@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import { initializeHttpAgent } from "./api/http-agent.js";
 import { createProgram } from "./cli/index.js";
 import { initHighlighter } from "./terminal/highlighter.js";
@@ -25,7 +27,20 @@ async function main() {
 	await program.parseAsync(process.argv);
 }
 
-main().catch((err) => {
+let isMain = false;
+try {
+	if (process.argv[1]) {
+		isMain = realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+	}
+} catch (e) {
+	// Fallback check
+	if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+		isMain = true;
+	}
+}
+
+if (isMain) {
+	main().catch((err) => {
 	restoreTerminal();
 	console.error("Failed to initialize Tehuti:");
 	console.error(
@@ -36,3 +51,5 @@ main().catch((err) => {
 	);
 	process.exit(1);
 });
+
+}

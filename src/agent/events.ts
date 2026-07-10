@@ -101,8 +101,6 @@ export class InjectionQueue {
 	}
 }
 
-export const injectionQueue = new InjectionQueue();
-
 // Global abort controller for interrupting the agent loop
 export let globalAbortController = new AbortController();
 

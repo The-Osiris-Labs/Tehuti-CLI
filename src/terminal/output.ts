@@ -365,7 +365,7 @@ function computeToolHeight(
 	for (const line of lines) {
 		wrappedLines += wrap(line, contentMaxWidth - 4).split("\n").length;
 	}
-	const previewLines = isExpanded ? wrappedLines : Math.min(4, wrappedLines);
+	const previewLines = isExpanded ? wrappedLines : Math.min(12, wrappedLines);
 	// 2 lines borders + 1 line header + 2 lines marginY + previewLines + 1 line footer + 1 line marginBottom
 	return 2 + 1 + 2 + previewLines + 1 + 1;
 }
@@ -498,6 +498,10 @@ export function wrap(text: string, width?: number): string {
 				currentLine += word;
 				currentStripped += wordStripped;
 			} else {
+				if (wordStripped.trim() === "") {
+					// Drop whitespace that would otherwise start a new line
+					continue;
+				}
 				if (currentLine) {
 					lines.push(currentLine.trimEnd());
 				}

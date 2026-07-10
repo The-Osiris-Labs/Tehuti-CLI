@@ -86,6 +86,13 @@ export class DaemonStateEngine extends EventEmitter {
 			task.stop();
 		}
 		this.cronTasks = [];
+		
+		for (const cp of this.childProcesses.values()) {
+			if (!cp.killed) {
+				cp.kill("SIGTERM");
+			}
+		}
+		this.childProcesses.clear();
 
 		debug.log("daemon", "Daemon State Engine stopped");
 	}

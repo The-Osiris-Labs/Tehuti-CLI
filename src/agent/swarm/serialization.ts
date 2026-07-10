@@ -1,4 +1,5 @@
 import { AgentError } from "../../utils/errors.js";
+import { randomUUID } from "node:crypto";
 
 export function serializeError(error: unknown): string {
 	if (error instanceof AgentError) {
@@ -14,6 +15,7 @@ export interface IPCMessage {
 	chunkIndex?: number;
 	totalChunks?: number;
 	id?: string;
+	encoding?: string;
 }
 
 const CHUNK_SIZE = 512 * 1024; // 512KB chunks to prevent memory bloat in node IPC
@@ -24,22 +26,25 @@ export function sendChunkedMessage(
 	payload: any,
 ) {
 	const jsonStr = JSON.stringify(payload);
-	if (jsonStr.length < CHUNK_SIZE) {
+	const buffer = Buffer.from(jsonStr, "utf-8");
+
+	if (buffer.length < CHUNK_SIZE) {
 		processOrChild.send?.({ type, payload });
 		return;
 	}
 
-	const id = Math.random().toString(36).substring(7);
-	const totalChunks = Math.ceil(jsonStr.length / CHUNK_SIZE);
+	const id = randomUUID();
+	const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
 
 	for (let i = 0; i < totalChunks; i++) {
-		const chunk = jsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+		const chunkBuffer = buffer.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
 		processOrChild.send?.({
 			type: `${type}_chunk`,
 			id,
 			chunkIndex: i,
 			totalChunks,
-			payload: chunk,
+			payload: chunkBuffer.toString("base64"),
+			encoding: "base64",
 		});
 	}
 }
@@ -77,10 +82,15 @@ export class ChunkReceiver {
 		if (isComplete) {
 			this.buffers.delete(msg.id);
 			try {
-				const fullStr = chunks.join("");
+				let fullStr = "";
+				if (msg.encoding === "base64") {
+					fullStr = Buffer.from(chunks.join(""), "base64").toString("utf-8");
+				} else {
+					fullStr = chunks.join("");
+				}
 				return { complete: true, payload: JSON.parse(fullStr) };
-			} catch {
-				return { complete: true, payload: null };
+			} catch (err) {
+				return { complete: true, payload: { error: "Failed to parse JSON chunks", details: String(err) } };
 			}
 		}
 

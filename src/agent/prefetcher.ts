@@ -119,7 +119,7 @@ export class Prefetcher {
 		this.pending.set(key, trackedPromise);
 	}
 
-	private abortPrefetchIfMatches(toolName: string, args: unknown): void {
+	private abortPrefetchIfMatches(toolName: string, args: unknown, ctx: ToolContext): void {
 		debug.log("prefetch", `Checking abort conditions for ${toolName}`);
 		const tool = getTool(toolName);
 		if (!tool) return;
@@ -141,7 +141,7 @@ export class Prefetcher {
 
 		// Specific check for file modifications
 		if (typeof filePath === "string" && tool.category !== "bash") {
-			const resolvedFilePath = path.resolve(filePath);
+			const resolvedFilePath = path.resolve(ctx.cwd, filePath);
 			for (const [key, controller] of this.abortControllers.entries()) {
 				const colonIndex = key.indexOf(":");
 				if (colonIndex < 0) continue;
@@ -163,7 +163,7 @@ export class Prefetcher {
 							readArgs.directory_path ||
 							readArgs.TargetFile;
 						if (typeof readPathVal === "string") {
-							const resolvedReadPath = path.resolve(readPathVal);
+							const resolvedReadPath = path.resolve(ctx.cwd, readPathVal);
 							if (prefetchTool === "list_dir") {
 								const relative = path.relative(
 									resolvedReadPath,
@@ -270,7 +270,7 @@ export class Prefetcher {
 	predict(toolName: string, args: unknown, ctx: ToolContext): void {
 		if (!this.enabled) return;
 
-		this.abortPrefetchIfMatches(toolName, args);
+		this.abortPrefetchIfMatches(toolName, args, ctx);
 
 		this.recordPattern(toolName, args);
 

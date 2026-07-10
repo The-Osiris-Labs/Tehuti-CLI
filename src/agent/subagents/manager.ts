@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentContext } from "../context.js";
 import { createAgentContext } from "../context.js";
-import { agentEventBus, injectionQueue } from "../events.js";
+import { agentEventBus } from "../events.js";
 import { runAgentLoop } from "../index.js";
 import type { AgentLoopOptions, AgentLoopResult } from "../loop/runner.js";
 
@@ -101,6 +101,7 @@ export async function spawnSubagent(
 	let externalTimeout: NodeJS.Timeout | null = null;
 	if (typeof externalTimeoutMs === "number" && externalTimeoutMs > 0) {
 		externalTimeout = setTimeout(() => {
+			task.status = "killed";
 			abortController.abort(new Error(`Subagent ${taskId} timed out`));
 		}, externalTimeoutMs);
 		externalTimeout.unref();
@@ -225,7 +226,7 @@ export function sendMessageToTask(
 		return { success: false, error: "no_context" };
 	}
 
-	injectionQueue.push(`[Message from Parent]: ${message}`);
+	task.context.injectionQueue.push(`[Message from Parent]: ${message}`);
 
 	if (task.context.isSleeping) {
 		agentEventBus.emit("wakeup", `Message received for task ${taskId}`);

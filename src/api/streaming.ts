@@ -58,6 +58,10 @@ export function processStreamChunk(
 	hasThinking: boolean;
 	newThinking: string;
 } {
+	if (!chunk || typeof chunk !== "object" || Object.keys(chunk).length === 0) {
+		return { hasContent: false, newContent: "", hasThinking: false, newThinking: "" };
+	}
+
 	if (chunk.usage) {
 		state.usage = {
 			promptTokens: chunk.usage.prompt_tokens,
@@ -80,6 +84,13 @@ export function processStreamChunk(
 
 	const delta = choice.delta;
 	let hasContent = false;
+
+	if (!delta) {
+		if (choice.finish_reason) {
+			state.finishReason = choice.finish_reason;
+		}
+		return { hasContent: false, newContent: "", hasThinking: false, newThinking: "" };
+	}
 	let newContent = "";
 	let hasThinking = false;
 	let newThinking = "";
@@ -173,18 +184,31 @@ export async function* processStreamAsync(
 		usage?: unknown;
 	}>,
 	yieldThresholdMs: number = 16,
-): AsyncGenerator<string, void, unknown> {
+): AsyncGenerator<{ 
+	hasContent: boolean; 
+	newContent: string; 
+	hasThinking: boolean; 
+	newThinking: string; 
+	content: string;
+	reasoning: string;
+	toolCalls: any[];
+	chunk: any;
+}, void, unknown> {
 	const state = createStreamingState();
 	let lastYield = Date.now();
 
 	for await (const chunk of stream) {
-		const { hasContent, newContent } = processStreamChunk(
+		const result = processStreamChunk(
 			state,
 			chunk as Parameters<typeof processStreamChunk>[1],
 		);
-		if (hasContent && newContent) {
-			yield newContent;
-		}
+		yield { 
+			...result, 
+			content: state.content,
+			reasoning: state.thinking,
+			toolCalls: getToolCallsFromState(state),
+			chunk
+		};
 
 		// HTTP/3 Backpressure-Aware SSE concepts:
 		// Yielding to the event loop when processing a fast stream prevents buffer bloat

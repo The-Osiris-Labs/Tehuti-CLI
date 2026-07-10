@@ -63,14 +63,16 @@ function sliceAnsi(str: string, limit: number): string {
 			output += match[0];
 			i += match[0].length;
 		} else {
-			const char = str[i];
+			const codePoint = str.codePointAt(i);
+			if (!codePoint) { i++; continue; }
+			const char = String.fromCodePoint(codePoint);
 			const charWidth = stringWidth(char);
 			if (visibleWidth + charWidth > limit) {
 				break;
 			}
 			visibleWidth += charWidth;
 			output += char;
-			i++;
+			i += char.length;
 		}
 	}
 	if (i < str.length) {

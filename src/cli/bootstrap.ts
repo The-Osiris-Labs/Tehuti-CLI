@@ -63,7 +63,7 @@ export async function bootstrapCLI(
 	const cfg = await loadConfig();
 	getTelemetry().setEnabled(cfg.telemetry ?? false);
 	if (cfg.http) {
-		updateHttpAgentConfig(cfg.http);
+		await updateHttpAgentConfig(cfg.http);
 	}
 	const tehuti = loadTehutiConfig();
 

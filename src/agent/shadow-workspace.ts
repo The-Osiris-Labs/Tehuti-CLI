@@ -1,4 +1,5 @@
 import { exec } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -36,6 +37,16 @@ async function executeShadowTest(
 			cwd: mainDir,
 		});
 
+		// Copy uncommitted changes from main to shadow
+		await fs.promises.cp(mainDir, worktreePath, {
+			recursive: true,
+			force: true,
+			filter: (src) => {
+				const rel = path.relative(mainDir, src);
+				return !rel.startsWith(".git") && rel !== ".git";
+			},
+		});
+
 		// Run the command in the worktree
 		let success = false;
 		let output = "";
@@ -58,17 +69,20 @@ async function executeShadowTest(
 
 		if (success) {
 			// Apply changes back
-			// Check if there are changes to commit
+			// Check if there are changes
 			const { stdout: status } = await execAsync(`git status --porcelain`, {
 				cwd: worktreePath,
 			});
 			if (status.trim()) {
-				await execAsync(`git add . && git commit -m "Speculative success"`, {
-					cwd: worktreePath,
+				// Copy back changed files. We use cp rather than merge to preserve uncommitted state in mainDir
+				await fs.promises.cp(worktreePath, mainDir, {
+					recursive: true,
+					force: true,
+					filter: (src) => {
+						const rel = path.relative(worktreePath, src);
+						return !rel.startsWith(".git") && rel !== ".git";
+					},
 				});
-
-				// Merge into current branch in main workspace
-				await execAsync(`git merge ${branchName}`, { cwd: mainDir });
 			}
 		}
 

@@ -25,7 +25,7 @@ export async function runAciLinter(
 	}
 	const tempFilePath = path.join(
 		path.dirname(filePath),
-		`.tmp.aci.${path.basename(filePath)}`,
+		`.tmp.aci.${crypto.randomUUID()}.${path.basename(filePath)}`,
 	);
 	try {
 		await fs.writeFile(tempFilePath, content, "utf-8");
@@ -46,7 +46,8 @@ export async function createBackup(
 ): Promise<void> {
 	try {
 		const timestamp = Date.now();
-		const bakPath = `${filePath}.${timestamp}.bak`;
+		const entropy = crypto.randomBytes(4).toString('hex');
+		const bakPath = `${filePath}.${timestamp}.${entropy}.bak`;
 		await fs.writeFile(bakPath, content, "utf-8");
 
 		await fs.unlink(`${filePath}.bak`).catch(() => {});
@@ -271,11 +272,7 @@ export function isReadOnlyExternalPath(resolvedPath: string): boolean {
 	return READ_ONLY_EXTERNAL_PREFIXES.some((p) => normalized.startsWith(p));
 }
 
-export function validatePathSecurity(
-	resolvedPath: string,
-	_cwd: string,
-	_options?: { allowExternalRead?: boolean },
-): { safe: boolean; reason?: string } {
+export function validatePathSecurity(resolvedPath: string) {
 	const normalizedPath = path.normalize(resolvedPath);
 
 	// Sensitive files are ALWAYS rejected, regardless of cwd or allowlist.
@@ -342,9 +339,7 @@ async function readFile(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
-		allowExternalRead: true,
-	});
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -386,6 +381,14 @@ async function readFile(
 				success: false,
 				output: "",
 				error: `Binary file detected. Use the bash tool with 'file' command to inspect.`,
+			};
+		}
+
+		if (await isBinaryFile(resolvedPath)) {
+			return {
+				success: false,
+				output: "",
+				error: `Binary file detected. Cannot edit binary files.`,
 			};
 		}
 
@@ -439,7 +442,7 @@ async function writeFile(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -613,7 +616,7 @@ async function editFile(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -645,6 +648,14 @@ async function editFile(
 				success: false,
 				output: "",
 				error: `You MUST use the Read tool at least once in the conversation before you can edit a file. This tool will fail if you did not read the file. Read the file first: ${resolvedPath}`,
+			};
+		}
+
+		if (await isBinaryFile(resolvedPath)) {
+			return {
+				success: false,
+				output: "",
+				error: `Binary file detected. Cannot edit binary files.`,
 			};
 		}
 
@@ -763,7 +774,7 @@ async function createDir(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.dir_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -804,7 +815,7 @@ async function deleteFile(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -853,7 +864,7 @@ async function deleteDir(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.dir_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -903,7 +914,7 @@ async function copyFile(
 	const sourcePath = resolvePath(args.source, ctx.cwd);
 	const destPath = resolvePath(args.destination, ctx.cwd);
 
-	const sourceSecurity = validatePathSecurity(sourcePath, ctx.cwd);
+	const sourceSecurity = validatePathSecurity(sourcePath);
 	if (!sourceSecurity.safe) {
 		return {
 			success: false,
@@ -912,7 +923,7 @@ async function copyFile(
 		};
 	}
 
-	const destSecurity = validatePathSecurity(destPath, ctx.cwd);
+	const destSecurity = validatePathSecurity(destPath);
 	if (!destSecurity.safe) {
 		return {
 			success: false,
@@ -941,7 +952,7 @@ async function copyFile(
 
 	try {
 		await fs.ensureDir(path.dirname(destPath));
-		await fs.copy(sourcePath, destPath);
+		await fs.copy(sourcePath, destPath, { overwrite: false });
 
 		return {
 			success: true,
@@ -964,7 +975,7 @@ async function moveFile(
 	const sourcePath = resolvePath(args.source, ctx.cwd);
 	const destPath = resolvePath(args.destination, ctx.cwd);
 
-	const sourceSecurity = validatePathSecurity(sourcePath, ctx.cwd);
+	const sourceSecurity = validatePathSecurity(sourcePath);
 	if (!sourceSecurity.safe) {
 		return {
 			success: false,
@@ -973,7 +984,7 @@ async function moveFile(
 		};
 	}
 
-	const destSecurity = validatePathSecurity(destPath, ctx.cwd);
+	const destSecurity = validatePathSecurity(destPath);
 	if (!destSecurity.safe) {
 		return {
 			success: false,
@@ -1002,7 +1013,7 @@ async function moveFile(
 
 	try {
 		await fs.ensureDir(path.dirname(destPath));
-		await fs.move(sourcePath, destPath);
+		await fs.move(sourcePath, destPath, { overwrite: false });
 
 		return {
 			success: true,
@@ -1037,7 +1048,7 @@ async function listDir(
 
 	const resolvedPath = resolvePath(dirPath, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -1073,7 +1084,12 @@ async function listDir(
 			};
 		}
 
-		const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+		let entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+		let summary = "";
+		if (entries.length > 1000) {
+			summary = `\n\n(Truncated to 1000 items out of ${entries.length})`;
+			entries = entries.slice(0, 1000);
+		}
 
 		if (args.json) {
 			const jsonEntries = entries
@@ -1090,7 +1106,7 @@ async function listDir(
 
 			return {
 				success: true,
-				output: JSON.stringify(jsonEntries, null, 2),
+				output: JSON.stringify(jsonEntries, null, 2) + summary,
 				metadata: { path: resolvedPath, count: entries.length },
 			};
 		} else {
@@ -1107,7 +1123,7 @@ async function listDir(
 
 			return {
 				success: true,
-				output: lines.join("\n") || "(empty directory)",
+				output: (lines.join("\n") || "(empty directory)") + summary,
 				metadata: { path: resolvedPath, count: entries.length },
 			};
 		}
@@ -1126,7 +1142,7 @@ async function getFileInfo(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -1384,9 +1400,7 @@ async function readImage(
 	const maxWidth = args.max_width ?? 1024;
 	const maxHeight = args.max_height ?? 1024;
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
-		allowExternalRead: true,
-	});
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -1504,9 +1518,7 @@ async function readPDF(
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 	const maxPages = args.max_pages ?? 50;
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
-		allowExternalRead: true,
-	});
+	const securityCheck = validatePathSecurity(resolvedPath);
 	if (!securityCheck.safe) {
 		return {
 			success: false,

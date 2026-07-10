@@ -143,6 +143,9 @@ export class TehutiDaemonServer extends EventEmitter {
 						// ignore if already removed
 					}
 					this.listen();
+				} else if (err.code === "ENOENT") {
+					// Socket was deleted by another process right after our existsSync check
+					this.listen();
 				} else {
 					this.emit("error", err);
 				}
@@ -157,6 +160,7 @@ export class TehutiDaemonServer extends EventEmitter {
 		this.processHandlersSetup = true;
 
 		const cleanup = () => {
+			this.stop();
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
 					fs.unlinkSync(SOCKET_PATH);

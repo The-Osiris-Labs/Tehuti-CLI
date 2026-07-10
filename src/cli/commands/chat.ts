@@ -68,7 +68,7 @@ import {
 	type StreamingOutputManager,
 } from "../../terminal/buffered-writer.js";
 import { initHighlighter } from "../../terminal/highlighter.js";
-import { computeMessageLines } from "../../terminal/output.js";
+import { computeMessageLines, truncate } from "../../terminal/output.js";
 import { debug } from "../../utils/debug.js";
 import {
 	AgentError,
@@ -481,16 +481,7 @@ function formatToolResult(
 	const visibleWidth = Math.max(20, maxWidth - 4);
 	const truncateLine = (line: string): string => {
 		if (stringWidth(line) > visibleWidth - 3) {
-			// Preserve ANSI when slicing; fall back to conservative byte-slice
-			let sliced = "";
-			let w = 0;
-			for (const ch of line) {
-				const cw = stringWidth(ch);
-				if (w + cw > visibleWidth - 3) break;
-				w += cw;
-				sliced += ch;
-			}
-			return `${sliced}…`;
+			return truncate(line, visibleWidth - 3);
 		}
 		return line;
 	};
@@ -2162,20 +2153,31 @@ function ChatUI({
 	const errorOverlayHeight = error ? 3 : 0;
 	const dashboardOverlayHeight = showDashboard ? 8 : 0;
 
+	const promptOverlayHeight = useMemo(() => {
+		if (pendingPermission) {
+			return 8 + ((pendingPermission.request?.reason || "").length > 50 ? 2 : 0);
+		}
+		if (pendingQuestion) {
+			const q = pendingQuestion.questions[0];
+			const textLines = Math.ceil(q.question.length / 50);
+			const optionLines = q.options.length;
+			return textLines + optionLines + 6;
+		}
+		return inputHeight + 4;
+	}, [pendingPermission, pendingQuestion, inputHeight]);
+
 	const chatViewportHeight = Math.max(
 		3,
 		terminalHeight -
 			headerHeight -
-			inputHeight -
-			4 - // Base ChatBar overhead (margin, metadata, borders)
+			promptOverlayHeight -
 			(scrollOffset > 0 ? 3 : 0) - // Scroll banner
 			(input.startsWith("/") && input.length > 1 ? 1 : 0) - // Suggestions row
 			warningsHeight -
 			paletteHeight -
 			loadingOverlayHeight -
 			thinkingOverlayHeight -
-			errorOverlayHeight -
-			dashboardOverlayHeight,
+			errorOverlayHeight
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
@@ -4260,7 +4262,7 @@ export function createProgram(): Command {
 		.action(async (action, name) => {
 			const cfg = await loadConfig();
 			if (cfg.http) {
-				updateHttpAgentConfig(cfg.http);
+				await updateHttpAgentConfig(cfg.http);
 			}
 
 			if (!action || action === "status") {

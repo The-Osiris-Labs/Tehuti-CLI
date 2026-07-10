@@ -110,13 +110,15 @@ function loadTodos(): z.infer<typeof TODO_WRITE_SCHEMA>["todos"] {
 			>["todos"];
 
 			// Garbage collect completed/cancelled tasks older than 24 hours on load
+			// Also drop any pending/in_progress tasks since they are orphaned from previous processes
 			const ONE_DAY = 24 * 60 * 60 * 1000;
 			const now = Date.now();
 			const activeTodos = rawTodos.filter((t) => {
-				if (t.status === "completed" || t.status === "cancelled") {
-					if (!t.updatedAt) return false;
-					const age = now - new Date(t.updatedAt).getTime();
-					return age < ONE_DAY;
+				if (!t.updatedAt) return false;
+				const age = now - new Date(t.updatedAt).getTime();
+				if (age >= ONE_DAY) return false;
+				if (t.status === "in_progress" || t.status === "pending") {
+					return false;
 				}
 				return true;
 			});

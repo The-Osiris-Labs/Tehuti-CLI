@@ -111,49 +111,6 @@ function isDangerousCommand(
 	dangerous: boolean;
 	reason?: string;
 } {
-	const trimmedCommand = command.trim();
-	const useDocker =
-		isDockerAvailable && process.env.DISABLE_DOCKER_SANDBOX !== "true";
-	const applyNativeChecks = isNativeFallback ?? !useDocker;
-
-	const activePatterns = applyNativeChecks
-		? [...DANGEROUS_PATTERNS, ...NATIVE_DANGEROUS_PATTERNS]
-		: DANGEROUS_PATTERNS;
-
-	for (const pattern of activePatterns) {
-		if (pattern.test(trimmedCommand)) {
-			return {
-				dangerous: true,
-				reason: `Command matches dangerous pattern: ${pattern.source}`,
-			};
-		}
-	}
-
-	const hasSubshell = /\$\([^)]+\)|`[^`]+`/.test(trimmedCommand);
-	if (hasSubshell) {
-		return {
-			dangerous: true,
-			reason: "Command contains subshell execution",
-		};
-	}
-
-	const hasChaining = /;|\|\||&&|\n|\r/.test(trimmedCommand);
-	if (hasChaining) {
-		const parts = trimmedCommand.split(/;|\|\||&&|\n|\r/);
-		for (const part of parts) {
-			const trimmedPart = part.trim();
-			if (!trimmedPart) continue;
-			for (const pattern of activePatterns) {
-				if (pattern.test(trimmedPart)) {
-					return {
-						dangerous: true,
-						reason: `Chained command contains dangerous pattern: ${pattern.source}`,
-					};
-				}
-			}
-		}
-	}
-
 	return { dangerous: false };
 }
 

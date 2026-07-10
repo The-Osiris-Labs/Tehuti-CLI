@@ -8,6 +8,9 @@ export interface UnifiedMessageEvent {
 	senderId: string;
 	sessionId: string;
 	content: string;
+	channelId?: string;
+	threadId?: string;
+	messageId?: string;
 	rawPayload: unknown;
 }
 
@@ -181,6 +184,9 @@ export class ConnectorManager extends EventEmitter {
 						payload.payload.event.user,
 						payload.payload.event.text || "",
 						payload,
+						payload.payload.event.channel,
+						payload.payload.event.thread_ts,
+						payload.payload.event.ts
 					);
 				}
 			};
@@ -217,7 +223,7 @@ export class ConnectorManager extends EventEmitter {
 						op: 2,
 						d: {
 							token: discordToken,
-							intents: 512 + 32768, // GUILDS, GUILD_MESSAGES, MESSAGE_CONTENT
+							intents: 512 + 32768 + 4096, // GUILDS, GUILD_MESSAGES, MESSAGE_CONTENT, DIRECT_MESSAGES
 							properties: { os: "linux", browser: "tehuti", device: "tehuti" },
 						},
 					}),
@@ -243,6 +249,9 @@ export class ConnectorManager extends EventEmitter {
 						d.author.id,
 						d.content || "",
 						payload,
+						d.channel_id,
+						undefined,
+						d.id
 					);
 				}
 			};
@@ -290,9 +299,12 @@ export class ConnectorManager extends EventEmitter {
 						if (payload.message?.text && !payload.message.from?.is_bot) {
 							await this.handleIncomingMessage(
 								"telegram",
-								payload.message.chat.id.toString(),
+								payload.message.from.id.toString(),
 								payload.message.text,
 								payload,
+								payload.message.chat.id.toString(),
+								payload.message.reply_to_message?.message_id?.toString(),
+								payload.message.message_id.toString()
 							);
 						}
 						res.writeHead(200);
@@ -372,6 +384,9 @@ export class ConnectorManager extends EventEmitter {
 													msg.from,
 													msg.text.body,
 													payload,
+													msg.from, // channelId is from
+													msg.context?.id,
+													msg.id
 												);
 											}
 										}
@@ -410,6 +425,9 @@ export class ConnectorManager extends EventEmitter {
 		senderId: string,
 		content: string,
 		rawPayload: unknown,
+		channelId?: string,
+		threadId?: string,
+		messageId?: string
 	): Promise<void> {
 		const sessionId = await this.resolveSessionId(platform, senderId);
 
@@ -427,9 +445,86 @@ export class ConnectorManager extends EventEmitter {
 			senderId,
 			sessionId,
 			content: normalizedContent,
+			channelId,
+			threadId,
+			messageId,
 			rawPayload,
 		};
 
 		this.emit("message", event);
+	}
+
+	public async sendMessage(
+		platform: "slack" | "discord" | "telegram" | "whatsapp",
+		channelId: string,
+		content: string,
+		threadId?: string,
+	): Promise<void> {
+		if (platform === "slack") {
+			const slackBotToken = this.config.messaging?.slackBotToken ?? this.config.slackBotToken;
+			if (!slackBotToken) throw new Error("Missing Slack Bot Token");
+			const res = await fetch("https://slack.com/api/chat.postMessage", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${slackBotToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					channel: channelId,
+					text: content,
+					thread_ts: threadId,
+				}),
+			});
+			const data = await res.json() as any;
+			if (!data.ok) throw new Error(data.error);
+		} else if (platform === "discord") {
+			const discordToken = this.config.messaging?.discordToken ?? this.config.discordToken;
+			if (!discordToken) throw new Error("Missing Discord Token");
+			const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bot ${discordToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					content: content,
+					message_reference: threadId ? { message_id: threadId } : undefined,
+				}),
+			});
+			if (!res.ok) throw new Error(`Discord API Error: ${res.statusText}`);
+		} else if (platform === "telegram") {
+			const telegramBotToken = this.config.messaging?.telegramBotToken ?? this.config.telegramBotToken;
+			if (!telegramBotToken) throw new Error("Missing Telegram Bot Token");
+			const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					chat_id: channelId,
+					text: content,
+					reply_to_message_id: threadId ? parseInt(threadId) : undefined,
+				}),
+			});
+			if (!res.ok) throw new Error(`Telegram API Error: ${res.statusText}`);
+		} else if (platform === "whatsapp") {
+			const whatsappToken = this.config.messaging?.whatsappToken ?? this.config.whatsappToken;
+			const whatsappPhoneNumberId = this.config.messaging?.whatsappPhoneNumberId ?? this.config.whatsappPhoneNumberId;
+			if (!whatsappToken || !whatsappPhoneNumberId) throw new Error("Missing WhatsApp Credentials");
+			const res = await fetch(`https://graph.facebook.com/v17.0/${whatsappPhoneNumberId}/messages`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${whatsappToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					messaging_product: "whatsapp",
+					to: channelId,
+					text: { body: content },
+					context: threadId ? { message_id: threadId } : undefined,
+				}),
+			});
+			if (!res.ok) throw new Error(`WhatsApp API Error: ${res.statusText}`);
+		} else {
+			throw new Error(`Unsupported platform: ${platform}`);
+		}
 	}
 }

@@ -80,6 +80,7 @@ class TelemetryCollector {
 			cacheHit,
 			timestamp: Date.now(),
 		});
+		if (this.metrics.toolExecutions.length > 1000) this.metrics.toolExecutions.shift();
 
 		this.metrics.totalToolCalls++;
 
@@ -115,6 +116,7 @@ class TelemetryCollector {
 			savingsMs,
 			timestamp: Date.now(),
 		});
+		if (this.metrics.parallelExecutions.length > 1000) this.metrics.parallelExecutions.shift();
 	}
 
 	recordCacheStats(hits: number, misses: number, bytesSaved: number = 0): void {
@@ -141,6 +143,7 @@ class TelemetryCollector {
 			cost,
 			timestamp: Date.now(),
 		});
+		if (this.metrics.modelCosts.length > 1000) this.metrics.modelCosts.shift();
 	}
 
 	getToolStats(): Map<

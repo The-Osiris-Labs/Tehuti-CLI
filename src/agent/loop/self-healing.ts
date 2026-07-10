@@ -80,7 +80,7 @@ export class SelfHealingManager {
 			);
 			if (!validation.success) {
 				const parsedAdvisory = this.parseFailureOutput(
-					validation.error || validation.output || "",
+					validation.output || validation.error || "",
 				);
 				return {
 					...result,
@@ -102,12 +102,6 @@ export class SelfHealingManager {
 
 	private cleanupOrphanedWorktrees() {
 		try {
-			// Forcefully run git worktree prune
-			spawnSync("git", ["worktree", "prune"], {
-				cwd: this.mainDir,
-				stdio: "ignore",
-			});
-
 			// Manually delete orphaned shadow directories in .tehuti/shadows/
 			const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
 			if (fs.existsSync(shadowsDir)) {
@@ -119,6 +113,27 @@ export class SelfHealingManager {
 					}
 				}
 			}
+
+			// Delete ephemeral branches
+			const branchesOut = spawnSync("git", ["branch", "--list", "tehuti-shadow-*"], {
+				cwd: this.mainDir,
+				encoding: "utf-8",
+			}).stdout;
+			if (branchesOut) {
+				const branches = branchesOut.split("\n").map(b => b.trim().replace(/^\*\s*/, "")).filter(Boolean);
+				for (const branch of branches) {
+					spawnSync("git", ["branch", "-D", branch], {
+						cwd: this.mainDir,
+						stdio: "ignore",
+					});
+				}
+			}
+
+			// Forcefully run git worktree prune
+			spawnSync("git", ["worktree", "prune"], {
+				cwd: this.mainDir,
+				stdio: "ignore",
+			});
 		} catch (error) {
 			// Ignore errors during cleanup
 		}
@@ -199,19 +214,21 @@ export class SelfHealingManager {
 
 		// Create a new branch and worktree
 		try {
-			await execAsync(`git branch ${branchName}`, { cwd: this.mainDir });
-			await execAsync(`git worktree add ${worktreePath} ${branchName}`, {
+			await execAsync(`git branch "${branchName}"`, { cwd: this.mainDir });
+			await execAsync(`git worktree add "${worktreePath}" "${branchName}"`, {
 				cwd: this.mainDir,
 			});
 			this.activeWorktrees.set(worktreePath, { worktreePath, branchName });
 		} catch (error) {
 			try {
-				await execAsync(`git worktree remove --force ${worktreePath}`, {
+				try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {} 
+		await execAsync(`git worktree prune`, { cwd: this.mainDir }).catch(() => {});
+		await execAsync(`git worktree remove --force "${worktreePath}"`, {
 					cwd: this.mainDir,
 				});
 			} catch {}
 			try {
-				await execAsync(`git branch -D ${branchName}`, { cwd: this.mainDir });
+				await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir });
 			} catch {}
 			throw error;
 		}
@@ -235,7 +252,7 @@ export class SelfHealingManager {
 			const filesToCopy = [
 				...modifiedFilesOut.split("\n"),
 				...untrackedFilesOut.split("\n"),
-			].filter(Boolean);
+			].filter((f) => f && !f.startsWith(".tehuti/"));
 
 			if (deletedFiles.length > 0) {
 				for (const file of deletedFiles) {
@@ -332,7 +349,7 @@ export class SelfHealingManager {
 			return {
 				success: false,
 				output,
-				error: error.message,
+				error: output,
 			};
 		}
 	}
@@ -347,10 +364,10 @@ export class SelfHealingManager {
 		branchName: string,
 	): Promise<void> {
 		this.activeWorktrees.delete(worktreePath);
-		await execAsync(`git worktree remove --force ${worktreePath}`, {
+		await execAsync(`git worktree remove --force "${worktreePath}"`, {
 			cwd: this.mainDir,
 		}).catch(() => {});
-		await execAsync(`git branch -D ${branchName}`, { cwd: this.mainDir }).catch(
+		await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir }).catch(
 			() => {},
 		);
 	}
@@ -364,12 +381,16 @@ export class SelfHealingManager {
 		// A simple heuristic: extract lines containing 'error:', 'failed', or stack trace patterns.
 		// For a more robust implementation, we could parse specific testing framework outputs.
 		const lines = output.split("\n");
-		const errorLines = lines.filter(
+		let errorLines = lines.filter(
 			(line) =>
 				line.toLowerCase().includes("error") ||
-				line.toLowerCase().includes("failed") ||
+				line.toLowerCase().includes("fail") ||
 				/^\s+at\s/.test(line), // Matches stack trace lines
 		);
+
+		if (errorLines.length > 50) {
+			errorLines = errorLines.slice(0, 50);
+		}
 
 		if (errorLines.length === 0) {
 			return `Validation failed. Full output:\n${output.substring(0, 1000)}`;

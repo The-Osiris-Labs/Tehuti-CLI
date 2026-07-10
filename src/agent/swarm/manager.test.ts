@@ -13,6 +13,7 @@ function makeChild() {
 		send: sendMock,
 		kill: killMock,
 		killed: false,
+		exitCode: null,
 		stdout: { on: vi.fn() },
 		stderr: { on: vi.fn() },
 		on: (event: string, fn: (...args: any[]) => void) => {

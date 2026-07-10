@@ -60,9 +60,11 @@ export function getModelPricing(
 		};
 	}
 	for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+		if (!key) continue;
+		const subPart = modelId.split("/")[1]?.split(":")[0];
 		if (
-			modelId.includes(key) ||
-			key.includes(modelId.split("/")[1]?.split(":")[0] ?? "")
+			(modelId && modelId.includes(key)) ||
+			(subPart && subPart.trim() !== "" && key.includes(subPart))
 		) {
 			return pricing;
 		}

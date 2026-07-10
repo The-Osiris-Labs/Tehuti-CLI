@@ -357,8 +357,8 @@ describe("Streaming", () => {
 			}
 
 			const tokens: string[] = [];
-			for await (const token of processStreamAsync(mockStream())) {
-				tokens.push(token);
+			for await (const chunk of processStreamAsync(mockStream() as any)) {
+				if (chunk.hasContent && chunk.newContent) tokens.push(chunk.newContent);
 			}
 
 			expect(tokens).toEqual(["Hello", " world"]);
@@ -377,8 +377,8 @@ describe("Streaming", () => {
 			}
 
 			const tokens: string[] = [];
-			for await (const token of processStreamAsync(mockStream())) {
-				tokens.push(token);
+			for await (const chunk of processStreamAsync(mockStream() as any)) {
+				if (chunk.hasContent && chunk.newContent) tokens.push(chunk.newContent);
 			}
 
 			expect(tokens).toEqual(["Answer"]);
@@ -390,8 +390,8 @@ describe("Streaming", () => {
 			}
 
 			const tokens: string[] = [];
-			for await (const token of processStreamAsync(mockStream())) {
-				tokens.push(token);
+			for await (const chunk of processStreamAsync(mockStream() as any)) {
+				if (chunk.hasContent && chunk.newContent) tokens.push(chunk.newContent);
 			}
 
 			expect(tokens).toEqual([]);

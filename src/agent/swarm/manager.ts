@@ -161,6 +161,7 @@ export class SwarmManager extends EventEmitter {
 			tokensUsed: 0,
 			toolCallCount: 0,
 			workingDir,
+			lastEventAt: Date.now(),
 		};
 
 		this.tasks.set(id, task);
@@ -181,6 +182,22 @@ export class SwarmManager extends EventEmitter {
 			}
 		}, READY_TIMEOUT_MS);
 		readyTimeout.unref();
+
+		const watchdogInterval = setInterval(() => {
+			if (
+				task.status === "completed" ||
+				task.status === "failed" ||
+				task.status === "killed"
+			) {
+				clearInterval(watchdogInterval);
+				return;
+			}
+			if (task.lastEventAt && Date.now() - task.lastEventAt > 120_000) {
+				debug.log("agent", `Subagent ${id} watchdog timeout`);
+				finishWithError("Subagent did not respond within 2 minutes (watchdog timeout)");
+			}
+		}, 30_000);
+		watchdogInterval.unref();
 
 		const finishWithError = (errMsg: string) => {
 			// State machine: only transition from non-terminal states.
@@ -225,7 +242,7 @@ export class SwarmManager extends EventEmitter {
 			}
 			// Give the IPC channel a tick to flush, then exit cleanly.
 			setImmediate(() => {
-				if (!childProcess.killed) childProcess.kill();
+				if (childProcess.exitCode === null) childProcess.kill();
 			});
 		};
 
@@ -514,14 +531,14 @@ export class SwarmManager extends EventEmitter {
 }
 
 function killChild(cp: ChildProcess, graceMs: number) {
-	if (cp.killed) return;
+	if (cp.exitCode !== null) return;
 	try {
 		cp.kill("SIGTERM");
 	} catch {
 		/* ignore */
 	}
 	const timer = setTimeout(() => {
-		if (!cp.killed) {
+		if (cp.exitCode === null) {
 			try {
 				cp.kill("SIGKILL");
 			} catch {

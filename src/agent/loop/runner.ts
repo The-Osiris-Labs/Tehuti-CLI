@@ -26,7 +26,7 @@ import {
 	normalizeToolMessageHistory,
 	warnOnContextLimit,
 } from "../context.js";
-import { injectionQueue, wakeupQueue } from "../events.js";
+import { wakeupQueue } from "../events.js";
 import { classifyTask, selectModelForClassification } from "../model-router.js";
 import type { ToolCall } from "../parallel-executor.js";
 import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
@@ -199,7 +199,7 @@ export async function runAgentLoop(
 					continue;
 				}
 
-				const injectedMessages = injectionQueue.consumeAll();
+				const injectedMessages = ctx.injectionQueue.consumeAll();
 				for (const msg of injectedMessages) {
 					ctx.messages.push({
 						role: "user",

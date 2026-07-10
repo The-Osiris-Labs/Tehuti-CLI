@@ -14,6 +14,7 @@ import {
 	compressContext,
 	estimateTokens as tiktokenEstimateTokens,
 } from "./context-compressor.js";
+import { InjectionQueue } from "./events.js";
 import { getSystemPromptMemory } from "./memory/graph.js";
 import { initMemory } from "./memory/index.js";
 import { getPersonalityPromptBlock } from "./memory/personality.js";
@@ -209,6 +210,7 @@ export interface AgentContext {
 	personalityBlockPromise?: Promise<string>;
 	readFilesThisSession: Set<string>;
 	isSleeping?: boolean;
+	injectionQueue: InjectionQueue;
 	/** Live model context length resolved from provider API (overrides config fallback) */
 	modelContextLength?: number;
 	metadata: {
@@ -265,6 +267,7 @@ export async function createAgentContext(
 		diffPreview,
 		companionMode,
 		readFilesThisSession: new Set(),
+		injectionQueue: new InjectionQueue(),
 		metadata: {
 			startTime: new Date(),
 			sessionCost: 0,

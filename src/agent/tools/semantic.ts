@@ -149,7 +149,7 @@ export const semanticSearchTool = createTool({
 		// Path traversal checks for query path prefix
 		if (searchPath) {
 			const resolvedSearchPath = resolvePath(searchPath, ctx.cwd);
-			const security = validatePathSecurity(resolvedSearchPath, ctx.cwd);
+			const security = validatePathSecurity(resolvedSearchPath);
 			if (!security.safe) {
 				return {
 					success: false,
@@ -238,7 +238,7 @@ export const semanticSearchTool = createTool({
 						? results.filter((item: any) => {
 								if (!item.path) return true;
 								const resolvedItemPath = resolvePath(item.path, ctx.cwd);
-								const sec = validatePathSecurity(resolvedItemPath, ctx.cwd);
+								const sec = validatePathSecurity(resolvedItemPath);
 								return sec.safe;
 							})
 						: results;

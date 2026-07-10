@@ -4,6 +4,7 @@ import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import React from "react";
 import stringWidth from "string-width";
+import { renderToken as renderAnsiToken } from "../../terminal/markdown.js";
 import { BRANDING } from "../../branding/index.js";
 
 /**
@@ -128,12 +129,24 @@ export function renderToken(
 			// Render code with line numbers for consistency
 			const lines = highlighted.split("\n");
 			const lineNumWidth = Math.max(2, String(lines.length).length);
-			const formattedCode = lines
-				.map((line, i) => {
-					const lineNum = String(i + 1).padStart(lineNumWidth);
-					return `${lineNum} │ ${line}`;
-				})
-				.join("\n");
+
+			const codeRows = lines.map((line, i) => {
+				const lineNum = String(i + 1).padStart(lineNumWidth);
+				return React.createElement(
+					Box,
+					{ key: `line-${i}`, flexDirection: "row" },
+					React.createElement(
+						Box,
+						{ width: lineNumWidth + 3, flexShrink: 0 },
+						React.createElement(Text, { dimColor: true }, `${lineNum} │ `)
+					),
+					React.createElement(
+						Box,
+						{ flexDirection: "column", flexGrow: 1, flexBasis: 0 },
+						React.createElement(Text, { wrap: "wrap" }, line)
+					)
+				);
+			});
 
 			return React.createElement(
 				Box,
@@ -149,7 +162,7 @@ export function renderToken(
 					width: codeWidth,
 				},
 				React.createElement(Text, { color: CORAL, bold: true }, `◆ ${lang}`),
-				React.createElement(Text, { wrap: "wrap" }, formattedCode),
+				...codeRows,
 			);
 		}
 
@@ -272,15 +285,12 @@ export function renderToken(
 		}
 
 		case "table": {
-			if (token.raw) {
-				const ansiText = renderMarkdownToAnsi(token.raw);
-				return React.createElement(
-					Box,
-					{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
-					React.createElement(Text, { wrap: "truncate-end" }, ansiText)
-				);
-			}
-			return null;
+			const ansiText = renderAnsiToken(token);
+			return React.createElement(
+				Box,
+				{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
+				React.createElement(Text, {}, ansiText)
+			);
 		}
 
 		case "space": {
@@ -303,7 +313,57 @@ export function renderToken(
 			);
 		}
 
+		case "blockKatex": {
+			return React.createElement(
+				Box,
+				{
+					key: getKey(),
+					flexDirection: "column",
+					marginTop: 0.5,
+					marginBottom: 0.5,
+					paddingLeft: 0,
+					paddingRight: 0,
+				},
+				React.createElement(
+					Text,
+					{ color: CYAN, italic: true },
+					token.text || "",
+				),
+			);
+		}
+
+		case "html":
+		case "escape": {
+			return React.createElement(
+				Text,
+				{ key: getKey(), wrap: "wrap" },
+				token.text || "",
+			);
+		}
+
 		default:
+			if ("tokens" in token && Array.isArray(token.tokens)) {
+				const inlineElements = renderInlineTokens(token.tokens, getKey);
+				return React.createElement(
+					Text,
+					{ key: getKey(), wrap: "wrap" },
+					...inlineElements,
+				);
+			}
+			if ("text" in token && typeof token.text === "string") {
+				return React.createElement(
+					Text,
+					{ key: getKey(), wrap: "wrap" },
+					token.text,
+				);
+			}
+			if ("raw" in token && typeof token.raw === "string") {
+				return React.createElement(
+					Text,
+					{ key: getKey(), wrap: "wrap" },
+					token.raw,
+				);
+			}
 			return null;
 	}
 }
@@ -404,25 +464,6 @@ export function renderInlineToken(
 			);
 		}
 
-		case "blockKatex": {
-			return React.createElement(
-				Box,
-				{
-					key: getKey(),
-					flexDirection: "column",
-					marginTop: 0.5,
-					marginBottom: 0.5,
-					paddingLeft: 0,
-					paddingRight: 0,
-				},
-				React.createElement(
-					Text,
-					{ color: CYAN, italic: true },
-					token.text || "",
-				),
-			);
-		}
-
 		case "html": {
 			return React.createElement(
 				Text,
@@ -432,11 +473,11 @@ export function renderInlineToken(
 		}
 
 		default:
-			if ("text" in token && typeof token.text === "string") {
-				return token.text;
-			}
 			if ("tokens" in token && Array.isArray(token.tokens)) {
 				return renderInlineTokens(token.tokens, getKey);
+			}
+			if ("text" in token && typeof token.text === "string") {
+				return token.text;
 			}
 			return null;
 	}

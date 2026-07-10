@@ -671,6 +671,10 @@ export abstract class BaseAPIClient {
 					buffer += decoder.decode(new Uint8Array(), { stream: false });
 				}
 
+				if (buffer.length > 10 * 1024 * 1024) {
+					throw new Error("SSE stream buffer exceeded 10MB limit. API might be sending malformed data without newlines.");
+				}
+
 				if (done && buffer.trim() && !buffer.endsWith("\n")) {
 					buffer += "\n";
 				}

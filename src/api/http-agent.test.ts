@@ -7,12 +7,12 @@ import {
 } from "./http-agent.js";
 
 describe("http-agent", () => {
-	beforeEach(() => {
-		resetAgent();
+	beforeEach(async () => {
+		await resetAgent();
 	});
 
-	afterEach(() => {
-		resetAgent();
+	afterEach(async () => {
+		await resetAgent();
 	});
 
 	it("should initialize the agent", () => {
@@ -28,11 +28,11 @@ describe("http-agent", () => {
 		expect(stats.pools).toBe(0);
 	});
 
-	it("should reset correctly", () => {
+	it("should reset correctly", async () => {
 		initializeHttpAgent();
 		expect(getAgent()).not.toBeNull();
 
-		resetAgent();
+		await resetAgent();
 		expect(getAgent()).toBeNull();
 		expect(getAgentStats().pools).toBe(0);
 	});

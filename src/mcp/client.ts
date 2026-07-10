@@ -71,6 +71,9 @@ export interface MCPServerInfo {
 	prompts: MCPPrompt[];
 	capabilities: ServerCapabilities;
 	stderrBuffer?: string[];
+	samplingDepth: number;
+	samplingRequests: number;
+	samplingResetTime: number;
 }
 
 export interface ServerCapabilities {
@@ -136,7 +139,7 @@ type ConnectionStatusCallback = (
 
 export class MCPClientManager {
 	private servers: Map<string, MCPServerInfo> = new Map();
-	private healthCheckIntervals: Map<string, ReturnType<typeof setInterval>> =
+	private healthCheckIntervals: Map<string, ReturnType<typeof setTimeout>> =
 		new Map();
 	private reconnectTimeouts: Map<string, ReturnType<typeof setTimeout>> =
 		new Map();
@@ -148,9 +151,6 @@ export class MCPClientManager {
 	private intentionalDisconnects: Set<string> = new Set();
 
 	// Infinite loop protection for sampling
-	private samplingDepth = 0;
-	private samplingRequests = 0;
-	private samplingResetTime = Date.now();
 	private readonly MAX_SAMPLING_DEPTH = 3;
 	private readonly MAX_SAMPLING_PER_MINUTE = 15;
 
@@ -158,14 +158,28 @@ export class MCPClientManager {
 		// Register a global exit handler to send SIGTERM to child processes synchronously when process exits
 		process.on("exit", () => {
 			for (const server of this.servers.values()) {
-				if (server.transport && "pid" in server.transport) {
-					const pid = (server.transport as any).pid;
-					if (pid && typeof pid === "number") {
-						try {
-							process.kill(pid, "SIGTERM");
-						} catch {
-							// Process might already be dead
+				let pid: number | undefined;
+				
+				if (server.transport) {
+					// @modelcontextprotocol/sdk StdioClientTransport exposes the child process as _process
+					if ("_process" in server.transport) {
+						const proc = (server.transport as any)._process;
+						if (proc && typeof proc.pid === "number") {
+							pid = proc.pid;
 						}
+					} else if ("pid" in server.transport) {
+						const p = (server.transport as any).pid;
+						if (p && typeof p === "number") {
+							pid = p;
+						}
+					}
+				}
+
+				if (pid !== undefined) {
+					try {
+						process.kill(pid, "SIGTERM");
+					} catch {
+						// Process might already be dead
 					}
 				}
 			}
@@ -389,29 +403,29 @@ export class MCPClientManager {
 
 				// Protect against infinite sampling loops
 				const now = Date.now();
-				if (now - this.samplingResetTime > 60000) {
-					this.samplingResetTime = now;
-					this.samplingRequests = 0;
+				if (now - info.samplingResetTime > 60000) {
+					info.samplingResetTime = now;
+					info.samplingRequests = 0;
 				}
 
-				if (this.samplingRequests >= this.MAX_SAMPLING_PER_MINUTE) {
+				if (info.samplingRequests >= this.MAX_SAMPLING_PER_MINUTE) {
 					throw new Error(
 						`Sampling rate limit exceeded: max ${this.MAX_SAMPLING_PER_MINUTE} requests per minute`,
 					);
 				}
 
-				if (this.samplingDepth >= this.MAX_SAMPLING_DEPTH) {
+				if (info.samplingDepth >= this.MAX_SAMPLING_DEPTH) {
 					throw new Error(
 						`Sampling depth limit exceeded: max ${this.MAX_SAMPLING_DEPTH} concurrent/nested requests`,
 					);
 				}
 
-				this.samplingRequests++;
-				this.samplingDepth++;
+				info.samplingRequests++;
+				info.samplingDepth++;
 				try {
 					return await this.samplingHandler(request.params, info.name);
 				} finally {
-					this.samplingDepth--;
+					info.samplingDepth--;
 				}
 			},
 		);
@@ -559,7 +573,27 @@ export class MCPClientManager {
 		}
 	}
 
+	private connectionPromises = new Map<string, Promise<MCPServerInfo>>();
+
 	async connectServer(
+		name: string,
+		config: MCPServerConfig,
+	): Promise<MCPServerInfo> {
+		if (this.connectionPromises.has(name)) {
+			return this.connectionPromises.get(name)!;
+		}
+		
+		const promise = this._connectServer(name, config);
+		this.connectionPromises.set(name, promise);
+		
+		try {
+			return await promise;
+		} finally {
+			this.connectionPromises.delete(name);
+		}
+	}
+
+	private async _connectServer(
 		name: string,
 		config: MCPServerConfig,
 	): Promise<MCPServerInfo> {
@@ -593,6 +627,9 @@ export class MCPClientManager {
 				prompts: false,
 				logging: false,
 			},
+			samplingDepth: 0,
+			samplingRequests: 0,
+			samplingResetTime: Date.now(),
 		};
 
 		this.servers.set(name, info);
@@ -734,7 +771,7 @@ export class MCPClientManager {
 		const { intervalMs = 30000, timeoutMs = 5000 } =
 			info.config.healthCheck ?? {};
 
-		const interval = setInterval(async () => {
+		const runCheck = async () => {
 			const server = this.servers.get(serverName);
 			if (!server) {
 				this.stopHealthCheck(serverName);
@@ -743,32 +780,34 @@ export class MCPClientManager {
 
 			if (!server.connected || !server.client) {
 				this.updateStatus(server, "disconnected");
-				return;
+			} else {
+				try {
+					await withTimeout(
+						server.client.ping(),
+						timeoutMs,
+						`Health check ${serverName}`,
+					);
+					server.lastHealthCheck = new Date();
+					this.updateStatus(server, "connected");
+					this.healthCheckCallback?.(serverName, true);
+				} catch (error) {
+					debug.log("mcp", `[${serverName}] Health check failed:`, error);
+					this.updateStatus(server, "unhealthy");
+					this.healthCheckCallback?.(serverName, false);
+				}
 			}
+			const timeout = setTimeout(runCheck, intervalMs);
+			this.healthCheckIntervals.set(serverName, timeout);
+		};
 
-			try {
-				await withTimeout(
-					server.client.ping(),
-					timeoutMs,
-					`Health check ${serverName}`,
-				);
-				server.lastHealthCheck = new Date();
-				this.updateStatus(server, "connected");
-				this.healthCheckCallback?.(serverName, true);
-			} catch (error) {
-				debug.log("mcp", `[${serverName}] Health check failed:`, error);
-				this.updateStatus(server, "unhealthy");
-				this.healthCheckCallback?.(serverName, false);
-			}
-		}, intervalMs);
-
-		this.healthCheckIntervals.set(serverName, interval);
+		const initialTimeout = setTimeout(runCheck, intervalMs);
+		this.healthCheckIntervals.set(serverName, initialTimeout);
 	}
 
 	private stopHealthCheck(serverName: string): void {
 		const interval = this.healthCheckIntervals.get(serverName);
 		if (interval) {
-			clearInterval(interval);
+			clearTimeout(interval);
 			this.healthCheckIntervals.delete(serverName);
 		}
 	}
@@ -861,15 +900,31 @@ export class MCPClientManager {
 	async unsubscribeFromResource(
 		serverName: string,
 		uri: string,
+		callback?: (content: unknown) => void,
 	): Promise<void> {
-		const info = this.servers.get(serverName);
-		if (!info?.client) {
-			this.subscriptions.delete(`${serverName}:${uri}`);
-			return;
+		const key = `${serverName}:${uri}`;
+		const subscriptions = this.subscriptions.get(key) ?? [];
+		
+		let updatedSubscriptions = subscriptions;
+		if (callback) {
+			updatedSubscriptions = subscriptions.filter(s => s.callback !== callback);
+		} else {
+			updatedSubscriptions = [];
 		}
 
-		await info.client.unsubscribeResource({ uri });
-		this.subscriptions.delete(`${serverName}:${uri}`);
+		if (updatedSubscriptions.length === 0) {
+			this.subscriptions.delete(key);
+			const info = this.servers.get(serverName);
+			if (info?.client && info.connected) {
+				try {
+					await info.client.unsubscribeResource({ uri });
+				} catch {
+					// Ignore unsubscribe errors on client side
+				}
+			}
+		} else {
+			this.subscriptions.set(key, updatedSubscriptions);
+		}
 	}
 
 	async disconnectServer(name: string): Promise<void> {
@@ -909,7 +964,13 @@ export class MCPClientManager {
 			}
 		}
 
+		if (info.transport) {
+			info.transport.onclose = undefined;
+			info.transport.onerror = undefined;
+		}
 		if (info.client) {
+			info.client.onclose = undefined;
+			info.client.onerror = undefined;
 			try {
 				await info.client.close();
 			} catch (error) {
@@ -1058,7 +1119,7 @@ export class MCPClientManager {
 				`Tool ${toolName} on ${serverName}`,
 			);
 
-			return result.content;
+			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			info.lastError = message;

@@ -102,7 +102,7 @@ async function runGit(
 		const timeoutId = setTimeout(() => {
 			if (!resolved) {
 				resolved = true;
-				proc.kill("SIGKILL");
+				proc.kill("SIGTERM");
 				resolve({ stdout: "", stderr: "Git command timed out", code: 124 });
 			}
 		}, timeout);
@@ -167,10 +167,15 @@ async function gitStatus(
 		};
 	}
 
+	const truncated = result.stdout.length > 50000;
+	const output = truncated
+		? `${result.stdout.slice(0, 50000)}\n... (truncated)`
+		: result.stdout;
+
 	return {
 		success: true,
-		output: result.stdout || "Working tree clean",
-		metadata: { repoPath },
+		output: output || "Working tree clean",
+		metadata: { repoPath, truncated },
 	};
 }
 
@@ -243,10 +248,15 @@ async function gitLog(
 		};
 	}
 
+	const truncated = result.stdout.length > 50000;
+	const output = truncated
+		? `${result.stdout.slice(0, 50000)}\n... (truncated)`
+		: result.stdout;
+
 	return {
 		success: true,
-		output: result.stdout || "No commits",
-		metadata: { repoPath },
+		output: output || "No commits",
+		metadata: { repoPath, truncated },
 	};
 }
 
@@ -300,7 +310,7 @@ async function gitCommit(
 	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
-		if (result.stderr.includes("nothing to commit")) {
+		if (result.stderr.includes("nothing to commit") || result.stdout.includes("nothing to commit")) {
 			return {
 				success: true,
 				output: "Nothing to commit",

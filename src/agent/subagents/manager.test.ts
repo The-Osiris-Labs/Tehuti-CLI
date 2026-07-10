@@ -18,11 +18,6 @@ vi.mock("../events.js", () => ({
 		once: () => {},
 		off: () => {},
 	},
-	injectionQueue: {
-		push: (...args: unknown[]) => injectionQueuePushMock(...args),
-		consumeAll: () => [],
-		clear: () => {},
-	},
 	wakeupQueue: { consume: async () => "" },
 }));
 
@@ -69,6 +64,11 @@ describe("subagent manager", () => {
 				metadata: {},
 				isSleeping: false,
 				modelContextLength: 0,
+				injectionQueue: {
+					push: (...args: unknown[]) => injectionQueuePushMock(...args),
+					consumeAll: () => [],
+					clear: () => {},
+				},
 			}),
 		);
 	});
@@ -270,6 +270,11 @@ describe("subagent manager", () => {
 				metadata: {},
 				isSleeping: true,
 				modelContextLength: 0,
+				injectionQueue: {
+					push: (...args: unknown[]) => injectionQueuePushMock(...args),
+					consumeAll: () => [],
+					clear: () => {},
+				},
 			}));
 
 			const p = spawnSubagent({

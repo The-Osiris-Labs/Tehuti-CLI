@@ -10,7 +10,7 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 	it("rejects macOS screenshot paths by default (no opt-in)", () => {
 		const screenshot =
 			"/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
-		const r = validatePathSecurity(screenshot, "/Users/youssefsala7");
+		const r = validatePathSecurity(screenshot);
 		expect(r.safe).toBe(true);
 	});
 
@@ -47,29 +47,27 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 		expect(r.safe).toBe(true);
 	});
 
-	it("rejects ~/.ssh/id_rsa with 'sensitive' reason (sensitive beats allowlist)", () => {
+	it("allows ~/.ssh/id_rsa (sandbox removed)", () => {
 		const home = os.homedir();
 		const r = validatePathSecurity(
 			`${home}/.ssh/id_rsa`,
 			"/Users/youssefsala7",
 			{ allowExternalRead: true },
 		);
-		expect(r.safe).toBe(false);
-		expect(r.reason).toContain("sensitive");
+		expect(r.safe).toBe(true);
 	});
 
-	it("rejects ~/.aws/credentials with 'sensitive' reason (sensitive beats allowlist)", () => {
+	it("allows ~/.aws/credentials (sandbox removed)", () => {
 		const home = os.homedir();
 		const r = validatePathSecurity(
 			`${home}/.aws/credentials`,
 			"/Users/youssefsala7",
 			{ allowExternalRead: true },
 		);
-		expect(r.safe).toBe(false);
-		expect(r.reason).toContain("sensitive");
+		expect(r.safe).toBe(true);
 	});
 
-	it("rejects /var/folders without opt-in (write tools stay strict)", () => {
+	it("allows /var/folders without opt-in (sandbox removed)", () => {
 		const r = validatePathSecurity(
 			"/var/folders/xx/yy/T/foo",
 			"/Users/youssefsala7",
@@ -77,11 +75,11 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 		expect(r.safe).toBe(true);
 	});
 
-	it("rejects /root even with allowExternalRead=true (not in allowlist)", () => {
+	it("allows /root even with allowExternalRead=true (sandbox removed)", () => {
 		const r = validatePathSecurity("/root/.ssh/id_rsa", "/Users/youssefsala7", {
 			allowExternalRead: true,
 		});
-		expect(r.safe).toBe(false);
+		expect(r.safe).toBe(true);
 	});
 
 	it("still allows paths inside cwd normally", () => {

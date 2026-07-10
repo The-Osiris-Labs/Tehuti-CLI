@@ -156,14 +156,17 @@ export class StandardAPIClient extends BaseAPIClient {
 		return thinkingModels.some((m) => model.includes(m));
 	}
 
-	private getFallbackClient(): StandardAPIClient {
+	private getFallbackClient(): StandardAPIClient | null {
 		if (!this.fallbackClient) {
-			const fallbackConfig = { ...this.originalConfig };
-			fallbackConfig.provider = "opencode";
-			// Clear custom URLs and keys to let the default opencode config take over
-			fallbackConfig.baseUrl = undefined;
-			fallbackConfig.apiKey = undefined;
-			this.fallbackClient = new StandardAPIClient(fallbackConfig);
+			try {
+				const fallbackConfig = { ...this.originalConfig };
+				fallbackConfig.provider = "opencode";
+				fallbackConfig.baseUrl = undefined;
+				fallbackConfig.apiKey = undefined;
+				this.fallbackClient = new StandardAPIClient(fallbackConfig);
+			} catch (e) {
+				return null;
+			}
 		}
 		return this.fallbackClient;
 	}
@@ -190,13 +193,20 @@ export class StandardAPIClient extends BaseAPIClient {
 						"api",
 						`Fallback triggered! Routing request to opencode due to ${error.status} error.`,
 					);
-					yield* this.getFallbackClient().streamChat(
-						messages,
-						tools,
-						modelOverride,
-						signal,
-					);
-					return;
+					const fallback = this.getFallbackClient();
+					if (fallback) {
+						try {
+							yield* fallback.streamChat(
+								messages,
+								tools,
+								modelOverride,
+								signal,
+							);
+							return;
+						} catch (fallbackError) {
+							debug.log("api", `Fallback streamChat failed: ${fallbackError}`);
+						}
+					}
 				}
 			}
 			throw error;
@@ -221,12 +231,19 @@ export class StandardAPIClient extends BaseAPIClient {
 						"api",
 						`Fallback triggered! Routing request to opencode due to ${error.status} error.`,
 					);
-					return await this.getFallbackClient().completeChat(
-						messages,
-						tools,
-						modelOverride,
-						signal,
-					);
+					const fallback = this.getFallbackClient();
+					if (fallback) {
+						try {
+							return await fallback.completeChat(
+								messages,
+								tools,
+								modelOverride,
+								signal,
+							);
+						} catch (fallbackError) {
+							debug.log("api", `Fallback completeChat failed: ${fallbackError}`);
+						}
+					}
 				}
 			}
 			throw error;
