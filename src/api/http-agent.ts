@@ -1,7 +1,6 @@
-import { Agent, Pool, setGlobalDispatcher } from "undici";
+import { Agent, setGlobalDispatcher } from "undici";
 
 let globalAgent: Agent | null = null;
-const connectionPool: Map<string, Pool> = new Map();
 
 export interface HttpAgentConfig {
 	keepAliveTimeout?: number;
@@ -54,42 +53,6 @@ export function getAgent(): Agent | null {
 	return globalAgent;
 }
 
-const MAX_POOL_SIZE = 100;
-
-export function getPool(origin: string): Pool {
-	if (connectionPool.has(origin)) {
-		const pool = connectionPool.get(origin)!;
-		connectionPool.delete(origin);
-		connectionPool.set(origin, pool);
-		return pool;
-	}
-
-	const pool = new Pool(origin, {
-		connections: activeConfig.connections,
-		pipelining: activeConfig.pipelining,
-		keepAliveTimeout: activeConfig.keepAliveTimeout,
-		keepAliveMaxTimeout: activeConfig.keepAliveMaxTimeout,
-		keepAliveTimeoutThreshold: activeConfig.keepAliveTimeoutThreshold,
-		connect: {
-			timeout: activeConfig.connectTimeout,
-			keepAlive: activeConfig.tcpKeepAlive,
-			keepAliveInitialDelay: activeConfig.tcpKeepAliveInitialDelay,
-		},
-	});
-
-	if (connectionPool.size >= MAX_POOL_SIZE) {
-		const oldestKey = connectionPool.keys().next().value;
-		if (oldestKey) {
-			const oldestPool = connectionPool.get(oldestKey);
-			oldestPool?.close();
-			connectionPool.delete(oldestKey);
-		}
-	}
-
-	connectionPool.set(origin, pool);
-	return pool;
-}
-
 export function updateHttpAgentConfig(config: HttpAgentConfig): void {
 	resetAgent();
 	initializeHttpAgent(config);
@@ -101,10 +64,6 @@ export function resetAgent(): void {
 		globalAgent = null;
 	}
 
-	for (const pool of connectionPool.values()) {
-		pool.close();
-	}
-	connectionPool.clear();
 	activeConfig = { ...DEFAULT_CONFIG };
 }
 
@@ -125,20 +84,10 @@ export function getAgentStats(): {
 	>;
 } {
 	const poolStats: Record<string, any> = {};
-	for (const [origin, pool] of connectionPool.entries()) {
-		poolStats[origin] = {
-			connected: pool.stats?.connected ?? 0,
-			free: pool.stats?.free ?? 0,
-			pending: pool.stats?.pending ?? 0,
-			queued: pool.stats?.queued ?? 0,
-			running: pool.stats?.running ?? 0,
-			size: pool.stats?.size ?? 0,
-		};
-	}
 	return {
 		initialized: globalAgent !== null,
-		pools: connectionPool.size,
-		poolsCount: connectionPool.size,
+		pools: 0,
+		poolsCount: 0,
 		poolsDetails: poolStats,
 	};
 }

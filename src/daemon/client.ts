@@ -54,8 +54,11 @@ export class TehutiDaemonClient {
 
 				let newlineIndex: number;
 				while ((newlineIndex = this.buffer.indexOf("\n")) !== -1) {
-					const line = this.buffer.slice(0, newlineIndex);
+					let line = this.buffer.slice(0, newlineIndex);
 					this.buffer = this.buffer.slice(newlineIndex + 1);
+					if (line.endsWith("\r")) {
+						line = line.slice(0, -1);
+					}
 					if (line) {
 						let parsed: any;
 						try {

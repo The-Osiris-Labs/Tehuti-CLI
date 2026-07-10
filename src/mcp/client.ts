@@ -155,14 +155,14 @@ export class MCPClientManager {
 	private readonly MAX_SAMPLING_PER_MINUTE = 15;
 
 	constructor() {
-		// Register a global exit handler to kill child processes synchronously when process exits
+		// Register a global exit handler to send SIGTERM to child processes synchronously when process exits
 		process.on("exit", () => {
 			for (const server of this.servers.values()) {
 				if (server.transport && "pid" in server.transport) {
 					const pid = (server.transport as any).pid;
 					if (pid && typeof pid === "number") {
 						try {
-							process.kill(pid, "SIGKILL");
+							process.kill(pid, "SIGTERM");
 						} catch {
 							// Process might already be dead
 						}

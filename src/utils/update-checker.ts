@@ -69,6 +69,40 @@ function getLatestNpmVersion(): string | null {
 	}
 }
 
+export function isGitRepo(): boolean {
+	try {
+		execSync("git rev-parse --is-inside-work-tree", {
+			stdio: "ignore",
+			cwd: join(import.meta.dirname ?? ".", ".."),
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export async function applyUpdate(): Promise<string> {
+	const cwd = join(import.meta.dirname ?? ".", "..");
+	if (isGitRepo()) {
+		try {
+			execSync("git pull origin main && npm install && npm run build", {
+				stdio: "pipe",
+				cwd,
+			});
+			return "Successfully updated from GitHub repository. Please restart Tehuti.";
+		} catch (err: any) {
+			return `Failed to update repository: ${err.message}`;
+		}
+	} else {
+		try {
+			execSync("npm update -g tehuti-cli", { stdio: "pipe" });
+			return "Successfully updated via npm. Please restart Tehuti.";
+		} catch (err: any) {
+			return `Failed to update npm package: ${err.message}`;
+		}
+	}
+}
+
 function compareVersions(a: string, b: string): number {
 	const partsA = a.split(".").map(Number);
 	const partsB = b.split(".").map(Number);
@@ -113,9 +147,12 @@ export function checkForUpdates(
 }
 
 export function formatUpdateMessage(result: UpdateCheckResult): string {
+	const action = isGitRepo()
+		? "git pull origin main && npm run build"
+		: "npm update -g tehuti-cli";
 	return `
 ${chalk.yellow("Update available!")} ${chalk.dim(result.currentVersion)} → ${chalk.green(result.latestVersion)}
-${chalk.dim("Run:")} ${chalk.cyan("npm update -g tehuti-cli")}
+${chalk.dim("Run:")} ${chalk.cyan(action)} ${chalk.dim("or type /update in chat")}
 `;
 }
 
@@ -130,4 +167,6 @@ export default {
 	checkForUpdates,
 	formatUpdateMessage,
 	showUpdateNotification,
+	isGitRepo,
+	applyUpdate,
 };

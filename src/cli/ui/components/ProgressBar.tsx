@@ -77,21 +77,25 @@ export const ProgressBar = ({
 					? COLORS.primary
 					: COLORS.primary;
 
-	// Indeterminate animation
+	// Indeterminate animation (smooth ping-pong oscillation)
+	const segWidth = Math.max(3, Math.round(safeWidth * 0.25));
+	const maxStep = Math.max(1, safeWidth - segWidth);
+	const totalCycle = maxStep * 2;
 	const [frame, setFrame] = useState(0);
+
 	useEffect(() => {
 		if (!indeterminate) return;
-		const id = setInterval(() => setFrame((f) => (f + 1) % 8), 120);
+		const id = setInterval(() => setFrame((f) => (f + 1) % totalCycle), 60);
 		return () => clearInterval(id);
-	}, [indeterminate]);
+	}, [indeterminate, totalCycle]);
 
 	function renderIndeterminate(): React.ReactNode {
-		const segWidth = Math.max(3, Math.round(safeWidth * 0.25));
-		const start = Math.floor((frame / 8) * safeWidth);
+		const pos = frame % totalCycle;
+		const start = pos <= maxStep ? pos : totalCycle - pos;
 		const end = Math.min(safeWidth, start + segWidth);
 		const head = emptyChar.repeat(start);
 		const body = filledChar.repeat(end - start);
-		const tail = emptyChar.repeat(safeWidth - end);
+		const tail = emptyChar.repeat(Math.max(0, safeWidth - end));
 		return React.createElement(
 			Box,
 			{ flexDirection: "row" },

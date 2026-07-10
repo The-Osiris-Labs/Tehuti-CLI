@@ -90,7 +90,14 @@ const WAIT_FOR_EVENT_SCHEMA = z.object({
 });
 
 function getBacklogPath(): string {
-	return path.join(os.homedir(), ".config", "tehuti", "backlog.json");
+	const safePath = process.cwd().replace(/[^a-zA-Z0-9]/g, "_");
+	return path.join(
+		os.homedir(),
+		".config",
+		"tehuti",
+		"backlogs",
+		`${safePath}.json`,
+	);
 }
 
 function loadTodos(): z.infer<typeof TODO_WRITE_SCHEMA>["todos"] {
@@ -98,7 +105,27 @@ function loadTodos(): z.infer<typeof TODO_WRITE_SCHEMA>["todos"] {
 		const filePath = getBacklogPath();
 		if (fs.existsSync(filePath)) {
 			const data = fs.readFileSync(filePath, "utf-8");
-			return JSON.parse(data);
+			const rawTodos = JSON.parse(data) as z.infer<
+				typeof TODO_WRITE_SCHEMA
+			>["todos"];
+
+			// Garbage collect completed/cancelled tasks older than 24 hours on load
+			const ONE_DAY = 24 * 60 * 60 * 1000;
+			const now = Date.now();
+			const activeTodos = rawTodos.filter((t) => {
+				if (t.status === "completed" || t.status === "cancelled") {
+					if (!t.updatedAt) return false;
+					const age = now - new Date(t.updatedAt).getTime();
+					return age < ONE_DAY;
+				}
+				return true;
+			});
+
+			// If we dropped any, we should resave
+			if (activeTodos.length !== rawTodos.length) {
+				setTimeout(() => saveTodos(activeTodos), 0);
+			}
+			return activeTodos;
 		}
 	} catch (error) {
 		// Ignore errors

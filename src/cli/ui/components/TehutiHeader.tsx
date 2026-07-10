@@ -13,6 +13,10 @@ export interface TehutiHeaderProps {
 	compact?: boolean;
 	model?: string;
 	provider?: string;
+	daemonStatus?: "connected" | "disconnected" | "none";
+	companionMode?: boolean;
+	isStreaming?: boolean;
+	sessionName?: string;
 	onModelClick?: () => void;
 	onConfigClick?: () => void;
 	onCommandClick?: (cmd: string) => void;
@@ -50,11 +54,34 @@ export function TehutiHeader({
 	compact = false,
 	model,
 	provider,
+	daemonStatus = "none",
+	companionMode = false,
+	isStreaming = false,
+	sessionName,
 	onModelClick,
 	onConfigClick,
 	onCommandClick,
 }: TehutiHeaderProps) {
-	const { secondary: GOLD, sand: SAND, coral: CORAL } = BRANDING.colors;
+	const {
+		secondary: GOLD,
+		sand: SAND,
+		coral: CORAL,
+		green: GREEN,
+	} = BRANDING.colors;
+
+	const statusLabel = isStreaming
+		? "𓆗 Thinking..."
+		: companionMode
+			? "𓅞 Companion"
+			: daemonStatus === "connected"
+				? "𓋹 Daemon Connected"
+				: "𓁹 Idle";
+
+	const statusColor = isStreaming
+		? GOLD
+		: companionMode || daemonStatus === "connected"
+			? GREEN
+			: CORAL;
 
 	if (compact) {
 		return (
@@ -68,10 +95,6 @@ export function TehutiHeader({
 			>
 				<Text color={GOLD} bold>
 					𓆣 TEHUTI{" "}
-				</Text>
-				<Text color={SAND} dimColor>
-					{" "}
-					│{" "}
 				</Text>
 				<ClickableBadge
 					label={`Model: ${model || "Unknown"}`}
@@ -93,7 +116,18 @@ export function TehutiHeader({
 					{" "}
 					│{" "}
 				</Text>
-				<Text color={CORAL}>𓁹 Write • Edit</Text>
+				<Text color={statusColor} bold>
+					{statusLabel}
+				</Text>
+				{sessionName && (
+					<>
+						<Text color={SAND} dimColor>
+							{" "}
+							│{" "}
+						</Text>
+						<Text color={SAND}>𓏛 {sessionName}</Text>
+					</>
+				)}
 			</Box>
 		);
 	}
@@ -138,7 +172,13 @@ export function TehutiHeader({
 					/>
 				</Box>
 
-				<Box marginTop={1}>
+				<Box marginTop={1} flexDirection="row" gap={2}>
+					<Text color={statusColor} bold>
+						{statusLabel}
+					</Text>
+					<Text color={SAND} dimColor>
+						•
+					</Text>
 					<Text color={CORAL} bold>
 						𓁹 Write • Edit • Transform
 					</Text>

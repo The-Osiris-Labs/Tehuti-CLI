@@ -13,31 +13,56 @@ export class SessionResolver {
 	private reverseCache = new Map<string, string>();
 	private readonly CACHE_MAX_SIZE = 1000;
 
-	private updateCache(platformSenderId: string, tehutiSessionId: string) {
-		// Update primary cache
-		if (this.sessionCache.has(platformSenderId)) {
-			this.sessionCache.delete(platformSenderId);
-		} else if (this.sessionCache.size >= this.CACHE_MAX_SIZE) {
-			const firstKey = this.sessionCache.keys().next().value;
-			if (firstKey !== undefined) {
-				const oldVal = this.sessionCache.get(firstKey);
-				this.sessionCache.delete(firstKey);
-				if (oldVal) this.reverseCache.delete(oldVal);
+	private evictOldestFromSessionCache(): void {
+		const firstKey = this.sessionCache.keys().next().value;
+		if (firstKey !== undefined) {
+			const oldVal = this.sessionCache.get(firstKey);
+			this.sessionCache.delete(firstKey);
+			if (oldVal !== undefined) {
+				this.reverseCache.delete(oldVal);
 			}
 		}
-		this.sessionCache.set(platformSenderId, tehutiSessionId);
+	}
 
-		// Update reverse cache
-		if (this.reverseCache.has(tehutiSessionId)) {
-			this.reverseCache.delete(tehutiSessionId);
-		} else if (this.reverseCache.size >= this.CACHE_MAX_SIZE) {
-			const firstKey = this.reverseCache.keys().next().value;
-			if (firstKey !== undefined) {
-				const oldVal = this.reverseCache.get(firstKey);
-				this.reverseCache.delete(firstKey);
-				if (oldVal) this.sessionCache.delete(oldVal);
+	private evictOldestFromReverseCache(): void {
+		const firstKey = this.reverseCache.keys().next().value;
+		if (firstKey !== undefined) {
+			const oldVal = this.reverseCache.get(firstKey);
+			this.reverseCache.delete(firstKey);
+			if (oldVal !== undefined) {
+				this.sessionCache.delete(oldVal);
 			}
 		}
+	}
+
+	private updateCache(platformSenderId: string, tehutiSessionId: string) {
+		// Clean up any existing mapping for platformSenderId
+		if (this.sessionCache.has(platformSenderId)) {
+			const oldTehutiId = this.sessionCache.get(platformSenderId);
+			this.sessionCache.delete(platformSenderId);
+			if (oldTehutiId !== undefined && oldTehutiId !== tehutiSessionId) {
+				this.reverseCache.delete(oldTehutiId);
+			}
+		}
+
+		// Clean up any existing mapping for tehutiSessionId
+		if (this.reverseCache.has(tehutiSessionId)) {
+			const oldSenderId = this.reverseCache.get(tehutiSessionId);
+			this.reverseCache.delete(tehutiSessionId);
+			if (oldSenderId !== undefined && oldSenderId !== platformSenderId) {
+				this.sessionCache.delete(oldSenderId);
+			}
+		}
+
+		// Synchronized LRU eviction hooks
+		while (this.sessionCache.size >= this.CACHE_MAX_SIZE) {
+			this.evictOldestFromSessionCache();
+		}
+		while (this.reverseCache.size >= this.CACHE_MAX_SIZE) {
+			this.evictOldestFromReverseCache();
+		}
+
+		this.sessionCache.set(platformSenderId, tehutiSessionId);
 		this.reverseCache.set(tehutiSessionId, platformSenderId);
 	}
 
@@ -156,5 +181,27 @@ export class SessionResolver {
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * Clears in-memory caches.
+	 */
+	public clearCache(): void {
+		this.sessionCache.clear();
+		this.reverseCache.clear();
+	}
+
+	/**
+	 * Returns current number of entries in the session cache.
+	 */
+	public getCacheSize(): number {
+		return this.sessionCache.size;
+	}
+
+	/**
+	 * Returns current number of entries in the reverse session cache.
+	 */
+	public getReverseCacheSize(): number {
+		return this.reverseCache.size;
 	}
 }

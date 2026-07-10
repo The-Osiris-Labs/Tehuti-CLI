@@ -5,6 +5,7 @@ import {
 	swarmManager,
 } from "../../../agent/swarm/manager.js";
 import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
+import { StatusBadge } from "./StatusBadge.js";
 
 const COLORS = {
 	gold: BRANDING.colors?.primary || "#F5C518",
@@ -211,13 +212,18 @@ export function SwarmVisualizer(): React.ReactElement {
 							),
 							React.createElement(
 								Box,
-								{ flexBasis: 10, flexGrow: 0, flexShrink: 0, gap: 1 },
-								React.createElement(
-									Text,
-									{ color },
-									statusGlyph(agent.status, frame),
-								),
-								React.createElement(Text, { color }, agent.status),
+								{ flexBasis: 12, flexGrow: 0, flexShrink: 0 },
+								React.createElement(StatusBadge, {
+									kind:
+										agent.status === "working"
+											? "running"
+											: agent.status === "idle"
+												? "success"
+												: agent.status === "error"
+													? "error"
+													: "killed",
+									label: agent.status,
+								}),
 							),
 							React.createElement(
 								Box,

@@ -79,9 +79,12 @@ export class SelfHealingManager {
 				worktreeInfo.worktreePath,
 			);
 			if (!validation.success) {
+				const parsedAdvisory = this.parseFailureOutput(
+					validation.error || validation.output || "",
+				);
 				return {
 					...result,
-					error: `${(result as any).error || "Tool failed"}\n\n[Self-Healing Validation Failed]: ${validation.error || validation.output}`,
+					error: `${(result as any).error || "Tool failed"}\n\n[Self-Healing Advisory]:\n${parsedAdvisory}`,
 				} as T;
 			}
 		} catch {
@@ -163,6 +166,19 @@ export class SelfHealingManager {
 			SelfHealingManager.cleanupAllActiveWorktrees();
 			process.exit(143);
 		});
+
+		process.on("SIGHUP", () => {
+			SelfHealingManager.cleanupAllActiveWorktrees();
+			process.exit(129);
+		});
+
+		process.on("uncaughtException", () => {
+			SelfHealingManager.cleanupAllActiveWorktrees();
+		});
+
+		process.on("unhandledRejection", () => {
+			SelfHealingManager.cleanupAllActiveWorktrees();
+		});
 	}
 
 	/**
@@ -182,12 +198,23 @@ export class SelfHealingManager {
 		const branchName = `tehuti-shadow-${epoch}`;
 
 		// Create a new branch and worktree
-		await execAsync(`git branch ${branchName}`, { cwd: this.mainDir });
-		await execAsync(`git worktree add ${worktreePath} ${branchName}`, {
-			cwd: this.mainDir,
-		});
-
-		this.activeWorktrees.set(worktreePath, { worktreePath, branchName });
+		try {
+			await execAsync(`git branch ${branchName}`, { cwd: this.mainDir });
+			await execAsync(`git worktree add ${worktreePath} ${branchName}`, {
+				cwd: this.mainDir,
+			});
+			this.activeWorktrees.set(worktreePath, { worktreePath, branchName });
+		} catch (error) {
+			try {
+				await execAsync(`git worktree remove --force ${worktreePath}`, {
+					cwd: this.mainDir,
+				});
+			} catch {}
+			try {
+				await execAsync(`git branch -D ${branchName}`, { cwd: this.mainDir });
+			} catch {}
+			throw error;
+		}
 
 		// Sync uncommitted changes to the shadow workspace
 		try {

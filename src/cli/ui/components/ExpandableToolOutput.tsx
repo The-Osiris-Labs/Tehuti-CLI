@@ -10,6 +10,7 @@ import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 import { GlobalInputState } from "../input-state.js";
+import { StatusBadge } from "./StatusBadge.js";
 
 const disableMouse = process.env.NO_MOUSE || process.env.TEHUTI_DISABLE_MOUSE;
 
@@ -18,6 +19,9 @@ interface ExpandableToolOutputProps {
 	result: unknown;
 	maxWidth: number;
 	status?: "pending" | "success" | "error";
+	isCached?: boolean;
+	toolType?: "readonly" | "mutating";
+	epistemicStatus?: "verified" | "speculative" | "unverified";
 	defaultExpanded?: boolean;
 	isParallel?: boolean;
 }
@@ -161,6 +165,9 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	result,
 	maxWidth,
 	status,
+	isCached = false,
+	toolType,
+	epistemicStatus,
 	defaultExpanded = false,
 }: ExpandableToolOutputProps): React.ReactElement {
 	const [expanded, setExpanded] = useState(defaultExpanded);
@@ -180,7 +187,6 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			? () => {}
 			: () => {
 					setIsHovered(true);
-					GlobalInputState.hoveredComponentCount++;
 				},
 	);
 	useOnMouseLeave(
@@ -189,10 +195,6 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			? () => {}
 			: () => {
 					setIsHovered(false);
-					GlobalInputState.hoveredComponentCount = Math.max(
-						0,
-						GlobalInputState.hoveredComponentCount - 1,
-					);
 				},
 	);
 
@@ -221,11 +223,27 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		}
 	}, [status]);
 
-	const width = Math.max(40, maxWidth);
-	const summary = useMemo(
-		() => summarizeToolOutput(result, width - 4, 4),
-		[result, width],
-	);
+	const { summary, borderTextColor } = useMemo(() => {
+		const sum = summarizeToolOutput(
+			String(result ?? ""),
+			maxWidth,
+			expanded ? 10000 : 12,
+		);
+
+		let borderColor: string = BRANDING.colors.sand;
+		if (status === "pending") {
+			borderColor = BRANDING.colors.gold;
+		} else if (status === "error") {
+			borderColor = BRANDING.colors.red;
+		} else if (status === "success") {
+			borderColor = BRANDING.colors.green;
+		}
+
+		return {
+			summary: sum,
+			borderTextColor: borderColor,
+		};
+	}, [result, maxWidth, expanded, status]);
 
 	const {
 		windowStart,
@@ -259,16 +277,22 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	let headerIcon = "";
 	let headerStatusText = "";
 	let headerColor = "";
+	let badgeKind: "running" | "success" | "error" = "success";
 
 	if (status === "pending") {
+		badgeKind = "running";
 		headerIcon = HIEROGLYPHS.loading[spinnerFrame];
 		headerStatusText = `RUNNING • ${durStr}`;
 		headerColor = BRANDING.colors.gold;
 	} else if (status === "success") {
+		badgeKind = "success";
 		headerIcon = DECORATIVE.ankh;
-		headerStatusText = `SUCCESS • ${durStr}`;
+		headerStatusText = isCached
+			? `SUCCESS (CACHED) • ${durStr}`
+			: `SUCCESS • ${durStr}`;
 		headerColor = BRANDING.colors.green;
 	} else {
+		badgeKind = "error";
 		headerIcon = DECORATIVE.eye_horus;
 		headerStatusText = `FAILED • ${durStr}`;
 		headerColor = BRANDING.colors.red;
@@ -278,12 +302,44 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const maxToolNameWidth = Math.max(
 		10,
-		width - 20 - stringWidth(headerStatusText),
+		maxWidth - stringWidth(headerStatusText) - 15,
 	);
 	const truncatedToolName =
-		cleanToolName.length > maxToolNameWidth
-			? `${cleanToolName.slice(0, Math.max(3, maxToolNameWidth - 3))}...`
+		stringWidth(cleanToolName) > maxToolNameWidth
+			? `${cleanToolName.substring(0, maxToolNameWidth - 3)}...`
 			: cleanToolName;
+
+	const language = useMemo(() => {
+		const name = toolName.toLowerCase();
+		if (name.includes("bash") || name.includes("cmd")) return "bash";
+		if (name.includes("read") || name.includes("write")) {
+			if (String(result).trim().startsWith("{")) return "json";
+			return "typescript";
+		}
+		return undefined;
+	}, [toolName, result]);
+
+	const visibleLines = useMemo(() => {
+		return summary.rawLines.slice(windowStart, windowEnd);
+	}, [summary.rawLines, windowStart, windowEnd]);
+
+	const highlightedLines = useMemo(() => {
+		const text = visibleLines.join("\n");
+		if (!language) return visibleLines;
+		const ansi = highlightToAnsi(text, language);
+		return ansi.split("\n");
+	}, [visibleLines, language]);
+
+	const width = maxWidth - 4;
+	const renderedLines = useMemo(() => {
+		return highlightedLines.map((line) => {
+			const visualLen = stringWidth(stripAnsi(line));
+			if (visualLen <= width) return line;
+			return `${line.slice(0, width - 3)}...`;
+		});
+	}, [highlightedLines, width]);
+
+	const expandedIcon = expanded ? "▼" : "▶";
 
 	const footerLabel =
 		status === "pending"
@@ -294,50 +350,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
 					: `completed`;
 
-	const borderTextColor = isHovered
-		? BRANDING.colors.coral
-		: BRANDING.colors.gray;
-
-	const language = useMemo(() => {
-		if (
-			toolName === "write_plan" ||
-			(typeof result === "object" && result !== null && "uiOutput" in result)
-		) {
-			return "markdown";
-		}
-		try {
-			if (typeof result !== "string") return "json";
-			JSON.parse(summary.displayContent);
-			return "json";
-		} catch {
-			return "text";
-		}
-	}, [summary.displayContent, result, toolName]);
-
-	const displayContent = useMemo(() => {
-		if (!expanded) return summary.displayContent;
-
-		const visibleLines = summary.rawLines.slice(windowStart, windowEnd);
-		const formatted = visibleLines
-			.map((line) => {
-				return stringWidth(line) > width - 4
-					? `${sliceAnsi(line, width - 7)}...`
-					: line;
-			})
-			.join("\n");
-
-		return highlightToAnsi(formatted, language);
-	}, [
-		expanded,
-		summary.displayContent,
-		summary.rawLines,
-		windowStart,
-		windowEnd,
-		width,
-		language,
-	]);
-
-	const expandedIcon = expanded ? "▼" : "▶";
+	const displayContent = renderedLines.join("\n");
 
 	return (
 		<Box
@@ -353,12 +366,28 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			borderBottom={false}
 			borderColor={borderTextColor}
 		>
-			<Box flexDirection="row" justifyContent="space-between">
-				<Box gap={1}>
-					<Text color={headerColor}>{headerIcon}</Text>
+			<Box flexDirection="row" justifyContent="space-between" width="100%">
+				<Box flexDirection="row" gap={1} alignItems="center">
+					<Text color={borderTextColor}>{expandedIcon}</Text>
+					<StatusBadge compact kind={badgeKind} />
 					<Text bold color={headerColor}>
 						{truncatedToolName}
 					</Text>
+					{isCached && (
+						<StatusBadge compact={false} emphasize={true} kind="cached" />
+					)}
+					{toolType === "readonly" && (
+						<StatusBadge compact={false} emphasize={true} kind="readonly" />
+					)}
+					{toolType === "mutating" && (
+						<StatusBadge compact={false} emphasize={true} kind="mutating" />
+					)}
+					{epistemicStatus === "verified" && (
+						<StatusBadge compact={false} emphasize={true} kind="verified" />
+					)}
+					{epistemicStatus === "speculative" && (
+						<StatusBadge compact={false} emphasize={true} kind="speculative" />
+					)}
 				</Box>
 				<Box>
 					<Text

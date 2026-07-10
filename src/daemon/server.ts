@@ -4,6 +4,7 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { sweepCacheDir } from "../agent/cache/persistent-cache.js";
+import { daemonStateEngine } from "./state-engine.js";
 
 export const SOCKET_PATH = path.join(os.homedir(), ".tehuti", "tehutid.sock");
 
@@ -39,8 +40,11 @@ export class TehutiDaemonServer extends EventEmitter {
 
 				let newlineIndex: number;
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-					const line = buffer.slice(0, newlineIndex);
+					let line = buffer.slice(0, newlineIndex);
 					buffer = buffer.slice(newlineIndex + 1);
+					if (line.endsWith("\r")) {
+						line = line.slice(0, -1);
+					}
 
 					if (line) {
 						let msg: any;
@@ -84,6 +88,15 @@ export class TehutiDaemonServer extends EventEmitter {
 									setTimeout(() => process.exit(0), 100);
 								}
 								return;
+							}
+							if (msg.type === "collab") {
+								// Broadcast to all active sockets (simple IPC multiplexing)
+								for (const peerSocket of this.activeSockets) {
+									if (peerSocket !== socket && !peerSocket.destroyed) {
+										peerSocket.write(`${JSON.stringify(msg)}\n`);
+									}
+								}
+								continue;
 							}
 						}
 						this.emit("message", socket, msg);
@@ -174,12 +187,34 @@ export class TehutiDaemonServer extends EventEmitter {
 	}
 
 	private listen(): void {
-		this.server.listen(SOCKET_PATH, () => {
-			fs.chmodSync(SOCKET_PATH, 0o600);
-			this.emit("listening", SOCKET_PATH);
-			this.setupProcessHandlers();
-			this.startGarbageCollector();
-		});
+		const oldUmask = process.umask(0o177);
+		let umaskRestored = false;
+		const restoreUmask = () => {
+			if (!umaskRestored) {
+				umaskRestored = true;
+				try {
+					process.umask(oldUmask);
+				} catch (err) {}
+			}
+		};
+
+		this.server.once("error", restoreUmask);
+
+		try {
+			this.server.listen(SOCKET_PATH, () => {
+				restoreUmask();
+				try {
+					fs.chmodSync(SOCKET_PATH, 0o600);
+				} catch (err) {}
+				this.emit("listening", SOCKET_PATH);
+				this.setupProcessHandlers();
+				this.startGarbageCollector();
+				daemonStateEngine.start().catch(console.error);
+			});
+		} catch (err) {
+			restoreUmask();
+			throw err;
+		}
 	}
 
 	private startGarbageCollector(): void {
@@ -201,6 +236,8 @@ export class TehutiDaemonServer extends EventEmitter {
 		if (this.gcInterval) {
 			clearInterval(this.gcInterval);
 		}
+
+		daemonStateEngine.stop().catch(console.error);
 
 		for (const socket of this.activeSockets) {
 			socket.destroy();

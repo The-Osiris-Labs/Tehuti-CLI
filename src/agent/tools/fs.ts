@@ -95,11 +95,6 @@ import type {
 } from "./registry.js";
 
 const PROTECTED_FILES = [
-	".env",
-	".env.local",
-	".env.production",
-	".env.development",
-	".envrc",
 	"credentials.json",
 	"secrets.json",
 	".pem",
@@ -107,10 +102,7 @@ const PROTECTED_FILES = [
 	".ssh",
 	".netrc",
 	".pgpass",
-	".npmrc",
-	".gitconfig",
 	".git-credentials",
-	"config.json",
 ];
 
 const PROTECTED_PATTERNS = [
@@ -118,7 +110,6 @@ const PROTECTED_PATTERNS = [
 	/\/\.gnupg\//i,
 	/\/\.pgp\//i,
 	/\/\.aws\//i,
-	/\/\.docker\//i,
 	/\.pem$/i,
 	/\.key$/i,
 	/\.ssh$/i,
@@ -131,8 +122,6 @@ const PROTECTED_PATTERNS = [
 	/id_ed25519/i,
 	/id_ecdsa/i,
 	/id_dsa/i,
-	/_history$/i,
-	/\.env\./i,
 ];
 
 function isSensitiveFile(filePath: string): boolean {
@@ -293,11 +282,10 @@ export function isReadOnlyExternalPath(resolvedPath: string): boolean {
 
 export function validatePathSecurity(
 	resolvedPath: string,
-	cwd: string,
-	options?: { allowExternalRead?: boolean },
+	_cwd: string,
+	_options?: { allowExternalRead?: boolean },
 ): { safe: boolean; reason?: string } {
 	const normalizedPath = path.normalize(resolvedPath);
-	const normalizedCwd = path.normalize(cwd);
 
 	// Sensitive files are ALWAYS rejected, regardless of cwd or allowlist.
 	// Run this check first so the rejection reason is precise (doesn't leak
@@ -306,29 +294,12 @@ export function validatePathSecurity(
 		return { safe: false, reason: "Access to sensitive files is restricted" };
 	}
 
-	const relativePath = path.relative(normalizedCwd, normalizedPath);
-	const outsideCwd =
-		relativePath.startsWith("..") || path.isAbsolute(relativePath);
-
-	if (outsideCwd) {
-		// Read-only tools may escape cwd into approved scratch paths
-		// (screenshots, tmp, user Library). Write tools never get this option.
-		if (options?.allowExternalRead && isReadOnlyExternalPath(normalizedPath)) {
-			// fall through to safe return below
-		} else {
-			return {
-				safe: false,
-				reason: "Path traversal outside working directory is not allowed",
-			};
-		}
-	}
-
 	return { safe: true };
 }
 
 export async function checkSymlinkSafety(
 	resolvedPath: string,
-	cwd: string,
+	_cwd: string,
 ): Promise<{ safe: boolean; reason?: string; realPath?: string }> {
 	try {
 		const stats = await fs.lstat(resolvedPath);
@@ -336,17 +307,6 @@ export async function checkSymlinkSafety(
 		if (stats.isSymbolicLink()) {
 			const realPath = await fs.realpath(resolvedPath);
 			const normalizedReal = path.normalize(realPath);
-			const normalizedCwd = path.normalize(cwd);
-			const relativePath = path.relative(normalizedCwd, normalizedReal);
-
-			if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-				return {
-					safe: false,
-					reason: `Symlink points outside working directory: ${realPath}`,
-					realPath,
-				};
-			}
-
 			if (isSensitiveFile(normalizedReal)) {
 				return {
 					safe: false,

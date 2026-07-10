@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "fs-extra";
-import type { StandardMessage, StandardToolCall } from "../api/base-client.js";
+import type {
+	ContentBlock,
+	StandardMessage,
+	StandardToolCall,
+} from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { TehutiDaemonClient } from "../daemon/client.js";
 import { getCapabilities } from "../terminal/capabilities.js";
@@ -394,6 +398,14 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - **CRITICAL:** Be extremely concise. Avoid "wordy" explanations, excessive bolding, or walls of text. Get straight to the point.
 - When unsure, ask clarifying questions.
 
+## Epistemic Rigor & Scope Discipline
+- **Evidence is everything:** Never accept or assert a claim about codebase behavior without concrete evidence from tool inspection. If evidence is missing or insufficient, state so explicitly.
+- **Separate observation from interpretation:** First state what actually happened or what the code contains (quotes, line numbers, file paths). Only then offer interpretation.
+- **Hunt patterns, not just instances:** When identifying a failure mode or bug, check whether it is an isolated case or part of a recurring class across the codebase.
+- **Maintain radical scope discipline:** Never use sweeping assertions ("all", "every", "complete", "hardened") without exhaustive verification.
+- **Surface assumptions:** If you resolve ambiguity or make a speculative assumption, explicitly label it with \`[UNVERIFIED ASSUMPTION]\`. Treat unverified assumptions as hypotheses to test.
+
+
 ## Working Directory
 - Current directory: ${ctx.cwd}
 - All file paths should be relative to this directory unless absolute paths are provided.
@@ -431,6 +443,11 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - Current date: ${_dayOfWeek}, ${_monthName} ${_day}, ${_year}
 - Current time: ${_hh}:${_mm} (${_tzLabel})
 - ISO timestamp: ${_isoTimestamp}
+
+## Epistemic Protocol
+- **Observation vs Interpretation**: You must explicitly differentiate between empirical observation (what the tool output literally states) and interpretation (your inference or speculation).
+- **No Unverified Assumptions**: Do not state facts about the project state or environment without first verifying them via tools or referring to Long-Term Memory.
+- **Confidence Disclosure**: When retrieving information from memory or reasoning about complex state, implicitly state your confidence bounds. Treat speculative plans as hypotheses until verified by a tool.
 
 ## Harness & Subagent Capabilities
 - **Harness**: You are running inside the Tehuti Agent Harness, a powerful terminal-based environment.
@@ -530,7 +547,7 @@ export function addToolResult(
 	ctx: AgentContext,
 	toolCallId: string,
 	toolName: string,
-	result: string,
+	result: string | ContentBlock[],
 ): void {
 	const msg: StandardMessage = {
 		role: "tool",

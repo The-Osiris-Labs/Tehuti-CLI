@@ -46,21 +46,70 @@ export function createMCPToolName(
 	return `mcp_${safeServer}_${safeTool}`;
 }
 
+export function deepNormalizeSchema(schema: any): any {
+	if (!schema || typeof schema !== "object") return schema;
+	if (Array.isArray(schema)) {
+		return schema.map(deepNormalizeSchema);
+	}
+	const normalized: any = { ...schema };
+	if (normalized.properties) {
+		const newProps: any = {};
+		for (const [k, v] of Object.entries(normalized.properties)) {
+			newProps[k] = deepNormalizeSchema(v);
+		}
+		normalized.properties = newProps;
+	}
+	if (normalized.items) {
+		normalized.items = deepNormalizeSchema(normalized.items);
+	}
+	return normalized;
+}
+
 export function normalizeMCPInputSchema(
 	schema: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
 	if (!schema || typeof schema !== "object") {
 		return { type: "object", properties: {} };
 	}
-
 	return {
-		...schema,
+		...deepNormalizeSchema(schema),
 		type: "object",
 		properties:
 			typeof schema.properties === "object" && schema.properties !== null
-				? schema.properties
+				? deepNormalizeSchema(schema.properties)
 				: {},
 	};
+}
+
+export function jsonSchemaToZod(schema: any): z.ZodTypeAny {
+	if (!schema || typeof schema !== "object") return z.any();
+	switch (schema.type) {
+		case "string":
+			return z.string();
+		case "number":
+			return z.number();
+		case "integer":
+			return z.number().int();
+		case "boolean":
+			return z.boolean();
+		case "array":
+			return z.array(jsonSchemaToZod(schema.items));
+		case "object": {
+			const shape: Record<string, z.ZodTypeAny> = {};
+			if (schema.properties) {
+				for (const [key, val] of Object.entries(schema.properties)) {
+					let field = jsonSchemaToZod(val);
+					if (!schema.required?.includes(key)) {
+						field = field.optional();
+					}
+					shape[key] = field;
+				}
+			}
+			return z.object(shape).passthrough();
+		}
+		default:
+			return z.any();
+	}
 }
 
 export function convertMCPToolToOpenRouter(
@@ -93,11 +142,12 @@ export function createMCPToolDefinition(
 ): ToolDefinition {
 	const toolName = createMCPToolName(serverName, tool.name);
 
+	const jsonSchema = normalizeMCPInputSchema(tool.inputSchema);
 	return {
 		name: toolName,
 		description: tool.description ?? `MCP tool from ${serverName}`,
-		parameters: z.object({}).passthrough(),
-		jsonSchema: normalizeMCPInputSchema(tool.inputSchema),
+		parameters: jsonSchemaToZod(jsonSchema),
+		jsonSchema: jsonSchema,
 		category: "mcp",
 		requiresPermission: true,
 		execute: async (args: unknown, _ctx: ToolContext): Promise<ToolResult> => {

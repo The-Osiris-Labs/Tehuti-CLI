@@ -1,3 +1,4 @@
+import type { ContentBlock } from "../../api/base-client.js";
 import { hookExecutor } from "../../hooks/executor.js";
 import { checkPermission } from "../../permissions/index.js";
 import { debug } from "../../utils/debug.js";
@@ -26,19 +27,52 @@ import {
 
 const MODEL_TOOL_RESULT_MAX_CHARS = 20000;
 
-function stringifyToolResult(result: unknown): string {
+function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
 	const record =
 		result && typeof result === "object"
 			? (result as Record<string, unknown>)
 			: undefined;
 	const outStr = String(record?.output ?? "");
-	const resultStr = record?.success
+	const baseResultStr = record?.success
 		? outStr
 		: `Error: ${String(record?.error ?? "Tool failed")}\nOutput: ${outStr}`;
+
+	let diagnosticsHeader = "";
+	if (record?.metadata && typeof record.metadata === "object") {
+		const meta = record.metadata as Record<string, unknown>;
+		if (typeof meta.base64 === "string" && typeof meta.mimeType === "string") {
+			return [
+				{
+					type: "text",
+					text: record?.success
+						? outStr
+						: `Error: ${String(record?.error ?? "Tool failed")}\nOutput: ${outStr}`,
+				},
+				{
+					type: "image_url",
+					image_url: {
+						url: `data:${meta.mimeType};base64,${meta.base64}`,
+					},
+				},
+			];
+		}
+
+		const entries = Object.entries(meta)
+			.filter(
+				([k, v]) =>
+					v !== undefined && v !== null && k !== "base64" && k !== "mimeType",
+			)
+			.map(([k, v]) => `${k}: ${String(v)}`);
+		if (entries.length > 0) {
+			diagnosticsHeader = `[Diagnostics | ${entries.join(" | ")}]\n`;
+		}
+	}
+
+	const resultStr = `${diagnosticsHeader}${baseResultStr}`;
 	if (resultStr.length <= MODEL_TOOL_RESULT_MAX_CHARS) {
 		return resultStr;
 	}
-	return `${resultStr.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... (truncated due to excessive size)`;
+	return `${resultStr.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... [Output truncated: showing ${MODEL_TOOL_RESULT_MAX_CHARS.toLocaleString()} of ${resultStr.length.toLocaleString()} total characters]`;
 }
 
 export interface ToolProcessingOptions {
@@ -54,7 +88,7 @@ function checkFirewallPolicy(
 ): { allowed: boolean; reason?: string } {
 	const argsStr = JSON.stringify(args || {}).toLowerCase();
 
-	if (/(rm\s+-r.*f\s*\/[\s"']|rm\s+-r.*f\s*$)/.test(argsStr)) {
+	if (/(rm\s+-[rR].*f\s*\/(?:[\s"'*]|$))/.test(argsStr)) {
 		return {
 			allowed: false,
 			reason: "Dangerous command detected: 'rm -rf /' variant.",
@@ -158,7 +192,7 @@ export async function processToolCalls(
 			if (!permission.allowed) {
 				blockedCalls.push({
 					tc,
-					reason: `Permission denied: \${permission.reason}`,
+					reason: `Permission denied: ${permission.reason}`,
 				});
 				continue;
 			}
@@ -172,7 +206,12 @@ export async function processToolCalls(
 			onToolCall?.(tc.id, tc.function.name, {});
 			const result = makeToolErrorResult(reason);
 			onToolResult?.(tc.id, tc.function.name, result);
-			addToolResult(ctx, tc.id, tc.function.name, stringifyToolResult(result));
+			addToolResult(
+				ctx,
+				tc.id,
+				tc.function.name,
+				formatToolResultForLLM(result),
+			);
 		}
 
 		if (allowedCalls.length > 0) {
@@ -255,7 +294,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				processedCount++;
 				continue;
@@ -274,7 +313,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				continue;
 			}
@@ -291,7 +330,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				continue;
 			}
@@ -305,7 +344,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				continue;
 			}
@@ -343,7 +382,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				continue;
 			}
@@ -363,7 +402,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				continue;
 			}
@@ -430,7 +469,7 @@ export async function processToolCalls(
 					cache.set(tc.function.name, args, result);
 				}
 
-				const resultStr = stringifyToolResult(result);
+				const resultStr = formatToolResultForLLM(result);
 
 				try {
 					await hookExecutor.executeHook("PostToolUse", {
@@ -467,7 +506,7 @@ export async function processToolCalls(
 
 				debug.log(
 					"agent",
-					`Tool result: \${result.success ? "success" : "failed"}`,
+					`Tool result: ${result.success ? "success" : "failed"}`,
 				);
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
@@ -477,7 +516,7 @@ export async function processToolCalls(
 					ctx,
 					tc.id,
 					tc.function.name,
-					stringifyToolResult(result),
+					formatToolResultForLLM(result),
 				);
 				debug.log("agent", `Tool error: ${errorMsg}`);
 			}

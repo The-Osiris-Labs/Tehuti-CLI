@@ -16,6 +16,7 @@ const db: Database.Database = new Database(getDbPath(), { timeout: 10000 });
 
 // Initialize schema
 db.pragma("journal_mode = WAL");
+db.pragma("synchronous = NORMAL");
 db.pragma("foreign_keys = ON");
 // Explicit busy timeout pragma as a backup
 db.pragma("busy_timeout = 10000");
@@ -24,14 +25,15 @@ db.pragma("busy_timeout = 10000");
 const currentVersion = db.pragma("user_version", { simple: true }) as number;
 
 if (currentVersion === 0) {
-	db.exec(`
+	const initSchema = db.transaction(() => {
+		db.exec(`
 	  CREATE TABLE IF NOT EXISTS nodes (
 	    id TEXT PRIMARY KEY,
 	    type TEXT NOT NULL,
 	    content TEXT NOT NULL,
 	    metadata TEXT,
-	    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer)),
-	    last_accessed INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+	    created_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer)),
+	    last_accessed INTEGER DEFAULT (cast(unixepoch() * 1000 as integer))
 	  );
 
 	  CREATE TABLE IF NOT EXISTS edges (
@@ -40,7 +42,7 @@ if (currentVersion === 0) {
 	    target_id TEXT NOT NULL,
 	    relation_type TEXT NOT NULL,
 	    weight REAL DEFAULT 1.0,
-	    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer)),
+	    created_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer)),
 	    FOREIGN KEY(source_id) REFERENCES nodes(id) ON DELETE CASCADE,
 	    FOREIGN KEY(target_id) REFERENCES nodes(id) ON DELETE CASCADE
 	  );
@@ -48,8 +50,8 @@ if (currentVersion === 0) {
 	  CREATE TABLE IF NOT EXISTS messaging_sessions (
 	    platform_sender_id TEXT PRIMARY KEY,
 	    tehuti_session_id TEXT NOT NULL,
-	    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer)),
-	    last_active INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+	    created_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer)),
+	    last_active INTEGER DEFAULT (cast(unixepoch() * 1000 as integer))
 	  );
 
 	  CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
@@ -61,18 +63,21 @@ if (currentVersion === 0) {
 	    id TEXT PRIMARY KEY,
 	    key TEXT UNIQUE NOT NULL,
 	    value TEXT NOT NULL,
-	    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+	    updated_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer))
 	  );
 
 	  CREATE TABLE IF NOT EXISTS project_profiles (
 	    project_path TEXT PRIMARY KEY,
 	    formatting_habits TEXT,
 	    command_patterns TEXT,
-	    updated_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer))
+	    updated_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer))
 	  );
 	`);
 
-	db.pragma("user_version = 1");
+		db.pragma("user_version = 1");
+	});
+
+	initSchema();
 }
 
 export default db;

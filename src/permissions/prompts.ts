@@ -186,8 +186,23 @@ export async function checkPermission(
 		return { allowed: true, reason: "Trust mode" };
 	}
 
+	let isDangerousArgs = false;
 	const checkDangerous = DANGEROUS_ARGS[toolName];
-	const isDangerousArgs = checkDangerous ? checkDangerous(args) : false;
+	if (checkDangerous) {
+		isDangerousArgs = checkDangerous(args);
+	} else if (
+		toolName.includes("shell") ||
+		toolName.includes("execute") ||
+		toolName.includes("bash")
+	) {
+		const argsRecord = args as Record<string, unknown>;
+		const cmd =
+			(argsRecord?.command as string) || (argsRecord?.script as string) || "";
+		if (cmd) {
+			isDangerousArgs = hasDangerousCommandPattern(cmd);
+		}
+	}
+
 	const isDangerous =
 		isDangerousArgs || toolDef?.intent === "destructive" || !toolDef;
 

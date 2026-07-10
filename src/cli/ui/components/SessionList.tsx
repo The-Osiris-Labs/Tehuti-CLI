@@ -58,33 +58,42 @@ function SessionRow({
 	} = BRANDING.colors;
 	const dateStr = new Date(session.updatedAt).toLocaleDateString();
 
-	const pad = (str: string, length: number) =>
-		str.padEnd(length).substring(0, length);
-
-	const idText = pad(session.id, 8);
-	const nameText = pad(session.name || "Unnamed", 20);
-	const msgText = pad(String(session.messageCount || 0), 6);
-	const tokenText = pad(String(session.tokensUsed || 0), 8);
-	const modelText = pad(session.model || "Unknown", 20);
-	const dateText = pad(dateStr, 12);
+	const idText = session.id.substring(0, 8);
+	const nameText = session.name || "Unnamed";
+	const msgText = String(session.messageCount || 0);
+	const tokenText = String(session.tokensUsed || 0);
+	const modelText = session.model || "Unknown";
 
 	return (
-		<Box ref={ref} paddingX={1}>
-			<Text color={active ? GOLD : "gray"}>{active ? "▶" : "│"} </Text>
-			<Text color={active ? GOLD : CORAL}>{idText}</Text>
-			<Text color={active ? GOLD : "gray"}> │ </Text>
-			<Text color={active ? "white" : SAND} bold={active}>
-				{nameText}
-			</Text>
-			<Text color={active ? GOLD : "gray"}> │ </Text>
-			<Text color={active ? "white" : "cyan"}>{msgText}</Text>
-			<Text color={active ? GOLD : "gray"}> │ </Text>
-			<Text color={active ? "white" : "yellow"}>{tokenText}</Text>
-			<Text color={active ? GOLD : "gray"}> │ </Text>
-			<Text color={active ? "white" : "blue"}>{modelText}</Text>
-			<Text color={active ? GOLD : "gray"}> │ </Text>
-			<Text color={active ? "white" : "gray"}>{dateText}</Text>
-			<Text color={active ? GOLD : "gray"}> │</Text>
+		<Box ref={ref} paddingX={1} width="100%" flexDirection="row">
+			<Box width={3}>
+				<Text color={active ? GOLD : "gray"}>{active ? "▶" : "│"}</Text>
+			</Box>
+			<Box width={10}>
+				<Text color={active ? GOLD : CORAL}>{idText}</Text>
+			</Box>
+			<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+				<Text color={active ? "white" : SAND} bold={active} wrap="truncate-end">
+					{nameText}
+				</Text>
+			</Box>
+			<Box width={8}>
+				<Text color={active ? "white" : "cyan"}>{msgText}</Text>
+			</Box>
+			<Box width={10}>
+				<Text color={active ? "white" : "yellow"}>{tokenText}</Text>
+			</Box>
+			<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+				<Text color={active ? "white" : "blue"} wrap="truncate-end">
+					{modelText}
+				</Text>
+			</Box>
+			<Box width={12}>
+				<Text color={active ? "white" : "gray"}>{dateStr}</Text>
+			</Box>
+			<Box width={2}>
+				<Text color={active ? GOLD : "gray"}>│</Text>
+			</Box>
 		</Box>
 	);
 }
@@ -131,16 +140,6 @@ export function SessionList({
 			onClose();
 			return;
 		}
-
-		if (key.upArrow) {
-			moveUp();
-			return;
-		}
-
-		if (key.downArrow) {
-			moveDown();
-			return;
-		}
 	});
 
 	if (sessions.length === 0) {
@@ -159,32 +158,51 @@ export function SessionList({
 	const { secondary: GOLD } = BRANDING.colors;
 
 	return (
-		<Box flexDirection="column" marginY={1}>
+		<Box
+			flexDirection="column"
+			marginY={1}
+			width="100%"
+			borderStyle="single"
+			borderColor={GOLD}
+		>
 			<Box paddingX={1} marginBottom={1}>
 				<Text color={GOLD} bold>
 					𓁹 Saved Sessions
 				</Text>
 			</Box>
-			<Box paddingX={1}>
-				<Text color="gray">{`┌${"─".repeat(84)}┐`}</Text>
-			</Box>
-			<Box paddingX={1}>
-				<Text color="gray">│ </Text>
-				<Text bold>ID </Text>
-				<Text color="gray"> │ </Text>
-				<Text bold>Name </Text>
-				<Text color="gray"> │ </Text>
-				<Text bold>Msgs </Text>
-				<Text color="gray"> │ </Text>
-				<Text bold>Tokens </Text>
-				<Text color="gray"> │ </Text>
-				<Text bold>Model </Text>
-				<Text color="gray"> │ </Text>
-				<Text bold>Date </Text>
-				<Text color="gray"> │</Text>
-			</Box>
-			<Box paddingX={1}>
-				<Text color="gray">{`├${"─".repeat(84)}┤`}</Text>
+			<Box flexDirection="row" paddingX={1} paddingBottom={1}>
+				<Box width={3} />
+				<Box width={10}>
+					<Text color="gray" bold>
+						ID
+					</Text>
+				</Box>
+				<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+					<Text color="gray" bold>
+						NAME
+					</Text>
+				</Box>
+				<Box width={8}>
+					<Text color="gray" bold>
+						MSGS
+					</Text>
+				</Box>
+				<Box width={10}>
+					<Text color="gray" bold>
+						TOKENS
+					</Text>
+				</Box>
+				<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+					<Text color="gray" bold>
+						MODEL
+					</Text>
+				</Box>
+				<Box width={12}>
+					<Text color="gray" bold>
+						DATE
+					</Text>
+				</Box>
+				<Box width={2} />
 			</Box>
 			{visibleSessions.map((session: SessionMetadata, i: number) => {
 				const actualIndex = windowStart + i;
@@ -198,15 +216,12 @@ export function SessionList({
 					/>
 				);
 			})}
-			<Box paddingX={1}>
-				<Text color="gray">{`└${"─".repeat(84)}┘`}</Text>
-			</Box>
 			<Box
 				marginTop={1}
 				paddingX={1}
 				flexDirection="row"
 				justifyContent="space-between"
-				width={86}
+				width="100%"
 			>
 				<Text dimColor>↑/↓: Navigate • Enter/Click: Select • Esc: Close</Text>
 				<Text dimColor>

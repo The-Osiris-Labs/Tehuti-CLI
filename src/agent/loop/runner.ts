@@ -161,11 +161,11 @@ export async function runAgentLoop(
 		const maxIterations = ctx.config.maxIterations;
 		let totalContent = "";
 		let totalToolCalls = 0;
-		const selfHealer = new SelfHealingManager(ctx.cwd);
+		const selfHealer = new SelfHealingManager(ctx.cwd, ctx.config);
 
 		while (iteration < maxIterations) {
 			iteration++;
-			debug.log("agent", `Starting iteration \${iteration}/\${maxIterations}`);
+			debug.log("agent", `Starting iteration ${iteration}/${maxIterations}`);
 
 			if (signal?.aborted) {
 				return {
@@ -400,7 +400,7 @@ export async function runAgentLoop(
 					);
 					debug.log(
 						"agent",
-						`Request cost: $\${costBreakdown.totalCost.toFixed(6)}`,
+						`Request cost: ${costBreakdown.totalCost.toFixed(6)}`,
 					);
 				}
 
@@ -520,7 +520,7 @@ export async function runAgentLoop(
 
 				debug.log(
 					"agent",
-					`Agent loop error (phase: \${agentError.phase}):`,
+					`Agent loop error (phase: ${agentError.phase}):`,
 					agentError,
 				);
 				debug.log("agent", "Error stack:", agentError.stack);

@@ -37,12 +37,12 @@ const _DEFAULT_OPTIONS: CompressionOptions = {
 };
 
 function encodeStringSafely(str: string): number {
-	if (str.length <= 4000) {
+	if (str.length <= 500) {
 		return tokenizer.encode(str).length;
 	}
-	const sample = str.slice(0, 4000);
+	const sample = str.slice(0, 500);
 	const sampleTokens = tokenizer.encode(sample).length;
-	return Math.ceil((sampleTokens / 4000) * str.length);
+	return Math.ceil((sampleTokens / 500) * str.length);
 }
 
 function estimateTokens(messages: StandardMessage[]): number {
@@ -103,10 +103,13 @@ export function compressContext(
 		let preview = "";
 		if (typeof msg.content === "string") {
 			// Safely respect reasoning block boundaries
-			const c = msg.content.replace(
-				/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g,
-				"[Thought Process]",
-			);
+			let c = msg.content;
+			if (c.includes("<think") || c.includes("<reason")) {
+				c = c.replace(
+					/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g,
+					"[Thought Process]",
+				);
+			}
 
 			// Never accidentally slice a JSON tool_call object mid-string during heavy compression
 			const trimmed = c.trim();

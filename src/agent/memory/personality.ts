@@ -97,13 +97,33 @@ export function updateProjectProfile(
 	diff: string,
 	commands: string[],
 ): void {
-	const formattingHabits = extractFormattingHabitsFromDiff(diff);
+	const newFormattingHabits = extractFormattingHabitsFromDiff(diff);
 	const commandPatterns = extractCommandPatterns(commands);
 
 	try {
+		const selectStmt = db.prepare(
+			"SELECT formatting_habits FROM project_profiles WHERE project_path = ?",
+		);
+		const existingRow = selectStmt.get(projectPath) as
+			| { formatting_habits: string }
+			| undefined;
+
+		let formattingHabits: FormattingHabits = newFormattingHabits;
+		if (existingRow?.formatting_habits) {
+			try {
+				const existingHabits = JSON.parse(
+					existingRow.formatting_habits,
+				) as FormattingHabits;
+				formattingHabits = {
+					...existingHabits,
+					...newFormattingHabits,
+				};
+			} catch (_err) {}
+		}
+
 		const stmt = db.prepare(`
 			INSERT INTO project_profiles (project_path, formatting_habits, command_patterns, updated_at)
-			VALUES (?, ?, ?, cast(strftime('%s', 'now') as integer))
+			VALUES (?, ?, ?, cast(unixepoch() * 1000 as integer))
 			ON CONFLICT(project_path) DO UPDATE SET
 				formatting_habits = excluded.formatting_habits,
 				command_patterns = excluded.command_patterns,
@@ -131,7 +151,7 @@ export function setUserPreference(key: string, value: string): void {
 	try {
 		const stmt = db.prepare(`
 			INSERT INTO user_preferences (id, key, value, updated_at)
-			VALUES (?, ?, ?, cast(strftime('%s', 'now') as integer))
+			VALUES (?, ?, ?, cast(unixepoch() * 1000 as integer))
 			ON CONFLICT(key) DO UPDATE SET
 				value = excluded.value,
 				updated_at = excluded.updated_at

@@ -7,13 +7,25 @@ export interface CacheControl {
 	ttl?: "1h";
 }
 
-export interface ContentBlock {
+export interface TextBlock {
 	type: "text";
 	text: string;
 	cache_control?: CacheControl;
 	timestamp?: number;
 	internalId?: string;
 }
+
+export interface ImageUrlBlock {
+	type: "image_url";
+	image_url: {
+		url: string;
+	};
+	cache_control?: CacheControl;
+	timestamp?: number;
+	internalId?: string;
+}
+
+export type ContentBlock = TextBlock | ImageUrlBlock;
 
 export interface StandardMessage {
 	role: "system" | "user" | "assistant" | "tool";
@@ -287,7 +299,7 @@ export abstract class BaseAPIClient {
 				}
 			} else if (Array.isArray(content)) {
 				const totalLength = content
-					.filter((c): c is ContentBlock => c.type === "text")
+					.filter((c): c is TextBlock => c.type === "text")
 					.reduce((sum, c) => sum + (c.text?.length ?? 0), 0);
 				if (totalLength > MAX_MESSAGE_LENGTH) {
 					throw new APIError(
@@ -337,7 +349,10 @@ export abstract class BaseAPIClient {
 				const textContent =
 					typeof msg.content === "string"
 						? msg.content
-						: (msg.content as ContentBlock[]).map((c) => c.text).join("");
+						: (msg.content as ContentBlock[])
+								.filter((c): c is TextBlock => c.type === "text")
+								.map((c) => c.text)
+								.join("");
 
 				processedMessages.push({
 					role: "user",
@@ -667,10 +682,12 @@ export abstract class BaseAPIClient {
 
 					const trimmed = line.trim();
 					if (!trimmed || trimmed === "data: [DONE]") continue;
-					if (!trimmed.startsWith("data: ")) continue;
+					if (!trimmed.startsWith("data:")) continue;
 
 					try {
-						const json = trimmed.slice(6);
+						const json = trimmed.startsWith("data: ")
+							? trimmed.slice(6)
+							: trimmed.slice(5);
 						const parsedJson = JSON.parse(json);
 
 						if (parsedJson.error) {

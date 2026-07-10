@@ -13,6 +13,8 @@ export interface Node {
 	priority?: number;
 	importance?: number;
 	lastAccessed?: number;
+	epistemicStatus?: "verified_fact" | "speculative" | "user_preference";
+	confidenceScore?: number;
 }
 
 export interface Edge {
@@ -34,6 +36,8 @@ export async function addNode(
 	cwd: string = process.cwd(),
 	priority = 0,
 	importance = 0,
+	epistemicStatus?: "verified_fact" | "speculative" | "user_preference",
+	confidenceScore?: number,
 ): Promise<void> {
 	const now = Date.now();
 	const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
@@ -56,6 +60,8 @@ export async function addNode(
 			priority,
 			importance,
 			accessCount: 1,
+			epistemicStatus,
+			confidenceScore,
 		}),
 		now,
 	});
@@ -107,6 +113,8 @@ function mapRowToNode(row: any): Node {
 		priority: meta.priority,
 		importance: meta.importance,
 		accessCount: meta.accessCount,
+		epistemicStatus: meta.epistemicStatus,
+		confidenceScore: meta.confidenceScore,
 		timestamp: row.created_at,
 		lastAccessed: row.last_accessed || row.created_at,
 	};
@@ -297,7 +305,8 @@ export async function optimizeInsights(
 			continue;
 		}
 
-		const lastAccess = node.lastAccessed || node.timestamp || now;
+		let lastAccess = node.lastAccessed || node.timestamp || now;
+		if (lastAccess < 1e11) lastAccess *= 1000;
 		const daysOld = Math.max(0, (now - lastAccess) / (1000 * 60 * 60 * 24));
 
 		const p = node.priority ?? 0;
@@ -434,16 +443,18 @@ export async function optimizeInsights(
 			}
 		}
 
-		const placeholders = Array.from(toRemove)
-			.map(() => "?")
-			.join(",");
-		const deleteStmt = db.prepare(
-			`DELETE FROM nodes WHERE id IN (${placeholders})`,
-		);
+		const idsToRemove = Array.from(toRemove);
 		const executeDeletions = db.transaction((ids: string[]) => {
-			deleteStmt.run(...ids);
+			for (let i = 0; i < ids.length; i += 500) {
+				const batch = ids.slice(i, i + 500);
+				const placeholders = batch.map(() => "?").join(",");
+				const deleteStmt = db.prepare(
+					`DELETE FROM nodes WHERE id IN (${placeholders})`,
+				);
+				deleteStmt.run(...batch);
+			}
 		});
-		executeDeletions(Array.from(toRemove));
+		executeDeletions(idsToRemove);
 
 		removedCount = toRemove.size;
 	}

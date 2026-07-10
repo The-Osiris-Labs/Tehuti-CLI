@@ -43,10 +43,28 @@ export async function withRetry<T>(
 			if ((isTimeout || isRateLimit || isServerErr) && attempt < maxRetries) {
 				debug.log(
 					"agent",
-					`Attempt \${attempt} failed with \${isRateLimit ? "rate limit" : isTimeout ? "timeout" : "server error"}. Retrying in \${delay}ms...`,
+					`Attempt ${attempt} failed with ${isRateLimit ? "rate limit" : isTimeout ? "timeout" : "server error"}. Retrying in ${delay}ms...`,
 				);
-				await new Promise((resolve) => setTimeout(resolve, delay));
-				delay *= 2; // Exponential backoff
+				await new Promise<void>((resolve) => {
+					if (options.signal?.aborted) {
+						resolve();
+						return;
+					}
+					const timer = setTimeout(() => {
+						cleanup();
+						resolve();
+					}, delay);
+					const onAbort = () => {
+						clearTimeout(timer);
+						cleanup();
+						resolve();
+					};
+					const cleanup = () => {
+						options.signal?.removeEventListener("abort", onAbort);
+					};
+					options.signal?.addEventListener("abort", onAbort);
+				});
+				delay = Math.min(delay * 2, 30000);
 				continue;
 			}
 

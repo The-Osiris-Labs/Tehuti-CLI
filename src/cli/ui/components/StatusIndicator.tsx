@@ -1,11 +1,5 @@
-import { Text } from "ink";
-import Spinner from "ink-spinner";
 import React from "react";
-import { BRANDING } from "../../../branding/index.js";
-
-const GOLD = BRANDING.colors?.primary || "#F5C518";
-const GREEN = BRANDING.colors?.green || "#22C55E";
-const RED = BRANDING.colors?.red || "#EF4444";
+import { StatusBadge } from "./StatusBadge.js";
 
 export const StatusIndicator = ({
 	status,
@@ -13,14 +7,10 @@ export const StatusIndicator = ({
 	status: "success" | "error" | "loading";
 }) => {
 	if (status === "success") {
-		return React.createElement(Text, { color: GREEN }, "✅");
+		return <StatusBadge compact kind="success" />;
 	}
 	if (status === "error") {
-		return React.createElement(Text, { color: RED }, "❌");
+		return <StatusBadge compact kind="error" />;
 	}
-	return React.createElement(
-		Text,
-		{ color: GOLD },
-		React.createElement(Spinner, { type: "dots" }),
-	);
+	return <StatusBadge compact kind="running" />;
 };

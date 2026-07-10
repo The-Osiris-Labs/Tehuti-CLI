@@ -51,9 +51,14 @@ export const configureContextManagementTool = createTool({
 			return {
 				success: true,
 				output: JSON.stringify({
-					message: "Context management configured",
-					autoSummarize,
-					maxContextLength,
+					status: "scaffolded",
+					feature: "configure_context_management",
+					message:
+						"Context management settings were recorded in memory, but autoSummarize and maxContextLength runtime enforcement are currently unconfigured/scaffolded for the KiloCode provider.",
+					configured: {
+						autoSummarize,
+						maxContextLength,
+					},
 				}),
 			};
 		} catch (error) {

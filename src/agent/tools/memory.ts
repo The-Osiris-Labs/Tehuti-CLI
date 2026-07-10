@@ -20,12 +20,38 @@ export const memoryTools = [
 					"Type of memory: 'project_rule', 'critical_fact', 'entity', or 'concept'.",
 				),
 			content: z.string().describe("The information to store."),
+			epistemicStatus: z
+				.enum(["verified_fact", "speculative", "user_preference"])
+				.optional()
+				.describe(
+					"Epistemic tag. Use 'verified_fact' if proven via empirical output. Use 'speculative' if inferred.",
+				),
+			confidenceScore: z
+				.number()
+				.min(0)
+				.max(1)
+				.optional()
+				.describe(
+					"Confidence from 0.0 to 1.0 about the accuracy of this insight.",
+				),
 		}),
 		category: "system",
 		execute: async (args: any, _ctx: ToolContext) => {
-			await addNode(args.id, args.type, args.content);
+			await addNode(
+				args.id,
+				args.type,
+				args.content,
+				process.cwd(),
+				0,
+				0,
+				args.epistemicStatus,
+				args.confidenceScore,
+			);
+			const statusNote = args.epistemicStatus
+				? ` [${args.epistemicStatus}]`
+				: "";
 			return {
-				output: `Stored ${args.type} '${args.id}' to long-term memory.`,
+				output: `Stored ${args.type} '${args.id}'${statusNote} to long-term memory.`,
 				success: true,
 			};
 		},

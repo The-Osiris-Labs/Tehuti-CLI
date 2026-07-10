@@ -372,7 +372,7 @@ describe("Parallel Executor", () => {
 			expect(executionOrder).toEqual(["read", "write", "read"]);
 		});
 
-		it("should abort execution if signal is aborted", async () => {
+		it("should abort execution if signal is aborted and call addToolResult for every tool call ID", async () => {
 			const controller = new AbortController();
 			const toolCalls: ToolCall[] = [
 				{ id: "1", function: { name: "read", arguments: "{}" } },
@@ -381,12 +381,16 @@ describe("Parallel Executor", () => {
 
 			controller.abort();
 
+			const addToolResult = vi.fn();
+			const onToolResult = vi.fn();
+
 			const results = await executeToolsParallel(
 				toolCalls,
 				{
 					ctx: mockCtx,
 					toolContext: mockToolContext,
-					addToolResult: vi.fn(),
+					addToolResult,
+					onToolResult,
 				},
 				controller.signal,
 			);
@@ -395,9 +399,11 @@ describe("Parallel Executor", () => {
 			expect(results[0]?.error).toContain("Execution aborted by user");
 			expect(results[1]?.success).toBe(false);
 			expect(results[1]?.error).toContain("Execution aborted by user");
+			expect(addToolResult).toHaveBeenCalledTimes(2);
+			expect(onToolResult).toHaveBeenCalledTimes(2);
 		});
 
-		it("should be rejection-resistant when a tool execution throws an error", async () => {
+		it("should be rejection-resistant when a tool execution throws an error and call addToolResult", async () => {
 			const { executeTool } = await import("./tools/registry.js");
 			vi.mocked(executeTool).mockImplementation(async (name: string) => {
 				if (name === "grep") {
@@ -411,10 +417,11 @@ describe("Parallel Executor", () => {
 				{ id: "2", function: { name: "grep", arguments: "{}" } },
 			];
 
+			const addToolResult = vi.fn();
 			const results = await executeToolsParallel(toolCalls, {
 				ctx: mockCtx,
 				toolContext: mockToolContext,
-				addToolResult: vi.fn(),
+				addToolResult,
 			});
 
 			expect(results).toHaveLength(2);
@@ -423,6 +430,7 @@ describe("Parallel Executor", () => {
 			expect(results[1]?.error).toContain(
 				"Parallel execution failed: Grep failed unexpectedly",
 			);
+			expect(addToolResult).toHaveBeenCalledTimes(2);
 		});
 	});
 });

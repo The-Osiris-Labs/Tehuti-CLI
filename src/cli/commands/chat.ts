@@ -33,6 +33,7 @@ import {
 	setPlanMode,
 } from "../../agent/index.js";
 import {
+	clearTodos,
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
@@ -76,6 +77,10 @@ import {
 	registerCleanupHandler,
 } from "../../utils/errors.js";
 import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
+import {
+	applyUpdate,
+	showUpdateNotification,
+} from "../../utils/update-checker.js";
 import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
 import {
 	compactBlockForUi,
@@ -90,6 +95,7 @@ import {
 	type UiBlock,
 	type UiMessage,
 } from "../ui/chat-memory.js";
+import { ChatBar } from "../ui/components/ChatBar.js";
 import {
 	type CommandItem,
 	CommandPalette,
@@ -1063,6 +1069,7 @@ function ChatUI({
 				setOperationLabel("");
 				costTracker.reset();
 				resetTelemetry();
+				clearTodos();
 				ctxRef.current = null;
 				if (createNewSession) {
 					const id = await sessionManager.createSession(
@@ -1168,6 +1175,10 @@ function ChatUI({
 							});
 						} else if (msg.type === "error") {
 							setError(msg.message);
+							agentEventBus.emit("streamEvent", {
+								type: "error",
+								message: msg.message,
+							});
 						}
 					});
 				})
@@ -2105,9 +2116,10 @@ function ChatUI({
 		terminalHeight -
 			headerHeight -
 			inputHeight -
-			4 -
+			4 - // Base ChatBar overhead (margin, metadata, borders)
+			(scrollOffset > 0 ? 3 : 0) - // Scroll banner
+			(input.startsWith("/") && input.length > 1 ? 1 : 0) - // Suggestions row
 			warningsHeight -
-			suggestionsCount -
 			paletteHeight -
 			loadingOverlayHeight -
 			thinkingOverlayHeight -
@@ -2135,8 +2147,11 @@ function ChatUI({
 			setScrollOffset(0);
 		} else {
 			setScrollOffset((prev) => {
-				const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
-				return Math.min(prev, maxOff);
+				const safeMaxOff = Math.max(
+					0,
+					Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+				);
+				return Math.min(prev, safeMaxOff);
 			});
 		}
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
@@ -2348,13 +2363,20 @@ function ChatUI({
 
 	const scrollToTop = useCallback(() => {
 		messagesEndRef.current = false;
-		setScrollOffset(Math.max(0, totalMessageLines - chatViewportHeight));
+		const safeMaxOff = Math.max(
+			0,
+			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+		);
+		setScrollOffset(safeMaxOff);
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollPageUp = useCallback(() => {
 		messagesEndRef.current = false;
-		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
-		setScrollOffset((off) => Math.min(maxOff, off + chatViewportHeight));
+		const safeMaxOff = Math.max(
+			0,
+			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+		);
+		setScrollOffset((off) => Math.min(safeMaxOff, off + chatViewportHeight));
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollPageDown = useCallback(() => {
@@ -2367,8 +2389,11 @@ function ChatUI({
 
 	const scrollLineUp = useCallback(() => {
 		messagesEndRef.current = false;
-		const maxOff = Math.max(0, totalMessageLines - chatViewportHeight);
-		setScrollOffset((off) => Math.min(maxOff, off + 3)); // Scroll by 3 for smoothness
+		const safeMaxOff = Math.max(
+			0,
+			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+		);
+		setScrollOffset((off) => Math.min(safeMaxOff, off + 3)); // Scroll by 3 for smoothness
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollLineDown = useCallback(() => {
@@ -2379,6 +2404,7 @@ function ChatUI({
 		});
 	}, [setScrollOffset]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: trigger scroll badge check on message count and scroll offset changes
 	useEffect(() => {
 		if (messagesEndRef.current) {
 			scrollToBottom();
@@ -2401,7 +2427,7 @@ function ChatUI({
 				setNewMessageCount(newArrivals);
 			}
 		}
-	}, [scrollToBottom]);
+	}, [scrollToBottom, messages.length, scrollOffset]);
 
 	useChatInput({
 		input,
@@ -2470,6 +2496,19 @@ function ChatUI({
 
 			if (cmd === "/clear") {
 				await resetConversation();
+				return;
+			}
+
+			if (cmd === "/todos clear" || cmd === "/todos reset") {
+				clearTodos();
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: "Active task list cleared.",
+					},
+				]);
 				return;
 			}
 
@@ -2665,6 +2704,28 @@ function ChatUI({
 						content: "Config reset. Restart tehuti to enter a new API key.",
 					},
 				]);
+				return;
+			}
+
+			if (cmd === "/update") {
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: "Checking for and applying updates... Please wait.",
+					},
+				]);
+				applyUpdate().then((resultMsg) => {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: resultMsg,
+						},
+					]);
+				});
 				return;
 			}
 
@@ -3011,12 +3072,23 @@ function ChatUI({
 				});
 
 				result = await new Promise((resolve) => {
+					if (requestController.signal.aborted) {
+						resolve({ success: false, error: "Aborted" });
+						return;
+					}
+
+					const abortHandler = () => {
+						cleanup();
+						resolve({ success: false, error: "Aborted" });
+					};
+
 					const handler = (msg: any) => {
 						if (
 							!isCurrentRequest(requestId, requestController.signal) ||
 							requestController.signal.aborted
 						) {
-							agentEventBus.off("streamEvent", handler);
+							cleanup();
+							resolve({ success: false, error: "Aborted" });
 							return;
 						}
 
@@ -3027,19 +3099,21 @@ function ChatUI({
 						} else if (msg.type === "toolResult") {
 							loopOptions.onToolResult(msg.id, msg.name, msg.result);
 						} else if (msg.type === "completion") {
-							agentEventBus.off("streamEvent", handler);
+							cleanup();
 							resolve(msg.result || { success: true, content: response });
 						} else if (msg.type === "error") {
-							agentEventBus.off("streamEvent", handler);
+							cleanup();
 							resolve({ success: false, error: msg.message });
 						}
 					};
-					agentEventBus.on("streamEvent", handler);
 
-					requestController.signal.addEventListener("abort", () => {
+					function cleanup() {
 						agentEventBus.off("streamEvent", handler);
-						resolve({ success: false, error: "Aborted" });
-					});
+						requestController.signal.removeEventListener("abort", abortHandler);
+					}
+
+					agentEventBus.on("streamEvent", handler);
+					requestController.signal.addEventListener("abort", abortHandler);
 				});
 			} else {
 				result = await runAgentLoop(ctxRef.current, text, loopOptions);
@@ -3439,78 +3513,6 @@ function ChatUI({
 		});
 	}, [deferredVisibleMessages, contentMaxWidth]);
 
-	const commandSuggestions = null;
-
-	const renderInput = useMemo(() => {
-		const historyIndicator =
-			historyIndex >= 0
-				? React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						` [${historyIndex + 1}/${history.length}] `,
-					)
-				: "";
-
-		const indicatorText = loading
-			? HIEROGLYPHS.loading[0]
-			: `${DECORATIVE.feather} >`;
-		const indicatorColor = loading ? GOLD : CORAL;
-
-		if (
-			selectionStart !== null &&
-			selectionEnd !== null &&
-			selectionStart !== selectionEnd
-		) {
-			const start = Math.min(selectionStart, selectionEnd);
-			const end = Math.max(selectionStart, selectionEnd);
-			const before = input.slice(0, start);
-			const selected = input.slice(start, end);
-			const after = input.slice(end);
-
-			return React.createElement(
-				Text,
-				{ color: indicatorColor, wrap: "wrap" },
-				indicatorText,
-				historyIndicator,
-				" ",
-				before,
-				React.createElement(Text, { inverse: true }, selected),
-				after,
-			);
-		}
-
-		const before = input.slice(0, cursorPos);
-		const after = input.slice(cursorPos);
-		const hint =
-			!loading && input.length === 0
-				? React.createElement(
-						Text,
-						{ color: "gray", dimColor: true },
-						" Type a message, or /help for commands...",
-					)
-				: null;
-
-		return React.createElement(
-			Text,
-			{ color: indicatorColor, wrap: "wrap" },
-			indicatorText,
-			historyIndicator,
-			" ",
-			before,
-			loading ? null : "\u2588",
-			after,
-			hint,
-		);
-	}, [
-		input,
-		cursorPos,
-		historyIndex,
-		history.length,
-		selectionStart,
-		selectionEnd,
-		loading,
-	]);
-
 	const scrollPercent = Math.min(
 		100,
 		Math.round(
@@ -3518,55 +3520,6 @@ function ChatUI({
 				100,
 		),
 	);
-
-	const adaptiveStatusBar =
-		scrollOffset > 0
-			? React.createElement(
-					Box,
-					{
-						flexDirection: "row",
-						borderStyle: "single",
-						borderColor: CORAL,
-						paddingX: 1,
-						marginBottom: 1,
-					},
-					React.createElement(
-						Text,
-						{ color: CORAL, bold: true },
-						`↑ Scrolled up ${scrollOffset} line(s) (${scrollPercent}%)`,
-					),
-					newMessageCount > 0 &&
-						React.createElement(
-							Text,
-							{ color: GOLD, bold: true },
-							`  |  ↓ ${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`,
-						),
-					React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						"  —  Press End or PageDown to jump to bottom",
-					),
-				)
-			: !loading
-				? React.createElement(
-						Box,
-						{
-							flexDirection: "row",
-							justifyContent: "space-between",
-							marginTop: 0.5,
-						},
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							`𓆣 ${ctxModel} (${runtimeProvider})`,
-						),
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							"PageUp/Down or Ctrl+↑/↓ Scroll  |  /help Commands",
-						),
-					)
-				: null;
 
 	if (showSessionList) {
 		return React.createElement(SessionList, {
@@ -3828,11 +3781,14 @@ function ChatUI({
 								borderLeft: true,
 								borderColor: BRANDING.colors.gold,
 							},
-							React.createElement(HieroglyphSpinner, null),
+							React.createElement(HieroglyphSpinner, {
+								label: "Reasoning...",
+								color: BRANDING.colors.gold,
+							}),
 							React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
-								`${thinking.length > 150 ? `...${thinking.slice(-150)}` : thinking}`,
+								`${thinking}`,
 							),
 						),
 
@@ -3919,10 +3875,26 @@ function ChatUI({
 													),
 												),
 											),
-										adaptiveStatusBar,
-										renderInput,
+										React.createElement(ChatBar, {
+											input,
+											cursorPos,
+											selectionStart,
+											selectionEnd,
+											loading,
+											historyIndex,
+											historyLength: history.length,
+											scrollOffset,
+											scrollPercent,
+											newMessageCount,
+											model: ctxModel,
+											provider: runtimeProvider,
+											companionMode,
+											tokensUsed:
+												costTracker.getSessionStats().totalPromptTokens +
+												costTracker.getSessionStats().totalCompletionTokens,
+											sessionCost: costTracker.getSessionStats().totalCost,
+										}),
 									),
-					showCommandPalette || showConfigEditor ? null : commandSuggestions,
 				),
 				React.createElement(CommandPalette, {
 					commands,
@@ -4175,6 +4147,16 @@ export function createProgram(): Command {
 		.description("Configure and initialize Tehuti CLI settings")
 		.action(async () => {
 			await runSetupWizard();
+		});
+
+	program
+		.command("update")
+		.description("Update Tehuti CLI to the latest version")
+		.action(async () => {
+			console.log(chalk.hex(GOLD)("  𓆣 Checking for Tehuti updates..."));
+			const result = await applyUpdate();
+			console.log(`\n  ${result}\n`);
+			process.exit(0);
 		});
 
 	program

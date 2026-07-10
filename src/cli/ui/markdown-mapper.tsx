@@ -194,35 +194,54 @@ export function renderToken(
 			const items: React.ReactNode[] = [];
 			for (let i = 0; i < token.items.length; i++) {
 				const item = token.items[i];
-				const inlineElements = renderInlineTokens(item.tokens || [], getKey);
 				const bullet = token.ordered ? `${i + 1}.` : "•";
+
+				const innerBlocks = (item.tokens || []).map((t: Token) =>
+					renderToken(t, getKey, maxWidth),
+				);
+
 				items.push(
 					React.createElement(
-						Text,
-						{ key: getKey(), wrap: "wrap" },
-						React.createElement(Text, { color: CORAL }, `${bullet} `),
-						...inlineElements,
+						Box,
+						{ key: getKey(), flexDirection: "row", paddingLeft: 1 },
+						React.createElement(
+							Box,
+							{ marginRight: 1 },
+							React.createElement(Text, { color: CORAL }, bullet),
+						),
+						React.createElement(
+							Box,
+							{ flexDirection: "column", flexGrow: 1, flexBasis: 0 },
+							...innerBlocks,
+						),
 					),
 				);
 			}
-			return items;
+			return React.createElement(
+				Box,
+				{ key: getKey(), flexDirection: "column", marginY: 0.5 },
+				...items,
+			);
 		}
 
 		case "blockquote": {
-			const innerElements = renderInlineTokens(token.tokens || [], getKey);
+			const innerBlocks = (token.tokens || []).map((t: Token) =>
+				renderToken(t, getKey, maxWidth),
+			);
 			return React.createElement(
 				Box,
 				{
 					key: getKey(),
-					paddingLeft: 2,
-					borderStyle: "single" as const,
+					paddingLeft: 1,
+					borderLeft: true,
+					borderStyle: "single",
+					borderTop: false,
+					borderBottom: false,
+					borderRight: false,
 					borderColor: GRAY,
+					marginY: 0.5,
 				},
-				React.createElement(
-					Text,
-					{ dimColor: true, italic: true, wrap: "wrap" },
-					...innerElements,
-				),
+				React.createElement(Box, { flexDirection: "column" }, ...innerBlocks),
 			);
 		}
 
@@ -238,108 +257,68 @@ export function renderToken(
 		case "table": {
 			const header = token.header || [];
 			const rows = token.rows || [];
-			const tableWidth = maxWidth ? Math.max(20, maxWidth - 2) : 80;
-
-			const cellText = (cell: Token | undefined): string =>
-				cell && "text" in cell && typeof cell.text === "string"
-					? cell.text
-					: "";
-
-			const allRows: string[][] = [
-				header.map(cellText),
-				...rows.map((r: any[]) => r.map(cellText)),
-			];
-			const colCount = Math.max(1, ...allRows.map((r) => r.length));
-			// Borders: leading space + trailing space per cell (2*colCount)
-			// plus one `│` per column (colCount - 1) plus two outer corners.
-			const innerWidth = Math.max(
-				10,
-				tableWidth - 2 - colCount * 2 - (colCount - 1),
+			const colCount = Math.max(
+				header.length,
+				...rows.map((r: any[]) => r.length),
 			);
-			const minColWidth = 3;
-			const perCol = Math.floor(innerWidth / colCount);
-			const colWidths = new Array<number>(colCount).fill(minColWidth + perCol);
+			if (colCount === 0) return null;
 
-			// Wrap cells to current widths, then grow any column that needs more.
-			const wrapAll = (widths: number[]): string[][] =>
-				allRows.map((row) =>
-					row.map((text, i) => wrapText(text, widths[i] || minColWidth)),
-				);
-			let wrapped = wrapAll(colWidths);
-			for (let pass = 0; pass < 2; pass++) {
-				let grew = false;
-				for (let c = 0; c < colCount; c++) {
-					let maxLine = colWidths[c];
-					for (const row of wrapped) {
-						const cell = row[c];
-						if (!cell) continue;
-						for (const line of cell.split("\n")) {
-							const w = stringWidth(line);
-							if (w > maxLine) {
-								maxLine = w;
-								grew = true;
-							}
-						}
-					}
-					if (maxLine > colWidths[c]) colWidths[c] = maxLine;
+			const getRawText = (cell: any): string => {
+				if (!cell) return "";
+				if (cell.tokens) {
+					return cell.tokens
+						.map((t: any) => ("text" in t ? t.text : ""))
+						.join("");
 				}
-				if (grew) wrapped = wrapAll(colWidths);
-			}
-
-			const padRight = (text: string, width: number): string => {
-				return text
-					.split("\n")
-					.map((line) => {
-						const w = stringWidth(line);
-						if (w >= width) return line;
-						return line + " ".repeat(width - w);
-					})
-					.join("\n");
+				return typeof cell.text === "string" ? cell.text : "";
 			};
 
-			const horiz = (
-				left: string,
-				mid: string,
-				right: string,
-				fill: string,
-			) => {
-				const segments = colWidths.map((w) => fill.repeat(w + 2));
-				return `${left}${segments.join(mid)}${right}`;
-			};
-
-			const top = horiz("╭", "┬", "╮", "─");
-			const sep = horiz("├", "┼", "┤", "─");
-			const bot = horiz("╰", "┴", "╯", "─");
-
-			const formatRow = (cells: string[]): string => {
-				const paddedCells = cells.map((c, i) => padRight(c, colWidths[i]));
-				const lineCount = Math.max(
-					...paddedCells.map((c) => c.split("\n").length),
-				);
-				const out: string[] = [];
-				for (let li = 0; li < lineCount; li++) {
-					const segments = paddedCells.map((c, i) => {
-						const cellLines = c.split("\n");
-						const line = cellLines[li] || " ".repeat(colWidths[i]);
-						return ` ${line} `;
-					});
-					out.push(`│${segments.join("│")}│`);
+			const colMaxText = new Array(colCount).fill(1);
+			const allRows = [header, ...rows];
+			allRows.forEach((row) => {
+				for (let i = 0; i < colCount; i++) {
+					const textLen = stringWidth(getRawText(row[i]));
+					if (textLen > colMaxText[i]) colMaxText[i] = textLen;
 				}
-				return out.join("\n");
+			});
+
+			const totalText = colMaxText.reduce((a, b) => a + b, 0);
+			const colPercentages = colMaxText.map((w) =>
+				Math.max(10, Math.floor((w / totalText) * 100)),
+			);
+
+			const renderCell = (cell: any, colIndex: number, isHeader: boolean) => {
+				const inner = cell?.tokens
+					? renderInlineTokens(cell.tokens, getKey)
+					: [getRawText(cell)];
+				return (
+					<Box
+						key={getKey()}
+						width={`${colPercentages[colIndex]}%`}
+						paddingX={1}
+						borderStyle="single"
+						borderColor={GRAY}
+						borderLeft={colIndex === 0}
+						borderTop={isHeader}
+					>
+						<Text bold={isHeader}>
+							{inner.length > 0 ? inner : getRawText(cell)}
+						</Text>
+					</Box>
+				);
 			};
 
-			const headerRow = formatRow(wrapped[0] || []);
-			const dataRows = wrapped
-				.slice(1)
-				.map((row) => formatRow(row))
-				.join(`\n${sep}\n`);
-
-			const result = `\n${top}\n${headerRow}\n${sep}\n${dataRows}\n${bot}\n`;
-
-			return React.createElement(
-				Box,
-				{ key: getKey(), flexDirection: "column", marginY: 0.5 },
-				React.createElement(Text, { wrap: "wrap", color: GOLD }, result),
+			return (
+				<Box key={getKey()} flexDirection="column" marginY={1} width="100%">
+					<Box flexDirection="row">
+						{header.map((cell: any, i: number) => renderCell(cell, i, true))}
+					</Box>
+					{rows.map((row: any[], _rIndex: number) => (
+						<Box key={getKey()} flexDirection="row">
+							{row.map((cell: any, i: number) => renderCell(cell, i, false))}
+						</Box>
+					))}
+				</Box>
 			);
 		}
 
@@ -386,6 +365,9 @@ export function renderInlineToken(
 		}
 
 		case "text": {
+			if (token.tokens && token.tokens.length > 0) {
+				return renderInlineTokens(token.tokens, getKey);
+			}
 			return token.text;
 		}
 

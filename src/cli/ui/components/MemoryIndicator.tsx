@@ -40,13 +40,11 @@ export function MemoryIndicator() {
 	return (
 		<Box marginBottom={1} marginLeft={2}>
 			<Text color={PURPLE}>
-				{activeEvent.type === "start" || activeEvent.type === "learning" ? (
-					<Spinner type="dots" />
-				) : activeEvent.type === "success" ? (
-					"✓"
-				) : (
-					"ℹ"
-				)}{" "}
+				{activeEvent.type === "start" || activeEvent.type === "learning"
+					? "𓏛 "
+					: activeEvent.type === "success"
+						? "𓋹 "
+						: "𓁹 "}{" "}
 				{activeEvent.message}
 			</Text>
 		</Box>

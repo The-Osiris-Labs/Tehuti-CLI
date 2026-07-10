@@ -11,6 +11,8 @@ import {
 import type { TehutiConfig } from "./schema.js";
 import { DEFAULT_CONFIG } from "./schema.js";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const GOLD = "\x1b[38;5;178m";
 const CORAL = "\x1b[38;5;174m";
 const SAND = "\x1b[38;5;137m";
@@ -112,10 +114,13 @@ const SUGGESTED_MODELS: Record<
 };
 
 export async function runSetupWizard(): Promise<TehutiConfig> {
+	console.clear();
 	console.log();
-	console.log(c.gold(`  ${IBIS} Tehuti CLI Setup Wizard`));
+	console.log(c.gold(`  ${IBIS} Welcome to Tehuti CLI`));
+	await sleep(600);
 	console.log(c.sand("  Ma'at balance of local and cloud scribes"));
 	console.log();
+	await sleep(400);
 
 	const provider = await select({
 		message: `Select your AI provider:`,
@@ -273,16 +278,27 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		});
 	}
 
+	console.log();
+	console.log(c.cyan("  [Advanced Features]"));
+
 	const enableMCP = await confirm({
-		message: "Enable MCP (Model Context Protocol) server support?",
+		message:
+			"Enable MCP (Model Context Protocol) to allow tools and integrations?",
 		default: true,
 		theme: egyptianTheme,
 	});
 
 	const trustedMode = await confirm({
 		message:
-			"Enable trusted mode (skip safety permission prompts for read-only/non-destructive operations)?",
+			"Enable trusted mode? (Skips safety permission prompts for read-only/non-destructive tools)",
 		default: false,
+		theme: egyptianTheme,
+	});
+
+	const enableDaemon = await confirm({
+		message:
+			"Enable Background Daemon? (Allows background file watching, subagent swarms, and messaging connectors)",
+		default: true,
 		theme: egyptianTheme,
 	});
 
@@ -382,6 +398,10 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		mcp: {
 			enabled: enableMCP,
 			servers: {},
+		},
+		daemon: {
+			...DEFAULT_CONFIG.daemon,
+			enabled: enableDaemon,
 		},
 		permissions: {
 			...DEFAULT_CONFIG.permissions,

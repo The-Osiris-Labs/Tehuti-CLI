@@ -132,18 +132,12 @@ async function runGit(
 	});
 }
 
-async function isGitRepo(startPath: string): Promise<boolean> {
-	let current = startPath;
-	while (true) {
-		if (await fs.pathExists(path.join(current, ".git"))) {
-			return true;
-		}
-		const parent = path.dirname(current);
-		if (parent === current) {
-			return false;
-		}
-		current = parent;
+async function getGitRepoRoot(startPath: string): Promise<string | null> {
+	const result = await runGit(["rev-parse", "--show-toplevel"], startPath);
+	if (result.code === 0 && result.stdout) {
+		return result.stdout.trim();
 	}
+	return null;
 }
 
 async function gitStatus(
@@ -154,7 +148,8 @@ async function gitStatus(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -162,7 +157,7 @@ async function gitStatus(
 	if (args.porcelain) gitArgs.push("--porcelain");
 	else if (args.short !== false) gitArgs.push("-s");
 
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -187,7 +182,8 @@ async function gitDiff(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -196,7 +192,7 @@ async function gitDiff(
 	if (args.branch) gitArgs.push(args.branch);
 	if (args.file) gitArgs.push("--", args.file);
 
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -226,7 +222,8 @@ async function gitLog(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -236,7 +233,7 @@ async function gitLog(
 	else gitArgs.push("-10");
 	if (args.file) gitArgs.push("--", args.file);
 
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -261,12 +258,13 @@ async function gitAdd(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
 	const gitArgs = ["add", ...args.files];
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -291,14 +289,15 @@ async function gitCommit(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
 	const gitArgs = ["commit", "-m", args.message];
 	if (args.amend) gitArgs.push("--amend");
 
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		if (result.stderr.includes("nothing to commit")) {
@@ -330,12 +329,13 @@ async function gitBranch(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
 	if (args.checkout) {
-		const result = await runGit(["checkout", args.checkout], repoPath);
+		const result = await runGit(["checkout", args.checkout], repoRoot);
 		if (result.code !== 0) {
 			return {
 				success: false,
@@ -351,7 +351,7 @@ async function gitBranch(
 	}
 
 	if (args.create) {
-		const result = await runGit(["checkout", "-b", args.create], repoPath);
+		const result = await runGit(["checkout", "-b", args.create], repoRoot);
 		if (result.code !== 0) {
 			return {
 				success: false,
@@ -367,7 +367,7 @@ async function gitBranch(
 	}
 
 	if (args.delete) {
-		const result = await runGit(["branch", "-d", args.delete], repoPath);
+		const result = await runGit(["branch", "-d", args.delete], repoRoot);
 		if (result.code !== 0) {
 			return {
 				success: false,
@@ -382,7 +382,7 @@ async function gitBranch(
 		};
 	}
 
-	const result = await runGit(["branch", "-a"], repoPath);
+	const result = await runGit(["branch", "-a"], repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -407,14 +407,15 @@ async function gitRemote(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
 	const gitArgs = ["remote"];
 	if (args.verbose !== false) gitArgs.push("-v");
 
-	const result = await runGit(gitArgs, repoPath);
+	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
 		return {
@@ -439,7 +440,8 @@ async function gitPull(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -447,7 +449,7 @@ async function gitPull(
 	if (args.remote) gitArgs.push(args.remote);
 	if (args.branch) gitArgs.push(args.branch);
 
-	const result = await runGit(gitArgs, repoPath, 60000);
+	const result = await runGit(gitArgs, repoRoot, 60000);
 
 	if (result.code !== 0) {
 		return {
@@ -472,7 +474,8 @@ async function gitPush(
 		? path.resolve(ctx.cwd, args.repo_path)
 		: ctx.cwd;
 
-	if (!(await isGitRepo(repoPath))) {
+	const repoRoot = await getGitRepoRoot(repoPath);
+	if (!repoRoot) {
 		return { success: false, output: "", error: "Not a git repository" };
 	}
 
@@ -481,7 +484,7 @@ async function gitPush(
 	if (args.remote) gitArgs.push(args.remote);
 	if (args.branch) gitArgs.push(args.branch);
 
-	const result = await runGit(gitArgs, repoPath, 60000);
+	const result = await runGit(gitArgs, repoRoot, 60000);
 
 	if (result.code !== 0) {
 		return {

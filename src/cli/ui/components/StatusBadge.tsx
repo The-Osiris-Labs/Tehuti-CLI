@@ -21,6 +21,11 @@ export type StatusKind =
 	| "running"
 	| "idle"
 	| "killed"
+	| "cached"
+	| "readonly"
+	| "mutating"
+	| "verified"
+	| "speculative"
 	| "thinking";
 
 export interface StatusBadgeProps {
@@ -54,6 +59,11 @@ const ICONS: Record<
 	running: { glyph: HIEROGLYPHS.loading[0], color: COLORS.primary, spin: true },
 	idle: { glyph: "○", color: COLORS.gray },
 	killed: { glyph: "✕", color: COLORS.coral },
+	cached: { glyph: "𓏛", color: COLORS.sand },
+	readonly: { glyph: "𓁹", color: COLORS.nile },
+	mutating: { glyph: "⚡", color: COLORS.coral },
+	verified: { glyph: HIEROGLYPHS.success, color: COLORS.green },
+	speculative: { glyph: "𓂀", color: COLORS.primary },
 	thinking: {
 		glyph: HIEROGLYPHS.thinking[0],
 		color: COLORS.primary,
@@ -70,6 +80,11 @@ const DEFAULT_LABELS: Record<StatusKind, string> = {
 	running: "Running",
 	idle: "Idle",
 	killed: "Killed",
+	cached: "Cached",
+	readonly: "Read",
+	mutating: "Mutate",
+	verified: "Verified",
+	speculative: "Speculative",
 	thinking: "Thinking",
 };
 

@@ -39,8 +39,29 @@ export async function manageContextWindow(
 			let removed = false;
 			for (let i = 0; i < endIndex; i++) {
 				if (ctx.messages[i].role !== "system") {
-					ctx.messages.splice(i, 1);
+					const [removedMsg] = ctx.messages.splice(i, 1);
 					removed = true;
+					if (
+						removedMsg.role === "assistant" &&
+						removedMsg.tool_calls &&
+						removedMsg.tool_calls.length > 0
+					) {
+						const toolCallIds = new Set(
+							removedMsg.tool_calls
+								.map((tc) => tc.id)
+								.filter((id): id is string => Boolean(id)),
+						);
+						for (let j = ctx.messages.length - 1; j >= 0; j--) {
+							const msg = ctx.messages[j];
+							if (
+								msg.role === "tool" &&
+								msg.tool_call_id &&
+								toolCallIds.has(msg.tool_call_id)
+							) {
+								ctx.messages.splice(j, 1);
+							}
+						}
+					}
 					break;
 				}
 			}

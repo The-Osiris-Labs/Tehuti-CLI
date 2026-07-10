@@ -136,6 +136,7 @@ function syncMCPToolRegistry(): void {
 						string,
 						unknown
 					>,
+					120000,
 				),
 			),
 		);

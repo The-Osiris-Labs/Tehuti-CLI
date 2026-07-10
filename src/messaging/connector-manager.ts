@@ -1,4 +1,6 @@
+import * as crypto from "node:crypto";
 import { EventEmitter } from "node:events";
+import * as http from "node:http";
 import { SessionResolver } from "./session-resolver.js";
 
 export interface UnifiedMessageEvent {
@@ -29,10 +31,20 @@ export interface ConnectorConfig extends MessagingCredentials {
 export class ConnectorManager extends EventEmitter {
 	private config: ConnectorConfig;
 	private sessionResolver = new SessionResolver();
+	private webhookServer: http.Server | null = null;
 
 	constructor(config: ConnectorConfig) {
 		super();
 		this.config = config;
+	}
+
+	private ensureWebhookServer(port = 3333): http.Server {
+		if (this.webhookServer) return this.webhookServer;
+		this.webhookServer = http.createServer();
+		this.webhookServer.listen(port, () => {
+			console.log(`[Webhook] Server listening on port ${port}`);
+		});
+		return this.webhookServer;
 	}
 
 	/**
@@ -139,7 +151,48 @@ export class ConnectorManager extends EventEmitter {
 		}
 
 		console.log("[Slack] Connecting to Slack Socket Mode...");
-		throw new Error("Not yet implemented: real Slack connection");
+		try {
+			const res = await fetch("https://slack.com/api/apps.connections.open", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${slackAppToken}`,
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+			});
+			const data = (await res.json()) as any;
+			if (!data.ok) throw new Error(data.error || "Failed to get WSS URL");
+
+			// Native WebSocket in Node >= 21 or v20 with flag
+			const ws = new WebSocket(data.url);
+			ws.onmessage = async (event: MessageEvent) => {
+				const payload = JSON.parse(event.data as string);
+				if (payload.type === "hello") return;
+
+				if (payload.envelope_id) {
+					ws.send(JSON.stringify({ envelope_id: payload.envelope_id }));
+				}
+
+				if (
+					payload.payload?.event?.type === "message" &&
+					!payload.payload.event.bot_id
+				) {
+					await this.handleIncomingMessage(
+						"slack",
+						payload.payload.event.user,
+						payload.payload.event.text || "",
+						payload,
+					);
+				}
+			};
+
+			ws.onclose = () => {
+				console.log("[Slack] Connection closed. Reconnecting in 5s...");
+				setTimeout(() => this.initSlackSocketMode(), 5000);
+			};
+		} catch (err) {
+			console.error("[Slack] Connection error:", err);
+			setTimeout(() => this.initSlackSocketMode(), 10000);
+		}
 	}
 
 	private async initDiscordGateway(): Promise<void> {
@@ -154,7 +207,55 @@ export class ConnectorManager extends EventEmitter {
 		}
 
 		console.log("[Discord] Connecting to Discord Gateway...");
-		throw new Error("Not yet implemented: real Discord connection");
+		let heartbeatInterval: any;
+		try {
+			const ws = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
+
+			ws.onopen = () => {
+				ws.send(
+					JSON.stringify({
+						op: 2,
+						d: {
+							token: discordToken,
+							intents: 512 + 32768, // GUILDS, GUILD_MESSAGES, MESSAGE_CONTENT
+							properties: { os: "linux", browser: "tehuti", device: "tehuti" },
+						},
+					}),
+				);
+			};
+
+			ws.onmessage = async (event: MessageEvent) => {
+				const payload = JSON.parse(event.data as string);
+				const { t, op, d } = payload;
+
+				if (op === 10) {
+					const interval = d.heartbeat_interval;
+					heartbeatInterval = setInterval(() => {
+						if (ws.readyState === WebSocket.OPEN) {
+							ws.send(JSON.stringify({ op: 1, d: null }));
+						}
+					}, interval);
+				}
+
+				if (t === "MESSAGE_CREATE" && !d.author?.bot) {
+					await this.handleIncomingMessage(
+						"discord",
+						d.author.id,
+						d.content || "",
+						payload,
+					);
+				}
+			};
+
+			ws.onclose = () => {
+				clearInterval(heartbeatInterval);
+				console.log("[Discord] Connection closed. Reconnecting in 5s...");
+				setTimeout(() => this.initDiscordGateway(), 5000);
+			};
+		} catch (err) {
+			console.error("[Discord] Connection error:", err);
+			setTimeout(() => this.initDiscordGateway(), 10000);
+		}
 	}
 
 	private async registerTelegramWebhook(): Promise<void> {
@@ -172,7 +273,37 @@ export class ConnectorManager extends EventEmitter {
 		}
 
 		console.log("[Telegram] Connecting to Telegram Webhook endpoint...");
-		throw new Error("Not yet implemented: real Telegram connection");
+		const server = this.ensureWebhookServer();
+
+		server.on("request", (req, res) => {
+			if (
+				req.method === "POST" &&
+				req.url === `/telegram/${telegramBotToken}`
+			) {
+				let body = "";
+				req.on("data", (chunk) => {
+					body += chunk.toString();
+				});
+				req.on("end", async () => {
+					try {
+						const payload = JSON.parse(body);
+						if (payload.message?.text && !payload.message.from?.is_bot) {
+							await this.handleIncomingMessage(
+								"telegram",
+								payload.message.chat.id.toString(),
+								payload.message.text,
+								payload,
+							);
+						}
+						res.writeHead(200);
+						res.end("OK");
+					} catch (err) {
+						res.writeHead(500);
+						res.end("Internal Server Error");
+					}
+				});
+			}
+		});
 	}
 
 	private async registerWhatsAppWebhook(): Promise<void> {
@@ -193,7 +324,70 @@ export class ConnectorManager extends EventEmitter {
 		}
 
 		console.log("[WhatsApp] Connecting to WhatsApp Webhook endpoint...");
-		throw new Error("Not yet implemented: real WhatsApp connection");
+		const server = this.ensureWebhookServer();
+
+		server.on("request", (req, res) => {
+			// Webhook verification challenge
+			if (req.method === "GET" && req.url?.startsWith("/whatsapp")) {
+				const url = new URL(req.url, "http://localhost");
+				const mode = url.searchParams.get("hub.mode");
+				const token = url.searchParams.get("hub.verify_token");
+				const challenge = url.searchParams.get("hub.challenge");
+
+				if (mode === "subscribe" && token === whatsappWebhookSecret) {
+					res.writeHead(200);
+					res.end(challenge);
+				} else {
+					res.writeHead(403);
+					res.end();
+				}
+				return;
+			}
+
+			// Webhook incoming message
+			if (req.method === "POST" && req.url?.startsWith("/whatsapp")) {
+				let body = "";
+				req.on("data", (chunk) => {
+					body += chunk.toString();
+				});
+				req.on("end", async () => {
+					try {
+						const signature = req.headers["x-hub-signature-256"] as string;
+						const expected = `sha256=${crypto.createHmac("sha256", whatsappWebhookSecret).update(body).digest("hex")}`;
+						if (signature !== expected) {
+							res.writeHead(403);
+							res.end("Invalid signature");
+							return;
+						}
+
+						const payload = JSON.parse(body);
+						if (payload.object === "whatsapp_business_account") {
+							for (const entry of payload.entry) {
+								for (const change of entry.changes) {
+									if (change.value?.messages) {
+										for (const msg of change.value.messages) {
+											if (msg.type === "text") {
+												await this.handleIncomingMessage(
+													"whatsapp",
+													msg.from,
+													msg.text.body,
+													payload,
+												);
+											}
+										}
+									}
+								}
+							}
+						}
+						res.writeHead(200);
+						res.end("OK");
+					} catch (err) {
+						res.writeHead(500);
+						res.end("Internal Server Error");
+					}
+				});
+			}
+		});
 	}
 
 	/**

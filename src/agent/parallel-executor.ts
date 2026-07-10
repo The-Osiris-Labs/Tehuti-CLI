@@ -1,3 +1,5 @@
+import type { ContentBlock } from "../api/base-client.js";
+import { logger } from "../utils/logger.js";
 import { AsyncMutex } from "../utils/mutex.js";
 import { getTelemetry } from "../utils/telemetry.js";
 import {
@@ -41,7 +43,7 @@ export interface ParallelExecutionOptions {
 		ctx: AgentContext,
 		toolCallId: string,
 		toolName: string,
-		result: string,
+		result: string | ContentBlock[],
 	) => void;
 	ctx: AgentContext;
 	toolContext: Parameters<typeof executeTool>[2];
@@ -96,8 +98,13 @@ async function executeToolCall(
 
 	try {
 		args = JSON.parse(tc.function.arguments);
-	} catch {
+	} catch (error) {
 		const message = `Failed to parse arguments for ${toolName}`;
+		telemetry.recordToolExecution(toolName, 0, false, false);
+		logger.error(
+			`Argument parsing failed for tool ${toolName} (${tc.id}):`,
+			error,
+		);
 		return makeToolErrorResult(message, message);
 	}
 
@@ -205,167 +212,244 @@ export async function executeToolsParallel(
 		batches.push({ type: "parallel", toolCalls: currentParallelBatch });
 	}
 
-	for (const batch of batches) {
-		if (activeSignal?.aborted) {
-			for (let i = 0; i < toolCalls.length; i++) {
-				if (!results[i]) {
-					results[i] = {
-						success: false,
-						output: "",
-						error: "Execution aborted by user",
-					};
-				}
-			}
-			return results;
-		}
-
-		if (batch.type === "parallel") {
-			const parallelStartTime = Date.now();
-			const parallelChunks: ToolCall[][] = [];
-
-			for (let i = 0; i < batch.toolCalls.length; i += maxConcurrency) {
-				parallelChunks.push(batch.toolCalls.slice(i, i + maxConcurrency));
-			}
-
-			for (const chunk of parallelChunks) {
-				if (activeSignal?.aborted) {
-					for (let i = 0; i < toolCalls.length; i++) {
-						if (!results[i]) {
-							results[i] = {
-								success: false,
-								output: "",
-								error: "Execution aborted by user",
-							};
-						}
+	try {
+		for (const batch of batches) {
+			if (activeSignal?.aborted) {
+				for (let i = 0; i < toolCalls.length; i++) {
+					if (!results[i]) {
+						const tc = toolCalls[i];
+						const result: ToolResult = {
+							success: false,
+							output: "",
+							error: "Execution aborted by user",
+						};
+						results[i] = result;
+						telemetry.recordToolExecution(tc.function.name, 0, false, false);
+						logger.warn(
+							`Tool execution aborted for ${tc.function.name} (${tc.id})`,
+						);
+						let resultStr = `Error: ${result.error}\nOutput: `;
+						resultStr = truncateToolResultForModel(resultStr);
+						addToolResult(ctx, tc.id, tc.function.name, resultStr);
+						onToolResult?.(tc.id, tc.function.name, result);
 					}
-					return results;
+				}
+				return results;
+			}
+
+			if (batch.type === "parallel") {
+				const parallelStartTime = Date.now();
+				const parallelChunks: ToolCall[][] = [];
+
+				for (let i = 0; i < batch.toolCalls.length; i += maxConcurrency) {
+					parallelChunks.push(batch.toolCalls.slice(i, i + maxConcurrency));
 				}
 
-				const chunkResults = await Promise.all(
-					chunk.map(async (tc) => {
-						try {
-							if (activeSignal?.aborted) {
-								const result = {
+				for (const chunk of parallelChunks) {
+					if (activeSignal?.aborted) {
+						for (let i = 0; i < toolCalls.length; i++) {
+							if (!results[i]) {
+								const tc = toolCalls[i];
+								const result: ToolResult = {
 									success: false,
 									output: "",
 									error: "Execution aborted by user",
 								};
+								results[i] = result;
+								telemetry.recordToolExecution(
+									tc.function.name,
+									0,
+									false,
+									false,
+								);
+								logger.warn(
+									`Tool execution aborted for ${tc.function.name} (${tc.id})`,
+								);
+								let resultStr = `Error: ${result.error}\nOutput: `;
+								resultStr = truncateToolResultForModel(resultStr);
+								addToolResult(ctx, tc.id, tc.function.name, resultStr);
+								onToolResult?.(tc.id, tc.function.name, result);
+							}
+						}
+						return results;
+					}
+
+					const chunkResults = await Promise.all(
+						chunk.map(async (tc) => {
+							try {
+								if (activeSignal?.aborted) {
+									const result: ToolResult = {
+										success: false,
+										output: "",
+										error: "Execution aborted by user",
+									};
+									telemetry.recordToolExecution(
+										tc.function.name,
+										0,
+										false,
+										false,
+									);
+									logger.warn(
+										`Tool execution aborted for ${tc.function.name} (${tc.id})`,
+									);
+									await mutex.runExclusive(async () => {
+										let resultStr = `Error: ${result.error}\nOutput: `;
+										resultStr = truncateToolResultForModel(resultStr);
+										addToolResult(ctx, tc.id, tc.function.name, resultStr);
+									});
+									onToolResult?.(tc.id, tc.function.name, result);
+									return result;
+								}
+
+								const result = await executeToolCall(
+									tc,
+									ctx,
+									toolContext,
+									cache,
+									telemetry,
+									selfHealer,
+								);
+
+								await mutex.runExclusive(async () => {
+									const outStr =
+										typeof result.output === "string"
+											? result.output
+											: JSON.stringify(result.output ?? "");
+									let resultStr = result.success
+										? outStr
+										: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
+									resultStr = truncateToolResultForModel(resultStr);
+									addToolResult(ctx, tc.id, tc.function.name, resultStr);
+								});
+
+								onToolResult?.(tc.id, tc.function.name, result);
+								return result;
+							} catch (error) {
+								const result: ToolResult = {
+									success: false,
+									output: "",
+									error: `Parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
+								};
+								telemetry.recordToolExecution(
+									tc.function.name,
+									0,
+									false,
+									false,
+								);
+								logger.error(
+									`Parallel execution exception for tool ${tc.function.name} (${tc.id}):`,
+									error,
+								);
 								await mutex.runExclusive(async () => {
 									let resultStr = `Error: ${result.error}\nOutput: `;
 									resultStr = truncateToolResultForModel(resultStr);
 									addToolResult(ctx, tc.id, tc.function.name, resultStr);
 								});
+								onToolResult?.(tc.id, tc.function.name, result);
 								return result;
 							}
+						}),
+					);
 
-							const result = await executeToolCall(
-								tc,
-								ctx,
-								toolContext,
-								cache,
-								telemetry,
-								selfHealer,
-							);
-
-							await mutex.runExclusive(async () => {
-								const outStr =
-									typeof result.output === "string"
-										? result.output
-										: JSON.stringify(result.output ?? "");
-								let resultStr = result.success
-									? outStr
-									: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
-								resultStr = truncateToolResultForModel(resultStr);
-								addToolResult(ctx, tc.id, tc.function.name, resultStr);
-							});
-
-							onToolResult?.(tc.id, tc.function.name, result);
-							return result;
-						} catch (error) {
-							const result = {
-								success: false,
-								output: "",
-								error: `Parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
-							};
-							await mutex.runExclusive(async () => {
-								let resultStr = `Error: ${result.error}\nOutput: `;
-								resultStr = truncateToolResultForModel(resultStr);
-								addToolResult(ctx, tc.id, tc.function.name, resultStr);
-							});
-							onToolResult?.(tc.id, tc.function.name, result);
-							return result;
+					for (let i = 0; i < chunk.length; i++) {
+						const globalIndex = toolCalls.indexOf(chunk[i]);
+						if (globalIndex >= 0) {
+							results[globalIndex] = chunkResults[i];
 						}
-					}),
-				);
+					}
+				}
 
-				for (let i = 0; i < chunk.length; i++) {
-					const globalIndex = toolCalls.indexOf(chunk[i]);
+				const parallelEndTime = Date.now();
+				const parallelDuration = parallelEndTime - parallelStartTime;
+
+				let sequentialEstimate = 0;
+				for (const tc of batch.toolCalls) {
+					const toolStats = telemetry.getToolStats().get(tc.function.name);
+					if (toolStats) {
+						sequentialEstimate += toolStats.avgMs;
+					}
+				}
+
+				if (
+					batch.toolCalls.length > 1 &&
+					sequentialEstimate > parallelDuration
+				) {
+					telemetry.recordParallelExecution(
+						batch.toolCalls.length,
+						parallelDuration,
+						sequentialEstimate,
+					);
+				}
+			} else {
+				const tc = batch.toolCalls[0];
+				try {
+					const result = await executeToolCall(
+						tc,
+						ctx,
+						toolContext,
+						cache,
+						telemetry,
+						selfHealer,
+					);
+
+					const outStr =
+						typeof result.output === "string"
+							? result.output
+							: JSON.stringify(result.output ?? "");
+					let resultStr = result.success
+						? outStr
+						: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
+					resultStr = truncateToolResultForModel(resultStr);
+					addToolResult(ctx, tc.id, tc.function.name, resultStr);
+
+					onToolResult?.(tc.id, tc.function.name, result);
+
+					const globalIndex = toolCalls.indexOf(tc);
 					if (globalIndex >= 0) {
-						results[globalIndex] = chunkResults[i];
+						results[globalIndex] = result;
+					}
+				} catch (error) {
+					const result: ToolResult = {
+						success: false,
+						output: "",
+						error: `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
+					};
+					telemetry.recordToolExecution(tc.function.name, 0, false, false);
+					logger.error(
+						`Sequential execution exception for tool ${tc.function.name} (${tc.id}):`,
+						error,
+					);
+					let resultStr = `Error: ${result.error}\nOutput: `;
+					resultStr = truncateToolResultForModel(resultStr);
+					addToolResult(ctx, tc.id, tc.function.name, resultStr);
+					onToolResult?.(tc.id, tc.function.name, result);
+					const globalIndex = toolCalls.indexOf(tc);
+					if (globalIndex >= 0) {
+						results[globalIndex] = result;
 					}
 				}
 			}
-
-			const parallelEndTime = Date.now();
-			const parallelDuration = parallelEndTime - parallelStartTime;
-
-			let sequentialEstimate = 0;
-			for (const tc of batch.toolCalls) {
-				const toolStats = telemetry.getToolStats().get(tc.function.name);
-				if (toolStats) {
-					sequentialEstimate += toolStats.avgMs;
-				}
-			}
-
-			if (batch.toolCalls.length > 1 && sequentialEstimate > parallelDuration) {
-				telemetry.recordParallelExecution(
-					batch.toolCalls.length,
-					parallelDuration,
-					sequentialEstimate,
-				);
-			}
-		} else {
-			const tc = batch.toolCalls[0];
-			try {
-				const result = await executeToolCall(
-					tc,
-					ctx,
-					toolContext,
-					cache,
-					telemetry,
-					selfHealer,
-				);
-
-				const outStr =
-					typeof result.output === "string"
-						? result.output
-						: JSON.stringify(result.output ?? "");
-				let resultStr = result.success
-					? outStr
-					: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
-				resultStr = truncateToolResultForModel(resultStr);
-				addToolResult(ctx, tc.id, tc.function.name, resultStr);
-
-				onToolResult?.(tc.id, tc.function.name, result);
-
-				const globalIndex = toolCalls.indexOf(tc);
-				if (globalIndex >= 0) {
-					results[globalIndex] = result;
-				}
-			} catch (error) {
-				const result = {
+		}
+	} catch (batchError) {
+		logger.error("Unexpected error during batch tool execution:", batchError);
+	} finally {
+		for (let i = 0; i < toolCalls.length; i++) {
+			if (!results[i]) {
+				const tc = toolCalls[i];
+				const result: ToolResult = {
 					success: false,
 					output: "",
-					error: `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
+					error: "Execution aborted or incomplete",
 				};
+				results[i] = result;
+				telemetry.recordToolExecution(tc.function.name, 0, false, false);
+				logger.error(
+					`Orphaned tool call resolved with fallback error for ${tc.function.name} (${tc.id})`,
+				);
 				let resultStr = `Error: ${result.error}\nOutput: `;
 				resultStr = truncateToolResultForModel(resultStr);
 				addToolResult(ctx, tc.id, tc.function.name, resultStr);
 				onToolResult?.(tc.id, tc.function.name, result);
-				const globalIndex = toolCalls.indexOf(tc);
-				if (globalIndex >= 0) {
-					results[globalIndex] = result;
-				}
 			}
 		}
 	}

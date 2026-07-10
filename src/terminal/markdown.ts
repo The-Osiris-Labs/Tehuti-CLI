@@ -171,7 +171,11 @@ function renderInlineTokens(tokens: Token[]): string {
 	for (const token of tokens) {
 		switch (token.type) {
 			case "text":
-				result += token.text;
+				if (token.tokens && token.tokens.length > 0) {
+					result += renderInlineTokens(token.tokens);
+				} else {
+					result += token.text;
+				}
 				break;
 			case "strong":
 				result += bold(renderInlineTokens(token.tokens || []));

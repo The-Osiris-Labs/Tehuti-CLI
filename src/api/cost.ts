@@ -28,6 +28,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 	"gemini-pro-1.5": { input: 1.25, output: 5 },
 	"deepseek/deepseek-chat": { input: 0.14, output: 0.28 },
 	"deepseek-chat": { input: 0.14, output: 0.28 },
+	"deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
+	"deepseek-reasoner": { input: 0.55, output: 2.19 },
+	"openai/o1": { input: 15, output: 60 },
+	o1: { input: 15, output: 60 },
+	"openai/o3-mini": { input: 1.1, output: 4.4 },
+	"o3-mini": { input: 1.1, output: 4.4 },
 };
 
 const DEFAULT_PRICING: ModelPricing = { input: 0, output: 0 };
@@ -106,7 +112,13 @@ class CostTracker {
 	): CostBreakdown {
 		const pricing = getModelPricing(modelId, livePricing);
 
-		const inputCost = (usage.promptTokens / 1_000_000) * (pricing.input || 0);
+		const uncachedInputTokens = Math.max(
+			0,
+			usage.promptTokens -
+				(usage.cacheReadTokens ?? 0) -
+				(usage.cacheWriteTokens ?? 0),
+		);
+		const inputCost = (uncachedInputTokens / 1_000_000) * (pricing.input || 0);
 		const outputCost =
 			(usage.completionTokens / 1_000_000) * (pricing.output || 0);
 		const cacheReadCost =

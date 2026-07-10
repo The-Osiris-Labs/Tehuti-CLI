@@ -57,6 +57,9 @@ export async function initMemory(
 		registerCleanupHandler(async () => {
 			debug.log("memory", "Stopping memory consolidation timer");
 			stopBackgroundConsolidation();
+			try {
+				db.close();
+			} catch (_err) {}
 		});
 	}
 }

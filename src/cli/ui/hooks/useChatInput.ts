@@ -228,6 +228,10 @@ export function useChatInput(props: UseChatInputProps) {
 					(k.length > 1 && (k.endsWith("M") || k.endsWith("m"))))
 			) {
 				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
+				const fullSeq = mouseBufferRef.current + k;
+				if (fullSeq.includes("<64;")) scrollLineUp();
+				if (fullSeq.includes("<65;")) scrollLineDown();
+
 				flushMouseBuffer();
 				return true;
 			}
@@ -245,12 +249,14 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 			// Complete mouse sequence in one chunk.
 			if (isMouseSequence(k)) {
+				if (k.includes("<64;")) scrollLineUp();
+				if (k.includes("<65;")) scrollLineDown();
 				flushMouseBuffer();
 				return true;
 			}
 			return false;
 		},
-		[flushMouseBuffer],
+		[flushMouseBuffer, scrollLineUp, scrollLineDown],
 	);
 
 	useInput((k, key) => {
@@ -327,8 +333,7 @@ export function useChatInput(props: UseChatInputProps) {
 				key.pageUp ||
 				key.pageDown ||
 				key.home ||
-				key.end ||
-				(key.ctrl && (key.upArrow || key.downArrow)))
+				key.end)
 		) {
 			if (hasSelection) {
 				setSelectionStart(null);
@@ -741,6 +746,16 @@ export function useChatInput(props: UseChatInputProps) {
 		}
 		if (key.pageDown) {
 			scrollPageDown();
+			return;
+		}
+
+		if (key.ctrl && key.upArrow) {
+			scrollLineUp();
+			return;
+		}
+
+		if (key.ctrl && key.downArrow) {
+			scrollLineDown();
 			return;
 		}
 
