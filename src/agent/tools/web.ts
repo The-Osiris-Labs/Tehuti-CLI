@@ -321,6 +321,81 @@ async function webFetch(
 	}
 }
 
+interface OpenRouterChoice {
+	message?: { content?: string };
+}
+interface OpenRouterResponse {
+	choices?: OpenRouterChoice[];
+}
+
+/**
+ * Fallback web search using OpenRouter's :online model suffix.
+ * Used when EXA_API_KEY is not set, OR when Exa returns an error.
+ * Returns null on failure so the caller can decide what to do.
+ */
+async function openRouterWebSearch(
+	query: string,
+	numResults: number,
+): Promise<ToolResult | null> {
+	const apiKey = process.env.OPENROUTER_API_KEY;
+	if (!apiKey) return null;
+
+	const model = process.env.TEHUTI_WEB_SEARCH_MODEL ?? "openai/gpt-4o-mini:online";
+	const endpoint = "https://openrouter.ai/api/v1/chat/completions";
+
+	const systemPrompt = `You are a web-search assistant. The user will ask a question.
+Use the model's online/web-search capabilities to find up-to-date information.
+Return your answer as a numbered list. For each result provide:
+- Title
+- URL
+- A 1-3 sentence excerpt
+
+Return at most ${numResults} results. If you cannot find anything, say "No results found".
+Do not include any other commentary.`;
+
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 60_000);
+
+	try {
+		const response = await fetch(endpoint, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+				"HTTP-Referer": "https://tehuti.dev",
+				"X-Title": "Tehuti-CLI",
+			},
+			body: JSON.stringify({
+				model,
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: query },
+				],
+				max_tokens: 2000,
+			}),
+			signal: controller.signal,
+		});
+
+		if (!response.ok) {
+			return null;
+		}
+
+		const data = (await response.json()) as OpenRouterResponse;
+		const content = data.choices?.[0]?.message?.content;
+		if (!content) return null;
+
+		return {
+			success: true,
+			output: content,
+			metadata: { query, provider: "openrouter", model },
+		};
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
+
 async function webSearch(
 	args: z.infer<typeof WEB_SEARCH_SCHEMA>,
 	_ctx: ToolContext,
@@ -334,11 +409,19 @@ async function webSearch(
 
 	const apiKey = process.env.EXA_API_KEY;
 	if (!apiKey) {
+		// Fallback: use OpenRouter's :online models for web-grounded search.
+		const fallback = await openRouterWebSearch(query, num_results);
+		if (fallback) {
+			return {
+				...fallback,
+				metadata: { ...fallback.metadata, num_results, fallback: true },
+			};
+		}
 		return {
 			success: false,
 			output: "",
 			error:
-				"Web search requires an Exa API key. Set EXA_API_KEY environment variable to enable web search.",
+				"Web search requires an Exa API key (set EXA_API_KEY) OR an OpenRouter key (set OPENROUTER_API_KEY) to use the :online fallback.",
 			metadata: { query, num_results },
 		};
 	}
@@ -381,6 +464,14 @@ async function webSearch(
 			},
 		};
 	} catch (error) {
+		// Exa failed — try OpenRouter fallback before giving up.
+		const fallback = await openRouterWebSearch(query, num_results);
+		if (fallback) {
+			return {
+				...fallback,
+				metadata: { ...fallback.metadata, num_results, fallback: true, exaError: String(error) },
+			};
+		}
 		const errorMessage = `Web search failed: ${error instanceof Error ? error.message : String(error)}`;
 		return {
 			success: false,
@@ -388,6 +479,63 @@ async function webSearch(
 			error: errorMessage,
 			metadata: { query, num_results },
 		};
+	}
+}
+
+async function openRouterCodeSearch(
+	query: string,
+	tokensNum: number,
+): Promise<ToolResult | null> {
+	const apiKey = process.env.OPENROUTER_API_KEY;
+	if (!apiKey) return null;
+
+	const model = process.env.TEHUTI_CODE_SEARCH_MODEL ?? "openai/gpt-4o-mini";
+	const endpoint = "https://openrouter.ai/api/v1/chat/completions";
+
+	const systemPrompt = `You are a code search assistant. The user is asking for code examples,
+API references, or library documentation. Use your knowledge and any retrieval
+capabilities to provide accurate, up-to-date code snippets and explanations.
+Be precise and include version-specific notes when relevant. Keep the response
+under ${tokensNum} tokens. Format code blocks with triple backticks.`;
+
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 60_000);
+
+	try {
+		const response = await fetch(endpoint, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+				"HTTP-Referer": "https://tehuti.dev",
+				"X-Title": "Tehuti-CLI",
+			},
+			body: JSON.stringify({
+				model,
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: query },
+				],
+				max_tokens: Math.min(Math.max(500, Math.floor(tokensNum * 0.75)), 4000),
+			}),
+			signal: controller.signal,
+		});
+
+		if (!response.ok) return null;
+
+		const data = (await response.json()) as OpenRouterResponse;
+		const content = data.choices?.[0]?.message?.content;
+		if (!content) return null;
+
+		return {
+			success: true,
+			output: content,
+			metadata: { query, provider: "openrouter", model, fallback: true },
+		};
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }
 
@@ -399,11 +547,13 @@ async function codeSearch(
 
 	const apiKey = process.env.EXA_API_KEY;
 	if (!apiKey) {
+		const fallback = await openRouterCodeSearch(query, tokens_num);
+		if (fallback) return fallback;
 		return {
 			success: false,
 			output: "",
 			error:
-				"Code search requires an Exa API key. Set EXA_API_KEY environment variable.",
+				"Code search requires an Exa API key (set EXA_API_KEY) OR an OpenRouter key (set OPENROUTER_API_KEY) for the fallback.",
 			metadata: { query },
 		};
 	}
@@ -439,6 +589,14 @@ ${result.text ?? ""}
 			},
 		};
 	} catch (error) {
+		// Try fallback before giving up
+		const fallback = await openRouterCodeSearch(query, tokens_num);
+		if (fallback) {
+			return {
+				...fallback,
+				metadata: { ...fallback.metadata, exaError: String(error) },
+			};
+		}
 		const errorMessage = `Code search failed: ${error instanceof Error ? error.message : String(error)}`;
 		return {
 			success: false,
