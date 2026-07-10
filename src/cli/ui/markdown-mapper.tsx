@@ -52,6 +52,7 @@ import {
 	highlightToAnsi,
 	isHighlighterReady,
 } from "../../terminal/highlighter.js";
+import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
 import { MediaViewer } from "./components/MediaViewer.js";
 
 marked.use(markedKatex({ throwOnError: false }));
@@ -255,71 +256,15 @@ export function renderToken(
 		}
 
 		case "table": {
-			const header = token.header || [];
-			const rows = token.rows || [];
-			const colCount = Math.max(
-				header.length,
-				...rows.map((r: any[]) => r.length),
-			);
-			if (colCount === 0) return null;
-
-			const getRawText = (cell: any): string => {
-				if (!cell) return "";
-				if (cell.tokens) {
-					return cell.tokens
-						.map((t: any) => ("text" in t ? t.text : ""))
-						.join("");
-				}
-				return typeof cell.text === "string" ? cell.text : "";
-			};
-
-			const colMaxText = new Array(colCount).fill(1);
-			const allRows = [header, ...rows];
-			allRows.forEach((row) => {
-				for (let i = 0; i < colCount; i++) {
-					const textLen = stringWidth(getRawText(row[i]));
-					if (textLen > colMaxText[i]) colMaxText[i] = textLen;
-				}
-			});
-
-			const totalText = colMaxText.reduce((a, b) => a + b, 0);
-			const colPercentages = colMaxText.map((w) =>
-				Math.max(10, Math.floor((w / totalText) * 100)),
-			);
-
-			const renderCell = (cell: any, colIndex: number, isHeader: boolean) => {
-				const inner = cell?.tokens
-					? renderInlineTokens(cell.tokens, getKey)
-					: [getRawText(cell)];
-				return (
-					<Box
-						key={getKey()}
-						width={`${colPercentages[colIndex]}%`}
-						paddingX={1}
-						borderStyle="single"
-						borderColor={GRAY}
-						borderLeft={colIndex === 0}
-						borderTop={isHeader}
-					>
-						<Text bold={isHeader}>
-							{inner.length > 0 ? inner : getRawText(cell)}
-						</Text>
-					</Box>
+			if (token.raw) {
+				const ansiText = renderMarkdownToAnsi(token.raw);
+				return React.createElement(
+					Box,
+					{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
+					React.createElement(Text, null, ansiText)
 				);
-			};
-
-			return (
-				<Box key={getKey()} flexDirection="column" marginY={1} width="100%">
-					<Box flexDirection="row">
-						{header.map((cell: any, i: number) => renderCell(cell, i, true))}
-					</Box>
-					{rows.map((row: any[], _rIndex: number) => (
-						<Box key={getKey()} flexDirection="row">
-							{row.map((cell: any, i: number) => renderCell(cell, i, false))}
-						</Box>
-					))}
-				</Box>
-			);
+			}
+			return null;
 		}
 
 		case "space": {
