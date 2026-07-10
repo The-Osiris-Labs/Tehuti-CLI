@@ -138,6 +138,62 @@ Defaults: `provider: "opencode"`, `model: "deepseek-v4-flash"`.
 | **Mid-session auto-save** | None — only `/save` or clean exit (Ctrl+C with empty input) |
 | **Two markdown pipelines** | Ink `renderMarkdown()` vs ANSI `renderMarkdownToAnsi()` — feature parity gaps |
 
+## Recent Fixes (July 2026)
+
+Applied in commits `0b36ee0..2899877` on `main`:
+
+1. **`read_image`/`read_pdf`/`read` blocked from macOS screenshots** (`0b36ee0`).
+   `validatePathSecurity` rejected any path outside cwd, including
+   `/var/folders/.../T/TemporaryItems/...` where macOS puts screenshots.
+   Fixed by adding a read-only external allowlist (`/var/folders/`,
+   `$TMPDIR/`, `~/Library/`, `~/.tehuti/tmp/`) gated on a new
+   `{ allowExternalRead: true }` option applied only to read-only tools.
+   Write tools (write/edit/apply_diff) remain strictly sandboxed.
+2. **Bash dangerous-pattern filter false positives** (`ccf660f`).
+   - `/\bat\s+.*[fm]/` matched `at 3.55.45 AM` in filenames. Tightened to
+     `/\bat\s+\d/` to require a digit (matches real `at 5pm`, `at 14:00`).
+   - The catchall `/(^|[\s="'])\/(etc|var|usr|...)\b/` blocked reads like
+     `cat /etc/hosts` and any command referencing `/var/folders/...`.
+     Replaced with explicit write/destructive patterns (redirection into,
+     rm/mv/cp/rsync/chmod/chown on system paths).
+3. **`web_search` and `code_search` hard-fail without `EXA_API_KEY`**
+   (`04043ce`, `2899877`). Now fall back to OpenRouter `:online` models
+   using your `OPENROUTER_API_KEY`. Model is configurable via
+   `TEHUTI_WEB_SEARCH_MODEL` and `TEHUTI_CODE_SEARCH_MODEL`. A one-time
+   debug hint logs when neither key is set, so the user knows it's a
+   config issue, not a transient failure.
+4. **Security ordering in `validatePathSecurity`** (`5b428d9`). Sensitive-
+   file check now runs before the traversal check, so an attacker probing
+   the system cannot distinguish a 'sensitive file' rejection from a
+   'path traversal' rejection based on the error message.
+5. **Bootstrap script** (`scripts/bootstrap.sh`). One-shot setup that
+   approves pnpm build scripts for native deps (`better-sqlite3`,
+   `sharp`, `tree-sitter`, etc.) and runs install + typecheck + test.
+6. **Fallback test coverage** (`web.fallback.test.ts`, 7 tests). End-to-
+   end tests for the OpenRouter fallback path using mocked fetch.
+
+## Persistence model — what gets saved and what doesn't
+
+When a session is saved to `~/.tehuti/sessions/<id>/session.json`, the
+following fields are persisted per `StandardMessage`:
+
+- ✅ `role`, `content`, `timestamp`, `internalId` (always)
+- ✅ `tool_calls` (assistant messages with tool use)
+- ✅ `tool_call_id`, `name` (tool result messages)
+- ❌ `thoughts` / `reasoning` / chain-of-thought (stripped on save — by
+  design, models don't reuse prior thinking and it bloats the file)
+- ❌ `expected_hash` values for in-flight edits (security: live file
+  must match at edit time; persisting a stale hash would let edits
+  bypass the drift check)
+
+`metadata.json` separately tracks `messageCount`, cumulative `toolCalls`,
+`tokensUsed`, `model`, `cwd`, `provider`, `baseUrl`. `context` block
+holds `readFilesThisSession`, `metadata`, `workingDir`.
+
+If a feature feels "lost between turns," the most likely culprit is the
+reasoning strip, not the tool calls themselves — tool_calls ARE there
+on disk.
+
 ---
 
 ## TUI Features (Working)
