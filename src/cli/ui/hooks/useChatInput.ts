@@ -262,11 +262,19 @@ export function useChatInput(props: UseChatInputProps) {
 		const historyIndex = historyIndexRef.current;
 		const loading = loadingRef.current;
 
-		if (k?.startsWith("\x1b[<64;")) {
+		if (
+			k?.startsWith("\x1b[<64;") ||
+			k?.startsWith("[<64;") ||
+			k?.startsWith("<64;")
+		) {
 			scrollLineUp();
 			return;
 		}
-		if (k?.startsWith("\x1b[<65;")) {
+		if (
+			k?.startsWith("\x1b[<65;") ||
+			k?.startsWith("[<65;") ||
+			k?.startsWith("<65;")
+		) {
 			scrollLineDown();
 			return;
 		}
@@ -500,7 +508,37 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		if (key.upArrow && !loading) {
+		if (key.pageUp) {
+			scrollPageUp();
+			return;
+		}
+
+		if (key.pageDown) {
+			scrollPageDown();
+			return;
+		}
+
+		if ((key.ctrl || key.meta) && key.upArrow) {
+			scrollLineUp();
+			return;
+		}
+
+		if ((key.ctrl || key.meta) && key.downArrow) {
+			scrollLineDown();
+			return;
+		}
+
+		if (key.home) {
+			scrollToTop();
+			return;
+		}
+
+		if (key.end) {
+			scrollToBottom();
+			return;
+		}
+
+		if (key.upArrow && !key.ctrl && !key.meta && !loading) {
 			if (history.length > 0) {
 				if (historyIndex === -1) {
 					inputBeforeHistoryRef.current = input;
@@ -517,7 +555,7 @@ export function useChatInput(props: UseChatInputProps) {
 			return;
 		}
 
-		if (key.downArrow && !loading) {
+		if (key.downArrow && !key.ctrl && !key.meta && !loading) {
 			if (historyIndex > 0) {
 				const newIndex = historyIndex - 1;
 				setHistoryIndex(newIndex);
@@ -528,36 +566,6 @@ export function useChatInput(props: UseChatInputProps) {
 				setInput(inputBeforeHistoryRef.current);
 				setCursorPos(inputBeforeHistoryRef.current.length);
 			}
-			return;
-		}
-
-		if (key.pageUp) {
-			scrollPageUp();
-			return;
-		}
-
-		if (key.pageDown) {
-			scrollPageDown();
-			return;
-		}
-
-		if (key.ctrl && key.upArrow) {
-			scrollLineUp();
-			return;
-		}
-
-		if (key.ctrl && key.downArrow) {
-			scrollLineDown();
-			return;
-		}
-
-		if (key.home) {
-			scrollToTop();
-			return;
-		}
-
-		if (key.end) {
-			scrollToBottom();
 			return;
 		}
 

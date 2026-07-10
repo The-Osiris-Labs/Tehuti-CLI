@@ -1,12 +1,17 @@
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput } from "ink";
 import React, { useState } from "react";
 import type { QuestionData } from "../../../agent/tools/system.js";
-import { BRANDING } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 
-const GOLD = BRANDING.colors?.primary || "#F5C518";
-const GRAY = BRANDING.colors?.gray || "#9CA3AF";
-const CORAL = BRANDING.colors?.accent || "#FF6B35";
+const COLORS = {
+	gold: BRANDING.colors?.primary || "#F5C518",
+	coral: BRANDING.colors?.coral || "#FF6B35",
+	sand: BRANDING.colors?.sand || "#8B7355",
+	gray: BRANDING.colors?.gray || "#9CA3AF",
+	nile: BRANDING.colors?.nile || "#165DFF",
+	green: BRANDING.colors?.green || "#22C55E",
+} as const;
 
 export function QuestionPrompt({
 	question,
@@ -23,7 +28,7 @@ export function QuestionPrompt({
 	const [selectedMultiple, setSelectedMultiple] = useState<Set<number>>(
 		new Set(),
 	);
-	const { stdout } = useStdout();
+	const [filter, setFilter] = useState("");
 
 	useInput((k, key) => {
 		if (isMouseSequence(k)) {
@@ -49,15 +54,38 @@ export function QuestionPrompt({
 			return;
 		}
 
+		// Live filter typing (when there's no modifier and we haven't
+		// hit an arrow key)
+		if (
+			k &&
+			k.length === 1 &&
+			!key.ctrl &&
+			!key.meta &&
+			!key.upArrow &&
+			!key.downArrow &&
+			!key.return &&
+			!key.escape &&
+			k !== " "
+		) {
+			setFilter((prev) => prev + k);
+			setSelectedIndex(0);
+			return;
+		}
+		if ((key.backspace || k === "\x7f" || k === "\b") && filter.length > 0) {
+			setFilter((prev) => prev.slice(0, -1));
+			setSelectedIndex(0);
+			return;
+		}
+
+		const totalRows = question.options.length + 1; // +1 for "Type custom answer"
+
 		if (key.upArrow) {
-			const maxIdx = question.options.length;
-			setSelectedIndex((prev) => (prev - 1 + maxIdx + 1) % (maxIdx + 1));
+			setSelectedIndex((prev) => (prev - 1 + totalRows) % totalRows);
 			return;
 		}
 
 		if (key.downArrow) {
-			const maxIdx = question.options.length;
-			setSelectedIndex((prev) => (prev + 1) % (maxIdx + 1));
+			setSelectedIndex((prev) => (prev + 1) % totalRows);
 			return;
 		}
 
@@ -72,9 +100,8 @@ export function QuestionPrompt({
 					(i) => question.options[i].label,
 				);
 				if (answers.length === 0) {
-					const current = selectedIndex;
-					if (!selectedMultiple.has(current)) {
-						onAnswer([question.options[current].label]);
+					if (!selectedMultiple.has(selectedIndex)) {
+						onAnswer([question.options[selectedIndex].label]);
 					} else {
 						onAnswer(answers);
 					}
@@ -88,6 +115,11 @@ export function QuestionPrompt({
 		}
 
 		if (key.escape) {
+			if (filter.length > 0) {
+				setFilter("");
+				setSelectedIndex(0);
+				return;
+			}
 			onCancel();
 			return;
 		}
@@ -109,22 +141,71 @@ export function QuestionPrompt({
 		}
 	});
 
+	// Live-filter options. When the filter is empty show all options.
+	const lcFilter = filter.toLowerCase();
+	const visibleOptions = question.options
+		.map((opt, originalIndex) => ({ opt, originalIndex }))
+		.filter(({ opt }) => {
+			if (!lcFilter) return true;
+			return (
+				opt.label.toLowerCase().includes(lcFilter) ||
+				(opt.description?.toLowerCase().includes(lcFilter) ?? false)
+			);
+		});
+
 	if (customMode) {
 		return React.createElement(
 			Box,
 			{
 				flexDirection: "column",
 				paddingX: 1,
+				paddingY: 1,
 				borderStyle: "round",
-				borderColor: GOLD,
+				borderColor: COLORS.gold,
 			},
-			React.createElement(Text, { bold: true, color: GOLD }, question.header),
-			React.createElement(Text, { color: GRAY }, "Type your answer:"),
-			React.createElement(Text, { color: CORAL }, `> ${customInput}\u2588`),
 			React.createElement(
-				Text,
-				{ dimColor: true },
-				"Enter to confirm | Esc to cancel",
+				Box,
+				{ gap: 1 },
+				React.createElement(
+					Text,
+					{ bold: true, color: COLORS.gold },
+					HIEROGLYPHS.tool,
+				),
+				React.createElement(
+					Text,
+					{ bold: true, color: COLORS.gold },
+					question.header,
+				),
+			),
+			React.createElement(
+				Box,
+				{ marginTop: 1, marginBottom: 1 },
+				React.createElement(Text, null, question.question),
+			),
+			React.createElement(
+				Box,
+				{ gap: 1 },
+				React.createElement(Text, { color: COLORS.coral }, "▌"),
+				React.createElement(Text, null, "Type your answer:"),
+			),
+			React.createElement(
+				Box,
+				{ marginLeft: 1, marginTop: 1 },
+				React.createElement(
+					Text,
+					{ color: COLORS.gold, bold: true },
+					`> ${customInput}`,
+				),
+				React.createElement(Text, { color: COLORS.coral }, "█"),
+			),
+			React.createElement(
+				Box,
+				{ marginTop: 1 },
+				React.createElement(
+					Text,
+					{ dimColor: true, color: COLORS.gray },
+					"Enter to confirm • Esc to cancel",
+				),
 			),
 		);
 	}
@@ -134,50 +215,100 @@ export function QuestionPrompt({
 		{
 			flexDirection: "column",
 			paddingX: 1,
+			paddingY: 1,
 			borderStyle: "round",
-			borderColor: GOLD,
+			borderColor: COLORS.gold,
 		},
-		React.createElement(Text, { bold: true, color: GOLD }, question.header),
-		React.createElement(Text, null, question.question),
-		React.createElement(Text, null, ""),
-		...question.options.map((opt, idx) =>
+		React.createElement(
+			Box,
+			{ gap: 1 },
+			React.createElement(
+				Text,
+				{ bold: true, color: COLORS.gold },
+				HIEROGLYPHS.tool,
+			),
+			React.createElement(
+				Text,
+				{ bold: true, color: COLORS.gold },
+				question.header,
+			),
+			question.multiple &&
+				React.createElement(
+					Text,
+					{ color: COLORS.nile, dimColor: true },
+					"(multi-select)",
+				),
+		),
+		React.createElement(
+			Box,
+			{ marginTop: 1, marginBottom: 1 },
+			React.createElement(Text, null, question.question),
+		),
+		filter.length > 0 &&
 			React.createElement(
 				Box,
-				{ key: idx },
+				{ marginBottom: 1 },
+				React.createElement(
+					Text,
+					{ color: COLORS.nile, dimColor: true },
+					`${DECORATIVE.eye} Filter: ${filter}`,
+				),
+			),
+		...visibleOptions.map(({ opt, originalIndex }) => {
+			const isSelected = selectedIndex === originalIndex;
+			const isChecked = selectedMultiple.has(originalIndex);
+			return React.createElement(
+				Box,
+				{ key: originalIndex, flexDirection: "row" },
 				React.createElement(
 					Text,
 					{
-						color: selectedIndex === idx ? CORAL : GRAY,
-						bold: selectedIndex === idx,
+						color: isSelected ? COLORS.coral : COLORS.gray,
+						bold: isSelected,
 					},
 					question.multiple
-						? `${selectedMultiple.has(idx) ? "[x]" : "[ ]"} ${selectedIndex === idx ? "> " : "  "}${opt.label}`
-						: `${selectedIndex === idx ? "> " : "  "}${opt.label}`,
+						? `${isChecked ? HIEROGLYPHS.success : "○"} ${isSelected ? "▸" : "  "}`
+						: `${isSelected ? "▸" : "  "}`,
+				),
+				React.createElement(
+					Text,
+					{
+						color: isSelected ? COLORS.coral : undefined,
+						bold: isSelected,
+					},
+					` ${opt.label}`,
 				),
 				opt.description &&
 					React.createElement(
 						Text,
-						{ dimColor: true, color: GRAY },
-						` - ${opt.description}`,
+						{ dimColor: true, color: COLORS.gray },
+						` — ${opt.description}`,
 					),
-			),
-		),
+			);
+		}),
 		React.createElement(
 			Box,
 			{ key: "custom" },
 			React.createElement(
 				Text,
 				{
-					color: selectedIndex === question.options.length ? CORAL : GRAY,
+					color:
+						selectedIndex === question.options.length
+							? COLORS.coral
+							: COLORS.gray,
 					bold: selectedIndex === question.options.length,
 				},
-				`${selectedIndex === question.options.length ? "> " : "  "}Type custom answer`,
+				`${selectedIndex === question.options.length ? "▸" : "  "}  ✎  Type custom answer`,
 			),
 		),
 		React.createElement(
-			Text,
-			{ dimColor: true },
-			`\n↑↓ navigate | Enter select${question.multiple ? " | Space toggle" : ""} | Esc cancel`,
+			Box,
+			{ marginTop: 1 },
+			React.createElement(
+				Text,
+				{ dimColor: true, color: COLORS.gray },
+				`↑↓ navigate • type to filter${question.multiple ? " • Space toggle" : ""} • Enter select • Esc cancel`,
+			),
 		),
 	);
 }

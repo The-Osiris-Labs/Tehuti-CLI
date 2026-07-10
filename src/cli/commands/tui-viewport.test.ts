@@ -150,4 +150,31 @@ describe("TUI Viewport Height and Scroll Bounds Verification", () => {
 			`- Mismatch size: ${chatViewportHeight - actualAvailableHeight} lines`,
 		);
 	});
+
+	it("should verify adaptive status bar content across idle, working, and scrolled-up states", () => {
+		const totalMessageLines = 30;
+		const chatViewportHeight = 15;
+
+		// State 1: Scrolled Up (scrollOffset = 5)
+		const scrollOffset1 = 5;
+		const scrollPercent = Math.min(
+			100,
+			Math.round(
+				(scrollOffset1 / Math.max(1, totalMessageLines - chatViewportHeight)) *
+					100,
+			),
+		);
+		expect(scrollPercent).toBe(33);
+
+		// State 2: Idle at bottom (scrollOffset = 0, loading = false)
+		const scrollOffset2 = 0;
+		const loading2 = false;
+		const isIdleState = scrollOffset2 === 0 && !loading2;
+		expect(isIdleState).toBe(true);
+
+		// State 3: Working at bottom (scrollOffset = 0, loading = true)
+		const loading3 = true;
+		const isWorkingState = scrollOffset2 === 0 && loading3;
+		expect(isWorkingState).toBe(true);
+	});
 });

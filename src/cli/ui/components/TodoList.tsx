@@ -1,17 +1,75 @@
 import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 import { getTodos } from "../../../agent/tools/system.js";
-import { BRANDING, DECORATIVE } from "../../../branding/index.js";
+import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { GlobalInputState } from "../input-state.js";
 
-export function TodoList() {
-	const [todos, setTodos] = useState(getTodos());
+const COLORS = {
+	primary: BRANDING.colors?.primary || "#F5C518",
+	nile: BRANDING.colors?.nile || "#165DFF",
+	green: BRANDING.colors?.green || "#22C55E",
+	gray: BRANDING.colors?.gray || "#9CA3AF",
+	red: BRANDING.colors?.red || "#EF4444",
+	sand: BRANDING.colors?.sand || "#8B7355",
+} as const;
 
+interface TodoLike {
+	id: string;
+	content: string;
+	status: "pending" | "in_progress" | "completed" | "cancelled";
+	priority?: "high" | "medium" | "low";
+	updatedAt?: string;
+}
+
+// Brand-aligned icons. The original used mixed emoji (`⏳`, `✅`, `🔄`,
+// `❌`) which clash with the hieroglyphic theme of the rest of the UI.
+const ICONS: Record<
+	TodoLike["status"],
+	{ glyph: string; color: string; spin: boolean }
+> = {
+	pending: { glyph: "○", color: COLORS.gray, spin: false },
+	in_progress: {
+		glyph: HIEROGLYPHS.loading[0],
+		color: COLORS.nile,
+		spin: true,
+	},
+	completed: { glyph: HIEROGLYPHS.success, color: COLORS.green, spin: false },
+	cancelled: { glyph: "✕", color: COLORS.red, spin: false },
+};
+
+const PRIORITY_COLORS: Record<NonNullable<TodoLike["priority"]>, string> = {
+	high: COLORS.red,
+	medium: COLORS.primary,
+	low: COLORS.green,
+};
+
+function formatAge(updatedAt: string | undefined): string {
+	if (!updatedAt) return "";
+	const updated = new Date(updatedAt);
+	const ageMs = Date.now() - updated.getTime();
+	const ageMin = Math.round(ageMs / 60_000);
+	if (Number.isNaN(ageMin)) return "";
+	if (ageMin > 60) return ` [${Math.round(ageMin / 60)}h ago]`;
+	if (ageMin > 0) return ` [${ageMin}m ago]`;
+	return " [just now]";
+}
+
+export function TodoList(): React.ReactElement | null {
+	const [todos, setTodos] = useState<TodoLike[]>(
+		() => getTodos() as TodoLike[],
+	);
+	const [frame, setFrame] = useState(0);
+
+	// Data polling: every 1s, but only when no component is being hovered
+	// (to avoid UI thrash while the user is interacting with another panel).
+	// The same tick drives the in-progress spinner so we don't multiply
+	// interval timers.
 	useEffect(() => {
 		const interval = setInterval(() => {
 			if (GlobalInputState.hoveredComponentCount === 0) {
-				setTodos(getTodos());
+				setTodos(getTodos() as TodoLike[]);
 			}
+			setFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
 		}, 1000);
 		return () => clearInterval(interval);
 	}, []);
@@ -20,68 +78,71 @@ export function TodoList() {
 		return null;
 	}
 
-	const GOLD = BRANDING.colors?.primary || "#F5C518";
-	const NILE = BRANDING.colors?.nile || "#165DFF";
-	const GREEN = BRANDING.colors?.green || "#22C55E";
-	const GRAY = BRANDING.colors?.gray || "#9CA3AF";
-	const RED = BRANDING.colors?.red || "#EF4444";
+	return React.createElement(
+		Box,
+		{
+			flexDirection: "column",
+			paddingY: 1,
+			paddingX: 1,
+			borderStyle: "single",
+			borderColor: COLORS.sand,
+		},
+		React.createElement(
+			Box,
+			{ marginBottom: 1, gap: 1 },
+			React.createElement(
+				Text,
+				{ color: COLORS.primary, bold: true },
+				HIEROGLYPHS.tool,
+			),
+			React.createElement(
+				Text,
+				{ color: COLORS.primary, bold: true },
+				"Active Tasks",
+			),
+			React.createElement(
+				Text,
+				{ color: COLORS.gray, dimColor: true },
+				`(${todos.length})`,
+			),
+		),
+		React.createElement(
+			Box,
+			{ flexDirection: "column", paddingLeft: 2 },
+			...todos.map((todo) => {
+				const def = ICONS[todo.status] ?? ICONS.pending;
+				const glyph = def.spin ? HIEROGLYPHS.loading[frame] : def.glyph;
+				const color = def.color;
+				const priority = todo.priority ? PRIORITY_COLORS[todo.priority] : null;
+				const ageText = formatAge(todo.updatedAt);
 
-	return (
-		<Box flexDirection="column" paddingY={1} paddingX={1}>
-			<Box marginBottom={1}>
-				<Text color={GOLD} bold>
-					{DECORATIVE.scroll} Active Tasks
-				</Text>
-			</Box>
-			<Box flexDirection="column" paddingLeft={2}>
-				{todos.map((todo) => {
-					let icon = "⏳";
-					let color: string = GRAY;
-
-					if (todo.status === "completed") {
-						icon = "✅";
-						color = GREEN;
-					} else if (todo.status === "in_progress") {
-						icon = "🔄";
-						color = NILE;
-					} else if (todo.status === "cancelled") {
-						icon = "❌";
-						color = RED;
-					}
-
-					let priorityMark = "";
-					if (todo.priority === "high") priorityMark = " 🔴";
-					if (todo.priority === "medium") priorityMark = " 🟡";
-					if (todo.priority === "low") priorityMark = " 🟢";
-
-					let ageText = "";
-
-					const updatedAt = todo.updatedAt;
-					if (updatedAt) {
-						const updatedDate = new Date(updatedAt);
-						const ageMin = Math.round(
-							(Date.now() - updatedDate.getTime()) / 60000,
-						);
-						if (ageMin > 60) {
-							ageText = ` [${Math.round(ageMin / 60)}h ago]`;
-						} else if (ageMin > 0) {
-							ageText = ` [${ageMin}m ago]`;
-						} else {
-							ageText = " [just now]";
-						}
-					}
-
-					return (
-						<Box key={todo.id} flexDirection="row">
-							<Text color={color}>
-								{icon} [{todo.id}]{priorityMark}
-								{ageText}{" "}
-							</Text>
-							<Text color={color}>{todo.content}</Text>
-						</Box>
-					);
-				})}
-			</Box>
-		</Box>
+				return React.createElement(
+					Box,
+					{ key: todo.id, flexDirection: "row", gap: 1 },
+					React.createElement(Text, { color }, glyph),
+					React.createElement(
+						Text,
+						{ color: COLORS.gray, dimColor: true },
+						`[${todo.id}]`,
+					),
+					priority &&
+						React.createElement(Text, { color: priority, bold: true }, "●"),
+					React.createElement(
+						Text,
+						{
+							color,
+							strikethrough: todo.status === "completed",
+						},
+						todo.content,
+					),
+					ageText &&
+						React.createElement(
+							Text,
+							{ color: COLORS.gray, dimColor: true },
+							ageText,
+						),
+				);
+			}),
+		),
 	);
 }

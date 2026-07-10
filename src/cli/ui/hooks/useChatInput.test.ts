@@ -314,7 +314,7 @@ describe("useChatInput hook", () => {
 			unmount();
 		});
 
-		it("Ink CSI Shift+Enter (decoded): k=\"\" key.code=\"[13~\" key.shift=true", () => {
+		it('Ink CSI Shift+Enter (decoded): k="" key.code="[13~" key.shift=true', () => {
 			// This is what Ghostty/iTerm2 actually deliver via Ink: the input
 			// string is empty (Ink drops it because the key name is f3/f4),
 			// but key.code and key.shift are set.
@@ -327,7 +327,7 @@ describe("useChatInput hook", () => {
 			unmount();
 		});
 
-		it("Ink CSI Ctrl+Enter (decoded): k=\"\" key.code=\"[13~\" key.ctrl=true", () => {
+		it('Ink CSI Ctrl+Enter (decoded): k="" key.code="[13~" key.ctrl=true', () => {
 			props.input = "hello world";
 			props.cursorPos = 5;
 			const { unmount } = render(React.createElement(HookWrapper, { props }));
@@ -337,7 +337,7 @@ describe("useChatInput hook", () => {
 			unmount();
 		});
 
-		it("Ink CSI Alt+Enter (decoded): k=\"\" key.code=\"[13~\" key.meta=true", () => {
+		it('Ink CSI Alt+Enter (decoded): k="" key.code="[13~" key.meta=true', () => {
 			props.input = "hello world";
 			props.cursorPos = 5;
 			const { unmount } = render(React.createElement(HookWrapper, { props }));
@@ -379,7 +379,7 @@ describe("useChatInput hook", () => {
 			unmount();
 		});
 
-		it("Ink key-flag Shift+Enter: k=\"\" key.shift=true key.return=true", () => {
+		it('Ink key-flag Shift+Enter: k="" key.shift=true key.return=true', () => {
 			props.input = "hello world";
 			props.cursorPos = 5;
 			const { unmount } = render(React.createElement(HookWrapper, { props }));
@@ -389,7 +389,7 @@ describe("useChatInput hook", () => {
 			unmount();
 		});
 
-		it("Ink key-flag Ctrl+Enter: k=\"\" key.ctrl=true key.return=true", () => {
+		it('Ink key-flag Ctrl+Enter: k="" key.ctrl=true key.return=true', () => {
 			props.input = "hello world";
 			props.cursorPos = 5;
 			const { unmount } = render(React.createElement(HookWrapper, { props }));

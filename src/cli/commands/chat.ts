@@ -1119,6 +1119,10 @@ function ChatUI({
 	// user scrolls back to the bottom.
 	const newMessageCountRef = useRef<number>(0);
 	const [newMessageCount, setNewMessageCount] = useState(0);
+	// Snapshot of message count when the user last scrolled up. We diff
+	// against the current messages.length so the "N new" badge shows the
+	// count of message *arrivals*, not the total.
+	const scrollAnchorRef = useRef<number>(0);
 	const inputBeforeHistoryRef = useRef<string>("");
 	const batchedTokensRef = useRef<string>("");
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -2083,6 +2087,19 @@ function ChatUI({
 	// Account for command palette height if open
 	const paletteHeight = showCommandPalette ? 16 : 0;
 
+	// Compute height taken by overlays that live outside the scrollable viewport:
+	//   - loading: spinner + label + progress bar (~5 lines)
+	//   - showThinking: bordered spinner + truncated thinking text (~2 lines)
+	//   - error: bordered error banner (~3 lines)
+	//   - swarm dashboard: ~8 lines when showDashboard is on
+	// Without subtracting these, the chat viewport math believes the
+	// message area is taller than it actually is, and the last few lines
+	// get hidden behind the overlay.
+	const loadingOverlayHeight = loading ? 5 : 0;
+	const thinkingOverlayHeight = showThinking ? 2 : 0;
+	const errorOverlayHeight = error ? 3 : 0;
+	const dashboardOverlayHeight = showDashboard ? 8 : 0;
+
 	const chatViewportHeight = Math.max(
 		3,
 		terminalHeight -
@@ -2091,7 +2108,11 @@ function ChatUI({
 			4 -
 			warningsHeight -
 			suggestionsCount -
-			paletteHeight,
+			paletteHeight -
+			loadingOverlayHeight -
+			thinkingOverlayHeight -
+			errorOverlayHeight -
+			dashboardOverlayHeight,
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
@@ -2251,7 +2272,11 @@ function ChatUI({
 
 			if (blocks && blocks.length > 0) {
 				for (const block of blocks) {
-					if (block.type === "text") {
+					// Infer block type from shape when `.type` is missing.
+					const blockType =
+						block.type || (block.text !== undefined ? "text" : undefined);
+
+					if (blockType === "text") {
 						let textContent = "";
 						if (Array.isArray(block.content)) {
 							textContent = block.content
@@ -2266,7 +2291,7 @@ function ChatUI({
 						l +=
 							Math.max(1, Math.ceil(textContent.length / avgCharsPerLine)) +
 							(textContent.match(/\n/g) || []).length;
-					} else if (block.type === "reasoning") {
+					} else if (blockType === "reasoning") {
 						let reasoningContent = "";
 						if (Array.isArray(block.content)) {
 							reasoningContent = block.content
@@ -2286,7 +2311,7 @@ function ChatUI({
 									reasoningContent.length / Math.max(10, contentMaxWidth - 5),
 								),
 							);
-					} else if (block.type === "tool") {
+					} else if (blockType === "tool") {
 						l += 8;
 					}
 				}
@@ -2357,21 +2382,23 @@ function ChatUI({
 	useEffect(() => {
 		if (messagesEndRef.current) {
 			scrollToBottom();
-			// Reset the new-message counter when we successfully stay at the
-			// bottom (e.g. user pressed End, or scrolled to the latest message).
-			if (newMessageCountRef.current !== 0) {
+			// User scrolled to (or recently arrived at) the bottom — reset
+			// both the anchor and the badge.
+			if (newMessageCountRef.current !== 0 || scrollAnchorRef.current !== 0) {
 				newMessageCountRef.current = 0;
 				setNewMessageCount(0);
+				scrollAnchorRef.current = 0;
 			}
 		} else {
-			// User is scrolled up — count the new message that triggered this
-			// effect. We don't double-count: only increment if this is a new
-			// arrival (the effect fires once per render, but the parent re-renders
-			// on every token chunk during streaming, so we need a guard).
-			const lastSeenId = messagesRef.current.length;
-			if (lastSeenId > 0) {
-				newMessageCountRef.current = lastSeenId;
-				setNewMessageCount(lastSeenId);
+			// User is scrolled up. Take the first snapshot of message length
+			// as the anchor. Subsequent arrivals compute the diff.
+			if (scrollAnchorRef.current === 0) {
+				scrollAnchorRef.current = messagesRef.current.length;
+			}
+			const newArrivals = messagesRef.current.length - scrollAnchorRef.current;
+			if (newArrivals > 0 && newArrivals !== newMessageCountRef.current) {
+				newMessageCountRef.current = newArrivals;
+				setNewMessageCount(newArrivals);
 			}
 		}
 	}, [scrollToBottom]);
@@ -3484,25 +3511,62 @@ function ChatUI({
 		loading,
 	]);
 
-	const scrollIndicator =
+	const scrollPercent = Math.min(
+		100,
+		Math.round(
+			(scrollOffset / Math.max(1, totalMessageLines - chatViewportHeight)) *
+				100,
+		),
+	);
+
+	const adaptiveStatusBar =
 		scrollOffset > 0
 			? React.createElement(
-					Text,
-					{ color: SAND, dimColor: true },
-					`↑ ${Math.round((scrollOffset / Math.max(1, totalMessageLines - chatViewportHeight)) * 100)}%`,
+					Box,
+					{
+						flexDirection: "row",
+						borderStyle: "single",
+						borderColor: CORAL,
+						paddingX: 1,
+						marginBottom: 1,
+					},
+					React.createElement(
+						Text,
+						{ color: CORAL, bold: true },
+						`↑ Scrolled up ${scrollOffset} line(s) (${scrollPercent}%)`,
+					),
+					newMessageCount > 0 &&
+						React.createElement(
+							Text,
+							{ color: GOLD, bold: true },
+							`  |  ↓ ${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`,
+						),
+					React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						"  —  Press End or PageDown to jump to bottom",
+					),
 				)
-			: null;
-
-	// "↓ N new" badge shown when the user is scrolled up and new messages
-	// have arrived. Clicking/pressing End dismisses it and scrolls to bottom.
-	const newMessagesBadge =
-		newMessageCount > 0 && !messagesEndRef.current
-			? React.createElement(
-					Text,
-					{ color: GOLD, bold: true, backgroundColor: undefined },
-					` ↓ ${newMessageCount} new message${newMessageCount === 1 ? "" : "s"} (press End to jump) `,
-				)
-			: null;
+			: !loading
+				? React.createElement(
+						Box,
+						{
+							flexDirection: "row",
+							justifyContent: "space-between",
+							marginTop: 0.5,
+						},
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							`𓆣 ${ctxModel} (${runtimeProvider})`,
+						),
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							"PageUp/Down or Ctrl+↑/↓ Scroll  |  /help Commands",
+						),
+					)
+				: null;
 
 	if (showSessionList) {
 		return React.createElement(SessionList, {
@@ -3771,12 +3835,7 @@ function ChatUI({
 								`${thinking.length > 150 ? `...${thinking.slice(-150)}` : thinking}`,
 							),
 						),
-					scrollIndicator &&
-						React.createElement(
-							Box,
-							{ justifyContent: "center" },
-							scrollIndicator,
-						),
+
 					error &&
 						React.createElement(
 							Box,
@@ -3860,7 +3919,7 @@ function ChatUI({
 													),
 												),
 											),
-										newMessagesBadge,
+										adaptiveStatusBar,
 										renderInput,
 									),
 					showCommandPalette || showConfigEditor ? null : commandSuggestions,
