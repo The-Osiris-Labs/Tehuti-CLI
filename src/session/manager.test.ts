@@ -179,9 +179,11 @@ describe("SessionManager", () => {
 						tokensUsed: 0,
 					},
 					messages: [],
+					appendOnlyLog: [],
 					context: {
 						cwd: testDir,
 						workingDir: testDir,
+						readFilesThisSession: [],
 						metadata: {
 							startTime: "2024-01-02T03:04:05.000Z",
 							toolCalls: 0,

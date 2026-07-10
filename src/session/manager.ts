@@ -1,3 +1,4 @@
+import { open } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import fs from "fs-extra";
@@ -16,6 +17,94 @@ const UUID_REGEX =
 
 function isValidSessionId(id: string): boolean {
 	return UUID_REGEX.test(id);
+}
+
+/**
+ * Write a JSON file atomically with an fsync barrier. This protects against
+ * power-loss / SIGKILL leaving the on-disk file in a half-written state: the
+ * data is fsync'd to the journal BEFORE the temp file is renamed, so the
+ * rename is a single atomic operation visible to subsequent readers.
+ *
+ * Cost: 1 extra fsync per write (~1-10ms on SSD, more on spinning disk).
+ * Without it, a crash between write() and rename() can leave the final file
+ * empty or truncated even though the rename hasn't happened yet.
+ */
+async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+	const tempPath = `${filePath}.tmp`;
+	const json = JSON.stringify(data, null, 2);
+	const handle = await open(tempPath, "w");
+	try {
+		await handle.writeFile(json, "utf8");
+		// Force the kernel page cache to disk BEFORE we rename. The OS may
+		// otherwise reorder the data write vs. the directory entry update
+		// (the rename), leaving the file invisible after a crash.
+		await handle.sync();
+	} finally {
+		await handle.close();
+	}
+	try {
+		await fs.rename(tempPath, filePath);
+	} catch (error: any) {
+		// EXDEV: temp + final are on different filesystems. Fall back to
+		// copy + unlink, preserving the atomic-visible-to-readers property
+		// (copy either fully completes or leaves the old final file intact).
+		if (error?.code === "EXDEV") {
+			await fs.copyFile(tempPath, filePath);
+			await fs.unlink(tempPath);
+		} else {
+			throw error;
+		}
+	}
+}
+
+/**
+ * Defensive shape check for session.json. The schema is permissive: unknown
+ * fields are passed through, but required fields must be present and typed
+ * correctly. Returning null causes the loader to reject the file rather
+ * than crash later on a missing field.
+ */
+function validateSessionData(data: unknown): data is SessionData {
+	if (!data || typeof data !== "object") return false;
+	const d = data as Record<string, unknown>;
+
+	if (!d.metadata || typeof d.metadata !== "object") return false;
+	const m = d.metadata as Record<string, unknown>;
+	if (
+		typeof m.id !== "string" ||
+		typeof m.cwd !== "string" ||
+		typeof m.model !== "string" ||
+		typeof m.messageCount !== "number" ||
+		typeof m.toolCalls !== "number" ||
+		typeof m.tokensUsed !== "number"
+	) {
+		return false;
+	}
+
+	if (!Array.isArray(d.messages)) return false;
+	if (!Array.isArray(d.appendOnlyLog)) return false;
+
+	if (!d.context || typeof d.context !== "object") return false;
+	const c = d.context as Record<string, unknown>;
+	if (typeof c.cwd !== "string" || typeof c.workingDir !== "string") {
+		return false;
+	}
+	if (!c.metadata || typeof c.metadata !== "object") return false;
+	if (!Array.isArray(c.readFilesThisSession)) return false;
+
+	// Validate every message has a role. This catches files written by a
+	// future schema that removes the role field, before we hit a provider
+	// API that rejects them.
+	for (const msg of d.messages as unknown[]) {
+		if (
+			!msg ||
+			typeof msg !== "object" ||
+			typeof (msg as Record<string, unknown>).role !== "string"
+		) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 function _sanitizeSessionId(id: string): string {
@@ -261,18 +350,7 @@ class SessionManager {
 
 		const sessionFile = path.join(sessionDir, "session.json");
 		const tempFile = path.join(sessionDir, "session.json.tmp");
-		await fs.writeJson(tempFile, sessionData, { spaces: 2 });
-
-		try {
-			await fs.rename(tempFile, sessionFile);
-		} catch (error: any) {
-			if (error?.code === "EXDEV") {
-				fs.copyFileSync(tempFile, sessionFile);
-				fs.unlinkSync(tempFile);
-			} else {
-				throw error;
-			}
-		}
+		await writeJsonAtomic(sessionFile, sessionData);
 
 		debug.log(
 			"session",
@@ -294,6 +372,10 @@ class SessionManager {
 
 		try {
 			const rawData = (await fs.readJson(sessionFile)) as SessionData;
+			if (!validateSessionData(rawData)) {
+				consola.error(`Session ${id} has invalid structure (refusing to load)`);
+				return null;
+			}
 			const data = normalizeSessionData(rawData);
 			if (data.subagentsState) importState(data.subagentsState);
 			if (data.swarmState) swarmManager.importState(data.swarmState);
@@ -331,17 +413,7 @@ class SessionManager {
 		// write leaves the previous metadata.json intact (or the temp file
 		// orphaned, which is harmless and overwritten on the next save).
 		const tempFile = path.join(sessionDir, "metadata.json.tmp");
-		await fs.writeJson(tempFile, metadata, { spaces: 2 });
-		try {
-			await fs.rename(tempFile, metaFile);
-		} catch (error: any) {
-			if (error?.code === "EXDEV") {
-				fs.copyFileSync(tempFile, metaFile);
-				fs.unlinkSync(tempFile);
-			} else {
-				throw error;
-			}
-		}
+		await writeJsonAtomic(metaFile, metadata);
 	}
 
 	async renameSession(id: string, name: string): Promise<void> {
@@ -364,23 +436,8 @@ class SessionManager {
 			if (await fs.pathExists(sessionFile)) {
 				const data = (await fs.readJson(sessionFile)) as SessionData;
 				data.metadata.name = name;
-				// Atomic write: temp + rename (same pattern as saveSession).
-				const sessionTempFile = path.join(
-					this.sessionsDir,
-					id,
-					"session.json.tmp",
-				);
-				await fs.writeJson(sessionTempFile, data, { spaces: 2 });
-				try {
-					await fs.rename(sessionTempFile, sessionFile);
-				} catch (renameError: any) {
-					if (renameError?.code === "EXDEV") {
-						fs.copyFileSync(sessionTempFile, sessionFile);
-						fs.unlinkSync(sessionTempFile);
-					} else {
-						throw renameError;
-					}
-				}
+				// Atomic write with fsync (same pattern as saveSession).
+				await writeJsonAtomic(sessionFile, data);
 			}
 			debug.log("session", `Renamed session: ${id} to "${name}"`);
 		} catch (error) {
