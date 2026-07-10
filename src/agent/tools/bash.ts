@@ -112,7 +112,9 @@ const DANGEROUS_PATTERNS = [
 	/\|\s*(\/[\w/]+\/)*env\s+(bash|sh|zsh)/,
 	/\bnc\s+.*-[elp]/,
 	/\bsocat\b/,
-	/\bat\s+.*[fm]/,
+	// 'at' job scheduler: must be the command and followed by a time spec.
+	// Was previously /\bat\s+.*[fm]/ which false-matched 'at 3.55.45 AM' in filenames.
+	/\bat\s+\d/,
 	/>\s*~\/\.bashrc/,
 	/>\s*~\/\.zshrc/,
 	/>\s*~\/\.profile/,
@@ -124,9 +126,24 @@ const DANGEROUS_PATTERNS = [
 	/\bfind\s+.*-exec\s+/,
 ];
 
+// "Native" extra dangerous patterns: only checked when the bash tool runs
+// without a Docker sandbox (DISABLE_DOCKER_SANDBOX=true).
+//
+// Note: the previous version of this list included a catchall that
+// blocked ANY command mentioning a system path like /var/... or /etc/...
+// This was over-broad — it stopped reads like `cat /etc/hosts` and any
+// command with /var/folders/... (macOS temp/screenshot dirs) in its args.
+// We replaced it with explicit write/destructive-action patterns below.
 const NATIVE_DANGEROUS_PATTERNS = [
-	/(^|[\s="'])\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
-	/\.\.[/\\]/,
+	// Path traversal in arguments
+	/\.\.[\/\\]/,
+	// Redirecting INTO a system path
+	/(>|>>|>\||2>|2>>|&\d*>)\s*\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+	// Destructive commands targeting system paths
+	/\brm\s+(-[rfRF]+\s+)*\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+	/\b(mv|cp|rsync)\s+.*\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+	/\bchmod\s+(-R\s+)?[0-7]*\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+	/\bchown\s+(-R\s+)?\w+:\w+\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
 ];
 
 const _SAFE_COMMAND_PREFIXES = [
