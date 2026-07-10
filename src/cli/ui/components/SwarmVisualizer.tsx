@@ -1,11 +1,12 @@
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import React, { useEffect, useState } from "react";
+import chalk from "chalk";
+import stringWidth from "string-width";
 import {
 	type SubagentTask,
 	swarmManager,
 } from "../../../agent/swarm/manager.js";
 import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
-import { StatusBadge } from "./StatusBadge.js";
 
 const COLORS = {
 	gold: BRANDING.colors?.primary || "#F5C518",
@@ -37,10 +38,7 @@ function mapTaskToState(
 		id: task.id.split("-")[0] || task.id,
 		role: "Subagent",
 		status,
-		currentTask:
-			task.prompt.length > 35
-				? `${task.prompt.substring(0, 32)}...`
-				: task.prompt,
+		currentTask: task.prompt,
 		tokensUsed: task.tokensUsed || 0,
 		toolCallCount: task.toolCallCount || 0,
 		startedAt: task.startedAt?.getTime() ?? Date.now(),
@@ -57,30 +55,57 @@ function formatElapsed(ms: number): string {
 	return `${hr}h ${min % 60}m`;
 }
 
-function statusGlyph(status: SubagentState["status"], frame: number): string {
-	switch (status) {
-		case "working":
-			return HIEROGLYPHS.loading[frame];
-		case "idle":
-			return HIEROGLYPHS.success;
-		case "error":
-			return HIEROGLYPHS.error;
-		case "killed":
-			return "✕";
-	}
+// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
+const ANSI_STRIP_REGEX = new RegExp(
+	"[\\x1b\\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]",
+	"g",
+);
+
+function stripAnsi(str: string): string {
+	return str.replace(ANSI_STRIP_REGEX, "");
 }
 
-function statusColor(status: SubagentState["status"]): string {
-	switch (status) {
-		case "working":
-			return COLORS.nile;
-		case "idle":
-			return COLORS.green;
-		case "error":
-			return COLORS.coral;
-		case "killed":
-			return COLORS.sand;
+function padRight(str: string, width: number): string {
+	const len = stringWidth(stripAnsi(str));
+	if (len >= width) return str;
+	return str + " ".repeat(width - len);
+}
+
+function padLeft(str: string, width: number): string {
+	const len = stringWidth(stripAnsi(str));
+	if (len >= width) return str;
+	return " ".repeat(width - len) + str;
+}
+
+function sliceAnsi(str: string, limit: number): string {
+	let visibleWidth = 0;
+	let output = "";
+	let i = 0;
+
+	// biome-ignore lint/complexity/useRegexLiterals:
+	const ANSI_SEQUENCE_REGEX = new RegExp("^\\x1b\\[[0-9;]*[a-zA-Z]");
+
+	while (i < str.length) {
+		const remaining = str.slice(i);
+		const match = remaining.match(ANSI_SEQUENCE_REGEX);
+		if (match) {
+			output += match[0];
+			i += match[0].length;
+		} else {
+			const char = str[i];
+			const charWidth = stringWidth(char);
+			if (visibleWidth + charWidth > limit) {
+				break;
+			}
+			visibleWidth += charWidth;
+			output += char;
+			i++;
+		}
 	}
+	if (i < str.length) {
+		output += "\x1b[0m";
+	}
+	return output;
 }
 
 export function SwarmVisualizer(): React.ReactElement {
@@ -88,6 +113,8 @@ export function SwarmVisualizer(): React.ReactElement {
 		swarmManager.listSubagents().map(mapTaskToState),
 	);
 	const [frame, setFrame] = useState(0);
+	const { stdout } = useStdout();
+	const termWidth = stdout?.columns || 80;
 
 	useEffect(() => {
 		const handleUpdate = (tasks: Omit<SubagentTask, "abortController">[]) => {
@@ -97,12 +124,8 @@ export function SwarmVisualizer(): React.ReactElement {
 		swarmManager.on("update", handleUpdate);
 		handleUpdate(swarmManager.listSubagents());
 
-		// 150ms tick matches the hieroglyph spinner cadence so the
-		// "working" glyph animates in lockstep with the rest of the UI.
 		const tick = setInterval(() => {
 			setFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
-			// Re-emit a render every 5 ticks (~750ms) so elapsed time
-			// stays fresh even when no subagent events fire.
 			handleUpdate(swarmManager.listSubagents());
 		}, 150);
 
@@ -116,156 +139,84 @@ export function SwarmVisualizer(): React.ReactElement {
 	const workingCount = agents.filter((a) => a.status === "working").length;
 	const now = Date.now();
 
-	return React.createElement(
-		Box,
-		{
-			flexDirection: "column",
-			borderStyle: "round",
-			borderColor: COLORS.nile,
-			paddingX: 1,
-		},
-		React.createElement(
-			Box,
-			{ marginBottom: 1, gap: 2 },
-			React.createElement(
-				Text,
-				{ color: COLORS.nile, bold: true },
-				`${DECORATIVE.ibis} SWARM OBSERVABILITY DASHBOARD`,
-			),
-			React.createElement(
-				Text,
-				{ color: COLORS.sand, dimColor: true },
-				`${workingCount} active • ${totalTokens.toLocaleString()} tokens`,
-			),
-		),
+	const W_ID = 10;
+	const W_STATUS = 12;
+	const W_TOOLS = 7;
+	const W_TOKENS = 8;
+	const W_ELAPSED = 8;
+	const W_TASK = Math.max(10, termWidth - (W_ID + W_STATUS + W_TOOLS + W_TOKENS + W_ELAPSED + 18));
 
-		React.createElement(
-			Box,
-			{ flexDirection: "row", marginBottom: 1 },
-			React.createElement(
-				Box,
-				{ flexBasis: 10, flexGrow: 0, flexShrink: 0 },
-				React.createElement(
-					Text,
-					{ color: COLORS.gold, bold: true },
-					"AGENT ID",
-				),
-			),
-			React.createElement(
-				Box,
-				{ flexBasis: 10, flexGrow: 0, flexShrink: 0 },
-				React.createElement(Text, { color: COLORS.gold, bold: true }, "STATUS"),
-			),
-			React.createElement(
-				Box,
-				{ flexBasis: 18, flexGrow: 2, flexShrink: 1 },
-				React.createElement(
-					Text,
-					{ color: COLORS.gold, bold: true },
-					"CURRENT TASK",
-				),
-			),
-			React.createElement(
-				Box,
-				{ flexBasis: 8, flexGrow: 0, flexShrink: 0 },
-				React.createElement(Text, { color: COLORS.gold, bold: true }, "TOOLS"),
-			),
-			React.createElement(
-				Box,
-				{ flexBasis: 8, flexGrow: 0, flexShrink: 0 },
-				React.createElement(Text, { color: COLORS.gold, bold: true }, "TOKENS"),
-			),
-			React.createElement(
-				Box,
-				{ flexBasis: 7, flexGrow: 0, flexShrink: 0 },
-				React.createElement(
-					Text,
-					{ color: COLORS.gold, bold: true },
-					"ELAPSED",
-				),
-			),
-		),
+	const headerCols = [
+		chalk.hex(COLORS.gold).bold(padRight("AGENT ID", W_ID)),
+		chalk.hex(COLORS.gold).bold(padRight("STATUS", W_STATUS)),
+		chalk.hex(COLORS.gold).bold(padRight("CURRENT TASK", W_TASK)),
+		chalk.hex(COLORS.gold).bold(padLeft("TOOLS", W_TOOLS)),
+		chalk.hex(COLORS.gold).bold(padLeft("TOKENS", W_TOKENS)),
+		chalk.hex(COLORS.gold).bold(padLeft("ELAPSED", W_ELAPSED))
+	];
+	const headerStr = "  " + headerCols.join("  ");
 
-		agents.length === 0
-			? React.createElement(
-					Box,
-					{ padding: 1 },
-					React.createElement(
-						Text,
-						{ color: COLORS.sand, italic: true },
-						"No active subagents in the swarm.",
-					),
-				)
-			: React.createElement(
-					Box,
-					{ flexDirection: "column" },
-					...agents.map((agent) => {
-						const color = statusColor(agent.status);
-						const elapsed = formatElapsed(now - agent.startedAt);
-						return React.createElement(
-							Box,
-							{ key: agent.id, flexDirection: "row", marginBottom: 0 },
-							React.createElement(
-								Box,
-								{ flexBasis: 10, flexGrow: 0, flexShrink: 0 },
-								React.createElement(Text, { color: COLORS.nile }, agent.id),
-							),
-							React.createElement(
-								Box,
-								{ flexBasis: 12, flexGrow: 0, flexShrink: 0 },
-								React.createElement(StatusBadge, {
-									kind:
-										agent.status === "working"
-											? "running"
-											: agent.status === "idle"
-												? "success"
-												: agent.status === "error"
-													? "error"
-													: "killed",
-									label: agent.status,
-								}),
-							),
-							React.createElement(
-								Box,
-								{ flexBasis: 18, flexGrow: 2, flexShrink: 1 },
-								React.createElement(
-									Text,
-									{
-										dimColor:
-											agent.status === "idle" || agent.status === "killed",
-									},
-									agent.currentTask,
-								),
-							),
-							React.createElement(
-								Box,
-								{ flexBasis: 8, flexGrow: 0, flexShrink: 0 },
-								React.createElement(
-									Text,
-									{ color: COLORS.nile, bold: true },
-									String(agent.toolCallCount),
-								),
-							),
-							React.createElement(
-								Box,
-								{ flexBasis: 8, flexGrow: 0, flexShrink: 0 },
-								React.createElement(
-									Text,
-									{ color: COLORS.gold },
-									agent.tokensUsed.toLocaleString(),
-								),
-							),
-							React.createElement(
-								Box,
-								{ flexBasis: 7, flexGrow: 0, flexShrink: 0 },
-								React.createElement(
-									Text,
-									{ color: COLORS.sand, dimColor: true },
-									elapsed,
-								),
-							),
-						);
-					}),
-				),
+	const rows: string[] = [];
+	if (agents.length === 0) {
+		rows.push("  " + chalk.hex(COLORS.sand).italic("No active subagents in the swarm."));
+	} else {
+		for (let i = 0; i < agents.length; i++) {
+			const agent = agents[i];
+			const elapsed = formatElapsed(now - agent.startedAt);
+			
+			let statusStr = "";
+			if (agent.status === "working") {
+				statusStr = chalk.hex(COLORS.gold).bgHex("#332200")(` ${HIEROGLYPHS.loading[frame]} RUNNING `);
+			} else if (agent.status === "idle") {
+				statusStr = chalk.hex(COLORS.green).bgHex("#001500")(` ${DECORATIVE.ankh} SUCCESS `);
+			} else if (agent.status === "error") {
+				statusStr = chalk.hex(COLORS.coral).bgHex("#220000")(` ${DECORATIVE.eyeOfHorus} ERROR `);
+			} else {
+				statusStr = chalk.hex(COLORS.sand).bgHex("#222222")(` ✕ KILLED `);
+			}
+			statusStr = padRight(statusStr, W_STATUS);
+
+			let taskStr = agent.currentTask.replace(/\n/g, " ");
+			if (stringWidth(taskStr) > W_TASK) {
+				taskStr = sliceAnsi(taskStr, W_TASK - 3) + "...";
+			} else {
+				taskStr = padRight(taskStr, W_TASK);
+			}
+			if (agent.status === "idle" || agent.status === "killed") {
+				taskStr = chalk.hex(COLORS.sand)(taskStr);
+			}
+
+			const cols = [
+				chalk.hex(COLORS.nile)(padRight(agent.id, W_ID)),
+				statusStr,
+				taskStr,
+				chalk.hex(COLORS.nile).bold(padLeft(String(agent.toolCallCount), W_TOOLS)),
+				chalk.hex(COLORS.gold)(padLeft(agent.tokensUsed.toLocaleString(), W_TOKENS)),
+				chalk.hex(COLORS.sand).dim(padLeft(elapsed, W_ELAPSED))
+			];
+			rows.push("  " + cols.join("  "));
+		}
+	}
+
+	return (
+		<Box
+			flexDirection="column"
+			borderStyle="round"
+			borderColor={COLORS.nile}
+			paddingX={1}
+		>
+			<Box marginBottom={1} gap={2}>
+				<Text color={COLORS.nile} bold>
+					{`${DECORATIVE.ibis} SWARM OBSERVABILITY DASHBOARD`}
+				</Text>
+				<Text color={COLORS.sand} dimColor>
+					{`${workingCount} active • ${totalTokens.toLocaleString()} tokens`}
+				</Text>
+			</Box>
+			<Box flexDirection="column" gap={0}>
+				<Text>{headerStr}</Text>
+				<Text>{rows.join("\n")}</Text>
+			</Box>
+		</Box>
 	);
 }

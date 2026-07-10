@@ -463,7 +463,8 @@ export function CommandPalette({
 
 	if (!visible) return null;
 
-	const paletteWidth = "100%";
+	const terminalHeight = stdout?.rows || 24;
+	const paletteWidth = Math.min(80, terminalWidth - 4);
 	const displayCommands = getVisibleItems(filteredCommands);
 	const hasMore = filteredCommands.length > MAX_DISPLAY;
 
@@ -490,19 +491,28 @@ export function CommandPalette({
 		? ` ${DECORATIVE.ibis} Palette > ${breadcrumbs} `
 		: ` ${DECORATIVE.ibis} COMMAND PALETTE `;
 
-	return React.createElement(
-		Box,
-		{
-			flexDirection: "column",
-			width: paletteWidth,
-			borderStyle: "round",
-			borderColor: menuStack.length > 0 ? CYAN : GOLD,
-			paddingX: 1,
-			paddingY: 1,
-		},
-		React.createElement(
-			Box,
-			{ marginBottom: 1, justifyContent: "space-between" },
+	return (
+		<Box
+			position="absolute"
+			width={terminalWidth}
+			height={terminalHeight}
+			justifyContent="center"
+			alignItems="center"
+		>
+			{React.createElement(
+				Box,
+				{
+					flexDirection: "column",
+					width: paletteWidth,
+					borderStyle: "double",
+					borderColor: menuStack.length > 0 ? CYAN : GOLD,
+					backgroundColor: "black",
+					paddingX: 1,
+					paddingY: 1,
+				},
+				React.createElement(
+					Box,
+					{ marginBottom: 1, justifyContent: "space-between" },
 			React.createElement(
 				Text,
 				{ bold: true, color: menuStack.length > 0 ? CYAN : GOLD },
@@ -602,6 +612,8 @@ export function CommandPalette({
 								`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
 							),
 					),
+			)}
+		</Box>
 	);
 }
 

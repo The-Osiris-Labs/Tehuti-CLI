@@ -3532,97 +3532,9 @@ function ChatUI({
 		),
 	);
 
-	if (showSessionList) {
-		return React.createElement(SessionList, {
-			sessions: savedSessions,
-			onLoadSession: async (id: string) => {
-				setShowSessionList(false);
-				await loadSessionById(id);
-			},
-			onClose: () => setShowSessionList(false),
-		});
-	}
-
-	return showConfigEditor
-		? React.createElement(ConfigEditor, {
-				config: {
-					apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
-					model: ctxModel,
-					provider: runtimeProvider,
-					baseUrl: runtimeBaseUrl,
-					temperature: getGlobalConfig().temperature,
-					maxTokens: getGlobalConfig().maxTokens,
-				},
-				width: terminalWidth,
-				onSave: (updates) => {
-					const normalizedProvider = updates.provider
-						? updates.provider.trim().toLowerCase()
-						: runtimeProvider;
-					const resolvedProvider = normalizedProvider || runtimeProvider;
-
-					const rawBaseUrl =
-						updates.baseUrl !== undefined
-							? updates.baseUrl?.trim()
-							: runtimeBaseUrl;
-					const nextApiKey =
-						updates.apiKey !== undefined
-							? updates.apiKey.trim()
-							: resolveRuntimeApiKey(resolvedProvider);
-					const resolvedCustomSource =
-						resolvedProvider === "custom"
-							? runtimeCustomProvider ||
-								normalizeCustomProvider(cfg.customProvider)
-							: undefined;
-					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
-						baseUrl: rawBaseUrl,
-						apiKey: nextApiKey,
-						customProvider: resolvedCustomSource,
-					});
-					if (
-						resolvedProvider === "custom" &&
-						!resolvedState.customProvider?.baseUrl
-					) {
-						setMessages((m) => [
-							...m,
-							{
-								id: msgIdRef.current++,
-								role: "system",
-								content:
-									"Custom provider settings are incomplete. Set provider + baseUrl first.",
-							},
-						]);
-						return;
-					}
-
-					applyRuntimeProviderState(resolvedState);
-
-					if (updates.model?.trim()) {
-						setCtxModel(updates.model);
-						if (ctxRef.current) {
-							ctxRef.current.config.model = updates.model;
-						}
-					}
-					const nextModel = updates.model?.trim()
-						? updates.model.trim()
-						: ctxModel;
-					persistRuntimeProviderState(resolvedState, { model: nextModel });
-					setMessages((m) => [
-						...m,
-						{
-							id: msgIdRef.current++,
-							role: "system",
-							content: "Configuration saved successfully",
-						},
-					]);
-					setShowConfigEditor(false);
-				},
-				onCancel: () => {
-					setShowConfigEditor(false);
-				},
-			})
-		: React.createElement(
-				Box,
-				{ flexDirection: "column", width: "100%", height: "100%" },
+	return React.createElement(
+		Box,
+		{ flexDirection: "column", width: "100%", height: "100%" },
 				React.createElement(
 					Box,
 					{
@@ -3937,6 +3849,90 @@ function ChatUI({
 					onClose: handleCommandPaletteClose,
 					visible: showCommandPalette,
 					initialQuery: commandPaletteInitialQuery,
+				}),
+				showConfigEditor && React.createElement(ConfigEditor, {
+					config: {
+						apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
+						model: ctxModel,
+						provider: runtimeProvider,
+						baseUrl: runtimeBaseUrl,
+						temperature: getGlobalConfig().temperature,
+						maxTokens: getGlobalConfig().maxTokens,
+					},
+					width: terminalWidth,
+					onSave: (updates) => {
+						const normalizedProvider = updates.provider
+							? updates.provider.trim().toLowerCase()
+							: runtimeProvider;
+						const resolvedProvider = normalizedProvider || runtimeProvider;
+	
+						const rawBaseUrl =
+							updates.baseUrl !== undefined
+								? updates.baseUrl?.trim()
+								: runtimeBaseUrl;
+						const nextApiKey =
+							updates.apiKey !== undefined
+								? updates.apiKey.trim()
+								: resolveRuntimeApiKey(resolvedProvider);
+						const resolvedCustomSource =
+							resolvedProvider === "custom"
+								? runtimeCustomProvider ||
+									normalizeCustomProvider(cfg.customProvider)
+								: undefined;
+						const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+							baseUrl: rawBaseUrl,
+							apiKey: nextApiKey,
+							customProvider: resolvedCustomSource,
+						});
+						if (
+							resolvedProvider === "custom" &&
+							!resolvedState.customProvider?.baseUrl
+						) {
+							setMessages((m) => [
+								...m,
+								{
+									id: msgIdRef.current++,
+									role: "system",
+									content:
+										"Custom provider settings are incomplete. Set provider + baseUrl first.",
+								},
+							]);
+							return;
+						}
+	
+						applyRuntimeProviderState(resolvedState);
+	
+						if (updates.model?.trim()) {
+							setCtxModel(updates.model);
+							if (ctxRef.current) {
+								ctxRef.current.config.model = updates.model;
+							}
+						}
+						const nextModel = updates.model?.trim()
+							? updates.model.trim()
+							: ctxModel;
+						persistRuntimeProviderState(resolvedState, { model: nextModel });
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: "Configuration saved successfully",
+							},
+						]);
+						setShowConfigEditor(false);
+					},
+					onCancel: () => {
+						setShowConfigEditor(false);
+					},
+				}),
+				showSessionList && React.createElement(SessionList, {
+					sessions: savedSessions,
+					onLoadSession: async (id: string) => {
+						setShowSessionList(false);
+						await loadSessionById(id);
+					},
+					onClose: () => setShowSessionList(false),
 				}),
 				companionMode
 					? React.createElement(

@@ -178,7 +178,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const boxRef = useRef(null);
 
 	useOnClick(boxRef, () => {
-		setExpanded((prev) => !prev);
+		setExpanded((prev: boolean) => !prev);
 	});
 
 	useOnMouseEnter(
@@ -211,7 +211,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				setDuration((Date.now() - startTimeRef.current) / 1000);
 			}, 100);
 			const spinnerInterval = setInterval(() => {
-				setSpinnerFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
+				setSpinnerFrame((f: number) => (f + 1) % HIEROGLYPHS.loading.length);
 			}, 150);
 			return () => {
 				clearInterval(interval);
@@ -248,10 +248,10 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const {
 		windowStart,
 		windowEnd,
-		moveUp,
-		moveDown,
-		movePageUp,
-		movePageDown,
+		scrollUp,
+		scrollDown,
+		scrollPageUp,
+		scrollPageDown,
 		moveToStart,
 		moveToEnd,
 	} = useVirtualScroll({
@@ -261,12 +261,12 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	useInput((_input, key) => {
 		if (!isHovered || !expanded) return;
-		if (key.upArrow) moveUp();
-		if (key.downArrow) moveDown();
-		if (key.pageUp) movePageUp();
-		if (key.pageDown) movePageDown();
-		if (key.home) moveToStart();
-		if (key.end) moveToEnd();
+		if (key.upArrow) scrollUp();
+		if (key.downArrow) scrollDown();
+		if (key.pageUp) scrollPageUp();
+		if (key.pageDown) scrollPageDown();
+		if ((key as any).home) moveToStart();
+		if ((key as any).end) moveToEnd();
 		if (_input === "q" || _input === "Q" || key.escape) {
 			setExpanded(false);
 		}
@@ -330,14 +330,28 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		return ansi.split("\n");
 	}, [visibleLines, language]);
 
-	const width = maxWidth - 4;
-	const renderedLines = useMemo(() => {
-		return highlightedLines.map((line) => {
+	const blockWidth = Math.max(10, maxWidth - 4);
+	const contentWidth = Math.max(2, blockWidth - 4); // '│ ' + ' │' takes 4 chars
+
+	const renderedBlock = useMemo(() => {
+		const top = `╭${"─".repeat(contentWidth + 2)}╮`;
+		const bottom = `╰${"─".repeat(contentWidth + 2)}╯`;
+		
+		const lines = highlightedLines.map((line: string) => {
 			const visualLen = stringWidth(stripAnsi(line));
-			if (visualLen <= width) return line;
-			return `${line.slice(0, width - 3)}...`;
+			let padded: string;
+			if (visualLen > contentWidth) {
+				const sliced = sliceAnsi(line, contentWidth - 3);
+				const slicedLen = stringWidth(stripAnsi(sliced));
+				padded = `${sliced}...${" ".repeat(Math.max(0, contentWidth - slicedLen - 3))}`;
+			} else {
+				padded = `${line}${" ".repeat(Math.max(0, contentWidth - visualLen))}`;
+			}
+			return `│ ${padded} │`;
 		});
-	}, [highlightedLines, width]);
+		
+		return [top, ...lines, bottom].join("\n");
+	}, [highlightedLines, contentWidth]);
 
 	const expandedIcon = expanded ? "▼" : "▶";
 
@@ -350,7 +364,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
 					: `completed`;
 
-	const displayContent = renderedLines.join("\n");
+	const displayContent = renderedBlock;
 
 	return (
 		<Box
@@ -401,7 +415,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			</Box>
 
 			<Box flexDirection="column" marginY={1} paddingLeft={2}>
-				<Text dimColor={!expanded} wrap="wrap">
+				<Text dimColor={!expanded}>
 					{displayContent}
 				</Text>
 			</Box>

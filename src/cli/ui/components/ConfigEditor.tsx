@@ -366,17 +366,26 @@ export function ConfigEditor({
 	};
 
 	const terminalWidth = width || stdout?.columns || 80;
+	const terminalHeight = stdout?.rows || 24;
 	const editorWidth = Math.max(40, terminalWidth - 4);
 
 	return (
 		<Box
-			flexDirection="column"
-			width={editorWidth}
-			borderStyle="round"
-			borderColor={GOLD}
-			paddingX={1}
+			position="absolute"
+			width={terminalWidth}
+			height={terminalHeight}
+			justifyContent="center"
+			alignItems="center"
 		>
-			<Box marginBottom={1} justifyContent="space-between">
+			<Box
+				flexDirection="column"
+				width={editorWidth}
+				borderStyle="double"
+				borderColor={GOLD}
+				backgroundColor="black"
+				paddingX={1}
+			>
+				<Box marginBottom={1} justifyContent="space-between">
 				<Text bold color={GOLD}>
 					𓆣 Configuration Editor
 				</Text>
@@ -456,6 +465,7 @@ export function ConfigEditor({
 				<Text dimColor color={NILE}>
 					Changes stay local until Ctrl+S saves them.
 				</Text>
+			</Box>
 			</Box>
 		</Box>
 	);

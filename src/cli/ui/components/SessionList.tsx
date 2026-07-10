@@ -3,7 +3,7 @@ import {
 	useOnMouseEnter,
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import React, { useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
@@ -104,6 +104,9 @@ export function SessionList({
 	onClose,
 }: SessionListProps) {
 	const PAGE_SIZE = 15;
+	const { stdout } = useStdout();
+	const terminalWidth = stdout?.columns || 80;
+	const terminalHeight = stdout?.rows || 24;
 
 	const {
 		selectedIndex,
@@ -144,11 +147,27 @@ export function SessionList({
 
 	if (sessions.length === 0) {
 		return (
-			<Box flexDirection="column" marginY={1} paddingX={1}>
-				<Text color={BRANDING.colors.gold} bold>
-					𓁹 Saved Sessions
-				</Text>
-				<Text dimColor>No sessions found.</Text>
+			<Box
+				position="absolute"
+				width={terminalWidth}
+				height={terminalHeight}
+				justifyContent="center"
+				alignItems="center"
+			>
+				<Box
+					flexDirection="column"
+					width={Math.min(80, terminalWidth - 4)}
+					borderStyle="double"
+					borderColor={BRANDING.colors.gold}
+					backgroundColor="black"
+					paddingX={1}
+					paddingY={1}
+				>
+					<Text color={BRANDING.colors.gold} bold>
+						𓁹 Saved Sessions
+					</Text>
+					<Text dimColor>No sessions found.</Text>
+				</Box>
 			</Box>
 		);
 	}
@@ -159,13 +178,20 @@ export function SessionList({
 
 	return (
 		<Box
-			flexDirection="column"
-			marginY={1}
-			width="100%"
-			borderStyle="single"
-			borderColor={GOLD}
+			position="absolute"
+			width={terminalWidth}
+			height={terminalHeight}
+			justifyContent="center"
+			alignItems="center"
 		>
-			<Box paddingX={1} marginBottom={1}>
+			<Box
+				flexDirection="column"
+				width={Math.min(100, terminalWidth - 4)}
+				borderStyle="double"
+				borderColor={GOLD}
+				backgroundColor="black"
+			>
+				<Box paddingX={1} marginBottom={1} marginTop={1}>
 				<Text color={GOLD} bold>
 					𓁹 Saved Sessions
 				</Text>
@@ -229,6 +255,7 @@ export function SessionList({
 					{Math.min(windowStart + PAGE_SIZE, sessions.length)} of{" "}
 					{sessions.length}
 				</Text>
+			</Box>
 			</Box>
 		</Box>
 	);

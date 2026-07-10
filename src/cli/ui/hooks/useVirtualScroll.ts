@@ -138,6 +138,24 @@ export function useVirtualScroll({
 		[windowStart, windowEnd],
 	);
 
+	const scrollUp = useCallback(() => {
+		setWindowStart((prev) => Math.max(0, prev - 1));
+	}, []);
+
+	const scrollDown = useCallback(() => {
+		const maxStart = Math.max(0, safeTotalItems - safeMaxWindow);
+		setWindowStart((prev) => Math.min(maxStart, prev + 1));
+	}, [safeTotalItems, safeMaxWindow]);
+
+	const scrollPageUp = useCallback(() => {
+		setWindowStart((prev) => Math.max(0, prev - safeMaxWindow));
+	}, [safeMaxWindow]);
+
+	const scrollPageDown = useCallback(() => {
+		const maxStart = Math.max(0, safeTotalItems - safeMaxWindow);
+		setWindowStart((prev) => Math.min(maxStart, prev + safeMaxWindow));
+	}, [safeTotalItems, safeMaxWindow]);
+
 	return {
 		selectedIndex,
 		windowStart,
@@ -147,6 +165,10 @@ export function useVirtualScroll({
 		moveDown,
 		movePageUp,
 		movePageDown,
+		scrollUp,
+		scrollDown,
+		scrollPageUp,
+		scrollPageDown,
 		moveToStart,
 		moveToEnd,
 		getVisibleItems,

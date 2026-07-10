@@ -112,7 +112,7 @@ export function StatusBadge({
 		const frames =
 			kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading;
 		const id = setInterval(() => {
-			setFrame((f) => (f + 1) % frames.length);
+			setFrame((f: number) => (f + 1) % frames.length);
 		}, 150);
 		return () => clearInterval(id);
 	}, [spin, kind]);
@@ -123,29 +123,23 @@ export function StatusBadge({
 	const text = label ?? DEFAULT_LABELS[kind];
 
 	if (compact) {
-		return React.createElement(
-			Text,
-			{ color },
-			animatedGlyph,
-		) as React.ReactElement;
+		return <Text color={color}>{animatedGlyph}</Text>;
 	}
 
 	if (emphasize) {
-		return React.createElement(
-			Box,
-			{ borderStyle: "round", borderColor: color, paddingX: 1 },
-			React.createElement(Text, { color }, `${animatedGlyph} ${text}`),
-		) as React.ReactElement;
+		return (
+			<Text color={color} inverse>
+				{` ${animatedGlyph} ${text} `}
+			</Text>
+		);
 	}
 
-	return React.createElement(
-		Box,
-		null,
-		React.createElement(Text, { color }, animatedGlyph),
-		React.createElement(
-			Text,
-			{ color, dimColor: kind === "idle" || kind === "killed" },
-			` ${text}`,
-		),
-	) as React.ReactElement;
+	return (
+		<Text>
+			<Text color={color}>{animatedGlyph}</Text>
+			<Text color={color} dimColor={kind === "idle" || kind === "killed"}>
+				{` ${text}`}
+			</Text>
+		</Text>
+	);
 }

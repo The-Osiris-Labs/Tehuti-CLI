@@ -261,7 +261,7 @@ export function renderToken(
 				return React.createElement(
 					Box,
 					{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
-					React.createElement(Text, null, ansiText)
+					React.createElement(Text, { wrap: "truncate-end" }, ansiText)
 				);
 			}
 			return null;
@@ -269,6 +269,15 @@ export function renderToken(
 
 		case "space": {
 			return React.createElement(Text, { key: getKey() }, "\n");
+		}
+
+		case "text": {
+			const inlineElements = renderInlineTokens(token.tokens || [], getKey);
+			return React.createElement(
+				Text,
+				{ key: getKey(), wrap: "wrap" },
+				...inlineElements,
+			);
 		}
 
 		default:
