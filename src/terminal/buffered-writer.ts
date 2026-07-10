@@ -446,4 +446,4 @@ export function createStreamingOutputManager(): StreamingOutputManager {
 	return new StreamingOutputManager();
 }
 
-export { stripAnsi, getVisualWidth };
+export { getVisualWidth, stripAnsi };

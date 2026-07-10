@@ -406,17 +406,17 @@ export function formatDiff(diffOutput: string, _filename?: string): string {
 }
 
 export {
-	bold,
-	italic,
-	dim,
-	cyan,
-	green,
-	red,
-	gold,
-	coral,
-	blue,
-	code,
-	strikethrough,
 	ANSI,
+	blue,
+	bold,
 	COLORS,
+	code,
+	coral,
+	cyan,
+	dim,
+	gold,
+	green,
+	italic,
+	red,
+	strikethrough,
 };
