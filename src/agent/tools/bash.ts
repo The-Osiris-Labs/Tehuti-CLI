@@ -136,7 +136,7 @@ const DANGEROUS_PATTERNS = [
 // We replaced it with explicit write/destructive-action patterns below.
 const NATIVE_DANGEROUS_PATTERNS = [
 	// Path traversal in arguments
-	/\.\.[\/\\]/,
+	/\.\.[/\\]/,
 	// Redirecting INTO a system path
 	/(>|>>|>\||2>|2>>|&\d*>)\s*\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
 	// Destructive commands targeting system paths

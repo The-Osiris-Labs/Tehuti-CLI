@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LRUCache } from "./lru-cache.js";
 
 describe("LRUCache", () => {
@@ -49,9 +49,27 @@ describe("LRUCache", () => {
 	});
 
 	describe("TTL expiration", () => {
-		it.skip("should mark entries as expired after TTL", () => {});
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
 
-		it.skip("should use custom TTL over default", () => {});
+		it("should mark entries as expired after TTL", () => {
+			cache.set("key1", { id: 1 }, "value1");
+			expect(cache.get("key1", { id: 1 })).toBe("value1");
+
+			vi.advanceTimersByTime(60001); // defaultTtl is 60000ms
+			expect(cache.get("key1", { id: 1 })).toBeNull();
+			vi.useRealTimers();
+		});
+
+		it("should use custom TTL over default", () => {
+			cache.set("key2", { id: 2 }, "value2", { ttl: 1000 }); // 1s TTL
+			expect(cache.get("key2", { id: 2 })).toBe("value2");
+
+			vi.advanceTimersByTime(1001);
+			expect(cache.get("key2", { id: 2 })).toBeNull();
+			vi.useRealTimers();
+		});
 	});
 
 	describe("LRU eviction", () => {

@@ -52,7 +52,6 @@ export class SkillsManager {
 	}
 
 	private loadBuiltInSkills(): void {
-		// TODO: Implement built-in skills
 		const builtInSkills: Skill[] = [
 			{
 				id: "javascript-expert",

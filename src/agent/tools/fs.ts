@@ -1484,7 +1484,7 @@ async function readImage(
 		const buffer = await fs.readFile(resolvedPath);
 		const fileType = await fileTypeFromBuffer(buffer);
 
-		if (!fileType || !fileType.mime.startsWith("image/")) {
+		if (!fileType?.mime.startsWith("image/")) {
 			return {
 				success: false,
 				output: "",

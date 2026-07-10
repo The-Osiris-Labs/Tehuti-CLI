@@ -12,7 +12,9 @@ const FAKE_CTX = {
 } as any;
 
 // Minimal fetch mock that records calls.
-function makeFetchMock(impl: (url: string, init?: RequestInit) => Promise<Response>) {
+function makeFetchMock(
+	impl: (url: string, init?: RequestInit) => Promise<Response>,
+) {
 	return vi.fn(impl) as unknown as typeof fetch;
 }
 
@@ -101,8 +103,8 @@ describe("web_search — OpenRouter fallback", () => {
 	});
 
 	it("returns null and re-errors when OpenRouter returns non-OK", async () => {
-		const mockFetch = makeFetchMock(async () =>
-			new Response("rate limited", { status: 429 }),
+		const mockFetch = makeFetchMock(
+			async () => new Response("rate limited", { status: 429 }),
 		);
 		globalThis.fetch = mockFetch;
 

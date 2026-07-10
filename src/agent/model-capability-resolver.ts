@@ -198,13 +198,13 @@ export async function resolveModelCapabilities(
 		);
 		if (models.length > 0 && !live) {
 			debug.log(
-				"agent" as any,
+				"agent",
 				`resolveModelCapabilities: model "${modelId}" not found in provider /models list (${models.length} models). Using fallbacks.`,
 			);
 		}
 	} catch (err) {
 		debug.log(
-			"agent" as any,
+			"agent",
 			`resolveModelCapabilities: live fetch failed for ${provider}/${modelId}: ${err}`,
 		);
 	}
@@ -259,7 +259,7 @@ export async function resolveModelCapabilities(
 	capabilityCache.set(key, result);
 
 	debug.log(
-		"agent" as any,
+		"agent",
 		`resolveModelCapabilities: ${provider}/${modelId} => ctx=${contextLength} maxOut=${maxOutputTokens} vision=${supportsVision} tools=${supportsTools} cache=${supportsCaching}`,
 	);
 

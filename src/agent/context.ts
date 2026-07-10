@@ -434,7 +434,7 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 
 ## Harness & Subagent Capabilities
 - **Harness**: You are running inside the Tehuti Agent Harness, a powerful terminal-based environment.
-- **Parallel Subagents**: You can spawn specialized subagents to work on different parts of a codebase simultaneously or conduct isolated research.
+- **Parallel Subagents**: You can spawn specialized subagents (via \`delegate_task\`) to work on tasks in the background as separate forked Node.js processes. Use \`await_subagents\` to block until one or more complete and collect their results. Use \`check_subagent_status\` to poll a single subagent\u2019s status. Use \`list_subagents\` to enumerate all running/finished subagents. Use \`send_message_to_subagent\` to push a message into a running subagent\u2019s context. Use \`abort_subagent\` to cancel one.
 - **Tools**: You possess direct terminal access, file system I/O, advanced code parsing, and dynamic MCP (Model Context Protocol) integration for extending your capabilities.
 - **Media**: Your terminal harness natively supports projecting images and video previews using Sixel/iTerm graphics protocols.
 

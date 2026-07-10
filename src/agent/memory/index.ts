@@ -21,7 +21,7 @@ export async function initMemory(
 	// will be loaded on demand by memory_search.
 	const MAX_RELOAD_NODES = 5000;
 	const stmt = db.prepare(
-		`SELECT * FROM nodes ORDER BY importance DESC, created_at DESC LIMIT ?`,
+		`SELECT * FROM nodes ORDER BY COALESCE(json_extract(metadata, '$.importance'), 0) DESC, created_at DESC LIMIT ?`,
 	);
 	const rows = stmt.all(MAX_RELOAD_NODES) as any[];
 

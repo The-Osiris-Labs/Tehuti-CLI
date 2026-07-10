@@ -345,7 +345,8 @@ async function openRouterWebSearch(
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) return null;
 
-	const model = process.env.TEHUTI_WEB_SEARCH_MODEL ?? "openai/gpt-4o-mini:online";
+	const model =
+		process.env.TEHUTI_WEB_SEARCH_MODEL ?? "openai/gpt-4o-mini:online";
 	const endpoint = "https://openrouter.ai/api/v1/chat/completions";
 
 	const systemPrompt = `You are a web-search assistant. The user will ask a question.
@@ -481,7 +482,12 @@ async function webSearch(
 		if (fallback) {
 			return {
 				...fallback,
-				metadata: { ...fallback.metadata, num_results, fallback: true, exaError: String(error) },
+				metadata: {
+					...fallback.metadata,
+					num_results,
+					fallback: true,
+					exaError: String(error),
+				},
 			};
 		}
 		const errorMessage = `Web search failed: ${error instanceof Error ? error.message : String(error)}`;

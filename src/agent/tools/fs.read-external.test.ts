@@ -1,23 +1,22 @@
-import { describe, expect, it } from "vitest";
 import os from "node:os";
 import path from "node:path";
-import {
-	isReadOnlyExternalPath,
-	validatePathSecurity,
-} from "./fs.js";
+import { describe, expect, it } from "vitest";
+import { isReadOnlyExternalPath, validatePathSecurity } from "./fs.js";
 
 describe("validatePathSecurity — read-only external allowlist", () => {
 	const home = os.homedir();
 	const tmpdir = process.env.TMPDIR ?? "/tmp";
 
 	it("rejects macOS screenshot paths by default (no opt-in)", () => {
-		const screenshot = "/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
+		const screenshot =
+			"/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
 		const r = validatePathSecurity(screenshot, "/Users/youssefsala7");
 		expect(r.safe).toBe(false);
 	});
 
 	it("allows macOS screenshot paths with allowExternalRead=true", () => {
-		const screenshot = "/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
+		const screenshot =
+			"/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
 		const r = validatePathSecurity(screenshot, "/Users/youssefsala7", {
 			allowExternalRead: true,
 		});
@@ -98,7 +97,8 @@ describe("isReadOnlyExternalPath", () => {
 	const home = os.homedir();
 
 	it("matches the actual macOS screenshot path from the bug report", () => {
-		const p = "/var/folders/r6/7m_4b2dn6ld4cyvrgf_66fbr0000gn/T/TemporaryItems/NSIRD_screencaptureui_zeAdKv/Screenshot 2026-07-10 at 3.55.45 AM.jpg";
+		const p =
+			"/var/folders/r6/7m_4b2dn6ld4cyvrgf_66fbr0000gn/T/TemporaryItems/NSIRD_screencaptureui_zeAdKv/Screenshot 2026-07-10 at 3.55.45 AM.jpg";
 		expect(isReadOnlyExternalPath(p)).toBe(true);
 	});
 
@@ -122,9 +122,7 @@ describe("isReadOnlyExternalPath", () => {
 		expect(isReadOnlyExternalPath(tmpPath)).toBe(true);
 		// The canonical macOS screenshot case
 		expect(
-			isReadOnlyExternalPath(
-				`${home}/.tehuti/tmp/incoming/anything.jpg`,
-			),
+			isReadOnlyExternalPath(`${home}/.tehuti/tmp/incoming/anything.jpg`),
 		).toBe(true);
 	});
 
@@ -133,6 +131,8 @@ describe("isReadOnlyExternalPath", () => {
 	});
 
 	it("does not match /Users paths", () => {
-		expect(isReadOnlyExternalPath(path.join(home, "Documents/secret.txt"))).toBe(false);
+		expect(
+			isReadOnlyExternalPath(path.join(home, "Documents/secret.txt")),
+		).toBe(false);
 	});
 });
