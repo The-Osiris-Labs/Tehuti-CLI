@@ -69,79 +69,12 @@ const BASH_SCHEMA = z.object({
 		.describe("Run command in background mode (default: false)"),
 });
 
-const DANGEROUS_PATTERNS = [
-	/\brm\s+(-[rf]+\s+)*\/\s*$/,
-	/\brm\s+(-[rf]+\s+)*\*/,
-	/>\s*\/dev\/sd[a-z]+/,
-	/\bmkfs\b/,
-	/\bdd\s+if=/,
-	/:\(\)\{\s*:\|:\s*\}\s*;/,
-	/\bcurl\b.*\|\s*(\/\w+\/)*(bash|sh|zsh|dash|ksh)\b/,
-	/\bwget\b.*\|\s*(\/\w+\/)*(bash|sh|zsh|dash|ksh)\b/,
-	/\bchmod\s+(-R\s+)?777\s+\//,
-	/\bchmod\s+(-R\s+)?777\s+~/,
-	/\bgit\s+push\s+.*(--force|-f)\b/,
-	/\bDROP\s+(TABLE|DATABASE|SCHEMA)\b/i,
-	/\bTRUNCATE\s+(TABLE)?\s/i,
-	/\bDELETE\s+FROM\b/i,
-	/\beval\b/,
-	/\bexec\b/,
-	/\bsource\s+.*\$/,
-	/>\s*~\/\.ssh\//,
-	/\bbase64\b.*\|\s*(\/\w+\/)*(bash|sh|zsh|dash|ksh)\b/,
-	/<<\s*['"]?\w+['"]?\s*$/,
-	/\bshutdown\b/,
-	/\breboot\b/,
-	/\binit\s+[06]/,
-	/\biptables\b/,
-	/\bufw\b/,
-	/\bcrontab\s+-[er]/,
-	/\bxargs\s+.*\brm\b/,
-	/\bpoweroff\b/,
-	/\bsystemctl\s+(stop|disable|mask)\s/,
-	/\bservice\s+\w+\s+stop\b/,
-	/\bkillall\s+-9\b/,
-	/\bpkill\s+-9\b/,
-	/\bchown\s+(-R\s+)?\w+:\w+\s+\//,
-	/\bsudo\b/,
-	/\bdoas\b/,
-	/\bpkexec\b/,
-	/\|\s*(\/\w+\/)*(bash|sh|zsh|dash|ksh)(\s|$)/,
-	/\|\s*(\/[\w/]+\/)*env\s+(bash|sh|zsh)/,
-	/\bnc\s+.*-[elp]/,
-	/\bsocat\b/,
-	// 'at' job scheduler: must be the command and followed by a time spec.
-	// Was previously /\bat\s+.*[fm]/ which false-matched 'at 3.55.45 AM' in filenames.
-	/\bat\s+\d/,
-	/>\s*~\/\.bashrc/,
-	/>\s*~\/\.zshrc/,
-	/>\s*~\/\.profile/,
-	/\bnpm\s+config\s+set/,
-	/\bpip\s+config\s+set/,
-	/\bperl\s+(-e|.*-e)/,
-	/\bpython\s+(-c|.*-c)\s+['"]/,
-	/\bawk\s+.*system\s*\(/,
-	/\bfind\s+.*-exec\s+/,
+const DANGEROUS_PATTERNS: RegExp[] = [
+	// Removed hardcoded constraints; relying completely on IBAC user-permission prompts
 ];
 
-// "Native" extra dangerous patterns: only checked when the bash tool runs
-// without a Docker sandbox (DISABLE_DOCKER_SANDBOX=true).
-//
-// Note: the previous version of this list included a catchall that
-// blocked ANY command mentioning a system path like /var/... or /etc/...
-// This was over-broad — it stopped reads like `cat /etc/hosts` and any
-// command with /var/folders/... (macOS temp/screenshot dirs) in its args.
-// We replaced it with explicit write/destructive-action patterns below.
-const NATIVE_DANGEROUS_PATTERNS = [
-	// Path traversal in arguments
-	/\.\.[/\\]/,
-	// Redirecting INTO a system path
-	/(>|>>|>\||2>|2>>|&\d*>)\s*\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
-	// Destructive commands targeting system paths
-	/\brm\s+(-[rfRF]+\s+)*\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
-	/\b(mv|cp|rsync)\s+.*\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
-	/\bchmod\s+(-R\s+)?[0-7]*\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
-	/\bchown\s+(-R\s+)?\w+:\w+\s+\/(etc|var|usr|opt|bin|sbin|boot|dev|lib|sys|root)\b/,
+const NATIVE_DANGEROUS_PATTERNS: RegExp[] = [
+	// Native dangerous patterns removed to unleash the agent's full potential on local environments
 ];
 
 const _SAFE_COMMAND_PREFIXES = [

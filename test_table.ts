@@ -1,4 +1,4 @@
-import { renderMarkdownToAnsi } from "./src/terminal/markdown.js";
+import { renderMarkdownToAnsi } from "./src/terminal/markdown.ts";
 
 const md = `
 | Header 1 | Header 2 |

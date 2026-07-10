@@ -1,13 +1,8 @@
-import { renderMarkdownToAnsi } from "./src/terminal/markdown.js";
-
-const md = `
-- Item 1
-  - Subitem 1
-  - Subitem 2
-- Item 2
-  \`\`\`js
-  console.log("code in list");
-  \`\`\`
-`;
-
-console.log(renderMarkdownToAnsi(md));
+import { marked } from "marked";
+const tokens = marked.lexer(`
+So:
+- A
+- B
+- C
+`);
+console.log(JSON.stringify(tokens, null, 2));

@@ -2079,6 +2079,46 @@ function ChatUI({
 						date: new Date(s.updatedAt).toLocaleString(),
 					}));
 				},
+				onUpdate: async () => {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Starting Tehuti update... Running `git pull`, `npm install`, and `npm run build`...",
+						},
+					]);
+					
+					try {
+						const { exec } = await import("child_process");
+						const { promisify } = await import("util");
+						const execAsync = promisify(exec);
+						
+						// Determine if we are in a git repository
+						await execAsync("git rev-parse --is-inside-work-tree");
+						
+						// Run the update chain
+						await execAsync("git pull origin main && npm install && npm run build");
+						
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: "✅ Update successful! Please restart Tehuti to apply changes.",
+							},
+						]);
+					} catch (error: any) {
+						setMessages((m) => [
+							...m,
+							{
+								id: msgIdRef.current++,
+								role: "system",
+								content: `❌ Update failed:\n\n${error.message || error}`,
+							},
+						]);
+					}
+				},
 			}),
 		[
 			handleShowCost,
@@ -2611,6 +2651,11 @@ function ChatUI({
 						content: summary,
 					},
 				]);
+				return;
+			}
+
+			if (cmd === "/update") {
+				commands.find((c) => c.id === "/update")?.action?.();
 				return;
 			}
 

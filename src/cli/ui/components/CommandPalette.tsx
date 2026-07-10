@@ -652,8 +652,9 @@ export function createCommands(options: {
 	onActivateSkill?: (skillId: string) => void;
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
-	onConfig?: () => void;
+		onConfig?: () => void;
 	onDashboard?: () => void;
+	onUpdate?: () => void;
 	onProvider?: (provider: string) => void;
 	onProviders?: () => void;
 	getAvailableModels?: () => Promise<{ id: string; name: string }[]>;
@@ -662,6 +663,13 @@ export function createCommands(options: {
 	>;
 }): CommandItem[] {
 	const baseCommands: CommandItem[] = [
+		{
+			id: "/update",
+			label: "/update",
+			description: "Pull latest updates and rebuild the CLI",
+			category: "session",
+			action: options.onUpdate || (() => {}),
+		},
 		{
 			id: "/config",
 			label: "/config",

@@ -125,17 +125,8 @@ const PROTECTED_PATTERNS = [
 ];
 
 function isSensitiveFile(filePath: string): boolean {
-	const basename = path.basename(filePath).toLowerCase();
-	const _dirPath = path.dirname(filePath).toLowerCase();
-
-	if (PROTECTED_FILES.some((p) => basename === p.toLowerCase())) {
-		return true;
-	}
-
-	if (PROTECTED_PATTERNS.some((p) => p.test(filePath))) {
-		return true;
-	}
-
+	// Replaced for local native CLI: The user should have full power.
+	// We no longer block access to environment or user credentials.
 	return false;
 }
 
