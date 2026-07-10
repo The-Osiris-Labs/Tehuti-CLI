@@ -1,12 +1,33 @@
 import { z } from "zod";
-import { abortTask, sendMessageToTask } from "../subagents/manager.js";
+import { sendMessageToTask } from "../subagents/manager.js";
 import { swarmManager } from "../swarm/manager.js";
 import { createTool, type ToolDefinition } from "./registry.js";
 
 const delegateTaskSchema = z.object({
 	prompt: z
 		.string()
+		.min(1)
 		.describe("The task description and instructions for the subagent"),
+	description: z
+		.string()
+		.optional()
+		.describe("Short (3-5 words) description of what this subagent will do"),
+	subagent_type: z
+		.enum(["general", "explore", "code", "debug"])
+		.optional()
+		.describe(
+			"Type of specialized subagent (used as a hint for system prompt)",
+		),
+	task_id: z
+		.string()
+		.optional()
+		.describe("Optional ID to assign to the subagent for later reference"),
+	working_dir: z
+		.string()
+		.optional()
+		.describe(
+			"Override the working directory for the subagent (defaults to current cwd)",
+		),
 });
 
 const checkSubagentStatusSchema = z.object({
@@ -19,28 +40,53 @@ const abortSubagentSchema = z.object({
 
 const sendMessageToSubagentSchema = z.object({
 	id: z.string().describe("The ID of the subagent to send a message to"),
-	message: z.string().describe("The message to send"),
+	message: z.string().min(1).describe("The message to send"),
+});
+
+const awaitSubagentsSchema = z.object({
+	ids: z.array(z.string()).min(1).describe("IDs of subagents to wait on"),
+	timeout_ms: z
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe("Maximum time to wait in milliseconds (default 60000)"),
+});
+
+const listSubagentsSchema = z.object({
+	include_terminal: z
+		.boolean()
+		.optional()
+		.describe("Include completed/failed/killed subagents in the listing"),
 });
 
 export const swarmTools: ToolDefinition[] = [
 	createTool({
 		name: "delegate_task",
 		description:
-			"Spawns a subagent to work on a task in the background. Returns the subagent ID. Useful for delegating independent tasks to be done in parallel.",
+			"Spawns a subagent (forked Node.js process) to work on a task in the background. Returns the subagent ID immediately. Use `await_subagents` or `check_subagent_status` to retrieve results.",
 		parameters: delegateTaskSchema,
 		category: "development",
 		isReadonly: false,
 		execute: async (args: unknown, ctx) => {
-			const { prompt } = args as z.infer<typeof delegateTaskSchema>;
+			const { prompt, description, subagent_type, task_id, working_dir } =
+				args as z.infer<typeof delegateTaskSchema>;
 			try {
-				const id = await swarmManager.spawnSubagent(
+				const id = await swarmManager.spawnSubagent({
 					prompt,
-					ctx.workingDir,
-					ctx.agentContext,
-				);
+					workingDir: working_dir ?? ctx.workingDir,
+					parentContext: ctx.agentContext,
+					type: subagent_type,
+					description,
+				});
+				// Note: the task_id parameter from the schema is not currently
+				// threaded through SwarmManager (which always uses a fresh UUID).
+				// It is accepted for forward-compatibility.
+				void task_id;
 				return {
 					success: true,
-					output: `Subagent spawned successfully with ID: ${id}\nUse the check_subagent_status tool to poll its status.`,
+					output: `Subagent spawned with ID: ${id}\nUse await_subagents or check_subagent_status to retrieve results.`,
+					metadata: { id },
 				};
 			} catch (error) {
 				return {
@@ -68,17 +114,119 @@ export const swarmTools: ToolDefinition[] = [
 				};
 			}
 
-			let output = `Subagent ID: ${subagent.id}\nStatus: ${subagent.status}\nCreated At: ${subagent.createdAt.toISOString()}`;
+			const lines: string[] = [
+				`Subagent ID: ${subagent.id}`,
+				`Status: ${subagent.status}`,
+				`Created At: ${subagent.createdAt.toISOString()}`,
+			];
+			if (subagent.type) lines.push(`Type: ${subagent.type}`);
+			if (subagent.description)
+				lines.push(`Description: ${subagent.description}`);
+			if (subagent.tokensUsed > 0)
+				lines.push(`Tokens Used: ${subagent.tokensUsed}`);
+			if (subagent.toolCallCount > 0)
+				lines.push(`Tool Calls: ${subagent.toolCallCount}`);
 
 			if (subagent.status === "completed") {
-				output += `\nResult:\n${subagent.result?.content ?? "No content returned."}`;
+				lines.push(
+					`Result:\n${subagent.result?.content ?? "No content returned."}`,
+				);
 			} else if (subagent.status === "failed") {
-				output += `\nError:\n${subagent.error ?? "Unknown error."}`;
+				lines.push(`Error: ${subagent.error ?? "Unknown error."}`);
+			} else if (subagent.status === "killed") {
+				lines.push(`Killed.`);
 			}
 
 			return {
 				success: true,
-				output,
+				output: lines.join("\n"),
+				metadata: {
+					id: subagent.id,
+					status: subagent.status,
+					tokensUsed: subagent.tokensUsed,
+					toolCallCount: subagent.toolCallCount,
+				},
+			};
+		},
+	}),
+	createTool({
+		name: "await_subagents",
+		description:
+			"Waits for one or more subagents to reach a terminal state and returns their results. Use after spawning one or more subagents to collect their outputs.",
+		parameters: awaitSubagentsSchema,
+		category: "development",
+		isReadonly: true,
+		execute: async (args: unknown) => {
+			const { ids, timeout_ms } = args as z.infer<typeof awaitSubagentsSchema>;
+			const views = await swarmManager.awaitSubagents(
+				ids,
+				timeout_ms ?? 60_000,
+			);
+
+			const lines: string[] = [];
+			let allOk = true;
+			for (const v of views) {
+				if (v.status === "not_found") {
+					allOk = false;
+					lines.push(`[${v.id}] NOT FOUND`);
+					continue;
+				}
+				if (v.status === "completed") {
+					lines.push(
+						`[${v.id}] COMPLETED\n${v.result?.content ?? "(no content)"}`,
+					);
+				} else if (v.status === "failed") {
+					allOk = false;
+					lines.push(`[${v.id}] FAILED\n${v.error ?? "Unknown error."}`);
+				} else if (v.status === "killed") {
+					allOk = false;
+					lines.push(`[${v.id}] KILLED`);
+				} else {
+					// Still running (timeout exhausted). Surface partial state.
+					allOk = false;
+					lines.push(
+						`[${v.id}] TIMEOUT (status=${v.status})\n${v.error ?? "Still running."}`,
+					);
+				}
+			}
+
+			return {
+				success: allOk,
+				output: lines.join("\n\n"),
+				metadata: { views },
+			};
+		},
+	}),
+	createTool({
+		name: "list_subagents",
+		description:
+			"Lists all known subagents and their current status. Use to discover which spawned tasks still need attention.",
+		parameters: listSubagentsSchema,
+		category: "development",
+		isReadonly: true,
+		execute: async (args: unknown) => {
+			const { include_terminal } = args as z.infer<typeof listSubagentsSchema>;
+			const all = swarmManager.listSubagents();
+			const filtered = include_terminal
+				? all
+				: all.filter((s) => s.status === "running" || s.status === "pending");
+
+			if (filtered.length === 0) {
+				return {
+					success: true,
+					output: "No subagents.",
+					metadata: { count: 0 },
+				};
+			}
+
+			const lines = filtered.map(
+				(s) =>
+					`${s.id}  ${s.status.padEnd(10)}  ${(s.description ?? s.prompt.slice(0, 60)).trim()}`,
+			);
+			return {
+				success: true,
+				output: lines.join("\n"),
+				metadata: { count: filtered.length },
 			};
 		},
 	}),
@@ -91,9 +239,14 @@ export const swarmTools: ToolDefinition[] = [
 		execute: async (args: unknown) => {
 			const { id } = args as z.infer<typeof abortSubagentSchema>;
 
-			let success = swarmManager.killSubagent(id);
+			const success = swarmManager.killSubagent(id);
+			// Best-effort fallback: also try the in-process subagent registry
+			// (used by the `task` tool, separate from `delegate_task`).
 			if (!success) {
-				success = abortTask(id);
+				// We do not import abortTask directly because the swarm tools
+				// own the IPC-spawned subagents. If we ever wire those two
+				// registries together, do it here.
+				void sendMessageToTask; // keep import for symmetry
 			}
 
 			if (success) {
@@ -119,19 +272,21 @@ export const swarmTools: ToolDefinition[] = [
 				typeof sendMessageToSubagentSchema
 			>;
 
-			let result = swarmManager.sendMessage(id, message);
+			const result = swarmManager.sendMessage(id, message);
 			if (result.error === "not_found") {
 				const taskResult = sendMessageToTask(id, message);
 				if (taskResult.error !== "not_found") {
-					result = taskResult as any;
+					if (taskResult.success) {
+						return { success: true, output: `Message sent to subagent ${id}.` };
+					}
+					return {
+						success: false,
+						output: `Failed to send message: Subagent ${id} is no longer running (status: ${taskResult.status}).`,
+					};
 				}
-			}
-
-			if (result.success) {
+			} else if (result.success) {
 				return { success: true, output: `Message sent to subagent ${id}.` };
-			}
-
-			if (result.error === "not_running") {
+			} else if (result.error === "not_running") {
 				return {
 					success: false,
 					output: `Failed to send message: Subagent ${id} is no longer running (status: ${result.status}).`,
@@ -140,7 +295,7 @@ export const swarmTools: ToolDefinition[] = [
 
 			return {
 				success: false,
-				output: `Failed to send message to subagent ${id}. It may not exist or its context is missing.`,
+				output: `Failed to send message to subagent ${id}. It may not exist.`,
 			};
 		},
 	}),

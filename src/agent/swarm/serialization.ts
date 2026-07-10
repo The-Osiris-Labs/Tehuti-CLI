@@ -45,7 +45,7 @@ export function sendChunkedMessage(
 }
 
 export class ChunkReceiver {
-	private buffers = new Map<string, string[]>();
+	private buffers = new Map<string, Array<string | undefined>>();
 
 	public receive(msg: IPCMessage): { complete: boolean; payload?: any } {
 		if (!msg.type.endsWith("_chunk") || !msg.id) {
@@ -54,13 +54,26 @@ export class ChunkReceiver {
 
 		let chunks = this.buffers.get(msg.id);
 		if (!chunks) {
-			chunks = new Array(msg.totalChunks || 0);
+			// Use a dense array of `undefined` so `every()` actually iterates
+			// over every slot. A sparse `new Array(n)` would skip empty slots
+			// and report completion prematurely, which is the bug this fixes.
+			chunks = new Array<string | undefined>(msg.totalChunks || 0).fill(
+				undefined,
+			);
 			this.buffers.set(msg.id, chunks);
 		}
 
 		chunks[msg.chunkIndex || 0] = msg.payload;
 
-		const isComplete = chunks.every((c) => c !== undefined);
+		// Use `for` loop instead of `every` so empty slots are not skipped
+		// (sparse-array behavior would otherwise mis-report completion).
+		let isComplete = chunks.length > 0;
+		for (const c of chunks) {
+			if (c === undefined) {
+				isComplete = false;
+				break;
+			}
+		}
 		if (isComplete) {
 			this.buffers.delete(msg.id);
 			try {

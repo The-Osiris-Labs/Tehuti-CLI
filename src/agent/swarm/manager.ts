@@ -1,6 +1,7 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { resolve } from "node:path";
 import { debug } from "../../utils/debug.js";
 import { agentEventBus } from "../events.js";
 import type { AgentLoopResult } from "../index.js";
@@ -9,13 +10,32 @@ import { ChunkReceiver } from "./serialization.js";
 export interface SubagentTask {
 	id: string;
 	prompt: string;
-	status: "running" | "completed" | "failed" | "killed";
+	type?: string;
+	description?: string;
+	status: "pending" | "running" | "completed" | "failed" | "killed";
 	result?: AgentLoopResult;
 	error?: string;
 	process?: ChildProcess;
 	createdAt: Date;
+	startedAt?: Date;
+	endedAt?: Date;
 	tokensUsed: number;
+	workingDir?: string;
+	toolCallCount: number;
+	// Last activity timestamp for liveness checks
+	lastEventAt?: number;
 }
+
+interface SpawnOptions {
+	prompt: string;
+	workingDir: string;
+	parentContext?: any;
+	type?: string;
+	description?: string;
+}
+
+const READY_TIMEOUT_MS = 15_000;
+const HARD_KILL_GRACE_MS = 5_000;
 
 export class SwarmManager extends EventEmitter {
 	private tasks = new Map<string, SubagentTask>();
@@ -23,6 +43,7 @@ export class SwarmManager extends EventEmitter {
 
 	private constructor() {
 		super();
+		this.setMaxListeners(64);
 	}
 
 	public static getInstance(): SwarmManager {
@@ -36,30 +57,110 @@ export class SwarmManager extends EventEmitter {
 		this.emit("update", this.listSubagents());
 	}
 
+	/**
+	 * Resolve a safe entry point for the forked child.
+	 *
+	 * The child re-enters `src/index.ts` (or `dist/index.js`) which checks
+	 * `SWARM_RUNNER=1` and hands off to `startRunner()`. We prefer the
+	 * compiled entry when it exists (production path) and fall back to the
+	 * TypeScript source via `tsx` for development.
+	 */
+	private resolveEntryFile(): { file: string; nodeArgs: string[] } {
+		const candidates: Array<{ file: string; nodeArgs: string[] }> = [];
+
+		// 1. Use process.argv[1] if it points to a real file we can exec.
+		const argv1 = process.argv[1];
+		if (argv1) {
+			const absolute = resolve(argv1);
+			if (absolute.endsWith(".ts")) {
+				// Source file: invoke via tsx loader.
+				candidates.push({ file: absolute, nodeArgs: ["--import", "tsx"] });
+			} else {
+				candidates.push({ file: absolute, nodeArgs: [] });
+			}
+		}
+
+		// 2. Look for the compiled entry alongside argv[1].
+		if (argv1) {
+			const dir = resolve(argv1, "..");
+			candidates.push({ file: resolve(dir, "index.js"), nodeArgs: [] });
+		}
+
+		// 3. Fall back to a known local dist relative to CWD.
+		candidates.push({
+			file: resolve(process.cwd(), "dist/index.js"),
+			nodeArgs: [],
+		});
+		candidates.push({
+			file: resolve(process.cwd(), "src/index.ts"),
+			nodeArgs: ["--import", "tsx"],
+		});
+
+		for (const candidate of candidates) {
+			try {
+				// Cheap existence check via dynamic require: a missing file would
+				// throw. Using `fs` instead to keep this synchronous and side-effect free.
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
+				const fs = require("node:fs") as typeof import("node:fs");
+				if (fs.existsSync(candidate.file)) {
+					return candidate;
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+
+		// Last-resort default; fork will fail loudly with ENOENT.
+		return { file: argv1 ?? "dist/index.js", nodeArgs: [] };
+	}
+
 	public async spawnSubagent(
 		prompt: string,
 		workingDir: string,
 		parentContext?: any,
+	): Promise<string>;
+	public async spawnSubagent(options: SpawnOptions): Promise<string>;
+	public async spawnSubagent(
+		promptOrOptions: string | SpawnOptions,
+		workingDirArg?: string,
+		parentContextArg?: any,
 	): Promise<string> {
+		const options: SpawnOptions =
+			typeof promptOrOptions === "string"
+				? {
+						prompt: promptOrOptions,
+						workingDir: workingDirArg ?? process.cwd(),
+						parentContext: parentContextArg,
+					}
+				: promptOrOptions;
+
+		const { prompt, workingDir, parentContext, type, description } = options;
 		const id = randomUUID();
 
-		const entryFile = process.argv[1];
+		const { file: entryFile, nodeArgs } = this.resolveEntryFile();
+
 		const childProcess = fork(entryFile, [], {
 			env: {
 				...process.env,
 				SWARM_RUNNER: "1",
 			},
 			cwd: workingDir,
-			stdio: ["pipe", "pipe", "pipe", "ipc"],
+			stdio: ["ignore", "pipe", "pipe", "ipc"],
+			// Important: do not pass execArgv (which may include --inspect flags).
+			execArgv: nodeArgs,
 		});
 
 		const task: SubagentTask = {
 			id,
 			prompt,
-			status: "running",
+			type,
+			description,
+			status: "pending",
 			process: childProcess,
 			createdAt: new Date(),
 			tokensUsed: 0,
+			toolCallCount: 0,
+			workingDir,
 		};
 
 		this.tasks.set(id, task);
@@ -67,81 +168,187 @@ export class SwarmManager extends EventEmitter {
 
 		let tokenCount = 0;
 		const receiver = new ChunkReceiver();
+		let ready = false;
+		let started = false;
+
+		const readyTimeout = setTimeout(() => {
+			if (!ready) {
+				debug.log(
+					"agent",
+					`Subagent ${id} did not become ready in ${READY_TIMEOUT_MS}ms`,
+				);
+				finishWithError("Subagent did not become ready (timeout)");
+			}
+		}, READY_TIMEOUT_MS);
+		readyTimeout.unref();
+
+		const finishWithError = (errMsg: string) => {
+			// State machine: only transition from non-terminal states.
+			if (
+				task.status === "completed" ||
+				task.status === "failed" ||
+				task.status === "killed"
+			) {
+				return;
+			}
+			task.status = "failed";
+			task.error = errMsg;
+			task.endedAt = new Date();
+			this.emitUpdate();
+			if (parentContext) {
+				agentEventBus.emit(
+					"wakeup",
+					`[Task Completed] Subagent ${id} failed: ${errMsg}`,
+				);
+			}
+			killChild(childProcess, HARD_KILL_GRACE_MS);
+		};
+
+		const finishWithResult = (result: AgentLoopResult) => {
+			// State machine: only transition from non-terminal states.
+			if (
+				task.status === "completed" ||
+				task.status === "failed" ||
+				task.status === "killed"
+			) {
+				return;
+			}
+			task.status = "completed";
+			task.result = result;
+			task.endedAt = new Date();
+			this.emitUpdate();
+			if (parentContext) {
+				agentEventBus.emit(
+					"wakeup",
+					`[Task Completed] Subagent ${id} completed`,
+				);
+			}
+			// Give the IPC channel a tick to flush, then exit cleanly.
+			setImmediate(() => {
+				if (!childProcess.killed) childProcess.kill();
+			});
+		};
 
 		const handleMessage = (type: string, payload: any) => {
-			if (type === "token") {
-				task.tokensUsed++;
-				tokenCount++;
-				if (tokenCount % 20 === 0) {
-					this.emitUpdate();
-				}
-			} else if (type === "completed") {
-				if (task.status === "running") {
-					task.status = "completed";
-					task.result = payload;
-					this.emitUpdate();
-				}
-				if (parentContext) {
-					const msg = `[Task Completed] Subagent ${id} completed`;
-					agentEventBus.emit("wakeup", msg);
-				}
-				childProcess.kill();
-			} else if (type === "error") {
-				if (task.status === "running") {
-					task.status = "failed";
-					task.error = payload;
-					debug.log("agent", `Subagent ${id} failed:`, payload);
-					this.emitUpdate();
-				}
-				if (parentContext) {
-					const msg = `[Task Completed] Subagent ${id} failed: ${payload}`;
-					agentEventBus.emit("wakeup", msg);
-				}
-				childProcess.kill();
+			task.lastEventAt = Date.now();
+			switch (type) {
+				case "ready":
+					ready = true;
+					clearTimeout(readyTimeout);
+					if (!started) {
+						started = true;
+						task.status = "running";
+						task.startedAt = new Date();
+						this.emitUpdate();
+					}
+					// Now it is safe to send the start payload.
+					try {
+						childProcess.send({
+							type: "start",
+							payload: { prompt, workingDir },
+						});
+					} catch (err) {
+						finishWithError(
+							`Failed to dispatch start: ${(err as Error).message}`,
+						);
+					}
+					break;
+
+				case "token":
+					task.tokensUsed++;
+					tokenCount++;
+					if (tokenCount % 20 === 0) {
+						this.emitUpdate();
+					}
+					break;
+
+				case "thinking":
+					// Surface thinking to any UI listener; do not count as a tool call.
+					this.emit("thinking", { id, content: payload });
+					break;
+
+				case "tool_call":
+					task.toolCallCount++;
+					this.emit("tool_call", { id, call: payload });
+					break;
+
+				case "tool_result":
+					this.emit("tool_result", { id, result: payload });
+					break;
+
+				case "progress":
+					this.emit("progress", { id, progress: payload });
+					break;
+
+				case "completed":
+					finishWithResult(payload as AgentLoopResult);
+					break;
+
+				case "error":
+					finishWithError(
+						typeof payload === "string" ? payload : serializeUnknown(payload),
+					);
+					break;
+
+				default:
+					debug.log("agent", `Subagent ${id}: unknown message type "${type}"`);
 			}
 		};
 
 		childProcess.on("message", (msg: any) => {
-			if (msg.type?.endsWith("_chunk")) {
+			if (msg && typeof msg.type === "string" && msg.type.endsWith("_chunk")) {
 				const { complete, payload } = receiver.receive(msg);
 				if (complete) {
-					const baseType = msg.type.replace("_chunk", "");
+					const baseType = msg.type.replace(/_chunk$/, "");
 					handleMessage(baseType, payload);
 				}
-			} else {
+			} else if (msg && typeof msg.type === "string") {
 				handleMessage(msg.type, msg.payload);
 			}
 		});
 
+		// Drain the child's stdout/stderr so the pipe buffer cannot fill up
+		// and deadlock the child. We discard the content but keep a tail in
+		// the debug log for diagnostics.
+		const drain = (stream: NodeJS.ReadableStream, label: string) => {
+			let buf = "";
+			stream.on("data", (chunk: Buffer | string) => {
+				buf += chunk.toString();
+				if (buf.length > 4096) buf = buf.slice(-4096);
+			});
+			stream.on("end", () => {
+				if (buf.trim()) {
+					debug.log("agent", `Subagent ${id} ${label}: ${buf.trim()}`);
+				}
+			});
+		};
+		if (childProcess.stdout) drain(childProcess.stdout, "stdout");
+		if (childProcess.stderr) drain(childProcess.stderr, "stderr");
+
 		childProcess.on("error", (error) => {
-			if (task.status === "running") {
-				task.status = "failed";
-				task.error = error.message;
-				this.emitUpdate();
-				if (parentContext) {
-					agentEventBus.emit(
-						"wakeup",
-						`[Task Completed] Subagent ${id} failed: ${error.message}`,
-					);
-				}
-			}
+			clearTimeout(readyTimeout);
+			debug.log("agent", `Subagent ${id} error:`, error);
+			finishWithError(error.message);
 		});
 
-		childProcess.on("exit", (code) => {
-			if (task.status === "running") {
-				task.status = "failed";
-				task.error = `Process exited with code ${code}`;
-				this.emitUpdate();
-				if (parentContext) {
-					agentEventBus.emit(
-						"wakeup",
-						`[Task Completed] Subagent ${id} failed: exited with code ${code}`,
-					);
-				}
+		childProcess.on("exit", (code, signal) => {
+			clearTimeout(readyTimeout);
+			// If we already recorded a terminal status, this exit is expected.
+			if (
+				task.status === "completed" ||
+				task.status === "failed" ||
+				task.status === "killed"
+			) {
+				// But if the child died without sending 'completed' and we are
+				// still marked running, this is a silent failure.
+				return;
 			}
+			const reason =
+				signal === "SIGTERM" || signal === "SIGKILL"
+					? `Subagent exited via ${signal} (likely killed) before reporting completion`
+					: `Subagent exited with code ${code} before reporting completion`;
+			finishWithError(reason);
 		});
-
-		childProcess.send({ type: "start", payload: { prompt, workingDir } });
 
 		return id;
 	}
@@ -159,15 +366,22 @@ export class SwarmManager extends EventEmitter {
 
 	public killSubagent(id: string): boolean {
 		const task = this.tasks.get(id);
-		if (task && task.status === "running") {
-			if (task.process) {
-				task.process.kill();
-			}
-			task.status = "killed";
-			this.emitUpdate();
+		if (!task) return false;
+		// Idempotent: killing a non-running task is a no-op success.
+		if (task.status !== "running" && task.status !== "pending") {
 			return true;
 		}
-		return false;
+		task.status = "killed";
+		task.endedAt = new Date();
+		if (task.process) {
+			killChild(task.process, HARD_KILL_GRACE_MS);
+		}
+		this.emitUpdate();
+		if (task.process) {
+			// Wake parent loop if it is sleeping waiting for this subagent.
+			agentEventBus.emit("wakeup", `[Task Completed] Subagent ${id} killed`);
+		}
+		return true;
 	}
 
 	public sendMessage(
@@ -181,46 +395,160 @@ export class SwarmManager extends EventEmitter {
 		if (task.status !== "running") {
 			return { success: false, status: task.status, error: "not_running" };
 		}
-		if (task.process) {
+		if (!task.process) {
+			return { success: false, error: "no_process" };
+		}
+		try {
 			task.process.send({
 				type: "message",
 				payload: `[Message from Parent]: ${message}`,
 			});
 			return { success: true };
+		} catch (err) {
+			return {
+				success: false,
+				error: `send_failed: ${(err as Error).message}`,
+			};
 		}
-		return { success: false, error: "no_process" };
 	}
 
-	public exportState(): any {
-		const state: any = {};
-		for (const [id, task] of this.tasks.entries()) {
-			state[id] = {
-				id: task.id,
-				prompt: task.prompt,
-				status: task.status,
-				result: task.result,
-				error: task.error,
-				createdAt: task.createdAt,
-				tokensUsed: task.tokensUsed,
+	/**
+	 * Wait for one or more subagents to reach a terminal state. Resolves with
+	 * the current view of each requested id. Times out after `timeoutMs` and
+	 * returns whatever state each task is in at that point.
+	 */
+	public async awaitSubagents(
+		ids: string[],
+		timeoutMs = 60_000,
+	): Promise<
+		Array<{
+			id: string;
+			status: string;
+			result?: AgentLoopResult;
+			error?: string;
+		}>
+	> {
+		const deadline = Date.now() + timeoutMs;
+		const POLL_INTERVAL = 250;
+
+		while (Date.now() < deadline) {
+			const views = ids.map((id) => {
+				const t = this.tasks.get(id);
+				if (!t) {
+					return { id, status: "not_found" };
+				}
+				return {
+					id: t.id,
+					status: t.status,
+					result: t.result,
+					error: t.error,
+				};
+			});
+
+			const allDone = views.every(
+				(v) =>
+					v.status === "completed" ||
+					v.status === "failed" ||
+					v.status === "killed" ||
+					v.status === "not_found",
+			);
+			if (allDone) return views;
+
+			await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+		}
+
+		return ids.map((id) => {
+			const t = this.tasks.get(id);
+			if (!t) return { id, status: "not_found" };
+			return {
+				id: t.id,
+				status: t.status,
+				result: t.result,
+				error:
+					t.error ?? (t.status === "running" ? "await timeout" : undefined),
 			};
+		});
+	}
+
+	public exportState(): Record<string, Omit<SubagentTask, "process">> {
+		const state: Record<string, Omit<SubagentTask, "process">> = {};
+		for (const [id, task] of this.tasks.entries()) {
+			const { process: _process, ...rest } = task;
+			state[id] = rest;
 		}
 		return state;
 	}
 
-	public importState(state: any): void {
+	public importState(
+		state: Record<string, Partial<SubagentTask>> | null | undefined,
+	): void {
 		if (!state) return;
 		for (const [id, taskData] of Object.entries(state)) {
-			const status =
-				(taskData as any).status === "running"
+			// Tasks imported from a previous process can never be 'running' —
+			// their child process is gone. Mark them as 'killed'.
+			const status: SubagentTask["status"] =
+				taskData.status === "running" || taskData.status === "pending"
 					? "killed"
-					: (taskData as any).status;
+					: (taskData.status ?? "killed");
+
 			this.tasks.set(id, {
-				...(taskData as any),
+				id,
+				prompt: taskData.prompt ?? "",
+				type: taskData.type,
+				description: taskData.description,
 				status,
-				createdAt: new Date((taskData as any).createdAt),
-			} as SubagentTask);
+				result: taskData.result,
+				error:
+					taskData.error ??
+					(status === "killed" ? "Lost on restart" : undefined),
+				createdAt: toDate(taskData.createdAt) ?? new Date(),
+				startedAt: toDate(taskData.startedAt),
+				endedAt: toDate(taskData.endedAt),
+				tokensUsed: taskData.tokensUsed ?? 0,
+				toolCallCount: taskData.toolCallCount ?? 0,
+				workingDir: taskData.workingDir,
+			});
 		}
 		this.emitUpdate();
+	}
+}
+
+function killChild(cp: ChildProcess, graceMs: number) {
+	if (cp.killed) return;
+	try {
+		cp.kill("SIGTERM");
+	} catch {
+		/* ignore */
+	}
+	const timer = setTimeout(() => {
+		if (!cp.killed) {
+			try {
+				cp.kill("SIGKILL");
+			} catch {
+				/* ignore */
+			}
+		}
+	}, graceMs);
+	timer.unref();
+}
+
+function toDate(value: unknown): Date | undefined {
+	if (!value) return undefined;
+	if (value instanceof Date) return value;
+	if (typeof value === "string" || typeof value === "number") {
+		const d = new Date(value);
+		return Number.isNaN(d.getTime()) ? undefined : d;
+	}
+	return undefined;
+}
+
+function serializeUnknown(value: unknown): string {
+	if (value instanceof Error) return value.message;
+	if (typeof value === "string") return value;
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
 	}
 }
 
