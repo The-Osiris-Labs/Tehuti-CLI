@@ -224,9 +224,9 @@ const GET_FILE_INFO_SCHEMA = z.object({
 	file_path: z.string().describe("The absolute path to get info for"),
 });
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_WRITE_SIZE = 1 * 1024 * 1024;
-const _MAX_BACKGROUND_PROCESSES = 50;
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_WRITE_SIZE = 50 * 1024 * 1024;
+const _MAX_BACKGROUND_PROCESSES = 200;
 
 async function _safeWriteFile(
 	filePath: string,
@@ -372,7 +372,7 @@ async function readFile(
 			};
 		}
 
-		const stats = await fs.lstat(resolvedPath);
+		const stats = await fs.stat(resolvedPath);
 
 		if (!stats.isFile()) {
 			return {

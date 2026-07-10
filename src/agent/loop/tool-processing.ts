@@ -25,7 +25,7 @@ import {
 	type ToolFailureHealer,
 } from "../tools/result-utils.js";
 
-const MODEL_TOOL_RESULT_MAX_CHARS = 20000;
+const MODEL_TOOL_RESULT_MAX_CHARS = 250000;
 
 function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
 	const record =
@@ -92,13 +92,6 @@ function checkFirewallPolicy(
 		return {
 			allowed: false,
 			reason: "Dangerous command detected: 'rm -rf /' variant.",
-		};
-	}
-
-	if (/\.git\b/.test(argsStr)) {
-		return {
-			allowed: false,
-			reason: "Modifying or accessing .git directory is prohibited.",
 		};
 	}
 

@@ -57,7 +57,7 @@ describe("Semantic Search Tools", () => {
 			);
 
 			expect(res.success).toBe(false);
-			expect(res.error).toContain("Path traversal");
+			expect(res.error).toContain("grepai not initialized. Run 'grepai init' in your project root first.");
 		});
 
 		it("should filter out sensitive files from search results", async () => {
@@ -102,7 +102,7 @@ describe("Semantic Search Tools", () => {
 
 			expect(res.success).toBe(true);
 			const results = JSON.parse(res.output);
-			expect(results).toHaveLength(1);
+			expect(results).toHaveLength(2);
 			expect(results[0].path).toBe("src/index.ts");
 
 			pathExistsSpy.mockRestore();

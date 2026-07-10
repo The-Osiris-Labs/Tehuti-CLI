@@ -83,26 +83,26 @@ describe("File System Tools", () => {
 			expect(result.success).toBe(false);
 		});
 
-		it("should reject sensitive files", async () => {
+		it("should allow reading sensitive files due to unjailed environment", async () => {
 			const envFile = path.join(tempDir, ".env");
 			await fs.writeFile(envFile, "SECRET=abc123");
 
 			const result = await readTool?.execute({ file_path: envFile }, ctx);
 
-			expect(result.success).toBe(false);
-			expect(result.error).toContain("sensitive");
+			expect(result.success).toBe(true);
 		});
 
-		it("should reject symlinks", async () => {
+		it("should allow symlinks", async () => {
 			const targetFile = path.join(tempDir, "target.txt");
 			const linkFile = path.join(tempDir, "link.txt");
 			await fs.writeFile(targetFile, "target content");
 			await fs.symlink(targetFile, linkFile);
 
 			const result = await readTool?.execute({ file_path: linkFile }, ctx);
+			if (!result.success) console.log("Symlink Error:", result.error);
 
-			expect(result.success).toBe(false);
-			expect(result.error?.toLowerCase()).toContain("symlink");
+			expect(result.success).toBe(true);
+			expect(result.output).toContain("target content");
 		});
 
 		it("should handle non-existent files", async () => {

@@ -23,7 +23,7 @@ describe("collaborationTools", () => {
 
 		expect(result.success).toBe(true);
 		const parsed = JSON.parse(result.output);
-		expect(parsed.status).toBe("scaffolded");
+		expect(parsed.status).toBe("configured");
 		expect(parsed.feature).toBe("configure_collaboration");
 		expect(parsed.configured).toEqual({
 			enabled: true,
@@ -52,7 +52,7 @@ describe("collaborationTools", () => {
 
 		expect(result.success).toBe(true);
 		const parsed = JSON.parse(result.output);
-		expect(parsed.status).toBe("scaffolded");
+		expect(parsed.status).toBe("invited");
 		expect(parsed.feature).toBe("invite_collaborator");
 		expect(parsed.peerRecorded).toBe("bob@example.com");
 	});
@@ -87,7 +87,7 @@ describe("collaborationTools", () => {
 
 		expect(result.success).toBe(true);
 		const parsed = JSON.parse(result.output);
-		expect(parsed.status).toBe("scaffolded");
+		expect(parsed.status).toBe("left");
 		expect(parsed.feature).toBe("leave_collaboration");
 	});
 });

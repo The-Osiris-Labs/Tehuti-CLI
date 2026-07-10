@@ -17,6 +17,7 @@ export interface TehutiHeaderProps {
 	companionMode?: boolean;
 	isStreaming?: boolean;
 	sessionName?: string;
+	hasUpdate?: boolean;
 	onModelClick?: () => void;
 	onConfigClick?: () => void;
 	onCommandClick?: (cmd: string) => void;
@@ -58,6 +59,7 @@ export function TehutiHeader({
 	companionMode = false,
 	isStreaming = false,
 	sessionName,
+	hasUpdate = false,
 	onModelClick,
 	onConfigClick,
 	onCommandClick,
@@ -170,6 +172,16 @@ export function TehutiHeader({
 						color={SAND}
 						hoverColor={GOLD}
 					/>
+					{hasUpdate && (
+						<Box marginLeft={1}>
+							<ClickableBadge
+								label="[UPDATE]"
+								onClick={() => onCommandClick?.("update")}
+								color={BRANDING.colors.nile}
+								hoverColor={BRANDING.colors.gold}
+							/>
+						</Box>
+					)}
 				</Box>
 
 				<Box marginTop={1} flexDirection="row" gap={2}>

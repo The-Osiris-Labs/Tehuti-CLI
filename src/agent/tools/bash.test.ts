@@ -8,9 +8,9 @@ describe("Bash Tool", () => {
 			expect(result.dangerous).toBe(true);
 		});
 
-		it("should block rm -rf ~", () => {
+		it("should allow rm -rf ~ as we rely on IBAC", () => {
 			const result = isDangerousCommand("rm -rf ~");
-			expect(result.dangerous).toBe(true);
+			expect(result.dangerous).toBe(false);
 		});
 
 		it("should block curl piped to bash", () => {

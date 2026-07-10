@@ -18,7 +18,7 @@ import {
 	type ToolFailureHealer,
 } from "./tools/result-utils.js";
 
-const MODEL_TOOL_RESULT_MAX_CHARS = 20000;
+const MODEL_TOOL_RESULT_MAX_CHARS = 250000;
 
 function truncateToolResultForModel(result: string): string {
 	if (result.length <= MODEL_TOOL_RESULT_MAX_CHARS) {

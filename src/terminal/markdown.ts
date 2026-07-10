@@ -142,13 +142,13 @@ function highlightCode(code: string, language?: string): string {
 	return highlightToAnsi(code, language);
 }
 
-function codeBlock(code: string, language?: string): string {
+function codeBlock(code: string, language?: string, indent: string = ""): string {
 	const lang = language || "text";
 	const isPlain = ["text", "plain", "ascii", "none"].includes(
 		lang.toLowerCase(),
 	);
 	if (isPlain) {
-		return `\n${code}\n`;
+		return `\n${indent}${code.split("\n").join(`\n${indent}`)}\n`;
 	}
 
 	const highlighted = highlightCode(code, language);
@@ -158,7 +158,7 @@ function codeBlock(code: string, language?: string): string {
 	const formatted = lines
 		.map((line, i) => {
 			const lineNum = String(i + 1).padStart(lineNumWidth);
-			return `${dim(lineNum)} │ ${line}`;
+			return `${indent}${dim(lineNum)} │ ${line}`;
 		})
 		.join("\n");
 
@@ -246,9 +246,9 @@ function renderToken(token: Token, indent: string = ""): string {
 				lang.toLowerCase(),
 			);
 			if (isPlain) {
-				return `\n${token.text}\n`;
+				return `\n${indent}${token.text.split("\n").join(`\n${indent}`)}\n`;
 			}
-			return `\n${dim(`┌─ ${lang}`)}${codeBlock(token.text, token.lang)}${dim("└─")}\n`;
+			return `\n${indent}${dim(`┌─ ${lang}`)}${codeBlock(token.text, token.lang, indent)}${indent}${dim("└─")}\n`;
 		}
 
 		case "blockKatex":
@@ -262,8 +262,20 @@ function renderToken(token: Token, indent: string = ""): string {
 			for (let i = 0; i < items.length; i++) {
 				const item = items[i];
 				const bulletStr = coral(bullet(i));
-				const itemText = renderInlineTokens(item.tokens || []);
-				result += `${indent}  ${bulletStr} ${itemText}\n`;
+				
+				let itemResult = "";
+				for (let j = 0; j < (item.tokens || []).length; j++) {
+					const childToken = item.tokens[j];
+					if (j === 0 && childToken.type === "text") {
+						itemResult += renderInlineTokens(childToken.tokens || [childToken]);
+					} else if (j === 0 && childToken.type === "paragraph") {
+						itemResult += renderInlineTokens(childToken.tokens || []);
+					} else {
+						// Nested blocks (code, sub-lists, etc.)
+						itemResult += renderToken(childToken, indent + "    ");
+					}
+				}
+				result += `${indent}  ${bulletStr} ${itemResult.trimEnd()}\n`;
 			}
 			return result;
 		}
@@ -287,15 +299,20 @@ function renderToken(token: Token, indent: string = ""): string {
 			const header = token.header || [];
 			const rows = token.rows || [];
 
+			const getCellText = (cell: Token): string => {
+				if (!cell) return "";
+				if ("tokens" in cell && Array.isArray(cell.tokens)) {
+					return renderInlineTokens(cell.tokens);
+				}
+				if ("text" in cell && typeof cell.text === "string") {
+					return cell.text;
+				}
+				return "";
+			};
+
 			const widths: number[] = header.map((h: Token, i: number) => {
-				const headerLen =
-					"text" in h && typeof h.text === "string" ? stringWidth(h.text) : 0;
-				const rowLens = rows.map((r: Token[]) => {
-					const cell = r[i];
-					return cell && "text" in cell && typeof cell.text === "string"
-						? stringWidth(cell.text)
-						: 0;
-				});
+				const headerLen = stringWidth(getCellText(h));
+				const rowLens = rows.map((r: Token[]) => stringWidth(getCellText(r[i])));
 				return Math.max(headerLen, ...rowLens);
 			});
 
@@ -308,10 +325,10 @@ function renderToken(token: Token, indent: string = ""): string {
 			};
 
 			let result = "\n";
-			result += `┌${border.join("┬")}┐\n`;
+			result += `╭${border.join("┬")}╮\n`;
 
 			const headerCells: string[] = header.map((h: Token, i: number) => {
-				const text = "text" in h && typeof h.text === "string" ? h.text : "";
+				const text = getCellText(h);
 				const width = widths[i];
 				return `│ ${bold(padEndWidth(text, width))} `;
 			});
@@ -321,17 +338,14 @@ function renderToken(token: Token, indent: string = ""): string {
 
 			for (const row of rows) {
 				const cells: string[] = row.map((cell: Token, i: number) => {
-					const text =
-						cell && "text" in cell && typeof cell.text === "string"
-							? cell.text
-							: "";
+					const text = getCellText(cell);
 					const width = widths[i];
 					return `│ ${padEndWidth(text, width)} `;
 				});
 				result += `${cells.join("")}│\n`;
 			}
 
-			result += `└${border.join("┴")}┘\n`;
+			result += `╰${border.join("┴")}╯\n`;
 
 			return result;
 		}

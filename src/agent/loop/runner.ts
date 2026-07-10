@@ -152,7 +152,7 @@ export async function runAgentLoop(
 			);
 		}
 		const maxTokens =
-			capabilities.maxOutputTokens ?? ctx.config.maxTokens ?? 4096;
+			capabilities.maxOutputTokens ?? ctx.config.maxTokens ?? 32000;
 
 		syncMCPToolRegistry();
 		const tools = getToolDefinitions() as StandardTool[];

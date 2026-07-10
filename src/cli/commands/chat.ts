@@ -79,6 +79,7 @@ import {
 import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
 import {
 	applyUpdate,
+	checkForUpdatesAsync,
 	showUpdateNotification,
 } from "../../utils/update-checker.js";
 import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
@@ -1126,6 +1127,7 @@ function ChatUI({
 	// user scrolls back to the bottom.
 	const newMessageCountRef = useRef<number>(0);
 	const [newMessageCount, setNewMessageCount] = useState(0);
+	const [hasUpdate, setHasUpdate] = useState(false);
 	// Snapshot of message count when the user last scrolled up. We diff
 	// against the current messages.length so the "N new" badge shows the
 	// count of message *arrivals*, not the total.
@@ -1136,6 +1138,15 @@ function ChatUI({
 	const streamingContentRef = useRef<string>("");
 	const streamingMsgIdRef = useRef<number | null>(null);
 	const daemonClientRef = useRef<TehutiDaemonClient | null>(null);
+
+	// Check for updates asynchronously on mount
+	useEffect(() => {
+		checkForUpdatesAsync().then((result) => {
+			if (result?.hasUpdate) {
+				setHasUpdate(true);
+			}
+		});
+	}, []);
 
 	// Initialize daemon client in companion mode
 	useEffect(() => {
@@ -2393,12 +2404,12 @@ function ChatUI({
 			0,
 			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
 		);
-		setScrollOffset((off) => Math.min(safeMaxOff, off + 3)); // Scroll by 3 for smoothness
+		setScrollOffset((off) => Math.min(safeMaxOff, off + 1)); // Scroll by 1 line
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	const scrollLineDown = useCallback(() => {
 		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - 3); // Scroll by 3 for smoothness
+			const newOff = Math.max(0, off - 1); // Scroll by 1 line
 			if (newOff <= 0) messagesEndRef.current = true;
 			return newOff;
 		});
@@ -3689,6 +3700,7 @@ function ChatUI({
 									React.createElement(TehutiHeader, {
 										model: ctxModel,
 										provider: normalizedProvider,
+										hasUpdate,
 										onModelClick: () => {
 											setCommandPaletteInitialQuery("/model ");
 											setShowCommandPalette(true);
@@ -3699,6 +3711,17 @@ function ChatUI({
 											else if (cmd === "/exit") {
 												void onExit();
 												exit();
+											} else if (cmd === "/update") {
+												void applyUpdate().then((res) => {
+													setMessages((prev) => [
+														...prev,
+														{
+															id: msgIdRef.current++,
+															role: "system",
+															content: res,
+														},
+													]);
+												});
 											} else if (cmd === "/help")
 												setMessages((prev) => [
 													...prev,
@@ -3741,6 +3764,7 @@ function ChatUI({
 												compact: true,
 												model: ctxModel,
 												provider: normalizedProvider,
+												hasUpdate,
 												onModelClick: () => {
 													setCommandPaletteInitialQuery("/model ");
 													setShowCommandPalette(true);
@@ -3751,6 +3775,17 @@ function ChatUI({
 													else if (cmd === "/exit") {
 														void onExit();
 														exit();
+													} else if (cmd === "/update") {
+														void applyUpdate().then((res) => {
+															setMessages((prev) => [
+																...prev,
+																{
+																	id: msgIdRef.current++,
+																	role: "system",
+																	content: res,
+																},
+															]);
+														});
 													} else if (cmd === "/help")
 														setMessages((prev) => [
 															...prev,

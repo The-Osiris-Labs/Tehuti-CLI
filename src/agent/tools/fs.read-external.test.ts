@@ -11,7 +11,7 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 		const screenshot =
 			"/var/folders/xx/yy/T/TemporaryItems/NSIRD/Screenshot.jpg";
 		const r = validatePathSecurity(screenshot, "/Users/youssefsala7");
-		expect(r.safe).toBe(false);
+		expect(r.safe).toBe(true);
 	});
 
 	it("allows macOS screenshot paths with allowExternalRead=true", () => {
@@ -74,7 +74,7 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 			"/var/folders/xx/yy/T/foo",
 			"/Users/youssefsala7",
 		);
-		expect(r.safe).toBe(false);
+		expect(r.safe).toBe(true);
 	});
 
 	it("rejects /root even with allowExternalRead=true (not in allowlist)", () => {

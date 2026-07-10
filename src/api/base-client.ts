@@ -192,7 +192,7 @@ export abstract class BaseAPIClient {
 		this.baseUrl = config.baseUrl;
 		this.model = config.model;
 		this.fallbackModel = config.fallbackModel || config.model;
-		this.maxTokens = config.maxTokens ?? 4096;
+		this.maxTokens = config.maxTokens ?? 32000;
 		this.temperature = config.temperature ?? 0.7;
 		this.supportsCaching = config.supportsCaching ?? false;
 		this.extendedThinking = config.extendedThinking ?? false;

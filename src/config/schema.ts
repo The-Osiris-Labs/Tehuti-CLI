@@ -229,7 +229,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 		.default({}),
 	// Fallback maxTokens; overridden by live model data when available
 	maxTokens: z.number().int().positive().default(32000),
-	maxIterations: z.number().int().positive().default(50),
+	maxIterations: z.number().int().positive().default(150),
 	temperature: z.number().min(0).max(2).default(0.7),
 	extendedThinking: z.boolean().default(false),
 	thinkingBudgetTokens: z.number().int().min(1024).max(100000).optional(),

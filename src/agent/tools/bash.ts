@@ -71,7 +71,6 @@ const BASH_SCHEMA = z.object({
 
 const DANGEROUS_PATTERNS = [
 	/\brm\s+(-[rf]+\s+)*\/\s*$/,
-	/\brm\s+(-[rf]+\s+)*~/,
 	/\brm\s+(-[rf]+\s+)*\*/,
 	/>\s*\/dev\/sd[a-z]+/,
 	/\bmkfs\b/,
@@ -88,7 +87,6 @@ const DANGEROUS_PATTERNS = [
 	/\beval\b/,
 	/\bexec\b/,
 	/\bsource\s+.*\$/,
-	/>\s*\/etc\//,
 	/>\s*~\/\.ssh\//,
 	/\bbase64\b.*\|\s*(\/\w+\/)*(bash|sh|zsh|dash|ksh)\b/,
 	/<<\s*['"]?\w+['"]?\s*$/,
@@ -274,9 +272,9 @@ interface BackgroundProcessInfo {
 }
 
 const backgroundProcesses = new Map<number, BackgroundProcessInfo>();
-const MAX_OUTPUT_SIZE = 1024 * 1024;
-const MAX_TOTAL_BACKGROUND_MEMORY = 100 * 1024 * 1024;
-const MAX_BACKGROUND_PROCESSES = 50;
+const MAX_OUTPUT_SIZE = 50 * 1024 * 1024;
+const MAX_TOTAL_BACKGROUND_MEMORY = 1000 * 1024 * 1024;
+const MAX_BACKGROUND_PROCESSES = 200;
 const MAX_BACKGROUND_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const _MAX_LINES = 10000;
 

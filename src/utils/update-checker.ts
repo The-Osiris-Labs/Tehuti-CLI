@@ -69,6 +69,17 @@ function getLatestNpmVersion(): string | null {
 	}
 }
 
+async function getLatestNpmVersionAsync(): Promise<string | null> {
+	return new Promise((resolve) => {
+		import("node:child_process").then(({ exec }) => {
+			exec(`npm view ${PACKAGE_NAME} version`, { timeout: 5000 }, (error, stdout) => {
+				if (error) resolve(null);
+				else resolve(stdout.trim() || null);
+			});
+		});
+	});
+}
+
 export function isGitRepo(): boolean {
 	try {
 		execSync("git rev-parse --is-inside-work-tree", {
@@ -143,6 +154,37 @@ export function checkForUpdates(
 
 	saveLastCheck(result);
 
+	return hasUpdate ? result : null;
+}
+
+export async function checkForUpdatesAsync(
+	force: boolean = false,
+): Promise<UpdateCheckResult | null> {
+	const currentVersion = getVersionFromPackage();
+	const lastCheck = getLastCheck();
+	const now = Date.now();
+
+	if (!force && lastCheck && now - lastCheck.lastChecked < CHECK_INTERVAL_MS) {
+		return lastCheck.hasUpdate ? lastCheck : null;
+	}
+
+	const latestVersion = await getLatestNpmVersionAsync();
+	if (!latestVersion) {
+		return null;
+	}
+
+	const hasUpdate = compareVersions(currentVersion, latestVersion) < 0;
+
+	const result: UpdateCheckResult = {
+		currentVersion,
+		latestVersion,
+		hasUpdate,
+		lastChecked: now,
+	};
+
+	if (hasUpdate) {
+		saveLastCheck(result);
+	}
 	return hasUpdate ? result : null;
 }
 
