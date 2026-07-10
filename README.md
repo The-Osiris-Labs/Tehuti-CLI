@@ -18,6 +18,16 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ---
 
+## 🚀 v1.0.0 Milestone Highlights
+The latest `v1.0.0` release introduces monumental architectural shifts transforming Tehuti from a simple CLI into a persistent companion:
+- **Persistent Background Daemon:** Run Tehuti invisibly in the background with `tehuti daemon start`, maintaining active state and memory.
+- **Omnichannel Connectors:** Native WebSockets and HTTP webhook integration for Discord, Slack, Telegram, and WhatsApp.
+- **Swarm Orchestration:** Spin up multiple subagents concurrently (`fork()`) with chunked IPC serialization and strict liveness watchdogs.
+- **Self-Healing Execution:** Speculative `git worktree` sandboxes for tool execution. Failed edits are dynamically reverted and fed back to the LLM.
+- **Ink 6 + React 19 TUI:** Completely overhauled, remount-free virtual scrolling Terminal UI capable of rendering infinite LLM context.
+
+---
+
 ## 🧠 Memory Architecture
 
 Tehuti is designed to remember and adapt to your specific engineering environment over long periods of time.
@@ -35,7 +45,7 @@ Tehuti is built for extended autonomous workflows.
 - **Parallel Tool Execution**: Safe, read-only tools run in concurrent batches (max 5 concurrency) when the model emits multiple tool calls in a single turn. Write operations logically force sequential execution.
 - **Rule-Based Prefetching**: Predicts and queues secondary data (e.g., `git_status` triggering a `git_diff` prefetch) on the first tool call of a batch to eliminate round-trip latency.
 - **Connection Pooling**: Utilizes an `undici` Agent pool to substantially reduce TLS overhead across repeated LLM API invocations.
-- **Swarm Delegation**: Supports spawning autonomous subagents for specialized execution tasks.
+- **Swarm Delegation & Subagents**: Supports spawning autonomous subagents for specialized execution tasks via robust multi-process forking, dynamic chunked IPC serialization, and strict timeout resilience.
 - **Dynamic MCP Integration**: Natively registers and mounts dynamic `mcp_*` tools at runtime using the `@modelcontextprotocol/sdk`.
 
 ---
@@ -44,6 +54,7 @@ Tehuti is built for extended autonomous workflows.
 
 - **Speculative Worktree Loops**: Tehuti creates ephemeral Git worktree branches for speculative edits, runs validation commands securely, injects failures directly back into the LLM context, and merges on success or discards on failure.
 - **IBAC Permissions**: Code execution occurs through a sandboxed `just-bash` utility, explicitly coupled with Interactive Role-Based Access Control (IBAC) permission prompts. Destructive operations strictly require user authorization.
+- **File System Sandboxing**: Strictly filters sensitive binary edits, bounds `listDir` to 1000 items, and appends entropy to backups to prevent destructive overrides.
 
 ---
 
@@ -53,6 +64,7 @@ Tehuti is shipped with an interactive Terminal User Interface built on Ink 6 and
 
 - **Hybrid Viewport Architecture**: Handles large logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
 - **Interactive Sessions UI**: Includes full Vim keybindings (`j/k/d/r`), mouse-hover support, and virtual scrolling.
+- **Terminal Rendering Precision**: Features robust Markdown header parsing, `KaTeX` block formulas, and surrogate-pair safe ANSI truncation to prevent terminal bleeding.
 - **Command Palette**: Type `/` to access built-in workflows including `/save`, `/load`, `/sessions`, and `/compact`.
 
 For environments like SSH or tmux where mouse tracking is unavailable, set either environment variable below to launch in strict keyboard-only mode:
@@ -68,6 +80,7 @@ NO_MOUSE=1 npm run start
 
 - **macOS `launchd` Autostart**: Generates and installs a `launchd` plist so the persistent daemon survives system reboots.
 - **IPC Unix Socket**: Operates a background server (`~/.tehuti/tehutid.sock`) mapping interactive sessions asynchronously. 
+- **Companion Mode**: A new interactive CLI (`tehuti companion`) that connects the foreground terminal directly to the running background daemon.
 - **Omnichannel Connectors**: Integrates deeply with Discord, Slack, Telegram, and WhatsApp via WebSockets and HTTP webhook listeners. A central `messaging_sessions` SQLite table maps platform-specific sender IDs back to native Tehuti sessions.
 
 ---
