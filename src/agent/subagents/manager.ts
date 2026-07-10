@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentContext } from "../context.js";
 import { createAgentContext } from "../context.js";
+import { agentEventBus, injectionQueue } from "../events.js";
 import { runAgentLoop } from "../index.js";
 import type { AgentLoopOptions, AgentLoopResult } from "../loop/runner.js";
 
@@ -11,12 +12,13 @@ export interface SubagentTask {
 	type: SubagentType;
 	description: string;
 	prompt: string;
-	status: "pending" | "running" | "completed" | "failed";
+	status: "pending" | "running" | "completed" | "failed" | "killed";
 	result?: AgentLoopResult;
 	startTime?: Date;
 	endTime?: Date;
 	abortController?: AbortController;
-	context?: any;
+	context?: AgentContext;
+	error?: string;
 }
 
 export interface SubagentOptions {
@@ -25,6 +27,7 @@ export interface SubagentOptions {
 	prompt: string;
 	parentContext: AgentContext;
 	task_id?: string;
+	timeoutMs?: number;
 }
 
 const SYSTEM_PROMPTS: Record<SubagentType, string> = {
@@ -57,10 +60,25 @@ const SYSTEM_PROMPTS: Record<SubagentType, string> = {
 
 const activeTasks = new Map<string, SubagentTask>();
 
+/**
+ * Terminal state predicate. Any further status mutations on terminal tasks
+ * are no-ops, which prevents the "completed then failed" double-finish bug
+ * seen in earlier revisions when an error arrives after success.
+ */
+function isTerminal(status: SubagentTask["status"]): boolean {
+	return status === "completed" || status === "failed" || status === "killed";
+}
+
 export async function spawnSubagent(
 	options: SubagentOptions,
 ): Promise<SubagentTask> {
 	const taskId = options.task_id ?? randomUUID();
+
+	// Reject re-use of an active task id.
+	const existing = activeTasks.get(taskId);
+	if (existing && !isTerminal(existing.status)) {
+		throw new Error(`Subagent ${taskId} is already ${existing.status}`);
+	}
 
 	const task: SubagentTask = {
 		id: taskId,
@@ -72,12 +90,23 @@ export async function spawnSubagent(
 
 	activeTasks.set(taskId, task);
 
-	try {
-		task.status = "running";
-		task.startTime = new Date();
-		const abortController = new AbortController();
-		task.abortController = abortController;
+	const abortController = new AbortController();
+	task.abortController = abortController;
+	task.status = "running";
+	task.startTime = new Date();
 
+	// Wire parent-initiated abort to the local controller. The runner's
+	// AbortSignal is the one that actually interrupts the loop.
+	const externalTimeoutMs = options.timeoutMs;
+	let externalTimeout: NodeJS.Timeout | null = null;
+	if (typeof externalTimeoutMs === "number" && externalTimeoutMs > 0) {
+		externalTimeout = setTimeout(() => {
+			abortController.abort(new Error(`Subagent ${taskId} timed out`));
+		}, externalTimeoutMs);
+		externalTimeout.unref();
+	}
+
+	try {
 		const subContext = await createAgentContext(
 			options.parentContext.cwd,
 			options.parentContext.config,
@@ -100,7 +129,7 @@ ${options.prompt}
 
 		const loopOptions: AgentLoopOptions = {
 			onToken: () => {},
-			onToolCall: (_id, _name, _args) => {},
+			onToolCall: () => {},
 			onToolResult: () => {},
 			onThinking: () => {},
 			signal: abortController.signal,
@@ -108,21 +137,41 @@ ${options.prompt}
 
 		const result = await runAgentLoop(subContext, "", loopOptions);
 
+		if (isTerminal(task.status)) {
+			// Aborted (killed) during the loop. Return the task as-is.
+			return task;
+		}
+
 		task.result = result;
 		task.status = result.success ? "completed" : "failed";
+		if (!result.success) {
+			task.error =
+				result.error ?? result.finishReason ?? "loop reported failure";
+		}
 		task.endTime = new Date();
 
 		return task;
 	} catch (error) {
+		if (isTerminal(task.status)) {
+			// Already in a terminal state (e.g., aborted). Preserve the task as-is
+			// but record the error message if we don't already have one.
+			if (!task.error) {
+				task.error = error instanceof Error ? error.message : String(error);
+			}
+			return task;
+		}
 		task.status = "failed";
 		task.endTime = new Date();
-		task.result = {
+		task.error = error instanceof Error ? error.message : String(error);
+		task.result = task.result ?? {
 			content: "",
 			toolCalls: 0,
 			success: false,
 			finishReason: "error",
 		};
 		throw error;
+	} finally {
+		if (externalTimeout) clearTimeout(externalTimeout);
 	}
 }
 
@@ -131,15 +180,13 @@ export function getTask(taskId: string): SubagentTask | undefined {
 }
 
 export function getActiveTasks(): SubagentTask[] {
-	return Array.from(activeTasks.values()).filter(
-		(t) => t.status === "running" || t.status === "pending",
-	);
+	return Array.from(activeTasks.values()).filter((t) => !isTerminal(t.status));
 }
 
 export function clearCompletedTasks(): number {
 	let cleared = 0;
 	for (const [id, task] of activeTasks) {
-		if (task.status === "completed" || task.status === "failed") {
+		if (isTerminal(task.status)) {
 			activeTasks.delete(id);
 			cleared++;
 		}
@@ -149,15 +196,20 @@ export function clearCompletedTasks(): number {
 
 export function abortTask(taskId: string): boolean {
 	const task = activeTasks.get(taskId);
-	if (task && (task.status === "running" || task.status === "pending")) {
-		task.abortController?.abort();
-		task.status = "failed"; // Aborted counts as failed or killed
-		task.endTime = new Date();
-		return true;
-	}
-	return false;
+	if (!task) return false;
+	if (isTerminal(task.status)) return true;
+	task.status = "killed";
+	task.endTime = new Date();
+	task.abortController?.abort(new Error(`Subagent ${taskId} aborted`));
+	return true;
 }
 
+/**
+ * Inject a message into a running subagent's loop. The message is queued
+ * for the loop's `injectionQueue` so the running iteration can pick it up
+ * cleanly between tool calls. If the subagent is sleeping, we also emit
+ * a wakeup so the loop resumes immediately.
+ */
 export function sendMessageToTask(
 	taskId: string,
 	message: string,
@@ -166,26 +218,24 @@ export function sendMessageToTask(
 	if (!task) {
 		return { success: false, error: "not_found" };
 	}
-	if (task.status !== "running") {
+	if (isTerminal(task.status)) {
 		return { success: false, status: task.status, error: "not_running" };
 	}
-	if (task.context) {
-		task.context.messages.push({
-			role: "user",
-			content: `[Message from Parent]: ${message}`,
-		});
-		if (task.context.isSleeping) {
-			import("../events.js").then(({ agentEventBus }) => {
-				agentEventBus.emit("wakeup", `Message received for task ${taskId}`);
-			});
-		}
-		return { success: true };
+	if (!task.context) {
+		return { success: false, error: "no_context" };
 	}
-	return { success: false, error: "no_context" };
+
+	injectionQueue.push(`[Message from Parent]: ${message}`);
+
+	if (task.context.isSleeping) {
+		agentEventBus.emit("wakeup", `Message received for task ${taskId}`);
+	}
+
+	return { success: true, status: task.status };
 }
 
-export function exportState(): any {
-	const state: any = {};
+export function exportState(): Record<string, unknown> {
+	const state: Record<string, unknown> = {};
 	for (const [id, task] of activeTasks.entries()) {
 		state[id] = {
 			id: task.id,
@@ -196,27 +246,46 @@ export function exportState(): any {
 			result: task.result,
 			startTime: task.startTime,
 			endTime: task.endTime,
+			error: task.error,
 		};
 	}
 	return state;
 }
 
-export function importState(state: any): void {
+export function importState(
+	state: Record<string, unknown> | null | undefined,
+): void {
 	if (!state) return;
 	for (const [id, taskData] of Object.entries(state)) {
-		const status =
-			(taskData as any).status === "running"
-				? "failed"
-				: (taskData as any).status;
+		const data = taskData as Partial<SubagentTask>;
+		const incomingStatus = (data.status as SubagentTask["status"]) ?? "killed";
+		// In-flight tasks cannot survive a restart. Mark them killed so the
+		// caller does not see stale 'running' tasks with no live context.
+		const status: SubagentTask["status"] = isTerminal(incomingStatus)
+			? incomingStatus
+			: "killed";
+
 		activeTasks.set(id, {
-			...(taskData as any),
+			id,
+			type: (data.type as SubagentType) ?? "general",
+			description: data.description ?? "",
+			prompt: data.prompt ?? "",
 			status,
-			startTime: (taskData as any).startTime
-				? new Date((taskData as any).startTime)
-				: undefined,
-			endTime: (taskData as any).endTime
-				? new Date((taskData as any).endTime)
-				: undefined,
-		} as SubagentTask);
+			result: data.result,
+			error:
+				data.error ?? (status === "killed" ? "Lost on restart" : undefined),
+			startTime: toDate(data.startTime),
+			endTime: toDate(data.endTime),
+		});
 	}
+}
+
+function toDate(value: unknown): Date | undefined {
+	if (!value) return undefined;
+	if (value instanceof Date) return value;
+	if (typeof value === "string" || typeof value === "number") {
+		const d = new Date(value);
+		return Number.isNaN(d.getTime()) ? undefined : d;
+	}
+	return undefined;
 }
