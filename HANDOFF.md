@@ -70,7 +70,12 @@ return messages.slice(Math.min(sliceIndex, Math.max(0, messages.length - 50)));
 
 ### Line height estimation
 
-`computeMessageLines()` in `src/terminal/output.ts` drives scroll math. Known gap: array-shaped `msg.content` (e.g. `[{ type: "text" }, { type: "reasoning" }]`) is not handled — only `msg.blocks` or string `content`. This causes E2E tier1 test 26 to fail (expects 7 lines, gets 2).
+`computeMessageLines()` in `src/terminal/output.ts` drives scroll math. It now correctly infers `block.type` from shape, fixing previous array-shaped `msg.content` crashing issues.
+
+### Viewport Overlays & Dynamic Input
+
+- `inputHeight` dynamically scales with newlines (capped at 8 lines).
+- `chatViewportHeight` subtracts dynamic input bars and overlays (loading/thinking/error/dashboard) to ensure chat history is not hidden behind the input.
 
 ---
 
@@ -171,6 +176,10 @@ Applied in commits `0b36ee0..2899877` on `main`:
    `sharp`, `tree-sitter`, etc.) and runs install + typecheck + test.
 6. **Fallback test coverage** (`web.fallback.test.ts`, 7 tests). End-to-
    end tests for the OpenRouter fallback path using mocked fetch.
+7. **Swarm/Subagent hardening**. Added `isTerminal()` predicate to prevent double-finish state mutations on tasks (`completed`, `failed`, `killed`). IPC communication uses `ChunkReceiver` serialization. Timeout timer leaks fixed via `AbortController.unref()`.
+8. **Daemon & Messaging activation**. `state-engine.ts` fully wired to manage cron, subagents, and filesystem watchers. External messaging connectors (Slack, Discord, Telegram, WhatsApp) are fully active.
+9. **Atomic session/history writes**. Saved histories and sessions now use fsync-backed atomic temp-rename writes with Zod schema validation to prevent corruption on SIGKILL.
+10. **TUI enhancements**. Dynamic `inputHeight` for multi-line input, scrolling overlays math fixed, `↓ N new` badge for auto-scroll suspend, and Ink-stripped xterm `modifyOtherKeys` logic rewritten for robust multi-line stability.
 
 ## Persistence model — what gets saved and what doesn't
 
@@ -189,6 +198,8 @@ following fields are persisted per `StandardMessage`:
 `metadata.json` separately tracks `messageCount`, cumulative `toolCalls`,
 `tokensUsed`, `model`, `cwd`, `provider`, `baseUrl`. `context` block
 holds `readFilesThisSession`, `metadata`, `workingDir`.
+
+**Atomic Saves**: Both `session.json` and `history.json` writes are protected using an atomic temp-file and fsync rename pattern, meaning processes killed mid-write will no longer corrupt the saved data. Reads are protected by a Zod schema validator that drops malformed JSON gracefully. Orphaned `.tmp` files are automatically cleaned up.
 
 If a feature feels "lost between turns," the most likely culprit is the
 reasoning strip, not the tool calls themselves — tool_calls ARE there

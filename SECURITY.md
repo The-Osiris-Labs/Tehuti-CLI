@@ -6,7 +6,7 @@ We take the security of Tehuti CLI and its users very seriously. Security update
 
 | Version | Supported          |
 | ------- | ------------------ |
-| v0.x.x  | :white_check_mark: |
+| v1.x.x  | :white_check_mark: |
 
 ## Reporting a Vulnerability
 

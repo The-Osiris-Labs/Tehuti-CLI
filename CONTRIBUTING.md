@@ -156,15 +156,17 @@ Tehuti is a TypeScript-only Node.js agent CLI. Default API target is OpenCode Go
 
 | Module | Role |
 |--------|------|
-| `agent/` | Agent loop (`loop/runner.ts`), tools, cache, memory, skills |
+| `agent/` | Agent loop, self-healing loop, swarm manager, memory graph, skills |
 | `api/` | Provider clients (`standard-client.ts` is the generic OpenAI-compatible client) |
 | `cli/` | Commander entry + Ink TUI (`commands/chat.ts`) |
 | `config/` | Schema, loader, wizard, provider metadata |
+| `daemon/` | Background server (`server.ts`), IPC socket, and client |
+| `messaging/` | Webhook/socket connectors for Slack, Discord, Telegram, WhatsApp |
 | `mcp/` | MCP client (4 transports) + dynamic tool adapter |
 | `permissions/` | Interactive/trust/readonly tool gates |
 | `hooks/` | Pre/Post tool bash hooks (executor works; config wiring incomplete) |
-| `session/` | Manual save/load to `~/.tehuti/sessions/` |
-| `terminal/` | ANSI output, markdown, `computeMessageLines` |
+| `session/` | Atomic session save/load to `~/.tehuti/sessions/` |
+| `terminal/` | ANSI output, markdown tables, `computeMessageLines` |
 | `branding/` | Egyptian theme constants (visual only) |
 
 ### Agent Loop
@@ -172,9 +174,10 @@ Tehuti is a TypeScript-only Node.js agent CLI. Default API target is OpenCode Go
 Orchestrated in `src/agent/loop/runner.ts` (exported via `src/agent/index.ts`):
 
 - Stream LLM response, accumulate tool calls
-- LLM context compression near ~85% window
+- Deterministic context compression near ~85% window (array truncation)
 - Permission checks, hooks, tool cache
 - Parallel safe read-only tools when the model returns multiple calls in one turn
+- Speculative worktree testing (`loop/self-healing.ts`)
 - Prefetch on first tool call in each batch
 
 ### Tool System

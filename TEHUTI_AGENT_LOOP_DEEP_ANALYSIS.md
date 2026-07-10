@@ -829,6 +829,29 @@ Factory function that creates the initial `AgentContext` with resolved paths, lo
 
 ---
 
+## 11. Swarm & Subagents (Task Execution & Serialization)
+
+### 11.1 `isTerminal` Task State
+
+Subagent and Swarm task lifecycle relies on a strict `isTerminal(status)` predicate.
+- A task is considered terminal if its status is `"completed"`, `"failed"`, or `"killed"`.
+- This predicate prevents double-finish mutations (e.g., if an error arrives *after* a success). It guarantees that once a subagent finishes, its state is frozen and no further status updates are accepted.
+
+### 11.2 Subagent Timeout Hardening
+
+To prevent hanging tasks and event loop leaks, the subagent manager implements robust timeout capabilities:
+- **`READY_TIMEOUT_MS` (15s)**: A subagent process must signal that it is "ready" within 15 seconds of spawn, or it will be killed.
+- **`HARD_KILL_GRACE_MS` (5s)**: When shutting down a subagent, the manager sends `SIGTERM` first. If the process does not exit within 5 seconds, it forcefully sends `SIGKILL`.
+- **`AbortController` with `.unref()`**: External timeouts (`timeoutMs`) wire into an `AbortController`. The timer is `unref()`'d so it does not keep the Node.js event loop alive unnecessarily, preventing zombie processes.
+
+### 11.3 Contextual Stream Yielding & Serialization
+
+- **`ChunkReceiver`**: The swarm serialization format supports streamed results via a `ChunkReceiver` helper.
+- Mid-stream tool messages and contextual updates are serialized over the IPC boundary, ensuring the parent harness can read the subagent's streamed results incrementally without waiting for the full buffer.
+- When `sendMessageToTask` injects context into a running task, it routes through the shared `injectionQueue` (waking sleeping loops if needed) rather than mutating `ctx.messages` directly, avoiding reentrancy hazards.
+
+---
+
 ## Overall Architecture Assessment
 
 ### Strengths

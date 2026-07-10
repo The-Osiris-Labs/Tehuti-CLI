@@ -78,9 +78,9 @@ Four E2E tiers plus focused suites:
 
 ## 4. Coverage Thresholds
 
-| Gate | Threshold | June 2026 status |
+| Gate | Threshold | July 2026 status |
 |------|-----------|------------------|
-| Unit tests | **570+** pass, **2** skip | 570 pass, 2 skip (baseline) |
+| Unit tests | **711+** pass, **0** skip | 711 pass, 0 skip |
 | E2E tests | **105+** pass | 105/106 (1 known fail) |
 | Typecheck | `tsc --noEmit` zero errors | Clean |
 | Build | `tsup` succeeds | `dist/index.js` ~652 KB |
@@ -88,7 +88,7 @@ Four E2E tiers plus focused suites:
 ### Commands
 
 ```bash
-npm install
+./scripts/bootstrap.sh # One-shot setup, compile native deps, typecheck, and full test suite
 npm run typecheck    # strict TS
 npm test             # unit: src/**/*.test.ts
 npm run test:e2e     # e2e: tests/e2e/**/*.test.ts
@@ -112,6 +112,6 @@ npm run build        # production bundle
 | `tests/e2e/tiers3-4.test.ts` | 13 | Cross-feature + scenarios |
 | `tests/e2e/baseline.test.ts` | 2 | CLI smoke |
 | `tests/e2e/queue.test.ts` | 2 | Retry & tool queue |
-| `src/**/*.test.ts` | 570+ | Module unit tests |
+| `src/**/*.test.ts` | 711 | Module unit tests |
 
 E2E config: `vitest.e2e.config.ts` (includes `tests/e2e/**/*.test.ts` only).

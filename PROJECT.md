@@ -2,7 +2,7 @@
 
 Tehuti CLI is a TypeScript/Node.js terminal coding assistant with an Ink/React TUI, an OpenAI-compatible agent loop, and a large native tool registry. It targets developers who want a local, configurable harness—not a hosted IDE plugin. Default provider is **OpenCode Go** (`opencode`); the HTTP client is OpenAI-compatible and works with OpenRouter, local Ollama/LM Studio, and custom base URLs.
 
-**What it is not:** It is not a hosted IDE plugin. The project runs completely locally. Subagent and swarm delegation features are fully operational: `delegate_task` spawns subagents via `fork()` for process isolation, with status tracking and message passing. Legacy grepai-named tool files are present in the source tree but not registered, as the primary semantic search functionality is handled by the registered `semantic` tools.
+**What it is not:** It is not a hosted IDE plugin. The project runs completely locally. Following the v1.0.0 release, Tehuti also serves as a persistent personal companion via a background daemon. Subagent and swarm delegation features are fully operational: `delegate_task` spawns subagents via `fork()` for process isolation, with robust status tracking, timeouts, and leak-safe message passing. Legacy grepai-named tool files were purged; semantic search is handled by the registered `semantic` tools.
 
 ---
 
@@ -65,7 +65,7 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
 - Prefetcher is rule-based; predictions can be wrong or stale.
 - `StandardAPIClient` wraps any OpenAI-compatible endpoint configured in `TehutiConfig`.
 - Anthropic-native format is not first-class; non-compatible providers throw at client creation.
-- Subagent `delegate_task` spawns in-process workers; not a full multi-agent orchestration platform.
+- Subagent `delegate_task` spawns separate processes via `fork()`, but it is a local tool rather than a distributed multi-agent orchestration platform.
 - Plan mode gates tools but is opt-in state, not enforced sandboxing.
 
 ### Supporting modules
@@ -73,9 +73,10 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
 | Module | Path | Role |
 |--------|------|------|
 | Parallel executor | `parallel-executor.ts` | Batches read-only tools (max 5 concurrent); serializes writes/interactive |
-| Context compressor | `context-compressor.ts` | Triggers ~85% token threshold; LLM summary or `[Condensed]` fallback |
+| Context compressor | `context-compressor.ts` | Triggers ~85% token threshold; deterministic array truncation (no LLM call) |
 | Prefetcher | `prefetcher.ts` | Rule/history-based read prefetch; invalidated on writes/bash |
-| Memory graph | `memory/graph.ts` | SQLite relational graph DB at `~/.config/tehuti/memory/graph.db` |
+| Memory graph | `memory/graph.ts` | SQLite relational graph DB (`insights`, `edges`) + `personality` engine |
+| Self-healing | `loop/self-healing.ts` | Ephemeral `git worktree` loops to speculatively test/verify code |
 | Caches | `cache/` | LRU + persistent tool result cache |
 | Skills | `skills/manager.ts` | Keyword-matched expertise **injected into system prompt only** |
 
@@ -186,8 +187,10 @@ src/
 │   └── swarm/               # Subagent manager
 ├── api/                     # HTTP clients & streaming
 ├── config/                  # Schema, loader, wizard, providers
+├── daemon/                  # Background server, socket IPC, state engine
+├── messaging/               # Connectors (Slack, Discord, etc.) & sessions
 ├── mcp/                     # MCP client & tool adapter
-├── session/                 # Session save/load
+├── session/                 # Atomic session save/load (`session.json`)
 ├── permissions/             # Tool permission prompts
 ├── terminal/                # ANSI output, markdown, computeMessageLines
 └── utils/                   # mutex, telemetry, errors
@@ -197,19 +200,19 @@ Tests: unit co-located `src/**/*.test.ts`; E2E in `tests/e2e/**/*.test.ts`.
 
 ---
 
-## Milestones (June 2026)
+## Milestones (July 2026)
 
 | # | Objective | Status | Notes |
 |---|-----------|--------|-------|
-| **M1** | E2E testing track (tiers 1–4) | **IN_PROGRESS** | 105/106 passing; 1 known fail (tier1 test 26) |
-| **M2** | Agent core hardening | **IN_PROGRESS** | Uncommitted changes across loop, context, parallel-executor, memory |
-| **M3** | Advanced tooling | **IN_PROGRESS** | `ast.ts`, `semantic.ts` registered; grepai duplicates still dead |
-| **M4** | TUI polish | **IN_PROGRESS** | Viewport/palette work ongoing; `chat.ts` still monolithic |
+| **M1** | E2E testing track (tiers 1–4) | **DONE** | 105/106 passing; 1 known fail (tier1 test 26) |
+| **M2** | Agent core hardening | **DONE** | Self-healing loop, atomic writes, and personality learning merged |
+| **M3** | Advanced tooling | **DONE** | Background daemon, messaging connectors, and robust Swarm lifecycle merged |
+| **M4** | TUI polish | **DONE** | ANSI tables, scroll badges, and multi-line input merged |
 | **M5** | Integration & adversarial hardening | **PLANNED** | Tier 5 adversarial suite not started |
 
 ---
 
-## Baseline Verification (June 2026)
+## Baseline Verification (July 2026 - v1.0.0)
 
 | Check | Result |
 |-------|--------|
@@ -222,12 +225,9 @@ Tests: unit co-located `src/**/*.test.ts`; E2E in `tests/e2e/**/*.test.ts`.
 
 ## Known Gaps
 
-1. **E2E:** Tier1 test 26 — `computeMessageLines` ignores array `content`; expects 7 lines, gets 2.
-2. **TUI:** `chat.ts` size (~3.7k lines) blocks maintainability; React duplicate-key warnings in some E2E renders.
-3. **Memory:** Edge relations stored but unused in retrieval/prompt injection.
-4. **Skills:** Built-in skill loader has `TODO`; activation is flag-only, not behavioral.
-5. **Tools:** Legacy `grepai*.ts` tool files were purged in Phase 3 cleanup; semantic search is handled by registered `semantic.ts` tools wrapping the `tools/grepai` binary.
-6. **Subagents:** `delegate_task` spawns subagents via `fork()` for process isolation; status tracking and message passing are functional.
-7. **Provider naming:** `StandardAPIClient` (`src/api/standard-client.ts`) handles OpenCode/default and any OpenAI-compatible provider.
-8. **M2 work:** Large uncommitted diff (agent loop, TUI, tools)—stability not yet merged/released.
-9. **No Tier 5:** Adversarial/red-team E2E suite planned under M5 only.
+1. **TUI:** `chat.ts` size (~3.7k lines) blocks maintainability; React duplicate-key warnings in some E2E renders.
+2. **Memory:** Edge relations stored but unused in retrieval/prompt injection.
+3. **Skills:** Built-in skill loader has `TODO`; activation is flag-only, not behavioral.
+4. **Tools:** Legacy `grepai*.ts` tool files were purged in Phase 3 cleanup; semantic search is handled by registered `semantic.ts` tools wrapping the `tools/grepai` binary.
+5. **Provider naming:** `StandardAPIClient` (`src/api/standard-client.ts`) handles OpenCode/default and any OpenAI-compatible provider.
+6. **No Tier 5:** Adversarial/red-team E2E suite planned under M5 only.

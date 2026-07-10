@@ -504,11 +504,11 @@ Triggers callbacks on j/k/Enter/backspace/d/r// keys (when `isActive`). Skips if
 
 **Props**: `totalItems`, `maxVisibleWindow` (default 15), `initialSelectedIndex` (default 0)
 
-**Returns**: `{ selectedIndex, windowStart, windowEnd, visibleSelectedIndex, moveUp, moveDown, getVisibleItems, setSelectedIndex }`
+**Returns**: `{ selectedIndex, windowStart, windowEnd, visibleSelectedIndex, moveUp, moveDown, movePageUp, movePageDown, moveToStart, moveToEnd, getVisibleItems, setSelectedIndex }`
 
 **State**: `selectedIndex`, `windowStart`
 
-**Scrolling**: Moves window when selection exits visible range. `moveUp` sets `windowStart = newIndex` when above. `moveDown` sets `windowStart = newIndex - maxVisibleWindow + 1` when below.
+**Scrolling**: Moves window when selection exits visible range. `moveUp` sets `windowStart = newIndex` when above. `moveDown` sets `windowStart = newIndex - maxVisibleWindow + 1` when below. `movePageUp` and `movePageDown` scroll by the size of `maxVisibleWindow`. `moveToStart` and `moveToEnd` jump to the very beginning or end of the list.
 
 **Safeguard**: `useEffect` (line 39) clamps selection and window when `totalItems` changes.
 
@@ -562,7 +562,12 @@ Entry point: lexes markdown into tokens via `marked.lexer`, iterates calling `re
 | `html` | Wrap text | — |
 | Unknown with `tokens` | Recurse into child tokens | — |
 
-### 4.6 Reasoning Blocks
+### 4.6 Token Parsing Extensions
+
+- **KaTeX (`blockKatex`, `inlineKatex`)**: Uses `marked-katex-extension` to parse math formulas, rendering them in italic cyan. `blockKatex` receives a dedicated bounding box.
+- **HTML (`html`)**: HTML tags are parsed and wrapped using `wrapText` rather than passed to the terminal as raw tags, ensuring HTML does not break terminal layout/rendering.
+
+### 4.7 Reasoning Blocks
 
 Reasoning blocks are NOT handled in markdown-mapper itself — they are parsed at the `ChatUI` level via `parseContentBlocks` (chat.ts:491) which extracts `<think>...</think>` tags and renders them as bordered `┌─[ 𓁹 Reasoning ]...└─` boxes.
 
@@ -645,7 +650,13 @@ A global mutable object tracking how many components are currently hovered, used
 
 **Cache** (lines 317–323): `let lineCache = new WeakMap<any, number>()`. Cleared on stdout resize.
 
-### 6.2 Known Gap with Array Content (Lines 346–358)
+### 6.2 `truncate` Utility (ANSI & Surrogate-Pair Safe)
+
+The exported `truncate()` function carefully slices strings for the terminal:
+- Inserts an ANSI reset (`\x1b[0m`) before the appended ellipsis (`...`) if the last visible character was colored, preventing color bleed into the ellipsis.
+- Uses surrogate-pair safety to ensure multi-byte Unicode characters (like emojis) are not split in half, which would corrupt the terminal output.
+
+### 6.3 Known Gap with Array Content (Lines 346–358)
 
 When `block.content` is an array (line 346), the code maps each element extracting `c.text` or converting to string (lines 347–352). However, if the array contains objects without a `.text` property (e.g., `{ type: "text", content: "..." }` from the marked lexer), the fallback (`String(block.content || ...)`) at line 358 would produce `[object Object]` concatenation — a potential rendering bug for deeply-nested array content.
 

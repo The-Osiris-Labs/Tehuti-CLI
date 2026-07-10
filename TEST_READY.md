@@ -1,6 +1,6 @@
 # Tehuti CLI — Test Readiness Report
 
-Honest status of the test suite as of **June 2026**.
+Honest status of the test suite as of **July 2026**.
 
 ---
 
@@ -8,7 +8,7 @@ Honest status of the test suite as of **June 2026**.
 
 | Suite | Result |
 |-------|--------|
-| Unit (`npm test`) | **570 passed**, **2 skipped** (572 total) |
+| Unit (`npm test`) | **711 passed**, **0 skipped** (711 total) |
 | E2E (`npm run test:e2e`) | **105 passed**, **1 failed** (106 total) |
 | Typecheck | **Pass** |
 | Build | **Pass** (~652 KB `dist/index.js`) |
@@ -21,8 +21,7 @@ Honest status of the test suite as of **June 2026**.
 
 ```bash
 # From project root
-npm install
-npm run typecheck
+./scripts/bootstrap.sh  # One-shot install, compile native deps, typecheck, and full test suite
 npm test              # unit tests
 npm run test:e2e      # end-to-end tests
 npm run build
@@ -31,7 +30,7 @@ npm run build
 Full gate (recommended before merge):
 
 ```bash
-npm run typecheck && npm test && npm run test:e2e && npm run build
+./scripts/bootstrap.sh && npm run build
 ```
 
 ---
@@ -146,3 +145,13 @@ Ready for **development merge** when:
 3. E2E ≥ 105/106 with the single failure tracked.
 
 Ready for **release** additionally requires M5 adversarial suite and M2 agent hardening changes committed and stable.
+
+---
+
+## Recent Infrastructure Updates
+
+- **Massive Bump:** Reached 711 passing unit tests with no skipped tests.
+- **LRU Cache:** Resolved `lru-cache.test.ts` TTL skips with timer-verified implementations.
+- **Signal Mocks:** Resolved `manager.test.ts` signal mocks for test reliability.
+- **Session Persistence:** Added atomic session JSON writes for `session.json` and `metadata.json` using temp+fsync+rename patterns with `EXDEV` fallback.
+- **Bootstrap Flow:** Added `scripts/bootstrap.sh` for one-shot environment setup, native deps compilation, and test execution.
