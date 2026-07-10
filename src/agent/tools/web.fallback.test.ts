@@ -170,3 +170,31 @@ describe("code_search — OpenRouter fallback", () => {
 		expect(r.error).toContain("OPENROUTER_API_KEY");
 	});
 });
+
+describe("web_search — no-key hint", () => {
+	const originalExa = process.env.EXA_API_KEY;
+	const originalOpenRouter = process.env.OPENROUTER_API_KEY;
+
+	beforeEach(() => {
+		delete process.env.EXA_API_KEY;
+		delete process.env.OPENROUTER_API_KEY;
+	});
+
+	afterEach(() => {
+		if (originalExa === undefined) delete process.env.EXA_API_KEY;
+		else process.env.EXA_API_KEY = originalExa;
+		if (originalOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+		else process.env.OPENROUTER_API_KEY = originalOpenRouter;
+		vi.restoreAllMocks();
+	});
+
+	it("returns the no-key error when no providers are configured", async () => {
+		// Verifies the public error message. The internal hint log
+		// only fires when TEHUTI_DEBUG=true, which we don't set here —
+		// the assertion is on the returned error, not the log.
+		const r = await webSearchTool!.execute({ query: "x" }, FAKE_CTX);
+		expect(r.success).toBe(false);
+		expect(r.error).toMatch(/EXA_API_KEY/);
+		expect(r.error).toMatch(/OPENROUTER_API_KEY/);
+	});
+});

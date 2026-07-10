@@ -1,12 +1,17 @@
 import { Exa } from "exa-js";
 import TurndownService from "turndown";
 import { z } from "zod";
+import { debug } from "../../utils/debug.js";
 import type {
 	AnyToolExecutor,
 	ToolContext,
 	ToolDefinition,
 	ToolResult,
 } from "./registry.js";
+
+// Track whether we've already shown the no-key hint this process, so we
+// don't spam the user with the same message on every web_search call.
+let noKeyHintShown = false;
 
 interface ExaSearchResult {
 	title?: string;
@@ -416,6 +421,13 @@ async function webSearch(
 				...fallback,
 				metadata: { ...fallback.metadata, num_results, fallback: true },
 			};
+		}
+		if (!noKeyHintShown) {
+			noKeyHintShown = true;
+			debug.log(
+				"tools",
+				"web_search: no API key configured. Set EXA_API_KEY (https://exa.ai) for the best results, or set OPENROUTER_API_KEY to use the :online model fallback. This hint will not repeat.",
+			);
 		}
 		return {
 			success: false,
