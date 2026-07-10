@@ -299,6 +299,13 @@ export function validatePathSecurity(
 	const normalizedPath = path.normalize(resolvedPath);
 	const normalizedCwd = path.normalize(cwd);
 
+	// Sensitive files are ALWAYS rejected, regardless of cwd or allowlist.
+	// Run this check first so the rejection reason is precise (doesn't leak
+	// path-traversal information to a caller probing for sensitive files).
+	if (isSensitiveFile(normalizedPath)) {
+		return { safe: false, reason: "Access to sensitive files is restricted" };
+	}
+
 	const relativePath = path.relative(normalizedCwd, normalizedPath);
 	const outsideCwd =
 		relativePath.startsWith("..") || path.isAbsolute(relativePath);
@@ -307,17 +314,13 @@ export function validatePathSecurity(
 		// Read-only tools may escape cwd into approved scratch paths
 		// (screenshots, tmp, user Library). Write tools never get this option.
 		if (options?.allowExternalRead && isReadOnlyExternalPath(normalizedPath)) {
-			// fall through to sensitive-file check below
+			// fall through to safe return below
 		} else {
 			return {
 				safe: false,
 				reason: "Path traversal outside working directory is not allowed",
 			};
 		}
-	}
-
-	if (isSensitiveFile(normalizedPath)) {
-		return { safe: false, reason: "Access to sensitive files is restricted" };
 	}
 
 	return { safe: true };
