@@ -30,6 +30,11 @@ scratch/
 .agents/
 AGENTS.md
 
+# pnpm artifacts (project uses npm)
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.pnpm-store/
+
 # Agent backup / scratch files (timestamped .bak created by some harness tooling)
 *.bak
 **/*.bak
