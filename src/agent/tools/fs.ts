@@ -1,5 +1,6 @@
 import { exec } from "node:child_process";
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileTypeFromBuffer } from "file-type";
@@ -264,19 +265,55 @@ export function resolvePath(filePath: string, cwd: string): string {
 	return path.resolve(cwd, filePath);
 }
 
+/**
+ * Read-only "scratch" paths the harness is allowed to read from outside cwd.
+ * Examples: macOS screenshots, $TMPDIR, user Library.
+ * Write tools (write/edit/apply_diff) MUST NOT use this allowlist.
+ */
+const READ_ONLY_EXTERNAL_PREFIXES: ReadonlyArray<string> = (() => {
+	const home = os.homedir();
+	const tmpdir = process.env.TMPDIR ?? "/tmp";
+	return [
+		// macOS screenshots & screen recordings land here
+		"/var/folders/",
+		"/private/var/folders/",
+		// System tmp (rare on macOS, common on Linux)
+		tmpdir.endsWith("/") ? tmpdir : `${tmpdir}/`,
+		// User Library (saved screenshots, app caches)
+		`${home}/Library/`,
+		// Tehuti's own scratch dir (already in spirit)
+		`${home}/.tehuti/tmp/`,
+	];
+})();
+
+export function isReadOnlyExternalPath(resolvedPath: string): boolean {
+	const normalized = path.normalize(resolvedPath);
+	return READ_ONLY_EXTERNAL_PREFIXES.some((p) => normalized.startsWith(p));
+}
+
 export function validatePathSecurity(
 	resolvedPath: string,
 	cwd: string,
+	options?: { allowExternalRead?: boolean },
 ): { safe: boolean; reason?: string } {
 	const normalizedPath = path.normalize(resolvedPath);
 	const normalizedCwd = path.normalize(cwd);
 
 	const relativePath = path.relative(normalizedCwd, normalizedPath);
-	if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-		return {
-			safe: false,
-			reason: "Path traversal outside working directory is not allowed",
-		};
+	const outsideCwd =
+		relativePath.startsWith("..") || path.isAbsolute(relativePath);
+
+	if (outsideCwd) {
+		// Read-only tools may escape cwd into approved scratch paths
+		// (screenshots, tmp, user Library). Write tools never get this option.
+		if (options?.allowExternalRead && isReadOnlyExternalPath(normalizedPath)) {
+			// fall through to sensitive-file check below
+		} else {
+			return {
+				safe: false,
+				reason: "Path traversal outside working directory is not allowed",
+			};
+		}
 	}
 
 	if (isSensitiveFile(normalizedPath)) {
@@ -351,7 +388,9 @@ async function readFile(
 ): Promise<ToolResult> {
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
+		allowExternalRead: true,
+	});
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -1391,7 +1430,9 @@ async function readImage(
 	const maxWidth = args.max_width ?? 1024;
 	const maxHeight = args.max_height ?? 1024;
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
+		allowExternalRead: true,
+	});
 	if (!securityCheck.safe) {
 		return {
 			success: false,
@@ -1509,7 +1550,9 @@ async function readPDF(
 	const resolvedPath = resolvePath(args.file_path, ctx.cwd);
 	const maxPages = args.max_pages ?? 50;
 
-	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd);
+	const securityCheck = validatePathSecurity(resolvedPath, ctx.cwd, {
+		allowExternalRead: true,
+	});
 	if (!securityCheck.safe) {
 		return {
 			success: false,
