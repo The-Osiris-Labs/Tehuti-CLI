@@ -198,7 +198,7 @@ export async function getValidGoogleAccessToken(): Promise<string | null> {
 	const config = await loadConfig();
 	const googleAuth = config.oauth?.google;
 
-	if (!googleAuth || !googleAuth.refreshToken) {
+	if (!googleAuth?.refreshToken) {
 		return null;
 	}
 

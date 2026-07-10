@@ -428,8 +428,7 @@ export class MCPClientManager {
 	private scheduleReconnect(serverName: string): void {
 		const info = this.servers.get(serverName);
 		if (
-			!info ||
-			!info.config.reconnect?.enabled ||
+			!info?.config.reconnect?.enabled ||
 			this.intentionalDisconnects.has(serverName) ||
 			this.reconnectTimeouts.has(serverName)
 		) {
@@ -1023,7 +1022,7 @@ export class MCPClientManager {
 	): Promise<unknown> {
 		const info = this.servers.get(serverName);
 
-		if (!info || !info.connected || !info.client) {
+		if (!info?.connected || !info.client) {
 			throw createMCPError(
 				`Server "${serverName}" not connected`,
 				MCPErrorCode.SERVER_NOT_CONNECTED,
@@ -1089,7 +1088,7 @@ export class MCPClientManager {
 	): Promise<unknown> {
 		const info = this.servers.get(serverName);
 
-		if (!info || !info.connected || !info.client) {
+		if (!info?.connected || !info.client) {
 			throw createMCPError(
 				`Server "${serverName}" not connected`,
 				MCPErrorCode.SERVER_NOT_CONNECTED,
@@ -1120,7 +1119,7 @@ export class MCPClientManager {
 	): Promise<MCPPromptResult> {
 		const info = this.servers.get(serverName);
 
-		if (!info || !info.connected || !info.client) {
+		if (!info?.connected || !info.client) {
 			throw createMCPError(
 				`Server "${serverName}" not connected`,
 				MCPErrorCode.SERVER_NOT_CONNECTED,

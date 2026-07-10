@@ -89,7 +89,7 @@ function createProviderClient(
 	if (
 		provider !== "kilocode" &&
 		provider !== "custom" &&
-		(!providerInfo || !providerInfo.isOpenAICompatible)
+		!providerInfo?.isOpenAICompatible
 	) {
 		debug.log(
 			"provider" as any,
@@ -174,7 +174,7 @@ export function configureHooks(hooksConfig: unknown): void {
 	hookExecutor.loadConfig(hooks);
 }
 
-export { setPlanMode, isPlanMode, isToolAllowedInPlanMode };
+export { isPlanMode, isToolAllowedInPlanMode, setPlanMode };
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -207,6 +207,7 @@ export interface AgentLoopResult {
 		totalCost: number;
 		requestCount: number;
 	};
+	error?: string;
 }
 
 import { runAgentLoop as _runAgentLoop } from "./loop/index.js";
@@ -242,13 +243,11 @@ export async function runOneShot(
 	return result.content;
 }
 
-export { createAgentContext };
-export type { AgentContext };
-
+export type { AgentContext, ModelCapabilities };
 // Model capability resolver
 export {
-	resolveModelCapabilities,
 	clearCapabilityCache,
+	createAgentContext,
 	getCachedCapabilities,
+	resolveModelCapabilities,
 };
-export type { ModelCapabilities };

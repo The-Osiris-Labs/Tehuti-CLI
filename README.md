@@ -30,9 +30,9 @@ Tehuti is designed to remember and adapt to your specific engineering environmen
 
 ## ⚡ Execution & Swarm Concurrency
 
-Tehuti is built for massive, uninterrupted autonomous workflows.
+Tehuti is built for extended autonomous workflows.
 
-- **Parallel Tool Execution**: Safe, read-only tools run in highly concurrent batches (max 5 concurrency) when the model emits multiple tool calls in a single turn. Write operations logically force sequential execution.
+- **Parallel Tool Execution**: Safe, read-only tools run in concurrent batches (max 5 concurrency) when the model emits multiple tool calls in a single turn. Write operations logically force sequential execution.
 - **Rule-Based Prefetching**: Predicts and queues secondary data (e.g., `git_status` triggering a `git_diff` prefetch) on the first tool call of a batch to eliminate round-trip latency.
 - **Connection Pooling**: Utilizes an `undici` Agent pool to substantially reduce TLS overhead across repeated LLM API invocations.
 - **Swarm Delegation**: Supports spawning autonomous subagents for specialized execution tasks.
@@ -49,9 +49,9 @@ Tehuti is built for massive, uninterrupted autonomous workflows.
 
 ## 🖥️ Interactive TUI Mechanics
 
-Tehuti is shipped with an incredibly rich, interactive Terminal User Interface built on Ink 6 and React 19.
+Tehuti is shipped with an interactive Terminal User Interface built on Ink 6 and React 19.
 
-- **Hybrid Viewport Architecture**: Handles massive logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
+- **Hybrid Viewport Architecture**: Handles large logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
 - **Interactive Sessions UI**: Includes full Vim keybindings (`j/k/d/r`), mouse-hover support, and virtual scrolling.
 - **Command Palette**: Type `/` to access built-in workflows including `/save`, `/load`, `/sessions`, and `/compact`.
 

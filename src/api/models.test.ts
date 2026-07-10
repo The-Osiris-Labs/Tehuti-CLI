@@ -30,10 +30,12 @@ describe("listModelsForProvider", () => {
 				}),
 			}),
 		);
-		expect(
-			(fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> })
-				.headers["x-goog-api-key"],
-		).toBe("google-key");
+		const fetchCall = fetchMock.mock.calls[0];
+		expect(fetchCall).toBeDefined();
+		const requestInit = fetchCall?.[1] as
+			| { headers: Record<string, string> }
+			| undefined;
+		expect(requestInit?.headers["x-goog-api-key"]).toBe("google-key");
 	});
 
 	it("resolves the active provider default host instead of reusing another provider default", async () => {
