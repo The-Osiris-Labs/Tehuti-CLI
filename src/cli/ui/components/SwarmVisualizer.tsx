@@ -139,64 +139,71 @@ export function SwarmVisualizer(): React.ReactElement {
 	const workingCount = agents.filter((a) => a.status === "working").length;
 	const now = Date.now();
 
-	const W_ID = 10;
-	const W_STATUS = 12;
-	const W_TOOLS = 7;
-	const W_TOKENS = 8;
-	const W_ELAPSED = 8;
-	const W_TASK = Math.max(10, termWidth - (W_ID + W_STATUS + W_TOOLS + W_TOKENS + W_ELAPSED + 18));
+	const headerRow = (
+		<Box flexDirection="row" paddingX={2} gap={2} marginBottom={0}>
+			<Box width={10}><Text color={COLORS.gold} bold>AGENT ID</Text></Box>
+			<Box width={16}><Text color={COLORS.gold} bold>STATUS</Text></Box>
+			<Box flexGrow={1}><Text color={COLORS.gold} bold>CURRENT TASK</Text></Box>
+			<Box width={8} justifyContent="flex-end"><Text color={COLORS.gold} bold>TOOLS</Text></Box>
+			<Box width={10} justifyContent="flex-end"><Text color={COLORS.gold} bold>TOKENS</Text></Box>
+			<Box width={10} justifyContent="flex-end"><Text color={COLORS.gold} bold>ELAPSED</Text></Box>
+		</Box>
+	);
 
-	const headerCols = [
-		chalk.hex(COLORS.gold).bold(padRight("AGENT ID", W_ID)),
-		chalk.hex(COLORS.gold).bold(padRight("STATUS", W_STATUS)),
-		chalk.hex(COLORS.gold).bold(padRight("CURRENT TASK", W_TASK)),
-		chalk.hex(COLORS.gold).bold(padLeft("TOOLS", W_TOOLS)),
-		chalk.hex(COLORS.gold).bold(padLeft("TOKENS", W_TOKENS)),
-		chalk.hex(COLORS.gold).bold(padLeft("ELAPSED", W_ELAPSED))
-	];
-	const headerStr = "  " + headerCols.join("  ");
-
-	const rows: string[] = [];
-	if (agents.length === 0) {
-		rows.push("  " + chalk.hex(COLORS.sand).italic("No active subagents in the swarm."));
-	} else {
-		for (let i = 0; i < agents.length; i++) {
-			const agent = agents[i];
-			const elapsed = formatElapsed(now - agent.startedAt);
-			
-			let statusStr = "";
-			if (agent.status === "working") {
-				statusStr = chalk.hex(COLORS.gold).bgHex("#332200")(` ${HIEROGLYPHS.loading[frame]} RUNNING `);
-			} else if (agent.status === "idle") {
-				statusStr = chalk.hex(COLORS.green).bgHex("#001500")(` ${DECORATIVE.ankh} SUCCESS `);
-			} else if (agent.status === "error") {
-				statusStr = chalk.hex(COLORS.coral).bgHex("#220000")(` ${DECORATIVE.eyeOfHorus} ERROR `);
-			} else {
-				statusStr = chalk.hex(COLORS.sand).bgHex("#222222")(` ✕ KILLED `);
-			}
-			statusStr = padRight(statusStr, W_STATUS);
-
-			let taskStr = agent.currentTask.replace(/\n/g, " ");
-			if (stringWidth(taskStr) > W_TASK) {
-				taskStr = sliceAnsi(taskStr, W_TASK - 3) + "...";
-			} else {
-				taskStr = padRight(taskStr, W_TASK);
-			}
-			if (agent.status === "idle" || agent.status === "killed") {
-				taskStr = chalk.hex(COLORS.sand)(taskStr);
-			}
-
-			const cols = [
-				chalk.hex(COLORS.nile)(padRight(agent.id, W_ID)),
-				statusStr,
-				taskStr,
-				chalk.hex(COLORS.nile).bold(padLeft(String(agent.toolCallCount), W_TOOLS)),
-				chalk.hex(COLORS.gold)(padLeft(agent.tokensUsed.toLocaleString(), W_TOKENS)),
-				chalk.hex(COLORS.sand).dim(padLeft(elapsed, W_ELAPSED))
-			];
-			rows.push("  " + cols.join("  "));
+	const rowElements = agents.length === 0 ? (
+		<Box paddingX={2}>
+			<Text color={COLORS.sand} italic>No active subagents in the swarm.</Text>
+		</Box>
+	) : agents.map((agent) => {
+		const elapsed = formatElapsed(now - agent.startedAt);
+		
+		let statusBg = "";
+		let statusColor = "";
+		let statusText = "";
+		
+		if (agent.status === "working") {
+			statusBg = "#332200";
+			statusColor = COLORS.gold;
+			statusText = ` ${HIEROGLYPHS.loading[frame]} RUNNING `;
+		} else if (agent.status === "idle") {
+			statusBg = "#001500";
+			statusColor = COLORS.green;
+			statusText = ` ${DECORATIVE.ankh} SUCCESS `;
+		} else if (agent.status === "error") {
+			statusBg = "#220000";
+			statusColor = COLORS.coral;
+			statusText = ` ${DECORATIVE.eyeOfHorus} ERROR `;
+		} else {
+			statusBg = "#222222";
+			statusColor = COLORS.sand;
+			statusText = ` ✕ KILLED `;
 		}
-	}
+
+		const taskColor = (agent.status === "idle" || agent.status === "killed") ? COLORS.sand : undefined;
+
+		return (
+			<Box key={agent.id} flexDirection="row" paddingX={2} gap={2}>
+				<Box width={10}>
+					<Text color={COLORS.nile} wrap="truncate-end">{agent.id}</Text>
+				</Box>
+				<Box width={16}>
+					<Text backgroundColor={statusBg} color={statusColor}>{statusText}</Text>
+				</Box>
+				<Box flexGrow={1}>
+					<Text color={taskColor} wrap="truncate-end">{agent.currentTask.replace(/\n/g, " ")}</Text>
+				</Box>
+				<Box width={8} justifyContent="flex-end">
+					<Text color={COLORS.nile} bold>{agent.toolCallCount}</Text>
+				</Box>
+				<Box width={10} justifyContent="flex-end">
+					<Text color={COLORS.gold}>{agent.tokensUsed.toLocaleString()}</Text>
+				</Box>
+				<Box width={10} justifyContent="flex-end">
+					<Text color={COLORS.sand} dimColor>{elapsed}</Text>
+				</Box>
+			</Box>
+		);
+	});
 
 	return (
 		<Box
@@ -214,8 +221,8 @@ export function SwarmVisualizer(): React.ReactElement {
 				</Text>
 			</Box>
 			<Box flexDirection="column" gap={0}>
-				<Text>{headerStr}</Text>
-				<Text>{rows.join("\n")}</Text>
+				{headerRow}
+				{rowElements}
 			</Box>
 		</Box>
 	);

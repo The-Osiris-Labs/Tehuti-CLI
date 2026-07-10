@@ -173,7 +173,6 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	const startTimeRef = useRef<number>(Date.now());
 	const [duration, setDuration] = useState<number | null>(null);
-	const [spinnerFrame, setSpinnerFrame] = useState(0);
 	const [isHovered, setIsHovered] = useState(false);
 	const boxRef = useRef(null);
 
@@ -210,12 +209,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			const interval = setInterval(() => {
 				setDuration((Date.now() - startTimeRef.current) / 1000);
 			}, 100);
-			const spinnerInterval = setInterval(() => {
-				setSpinnerFrame((f: number) => (f + 1) % HIEROGLYPHS.loading.length);
-			}, 150);
 			return () => {
 				clearInterval(interval);
-				clearInterval(spinnerInterval);
 			};
 		} else {
 			const finalDuration = (Date.now() - startTimeRef.current) / 1000;
@@ -274,26 +269,22 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const durStr = duration !== null ? `${duration.toFixed(1)}s` : "";
 
-	let headerIcon = "";
 	let headerStatusText = "";
 	let headerColor = "";
 	let badgeKind: "running" | "success" | "error" = "success";
 
 	if (status === "pending") {
 		badgeKind = "running";
-		headerIcon = HIEROGLYPHS.loading[spinnerFrame];
 		headerStatusText = `RUNNING • ${durStr}`;
 		headerColor = BRANDING.colors.gold;
 	} else if (status === "success") {
 		badgeKind = "success";
-		headerIcon = DECORATIVE.ankh;
 		headerStatusText = isCached
 			? `SUCCESS (CACHED) • ${durStr}`
 			: `SUCCESS • ${durStr}`;
 		headerColor = BRANDING.colors.green;
 	} else {
 		badgeKind = "error";
-		headerIcon = DECORATIVE.eye_horus;
 		headerStatusText = `FAILED • ${durStr}`;
 		headerColor = BRANDING.colors.red;
 	}
