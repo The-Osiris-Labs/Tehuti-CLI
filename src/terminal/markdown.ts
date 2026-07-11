@@ -84,6 +84,7 @@ function getColors() {
 
 const COLORS = getColors();
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 function _purple(text: string): string {
 	return applyStyle(text, COLORS.purple);
 }
@@ -142,7 +143,11 @@ function highlightCode(code: string, language?: string): string {
 	return highlightToAnsi(code, language);
 }
 
-function codeBlock(code: string, language?: string, indent: string = ""): string {
+function codeBlock(
+	code: string,
+	language?: string,
+	indent: string = "",
+): string {
 	const lang = language || "text";
 	const isPlain = ["text", "plain", "ascii", "none"].includes(
 		lang.toLowerCase(),
@@ -261,7 +266,7 @@ function renderToken(token: Token, indent: string = ""): string {
 			for (let i = 0; i < items.length; i++) {
 				const item = items[i];
 				const bulletStr = coral(bullet(i));
-				
+
 				let itemResult = "";
 				for (let j = 0; j < (item.tokens || []).length; j++) {
 					const childToken = item.tokens[j];
@@ -271,7 +276,7 @@ function renderToken(token: Token, indent: string = ""): string {
 						itemResult += renderInlineTokens(childToken.tokens || []);
 					} else {
 						// Nested blocks (code, sub-lists, etc.)
-						itemResult += renderToken(childToken, indent + "    ");
+						itemResult += renderToken(childToken, `${indent}    `);
 					}
 				}
 				result += `${indent}  ${bulletStr} ${itemResult.trimEnd()}\n`;
@@ -311,11 +316,15 @@ function renderToken(token: Token, indent: string = ""): string {
 
 			const maxCols = header.length;
 
-			const widths: number[] = Array.from({ length: maxCols }).map((_, i: number) => {
-				const headerLen = stringWidth(getCellText(header[i]));
-				const rowLens = rows.map((r: Token[]) => stringWidth(getCellText(r && r[i])));
-				return Math.max(headerLen, ...rowLens);
-			});
+			const widths: number[] = Array.from({ length: maxCols }).map(
+				(_, i: number) => {
+					const headerLen = stringWidth(getCellText(header[i]));
+					const rowLens = rows.map((r: Token[]) =>
+						stringWidth(getCellText(r?.[i])),
+					);
+					return Math.max(headerLen, ...rowLens);
+				},
+			);
 
 			const border: string[] = widths.map((w: number) => "─".repeat(w + 2));
 
@@ -328,21 +337,25 @@ function renderToken(token: Token, indent: string = ""): string {
 			let result = "\n";
 			result += `╭${border.join("┬")}╮\n`;
 
-			const headerCells: string[] = Array.from({ length: maxCols }).map((_, i: number) => {
-				const text = getCellText(header[i]);
-				const width = widths[i];
-				return `│ ${bold(padEndWidth(text, width))} `;
-			});
+			const headerCells: string[] = Array.from({ length: maxCols }).map(
+				(_, i: number) => {
+					const text = getCellText(header[i]);
+					const width = widths[i];
+					return `│ ${bold(padEndWidth(text, width))} `;
+				},
+			);
 			result += `${headerCells.join("")}│\n`;
 
 			result += `├${border.join("┼")}┤\n`;
 
 			for (const row of rows) {
-				const cells: string[] = Array.from({ length: maxCols }).map((_, i: number) => {
-					const text = getCellText(row && row[i]);
-					const width = widths[i];
-					return `│ ${padEndWidth(text, width)} `;
-				});
+				const cells: string[] = Array.from({ length: maxCols }).map(
+					(_, i: number) => {
+						const text = getCellText(row?.[i]);
+						const width = widths[i];
+						return `│ ${padEndWidth(text, width)} `;
+					},
+				);
 				result += `${cells.join("")}│\n`;
 			}
 

@@ -21,11 +21,7 @@ export async function promiseAllWithConcurrency<T>(
 	const executeTask = async (_workerIndex: number): Promise<void> => {
 		while (nextIndex < tasks.length) {
 			const taskIndex = nextIndex++;
-			try {
-				results[taskIndex] = await tasks[taskIndex]();
-			} catch (error) {
-				results[taskIndex] = error as T;
-			}
+			results[taskIndex] = await tasks[taskIndex]();
 			_completedCount++;
 		}
 	};

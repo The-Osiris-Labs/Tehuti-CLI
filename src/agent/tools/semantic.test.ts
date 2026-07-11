@@ -57,7 +57,9 @@ describe("Semantic Search Tools", () => {
 			);
 
 			expect(res.success).toBe(false);
-			expect(res.error).toContain("grepai not initialized. Run 'grepai init' in your project root first.");
+			expect(res.error).toContain(
+				"grepai not initialized. Run 'grepai init' in your project root first.",
+			);
 		});
 
 		it("should filter out sensitive files from search results", async () => {

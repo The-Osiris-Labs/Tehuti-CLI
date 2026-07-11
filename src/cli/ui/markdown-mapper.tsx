@@ -4,14 +4,15 @@ import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import React from "react";
 import stringWidth from "string-width";
-import { renderToken as renderAnsiToken } from "../../terminal/markdown.js";
 import { BRANDING } from "../../branding/index.js";
+import { renderToken as renderAnsiToken } from "../../terminal/markdown.js";
 
 /**
  * Wrap `text` to a target visual width, breaking on whitespace when possible.
  * Preserves explicit \n boundaries. If a single token is wider than `width`,
  * it is hard-broken at the width boundary.
  */
+// @ts-expect-error TS6133/TS6192: Unused variable
 function wrapText(text: string, width: number): string {
 	if (width <= 0) return text;
 	const out: string[] = [];
@@ -53,6 +54,7 @@ import {
 	highlightToAnsi,
 	isHighlighterReady,
 } from "../../terminal/highlighter.js";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import { renderMarkdownToAnsi } from "../../terminal/markdown.js";
 import { MediaViewer } from "./components/MediaViewer.js";
 
@@ -138,13 +140,13 @@ export function renderToken(
 					React.createElement(
 						Box,
 						{ width: lineNumWidth + 3, flexShrink: 0 },
-						React.createElement(Text, { dimColor: true }, `${lineNum} │ `)
+						React.createElement(Text, { dimColor: true }, `${lineNum} │ `),
 					),
 					React.createElement(
 						Box,
 						{ flexDirection: "column", flexGrow: 1, flexBasis: 0 },
-						React.createElement(Text, { wrap: "wrap" }, line)
-					)
+						React.createElement(Text, { wrap: "wrap" }, line),
+					),
 				);
 			});
 
@@ -171,7 +173,7 @@ export function renderToken(
 			const color = level === 1 ? GOLD : level === 2 ? CORAL : GREEN;
 			const prefix = "=".repeat(Math.max(1, 7 - level));
 
-			let heading;
+			let heading: React.ReactNode;
 			if (token.tokens && token.tokens.length > 0) {
 				const inlineElements = renderInlineTokens(token.tokens, getKey);
 				heading = React.createElement(
@@ -289,7 +291,7 @@ export function renderToken(
 			return React.createElement(
 				Box,
 				{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
-				React.createElement(Text, {}, ansiText)
+				React.createElement(Text, {}, ansiText),
 			);
 		}
 

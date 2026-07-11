@@ -46,22 +46,87 @@ export function createMCPToolName(
 	return `mcp_${safeServer}_${safeTool}`;
 }
 
-export function deepNormalizeSchema(schema: any): any {
+export function deepNormalizeSchema(schema: any, depth = 0): any {
+	if (depth > 10) return { type: "string", description: "Schema depth limit exceeded" };
 	if (!schema || typeof schema !== "object") return schema;
+
 	if (Array.isArray(schema)) {
-		return schema.map(deepNormalizeSchema);
+		return schema.map((s) => deepNormalizeSchema(s, depth + 1));
 	}
+
 	const normalized: any = { ...schema };
-	if (normalized.properties) {
+
+	const validTypes = [
+		"string",
+		"number",
+		"integer",
+		"boolean",
+		"object",
+		"array",
+		"null",
+	];
+
+	if (normalized.type !== undefined) {
+		if (
+			typeof normalized.type !== "string" ||
+			!validTypes.includes(normalized.type)
+		) {
+			normalized.type = "string";
+		}
+	} else {
+		if (normalized.properties) {
+			normalized.type = "object";
+		} else if (normalized.items) {
+			normalized.type = "array";
+		} else {
+			normalized.type = "string";
+		}
+	}
+
+	if (normalized.properties && typeof normalized.properties === "object") {
 		const newProps: any = {};
 		for (const [k, v] of Object.entries(normalized.properties)) {
-			newProps[k] = deepNormalizeSchema(v);
+			let safeKey = k.replace(/[^a-zA-Z0-9_-]/g, "_");
+			if (safeKey.length > 64) safeKey = safeKey.slice(0, 64);
+			if (safeKey.length === 0) safeKey = "param";
+			newProps[safeKey] = deepNormalizeSchema(v, depth + 1);
 		}
 		normalized.properties = newProps;
+	} else if (normalized.type === "object") {
+		normalized.properties = {};
 	}
+
 	if (normalized.items) {
-		normalized.items = deepNormalizeSchema(normalized.items);
+		if (typeof normalized.items === "object") {
+			normalized.items = deepNormalizeSchema(normalized.items, depth + 1);
+		} else {
+			delete normalized.items;
+		}
 	}
+
+	if (normalized.required !== undefined) {
+		if (Array.isArray(normalized.required)) {
+			normalized.required = normalized.required
+				.filter((r: any) => typeof r === "string")
+				.map((r: string) => {
+					let safe = r.replace(/[^a-zA-Z0-9_-]/g, "_");
+					if (safe.length > 64) safe = safe.slice(0, 64);
+					return safe.length === 0 ? "param" : safe;
+				});
+		} else {
+			delete normalized.required;
+		}
+	}
+
+	if (normalized.description !== undefined) {
+		if (typeof normalized.description !== "string") {
+			normalized.description = String(normalized.description);
+		}
+		if (normalized.description.length > 2000) {
+			normalized.description = normalized.description.slice(0, 2000) + "...";
+		}
+	}
+
 	return normalized;
 }
 
@@ -71,12 +136,13 @@ export function normalizeMCPInputSchema(
 	if (!schema || typeof schema !== "object") {
 		return { type: "object", properties: {} };
 	}
+	const normalized = deepNormalizeSchema(schema);
 	return {
-		...deepNormalizeSchema(schema),
+		...normalized,
 		type: "object",
 		properties:
-			typeof schema.properties === "object" && schema.properties !== null
-				? deepNormalizeSchema(schema.properties)
+			typeof normalized.properties === "object" && normalized.properties !== null
+				? normalized.properties
 				: {},
 	};
 }
@@ -166,7 +232,10 @@ export function createMCPToolDefinition(
 					result !== null &&
 					"content" in result
 				) {
-					const callResult = result as { content: unknown[]; isError?: boolean };
+					const callResult = result as {
+						content: unknown[];
+						isError?: boolean;
+					};
 					const contentArray = callResult.content;
 					const isError = !!callResult.isError;
 					if (Array.isArray(contentArray)) {

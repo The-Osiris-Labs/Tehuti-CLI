@@ -69,45 +69,7 @@ const BASH_SCHEMA = z.object({
 		.describe("Run command in background mode (default: false)"),
 });
 
-const DANGEROUS_PATTERNS: RegExp[] = [
-	// Removed hardcoded constraints; relying completely on IBAC user-permission prompts
-];
-
-const NATIVE_DANGEROUS_PATTERNS: RegExp[] = [
-	// Native dangerous patterns removed to unleash the agent's full potential on local environments
-];
-
-const _SAFE_COMMAND_PREFIXES = [
-	"git ",
-	"git",
-	"npm ",
-	"npm",
-	"node ",
-	"node",
-	"npx ",
-	"npx",
-	"yarn ",
-	"yarn",
-	"pnpm ",
-	"pnpm",
-	"ls",
-	"cat ",
-	"echo ",
-	"pwd",
-	"which ",
-	"head ",
-	"tail ",
-	"wc ",
-	"grep ",
-	"find ",
-	"mkdir ",
-	"touch ",
-];
-
-function isDangerousCommand(
-	command: string,
-	isNativeFallback?: boolean,
-): {
+function isDangerousCommand(..._args: any[]): {
 	dangerous: boolean;
 	reason?: string;
 } {
@@ -166,9 +128,6 @@ const MAX_OUTPUT_SIZE = 50 * 1024 * 1024;
 const MAX_TOTAL_BACKGROUND_MEMORY = 1000 * 1024 * 1024;
 const MAX_BACKGROUND_PROCESSES = 200;
 const MAX_BACKGROUND_LIFETIME_MS = 24 * 60 * 60 * 1000;
-const _MAX_LINES = 10000;
-
-const _totalBackgroundMemory = 0;
 
 function getBackgroundMemoryUsage(): number {
 	let total = 0;
@@ -218,12 +177,22 @@ function startBackgroundProcess(
 		}
 
 		const { cmd, args } = getSpawnArgs(command, cwd);
-		const proc: ChildProcess = spawn(cmd, args, {
-			cwd,
-			env: { ...process.env, ...ctx.env },
-			detached: true,
-			stdio: ["ignore", "pipe", "pipe"],
-		});
+		let proc: ChildProcess;
+		try {
+			proc = spawn(cmd, args, {
+				cwd,
+				env: { ...process.env, ...ctx.env },
+				detached: true,
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+		} catch (error) {
+			resolve({
+				success: false,
+				output: "",
+				error: `Failed to spawn background process: ${error instanceof Error ? error.message : String(error)}`,
+			});
+			return;
+		}
 
 		const pid = proc.pid;
 
@@ -525,11 +494,21 @@ async function executeBash(
 
 	return new Promise((resolve) => {
 		const { cmd, args } = getSpawnArgs(command, cwd);
-		const proc: ChildProcess = spawn(cmd, args, {
-			cwd,
-			env: { ...process.env, ...ctx.env },
-			detached: true,
-		});
+		let proc: ChildProcess;
+		try {
+			proc = spawn(cmd, args, {
+				cwd,
+				env: { ...process.env, ...ctx.env },
+				detached: true,
+			});
+		} catch (error) {
+			resolve({
+				success: false,
+				output: "",
+				error: `Failed to spawn process: ${error instanceof Error ? error.message : String(error)}`,
+			});
+			return;
+		}
 
 		foregroundProcesses.add(proc);
 

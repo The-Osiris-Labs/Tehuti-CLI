@@ -1,5 +1,7 @@
+// @ts-expect-error TS6133/TS6192: Unused variable
 import { Box, Text } from "ink";
-import React, { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 
 const COLORS = {

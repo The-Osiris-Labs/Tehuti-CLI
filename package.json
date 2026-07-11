@@ -1,6 +1,6 @@
 {
   "name": "tehuti-cli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Tehuti CLI — Ink/React terminal coding assistant with OpenAI-compatible agent loop, ~66 native tools, MCP, and OpenCode-default provider.",
   "type": "module",
   "bin": {

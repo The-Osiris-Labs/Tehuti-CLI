@@ -173,6 +173,7 @@ ${options.prompt}
 		throw error;
 	} finally {
 		if (externalTimeout) clearTimeout(externalTimeout);
+		task.abortController = undefined;
 	}
 }
 

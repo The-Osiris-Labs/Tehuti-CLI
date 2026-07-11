@@ -13,6 +13,7 @@ export class TehutiDaemonServer extends EventEmitter {
 	private activeSockets: Set<net.Socket> = new Set();
 	private processHandlersSetup = false;
 	private gcInterval?: ReturnType<typeof setInterval>;
+	private logRotationInterval?: ReturnType<typeof setInterval>;
 	private readonly daemonStartTime: string;
 
 	constructor() {
@@ -34,6 +35,7 @@ export class TehutiDaemonServer extends EventEmitter {
 				// Prevent memory leak from unbounded buffer
 				if (buffer.length > 1024 * 1024 * 10) {
 					// 10MB limit
+					buffer = "";
 					socket.destroy(new Error("Buffer size limit exceeded"));
 					return;
 				}
@@ -51,6 +53,10 @@ export class TehutiDaemonServer extends EventEmitter {
 						try {
 							msg = JSON.parse(line);
 						} catch (e) {
+							console.error(
+								"Daemon Server: IPC JSON parse error",
+								e instanceof Error ? e.message : e,
+							);
 							// Not JSON, just emit as normal data
 							this.emit("data", socket, Buffer.from(line));
 							continue;
@@ -213,6 +219,7 @@ export class TehutiDaemonServer extends EventEmitter {
 				this.emit("listening", SOCKET_PATH);
 				this.setupProcessHandlers();
 				this.startGarbageCollector();
+				this.startLogRotation();
 				daemonStateEngine.start().catch(console.error);
 			});
 		} catch (err) {
@@ -236,9 +243,47 @@ export class TehutiDaemonServer extends EventEmitter {
 		}
 	}
 
+	private startLogRotation(): void {
+		const checkAndRotate = () => {
+			const maxSizeBytes = 50 * 1024 * 1024; // 50MB
+			const logFiles = [
+				path.join(os.homedir(), ".tehuti", "tehutid.out.log"),
+				path.join(os.homedir(), ".tehuti", "tehutid.err.log"),
+			];
+
+			for (const file of logFiles) {
+				if (fs.existsSync(file)) {
+					try {
+						const stats = fs.statSync(file);
+						if (stats.size > maxSizeBytes) {
+							// Truncate the file to 0 bytes if it exceeds the limit
+							fs.truncateSync(file, 0);
+						}
+					} catch (e) {
+						// Ignore errors during log rotation
+					}
+				}
+			}
+		};
+
+		// Run immediately on startup
+		checkAndRotate();
+
+		// Run every hour
+		const ROTATE_INTERVAL = 60 * 60 * 1000;
+		this.logRotationInterval = setInterval(checkAndRotate, ROTATE_INTERVAL);
+
+		if (this.logRotationInterval?.unref) {
+			this.logRotationInterval.unref();
+		}
+	}
+
 	public stop(): void {
 		if (this.gcInterval) {
 			clearInterval(this.gcInterval);
+		}
+		if (this.logRotationInterval) {
+			clearInterval(this.logRotationInterval);
 		}
 
 		daemonStateEngine.stop().catch(console.error);

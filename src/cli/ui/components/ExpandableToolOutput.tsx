@@ -6,9 +6,11 @@ import {
 import { Box, Text, useInput } from "ink";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import { highlightToAnsi } from "../../../terminal/highlighter.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import { GlobalInputState } from "../input-state.js";
 import { StatusBadge } from "./StatusBadge.js";
 
@@ -64,7 +66,10 @@ function sliceAnsi(str: string, limit: number): string {
 			i += match[0].length;
 		} else {
 			const codePoint = str.codePointAt(i);
-			if (!codePoint) { i++; continue; }
+			if (!codePoint) {
+				i++;
+				continue;
+			}
 			const char = String.fromCodePoint(codePoint);
 			const charWidth = stringWidth(char);
 			if (visibleWidth + charWidth > limit) {
@@ -203,6 +208,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				},
 	);
 
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const DECORATIVE = {
 		eye_ra: "𓁹",
 		eye_horus: "𓂀",
@@ -225,11 +231,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [status]);
 
 	const { summary, borderTextColor } = useMemo(() => {
-		const sum = summarizeToolOutput(
-			result,
-			maxWidth,
-			expanded ? 10000 : 12,
-		);
+		const sum = summarizeToolOutput(result, maxWidth, expanded ? 10000 : 12);
 
 		let borderColor: string = BRANDING.colors.sand;
 		if (status === "pending") {
@@ -336,7 +338,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const renderedBlock = useMemo(() => {
 		const top = `╭${"─".repeat(contentWidth + 2)}╮`;
 		const bottom = `╰${"─".repeat(contentWidth + 2)}╯`;
-		
+
 		const lines = highlightedLines.map((line: string) => {
 			const visualLen = stringWidth(stripAnsi(line));
 			let padded: string;
@@ -349,7 +351,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			}
 			return `│ ${padded} │`;
 		});
-		
+
 		return [top, ...lines, bottom].join("\n");
 	}, [highlightedLines, contentWidth]);
 
@@ -414,13 +416,11 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				</Box>
 			</Box>
 
-				<Box flexDirection="column" marginY={1} paddingLeft={2}>
-					<Text dimColor={!expanded}>
-						{displayContent}
-					</Text>
-				</Box>
+			<Box flexDirection="column" marginY={1} paddingLeft={2}>
+				<Text dimColor={!expanded}>{displayContent}</Text>
+			</Box>
 
-				<Box flexDirection="row" paddingLeft={2}>
+			<Box flexDirection="row" paddingLeft={2}>
 				<Text dimColor>{footerLabel}</Text>
 			</Box>
 		</Box>

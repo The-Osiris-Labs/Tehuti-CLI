@@ -6,8 +6,8 @@ let consolidationTimer: NodeJS.Timeout | null = null;
 let isConsolidating = false;
 
 /**
- * Starts a background consolidation job that periodically merges semantic insights
- * and prevents unhandled promise rejections.
+ * Starts a background consolidation job that periodically merges insights
+ * (using lexical BM25 token matching) and prevents unhandled promise rejections.
  *
  * @param intervalMs The interval in milliseconds to run the consolidation job
  */

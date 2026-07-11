@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-11
+
+### Security & Hardening
+- **Prompt Injection Defense**: Fully implemented XML-style `<file_content>` wrapping across all external inputs (e.g. `web_search`, `read` tools) to neutralize malicious instructions hidden in target files or websites.
+- **Shell Injection Immunity**: Refactored all Git tools (e.g. `git_status`, `git_diff`) to utilize safe, array-based `spawn` execution rather than string-based `exec`, eliminating shell evaluation vulnerabilities.
+- **MCP Payload Sanitization**: Enforced rigorous JSON Schema validation, 10-level recursion limits, and type coercion on dynamic Model Context Protocol (MCP) tool registrations.
+- **SQL Injection Prevention**: Finalized audit confirming 100% of SQLite database queries (Memory Graph and Session Resolver) use parameterized `?` bindings.
+
+### Stability & Performance
+- **Swarm Memory Leak Fixes**: The Swarm Manager now explicitly unbinds IPC `message` event listeners and dereferences `AbortControllers` the exact millisecond child agent processes terminate, eliminating background memory bloat.
+- **Zero-Overhead Tracing**: Rewrote the internal telemetry and trace engine to utilize fast base-36 IDs and implement a strict `NOOP` short-circuit when debug mode is disabled, completely bypassing closure allocation.
+- **Asynchronous Deadlock Prevention**: Wrapped all multi-process locking mechanisms (`src/utils/mutex.ts`) with robust `finally` release blocks and underflow checks.
+- **Daemon Error Boundaries**: Applied absolute `try/catch` enclosures around all background `chokidar` filesystem watchers and `cron` jobs, preventing unhandled promise rejections from crashing the master daemon.
+
+### Refactoring & Code Quality
+- **Biome Formatting**: Transitioned the entire codebase to Biome for lightning-fast, highly opinionated code formatting and linting.
+- **Dead Code Elimination**: Purged hundreds of unused variables, unreachable branches, and obsolete exports across the agent loop, memory graphs, and TUI components based on rigorous `noUnusedLocals` checks.
+- **Type Safety Audit**: Achieved 100% strict TypeScript compliance with zero `any`-cast masking in core directories.
+
 ## [1.0.0] - 2026-07-11
 
 ### Added

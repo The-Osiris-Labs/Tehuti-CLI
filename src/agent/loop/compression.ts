@@ -30,7 +30,7 @@ export async function manageContextWindow(
 
 		// Deterministic truncation: keep head (system prompts) and tail (recent messages)
 		// We remove the oldest non-system messages until under target
-		let keepLastN = 10;
+		const keepLastN = 10;
 		while (
 			currentTokens > targetTokens &&
 			ctx.messages.length > keepLastN + 1
@@ -71,11 +71,16 @@ export async function manageContextWindow(
 
 		// Fallback 1: Truncate massive individual strings
 		if (currentTokens > targetTokens) {
-			debug.log("agent", "Context still exceeded after structural truncation. Truncating large individual messages.");
+			debug.log(
+				"agent",
+				"Context still exceeded after structural truncation. Truncating large individual messages.",
+			);
 			const MAX_CHARS = 40000 * 3; // ~40k tokens
 			for (const msg of ctx.messages) {
 				if (typeof msg.content === "string" && msg.content.length > MAX_CHARS) {
-					msg.content = msg.content.substring(0, MAX_CHARS) + "\n\n...[TRUNCATED BY COMPRESSOR]...";
+					msg.content =
+						msg.content.substring(0, MAX_CHARS) +
+						"\n\n...[TRUNCATED BY COMPRESSOR]...";
 				}
 			}
 			currentTokens = estimateTokens(ctx.messages);

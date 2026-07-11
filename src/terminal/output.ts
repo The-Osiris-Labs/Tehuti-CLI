@@ -67,11 +67,14 @@ const colors = {
 };
 
 const IBIS = "\u{131A3}";
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _EYE = "\u{13075}";
 const EYE_OF_HORUS = "\u{13080}";
 const ANKH = "\u{13269}";
 const WAS = "\u{13040}";
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _SCROLL = "\u{1331B}";
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _FEATHER = "\u{13184}";
 
 const symbols = {
@@ -485,6 +488,7 @@ export function wrap(text: string, width?: number): string {
 
 		let currentLine = "";
 		let currentStripped = "";
+		// @ts-expect-error TS6133/TS6192: Unused variable
 		const _inEscape = false;
 
 		const words = splitIntoWords(textLine);

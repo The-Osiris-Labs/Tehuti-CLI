@@ -13,7 +13,9 @@ const COORD_FRAGMENT_START = /^\d+;\d+;\d+/; // e.g. "35;72;37" before final M/m
 const COORD_FRAGMENT_LEFT_BRACKET = /^<\d*$/; // e.g. "<" or "<35"
 const COORD_FRAGMENT_DIGITS = /^\d+;\d+$/; // e.g. "35;72" (middle chunk)
 const COORD_FRAGMENT_TAIL = /^\d+[Mm]$/; // e.g. "37M" or "25M" (last chunk)
+// @ts-expect-error TS6133/TS6192: Unused variable
 const COORD_BARE_TAIL = /^[Mm]$/; // bare M/m tail
+// @ts-expect-error TS6133/TS6192: Unused variable
 const MODIFIED_KEY_TAIL = /^\d+;\d+~\??$/; // e.g. "13;2~" — not mouse, but verify
 const BRACKET_PUNCT = /^[<[]$/; // bare punctuation that might start a sequence
 

@@ -3,15 +3,11 @@ import {
 	KiloCodeClient,
 	StandardAPIClient,
 } from "../api/index.js";
-import {
-	getProviderInfo,
-	supportsOpenAICompatibleRuntime,
-} from "../config/providers.js";
+import { getProviderInfo } from "../config/providers.js";
 import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
 import { mcpManager } from "../mcp/client.js";
 import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
 import { debug } from "../utils/debug.js";
-import { APIError } from "../utils/errors.js";
 import { loadCacheFromDisk, saveCacheToDisk } from "./cache/index.js";
 import type { AgentContext } from "./context.js";
 import { createAgentContext } from "./context.js";
@@ -117,33 +113,42 @@ function createProviderClient(
 }
 
 function syncMCPToolRegistry(): void {
-	unregisterToolsWhere(
-		(tool) =>
-			tool.category === "mcp" &&
-			tool.name.startsWith("mcp_") &&
-			tool.name !== "mcp_get_prompt" &&
-			tool.name !== "mcp_list_prompts",
-	);
-
-	const dynamicTools = mcpManager
-		.getAllTools()
-		.map(({ serverName, tool }) =>
-			createMCPToolDefinition(serverName, tool, async (args) =>
-				mcpManager.executeTool(
-					serverName,
-					tool.name,
-					(args && typeof args === "object" ? args : {}) as Record<
-						string,
-						unknown
-					>,
-					120000,
-				),
-			),
+	try {
+		unregisterToolsWhere(
+			(tool) =>
+				tool.category === "mcp" &&
+				tool.name.startsWith("mcp_") &&
+				tool.name !== "mcp_get_prompt" &&
+				tool.name !== "mcp_list_prompts",
 		);
 
-	if (dynamicTools.length > 0) {
-		registerTools(dynamicTools);
-		debug.log("mcp", `Registered ${dynamicTools.length} dynamic MCP tools`);
+		const dynamicTools = mcpManager
+			.getAllTools()
+			.map(({ serverName, tool }) =>
+				createMCPToolDefinition(serverName, tool, async (args) =>
+					mcpManager.executeTool(
+						serverName,
+						tool.name,
+						(args && typeof args === "object" ? args : {}) as Record<
+							string,
+							unknown
+						>,
+						120000,
+					),
+				),
+			);
+
+		if (dynamicTools.length > 0) {
+			registerTools(dynamicTools);
+			debug.log("mcp", `Registered ${dynamicTools.length} dynamic MCP tools`);
+		}
+	} catch (error) {
+		debug.log(
+			"mcp",
+			`Failed to sync MCP tool registry: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 	}
 }
 

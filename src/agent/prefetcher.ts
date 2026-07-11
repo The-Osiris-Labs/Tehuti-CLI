@@ -119,7 +119,11 @@ export class Prefetcher {
 		this.pending.set(key, trackedPromise);
 	}
 
-	private abortPrefetchIfMatches(toolName: string, args: unknown, ctx: ToolContext): void {
+	private abortPrefetchIfMatches(
+		toolName: string,
+		args: unknown,
+		ctx: ToolContext,
+	): void {
 		debug.log("prefetch", `Checking abort conditions for ${toolName}`);
 		const tool = getTool(toolName);
 		if (!tool) return;

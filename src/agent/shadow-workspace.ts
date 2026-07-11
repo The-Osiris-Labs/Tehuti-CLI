@@ -1,4 +1,5 @@
 import { exec } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,16 +27,24 @@ async function executeShadowTest(
 ): Promise<ToolResult> {
 	const { command } = args as z.infer<typeof SHADOW_SCHEMA>;
 	const mainDir = ctx.cwd;
-	const worktreeName = `shadow-${Date.now()}`;
+	const epoch = Date.now();
+	const uniqueId = randomUUID().slice(0, 8);
+	const worktreeName = `tehuti-shadow-${process.pid}-${epoch}-${uniqueId}`;
 	const worktreePath = path.join(os.tmpdir(), worktreeName);
-	const branchName = `speculative-${Date.now()}`;
+	const branchName = `tehuti-shadow-${process.pid}-${epoch}-${uniqueId}`;
+
+	let createdBranch = false;
+	let createdWorktree = false;
 
 	try {
 		// Create a new branch and worktree
-		await execAsync(`git branch ${branchName}`, { cwd: mainDir });
-		await execAsync(`git worktree add ${worktreePath} ${branchName}`, {
+		await execAsync(`git branch "${branchName}"`, { cwd: mainDir });
+		createdBranch = true;
+
+		await execAsync(`git worktree add "${worktreePath}" "${branchName}"`, {
 			cwd: mainDir,
 		});
+		createdWorktree = true;
 
 		// Copy uncommitted changes from main to shadow
 		await fs.promises.cp(mainDir, worktreePath, {
@@ -86,14 +95,6 @@ async function executeShadowTest(
 			}
 		}
 
-		// Cleanup
-		await execAsync(`git worktree remove --force ${worktreePath}`, {
-			cwd: mainDir,
-		}).catch(() => {});
-		await execAsync(`git branch -D ${branchName}`, { cwd: mainDir }).catch(
-			() => {},
-		);
-
 		return {
 			success,
 			output: `Speculative test ${success ? "passed and changes applied" : "failed and discarded"}.\n\nOutput:\n${output.trim()}`,
@@ -104,6 +105,20 @@ async function executeShadowTest(
 			output: "",
 			error: `Failed to setup shadow workspace: ${error.message}`,
 		};
+	} finally {
+		if (createdWorktree) {
+			await execAsync(`git worktree remove --force "${worktreePath}"`, {
+				cwd: mainDir,
+			}).catch(() => {});
+		}
+		if (createdBranch) {
+			await execAsync(`git branch -D "${branchName}"`, { cwd: mainDir }).catch(
+				() => {},
+			);
+		}
+		await fs.promises
+			.rm(worktreePath, { recursive: true, force: true })
+			.catch(() => {});
 	}
 }
 

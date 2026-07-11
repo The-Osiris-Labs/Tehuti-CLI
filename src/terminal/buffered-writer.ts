@@ -412,6 +412,7 @@ export class StreamingOutputManager {
 		this.flushBatch();
 
 		if (this.currentContent.length > 0) {
+			// @ts-expect-error TS6133/TS6192: Unused variable
 			const _rendered = renderMarkdownToAnsi(this.currentContent);
 			this.writer.write("\n");
 		}

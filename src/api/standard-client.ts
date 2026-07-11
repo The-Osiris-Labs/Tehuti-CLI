@@ -241,7 +241,10 @@ export class StandardAPIClient extends BaseAPIClient {
 								signal,
 							);
 						} catch (fallbackError) {
-							debug.log("api", `Fallback completeChat failed: ${fallbackError}`);
+							debug.log(
+								"api",
+								`Fallback completeChat failed: ${fallbackError}`,
+							);
 						}
 					}
 				}

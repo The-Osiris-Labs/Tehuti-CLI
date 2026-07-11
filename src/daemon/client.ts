@@ -48,6 +48,7 @@ export class TehutiDaemonClient {
 				if (this.buffer.length > 1024 * 1024 * 10) {
 					// 10MB limit
 					console.error("Daemon client buffer overflow. Disconnecting.");
+					this.buffer = "";
 					this.disconnect();
 					return;
 				}
@@ -64,6 +65,10 @@ export class TehutiDaemonClient {
 						try {
 							parsed = JSON.parse(line);
 						} catch (err) {
+							console.error(
+								"Daemon Client: IPC JSON parse error",
+								err instanceof Error ? err.message : err,
+							);
 							// If not JSON, just return the raw string
 							callback(line);
 							continue;

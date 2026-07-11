@@ -53,7 +53,9 @@ export function getAgent(): Agent | null {
 	return globalAgent;
 }
 
-export async function updateHttpAgentConfig(config: HttpAgentConfig): Promise<void> {
+export async function updateHttpAgentConfig(
+	config: HttpAgentConfig,
+): Promise<void> {
 	await resetAgent();
 	initializeHttpAgent(config);
 }

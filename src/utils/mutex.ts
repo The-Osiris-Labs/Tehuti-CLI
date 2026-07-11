@@ -35,10 +35,12 @@ export class AsyncMutex {
 
 export class AsyncSemaphore {
 	private permits: number;
+	private readonly maxPermits: number;
 	private waitQueue: Array<() => void> = [];
 
 	constructor(permits: number) {
 		this.permits = permits;
+		this.maxPermits = permits;
 	}
 
 	async acquire(): Promise<void> {
@@ -54,7 +56,9 @@ export class AsyncSemaphore {
 		if (next) {
 			next();
 		} else {
-			this.permits++;
+			if (this.permits < this.maxPermits) {
+				this.permits++;
+			}
 		}
 	}
 
@@ -91,6 +95,7 @@ export class ReadWriteLock {
 	}
 
 	readUnlock(): void {
+		if (this.readers <= 0) return;
 		this.readers--;
 		if (this.readers === 0 && this.writeQueue.length > 0) {
 			this.writers++;
@@ -100,6 +105,7 @@ export class ReadWriteLock {
 	}
 
 	writeUnlock(): void {
+		if (this.writers <= 0) return;
 		this.writers--;
 		if (this.writeQueue.length > 0) {
 			this.writers++;

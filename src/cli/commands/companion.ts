@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { consola } from "consola";
 import { createProgram } from "./chat.js";
 
 export function companionCommand(): Command {
@@ -7,10 +8,17 @@ export function companionCommand(): Command {
 			"Connect a client socket to the running daemon for interactive sessions",
 		)
 		.action(async () => {
-			// Proxy over to the main chat command with the --companion flag enabled
-			const prog = createProgram();
-			// Re-parse with the --companion flag explicitly injected
-			await prog.parseAsync(["node", "tehuti", "--companion"]);
+			try {
+				// Proxy over to the main chat command with the --companion flag enabled
+				const prog = createProgram();
+				// Re-parse with the --companion flag explicitly injected
+				await prog.parseAsync(["node", "tehuti", "--companion"]);
+			} catch (error: any) {
+				consola.error(
+					`Companion session failed: ${error.message || String(error)}`,
+				);
+				process.exit(1);
+			}
 		});
 
 	return companion;

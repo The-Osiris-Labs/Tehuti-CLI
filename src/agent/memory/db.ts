@@ -18,6 +18,8 @@ const db: Database.Database = new Database(getDbPath(), { timeout: 10000 });
 db.pragma("journal_mode = WAL");
 db.pragma("synchronous = NORMAL");
 db.pragma("foreign_keys = ON");
+db.pragma("temp_store = MEMORY");
+db.pragma("cache_size = -64000");
 // Explicit busy timeout pragma as a backup
 db.pragma("busy_timeout = 10000");
 
@@ -55,9 +57,11 @@ if (currentVersion === 0) {
 	  );
 
 	  CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+	  CREATE INDEX IF NOT EXISTS idx_nodes_last_accessed ON nodes(last_accessed);
 	  CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
 	  CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
 	  CREATE INDEX IF NOT EXISTS idx_messaging_sessions_session_id ON messaging_sessions(tehuti_session_id);
+	  CREATE INDEX IF NOT EXISTS idx_messaging_sessions_last_active ON messaging_sessions(last_active);
 
 	  CREATE TABLE IF NOT EXISTS user_preferences (
 	    id TEXT PRIMARY KEY,

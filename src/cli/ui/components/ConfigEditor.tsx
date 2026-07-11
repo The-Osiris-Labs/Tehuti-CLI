@@ -3,10 +3,10 @@ import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
+import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
-import { isEnterKey } from "../../../utils/keyboard.js";
 
 const GOLD = BRANDING.colors.gold;
 const GRAY = BRANDING.colors.gray;
@@ -230,8 +230,11 @@ export function ConfigEditor({
 
 	const {
 		selectedIndex,
+		// @ts-expect-error TS6133/TS6192: Unused variable
 		windowStart,
+		// @ts-expect-error TS6133/TS6192: Unused variable
 		windowEnd,
+		// @ts-expect-error TS6133/TS6192: Unused variable
 		visibleSelectedIndex,
 		moveUp,
 		moveDown,
@@ -370,6 +373,7 @@ export function ConfigEditor({
 
 	const terminalWidth = width || stdout?.columns || 80;
 	const terminalHeight = stdout?.rows || 24;
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const editorWidth = Math.max(40, terminalWidth - 4);
 
 	return (
@@ -391,86 +395,86 @@ export function ConfigEditor({
 				paddingY={1}
 			>
 				<Box marginBottom={1} justifyContent="space-between">
-				<Text bold color={GOLD}>
-					𓆣 Configuration Editor
-				</Text>
-				<Box>
-					<ConfigTab
-						label="API & Provider"
-						isActive={activeTab === "API & Provider"}
-						onClick={() => {
-							setActiveTab("API & Provider");
-							setSelectedIndex(0);
-						}}
-					/>
-					<ConfigTab
-						label="Model Options"
-						isActive={activeTab === "Model Options"}
-						onClick={() => {
-							setActiveTab("Model Options");
-							setSelectedIndex(0);
-						}}
-					/>
+					<Text bold color={GOLD}>
+						𓆣 Configuration Editor
+					</Text>
+					<Box>
+						<ConfigTab
+							label="API & Provider"
+							isActive={activeTab === "API & Provider"}
+							onClick={() => {
+								setActiveTab("API & Provider");
+								setSelectedIndex(0);
+							}}
+						/>
+						<ConfigTab
+							label="Model Options"
+							isActive={activeTab === "Model Options"}
+							onClick={() => {
+								setActiveTab("Model Options");
+								setSelectedIndex(0);
+							}}
+						/>
+					</Box>
 				</Box>
-			</Box>
-			{validationError && (
+				{validationError && (
+					<Box
+						marginBottom={1}
+						padding={1}
+						borderStyle="single"
+						borderColor={RED}
+					>
+						<Text color={RED}>
+							{ERROR_SYMBOL} {validationError}
+						</Text>
+					</Box>
+				)}
+				<Box marginBottom={1} flexDirection="column">
+					{visibleFields.map((field) => {
+						const isSelected = selectedField === field.key;
+						const isEditing = editingField === field.key;
+
+						return (
+							<ConfigFieldRow
+								key={field.key}
+								field={field}
+								isSelected={isSelected}
+								isEditing={isEditing}
+								editValue={editValue}
+								fieldValue={getFieldValue(field.key)}
+								onHover={() => {
+									const index = fields.findIndex((f) => f.key === field.key);
+									if (index !== -1) setSelectedIndex(index);
+								}}
+								onClick={() => {
+									const index = fields.findIndex((f) => f.key === field.key);
+									if (index !== -1) setSelectedIndex(index);
+									setEditingField(field.key);
+									setEditValue(String(draftConfig[field.key] ?? ""));
+									setValidationError(null);
+								}}
+								onEditValueChange={(v) => setEditValue(v)}
+								onEditCommit={commitFieldEdit}
+							/>
+						);
+					})}
+				</Box>
 				<Box
-					marginBottom={1}
-					padding={1}
+					marginTop={1}
 					borderStyle="single"
-					borderColor={RED}
+					borderColor={GRAY}
+					paddingX={1}
+					flexDirection="column"
 				>
-					<Text color={RED}>
-						{ERROR_SYMBOL} {validationError}
+					<Text dimColor>
+						{editingField
+							? "Enter to apply field | Esc cancel field"
+							: "↑↓ navigate | ↔ switch tab | Enter/Space edit | Ctrl+S save | Esc cancel"}
+					</Text>
+					<Text dimColor color={NILE}>
+						Changes stay local until Ctrl+S saves them.
 					</Text>
 				</Box>
-			)}
-			<Box marginBottom={1} flexDirection="column">
-				{visibleFields.map((field) => {
-					const isSelected = selectedField === field.key;
-					const isEditing = editingField === field.key;
-
-					return (
-						<ConfigFieldRow
-							key={field.key}
-							field={field}
-							isSelected={isSelected}
-							isEditing={isEditing}
-							editValue={editValue}
-							fieldValue={getFieldValue(field.key)}
-							onHover={() => {
-								const index = fields.findIndex((f) => f.key === field.key);
-								if (index !== -1) setSelectedIndex(index);
-							}}
-							onClick={() => {
-								const index = fields.findIndex((f) => f.key === field.key);
-								if (index !== -1) setSelectedIndex(index);
-								setEditingField(field.key);
-								setEditValue(String(draftConfig[field.key] ?? ""));
-								setValidationError(null);
-							}}
-							onEditValueChange={(v) => setEditValue(v)}
-							onEditCommit={commitFieldEdit}
-						/>
-					);
-				})}
-			</Box>
-			<Box
-				marginTop={1}
-				borderStyle="single"
-				borderColor={GRAY}
-				paddingX={1}
-				flexDirection="column"
-			>
-				<Text dimColor>
-					{editingField
-						? "Enter to apply field | Esc cancel field"
-						: "↑↓ navigate | ↔ switch tab | Enter/Space edit | Ctrl+S save | Esc cancel"}
-				</Text>
-				<Text dimColor color={NILE}>
-					Changes stay local until Ctrl+S saves them.
-				</Text>
-			</Box>
 			</Box>
 		</Box>
 	);

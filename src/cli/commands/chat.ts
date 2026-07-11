@@ -80,9 +80,14 @@ import { getTelemetry, resetTelemetry } from "../../utils/telemetry.js";
 import {
 	applyUpdate,
 	checkForUpdatesAsync,
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	showUpdateNotification,
 } from "../../utils/update-checker.js";
-import { bootstrapCLI, loadTehutiConfig } from "../bootstrap.js";
+import {
+	type BootstrapOptions,
+	bootstrapCLI,
+	loadTehutiConfig,
+} from "../bootstrap.js";
 import {
 	compactBlockForUi,
 	compactMessagesForUi,
@@ -562,6 +567,7 @@ function saveHistory(history: string[]): void {
 	} catch {}
 }
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _ANSI = {
 	reset: "\x1b[0m",
 	bold: "\x1b[1m",
@@ -1485,6 +1491,46 @@ function ChatUI({
 		setShowConfigEditor(true);
 	}, [setShowConfigEditor]);
 
+	const handleHeaderModelClick = useCallback(() => {
+		setCommandPaletteInitialQuery("/model ");
+		setShowCommandPalette(true);
+	}, [setShowCommandPalette]);
+
+	const handleHeaderConfigClick = useCallback(() => {
+		setShowConfigEditor(true);
+	}, [setShowConfigEditor]);
+
+	const handleHeaderCommandClick = useCallback(
+		(cmd: string) => {
+			if (cmd === "/clear") setMessages([]);
+			else if (cmd === "/exit") {
+				void onExit();
+				exit();
+			} else if (cmd === "/update") {
+				void applyUpdate().then((res) => {
+					setMessages((prev) => [
+						...prev,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: res,
+						},
+					]);
+				});
+			} else if (cmd === "/help") {
+				setMessages((prev) => [
+					...prev,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: formatHelpOutput(),
+					},
+				]);
+			}
+		},
+		[setMessages, onExit, exit],
+	);
+
 	const handleShowSessions = useCallback(async () => {
 		setLoading(true);
 		try {
@@ -2076,27 +2122,31 @@ function ChatUI({
 						{
 							id: msgIdRef.current++,
 							role: "system",
-							content: "Starting Tehuti update... Running `git pull`, `npm install`, and `npm run build`...",
+							content:
+								"Starting Tehuti update... Running `git pull`, `npm install`, and `npm run build`...",
 						},
 					]);
-					
+
 					try {
-						const { exec } = await import("child_process");
-						const { promisify } = await import("util");
+						const { exec } = await import("node:child_process");
+						const { promisify } = await import("node:util");
 						const execAsync = promisify(exec);
-						
+
 						// Determine if we are in a git repository
 						await execAsync("git rev-parse --is-inside-work-tree");
-						
+
 						// Run the update chain
-						await execAsync("git pull origin main && npm install && npm run build");
-						
+						await execAsync(
+							"git pull origin main && npm install && npm run build",
+						);
+
 						setMessages((m) => [
 							...m,
 							{
 								id: msgIdRef.current++,
 								role: "system",
-								content: "✅ Update successful! Please restart Tehuti to apply changes.",
+								content:
+									"✅ Update successful! Please restart Tehuti to apply changes.",
 							},
 						]);
 					} catch (error: any) {
@@ -2135,6 +2185,7 @@ function ChatUI({
 	);
 
 	// Calculate command suggestions count to dynamically adjust layout (now 0 because palette handles it)
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const suggestionsCount = 0;
 
 	// Account for command palette height if open
@@ -2151,11 +2202,14 @@ function ChatUI({
 	const loadingOverlayHeight = loading ? 5 : 0;
 	const thinkingOverlayHeight = showThinking ? 2 : 0;
 	const errorOverlayHeight = error ? 3 : 0;
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const dashboardOverlayHeight = showDashboard ? 8 : 0;
 
 	const promptOverlayHeight = useMemo(() => {
 		if (pendingPermission) {
-			return 8 + ((pendingPermission.request?.reason || "").length > 50 ? 2 : 0);
+			return (
+				8 + ((pendingPermission.request?.reason || "").length > 50 ? 2 : 0)
+			);
 		}
 		if (pendingQuestion) {
 			const q = pendingQuestion.questions[0];
@@ -2177,7 +2231,7 @@ function ChatUI({
 			paletteHeight -
 			loadingOverlayHeight -
 			thinkingOverlayHeight -
-			errorOverlayHeight
+			errorOverlayHeight,
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
@@ -3583,422 +3637,368 @@ function ChatUI({
 	return React.createElement(
 		Box,
 		{ flexDirection: "column", width: "100%", height: "100%" },
+		React.createElement(
+			Box,
+			{
+				paddingX: 1,
+				borderTop: false,
+				borderLeft: false,
+				borderRight: false,
+				borderBottom: true,
+				borderStyle: "single",
+				borderColor: GOLD,
+				marginBottom: 1,
+			},
+			React.createElement(
+				Text,
+				{ bold: true, color: GOLD },
+				`${DECORATIVE.ibis} Tehuti`,
+			),
+			React.createElement(
+				Text,
+				{ color: SAND },
+				` ${DECORATIVE.separator} ${ctxModel}`,
+			),
+			sessionCost > 0 &&
+				React.createElement(
+					Text,
+					{ color: SAND, dimColor: true },
+					` ${DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
+				),
+			React.createElement(Box, { flexGrow: 1 }),
+			React.createElement(
+				Text,
+				{ color: GRAY, dimColor: true },
+				`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
+			),
+		),
+		React.createElement(
+			Box,
+			{
+				flexDirection: "column",
+				flexGrow: 1,
+				paddingX: 1,
+				overflow: "hidden",
+			},
+			...configWarnings.map((warn, idx) =>
 				React.createElement(
 					Box,
 					{
+						key: idx,
+						paddingY: 0,
 						paddingX: 1,
-						borderTop: false,
-						borderLeft: false,
-						borderRight: false,
-						borderBottom: true,
-						borderStyle: "single",
-						borderColor: GOLD,
 						marginBottom: 1,
+						borderStyle: "single",
+						borderColor: "yellow",
 					},
 					React.createElement(
 						Text,
-						{ bold: true, color: GOLD },
-						`${DECORATIVE.ibis} Tehuti`,
-					),
-					React.createElement(
-						Text,
-						{ color: SAND },
-						` ${DECORATIVE.separator} ${ctxModel}`,
-					),
-					sessionCost > 0 &&
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							` ${DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
-						),
-					React.createElement(Box, { flexGrow: 1 }),
-					React.createElement(
-						Text,
-						{ color: GRAY, dimColor: true },
-						`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
+						{ color: "yellow", bold: true },
+						`𓂀  Warning: ${warn}`,
 					),
 				),
-				React.createElement(
-					Box,
-					{
-						flexDirection: "column",
-						flexGrow: 1,
-						paddingX: 1,
-						overflow: "hidden",
-					},
-					...configWarnings.map((warn, idx) =>
-						React.createElement(
-							Box,
-							{
-								key: idx,
-								paddingY: 0,
-								paddingX: 1,
-								marginBottom: 1,
-								borderStyle: "single",
-								borderColor: "yellow",
-							},
-							React.createElement(
-								Text,
-								{ color: "yellow", bold: true },
-								`𓂀  Warning: ${warn}`,
-							),
-						),
-					),
-					showDashboard && React.createElement(SwarmVisualizer, null),
-					React.createElement(MemoryIndicator, null),
-					React.createElement(TodoList, null),
-					messages.length === 0
-						? React.createElement(
-								Box,
-								{
-									flexGrow: 1,
-									flexDirection: "column",
-									justifyContent: "center",
-									alignItems: "center",
-								},
-								showWelcome &&
-									React.createElement(TehutiHeader, {
-										model: ctxModel,
-										provider: normalizedProvider,
-										hasUpdate,
-										onModelClick: () => {
-											setCommandPaletteInitialQuery("/model ");
-											setShowCommandPalette(true);
-										},
-										onConfigClick: () => setShowConfigEditor(true),
-										onCommandClick: (cmd) => {
-											if (cmd === "/clear") setMessages([]);
-											else if (cmd === "/exit") {
-												void onExit();
-												exit();
-											} else if (cmd === "/update") {
-												void applyUpdate().then((res) => {
-													setMessages((prev) => [
-														...prev,
-														{
-															id: msgIdRef.current++,
-															role: "system",
-															content: res,
-														},
-													]);
-												});
-											} else if (cmd === "/help")
-												setMessages((prev) => [
-													...prev,
-													{
-														id: msgIdRef.current++,
-														role: "system",
-														content: formatHelpOutput(),
-													},
-												]);
-										},
-									}),
-								!showWelcome &&
-									React.createElement(
-										Text,
-										{ color: SAND, dimColor: true },
-										"Type a message to begin",
-									),
-							)
-						: React.createElement(
-								Box,
-								{
-									ref: scrollContainerRef,
-									flexDirection: "column",
-									flexGrow: 1,
-									overflow: "hidden",
-									justifyContent: "flex-end",
-								},
-								React.createElement(
-									Box,
-									{ flexDirection: "column", marginBottom: -scrollOffset },
-									showWelcome &&
-										React.createElement(
-											Box,
-											{
-												flexDirection: "column",
-												alignItems: "center",
-												marginBottom: 1,
-											},
-											React.createElement(TehutiHeader, {
-												compact: true,
-												model: ctxModel,
-												provider: normalizedProvider,
-												hasUpdate,
-												onModelClick: () => {
-													setCommandPaletteInitialQuery("/model ");
-													setShowCommandPalette(true);
-												},
-												onConfigClick: () => setShowConfigEditor(true),
-												onCommandClick: (cmd) => {
-													if (cmd === "/clear") setMessages([]);
-													else if (cmd === "/exit") {
-														void onExit();
-														exit();
-													} else if (cmd === "/update") {
-														void applyUpdate().then((res) => {
-															setMessages((prev) => [
-																...prev,
-																{
-																	id: msgIdRef.current++,
-																	role: "system",
-																	content: res,
-																},
-															]);
-														});
-													} else if (cmd === "/help")
-														setMessages((prev) => [
-															...prev,
-															{
-																id: msgIdRef.current++,
-																role: "system",
-																content: formatHelpOutput(),
-															},
-														]);
-												},
-											}),
-										),
-									...messageElements,
-								),
-							),
-					showThinking &&
-						React.createElement(
-							Box,
-							{
-								marginBottom: 1,
-								paddingLeft: 2,
-								flexDirection: "row",
-								gap: 1,
-								borderStyle: "single",
-								borderTop: false,
-								borderRight: false,
-								borderBottom: false,
-								borderLeft: true,
-								borderColor: BRANDING.colors.gold,
-							},
-							React.createElement(HieroglyphSpinner, {
-								label: "Reasoning...",
-								color: BRANDING.colors.gold,
+			),
+			showDashboard && React.createElement(SwarmVisualizer, null),
+			React.createElement(MemoryIndicator, null),
+			React.createElement(TodoList, null),
+			messages.length === 0
+				? React.createElement(
+						Box,
+						{
+							flexGrow: 1,
+							flexDirection: "column",
+							justifyContent: "center",
+							alignItems: "center",
+						},
+						showWelcome &&
+							React.createElement(TehutiHeader, {
+								model: ctxModel,
+								provider: normalizedProvider,
+								hasUpdate,
+								onModelClick: handleHeaderModelClick,
+								onConfigClick: handleHeaderConfigClick,
+								onCommandClick: handleHeaderCommandClick,
 							}),
+						!showWelcome &&
 							React.createElement(
 								Text,
 								{ color: SAND, dimColor: true },
-								`${thinking}`,
+								"Type a message to begin",
 							),
-						),
-
-					error &&
+					)
+				: React.createElement(
+						Box,
+						{
+							ref: scrollContainerRef,
+							flexDirection: "column",
+							flexGrow: 1,
+							overflow: "hidden",
+							justifyContent: "flex-end",
+						},
 						React.createElement(
 							Box,
-							{
-								marginTop: 1,
-								paddingX: 1,
-								borderStyle: "round",
-								borderColor: RED,
-							},
-							React.createElement(
-								Text,
-								{ color: RED },
-								`${DECORATIVE.eyeOfHorus} ${error}`,
-							),
-						),
-					loading &&
-						React.createElement(
-							Box,
-							{ marginTop: 1, paddingX: 1, flexDirection: "column" },
-							React.createElement(
-								Box,
-								{
-									flexDirection: "row",
-									alignItems: "center",
-									gap: 1,
-									marginBottom: 0.5,
-								},
+							{ flexDirection: "column", marginBottom: -scrollOffset },
+							showWelcome &&
 								React.createElement(
-									Text,
-									{ color: GOLD },
-									React.createElement(Spinner, { type: "dots" }),
+									Box,
+									{
+										flexDirection: "column",
+										alignItems: "center",
+										marginBottom: 1,
+									},
+									React.createElement(TehutiHeader, {
+										compact: true,
+										model: ctxModel,
+										provider: normalizedProvider,
+										hasUpdate,
+										onModelClick: handleHeaderModelClick,
+										onConfigClick: handleHeaderConfigClick,
+										onCommandClick: handleHeaderCommandClick,
+									}),
 								),
-								React.createElement(
-									Text,
-									{ color: SAND, dimColor: true },
-									operationLabel,
-								),
-							),
-							React.createElement(ProgressBar, {
-								value: progress,
-								width: Math.min(contentMaxWidth - 10, 40),
-							}),
+							...messageElements,
 						),
-				),
+					),
+			showThinking &&
 				React.createElement(
 					Box,
 					{
-						paddingX: 1,
-						paddingTop: 1,
-						flexDirection: "column",
+						marginBottom: 1,
+						paddingLeft: 2,
+						flexDirection: "row",
+						gap: 1,
+						borderStyle: "single",
+						borderTop: false,
+						borderRight: false,
+						borderBottom: false,
+						borderLeft: true,
+						borderColor: BRANDING.colors.gold,
 					},
-					showCommandPalette || showConfigEditor || showSessionList
-						? null
-						: pendingPermission
-							? React.createElement(PermissionPrompt, {
-									request: pendingPermission.request,
-									isDangerous: pendingPermission.isDangerous,
-									onAnswer: (allowed: boolean) => {
-										pendingPermission.resolve(allowed);
-										setPendingPermission(null);
-									},
-								})
-							: pendingQuestion
-								? React.createElement(QuestionPrompt, {
-										question: pendingQuestion.questions[0],
-										onAnswer: (ans) => _handleQuestionAnswer(0, ans),
-										onCancel: _handleQuestionCancel,
-									})
-								: React.createElement(
-										Box,
-										{ flexDirection: "column" },
-										queuedMessages.length > 0 &&
-											React.createElement(
-												Box,
-												{ flexDirection: "column", marginBottom: 1 },
-												...queuedMessages.map((msg, i) =>
-													React.createElement(
-														Text,
-														{ key: i, color: "gray", dimColor: true },
-														`[Queued] ${msg}`,
-													),
-												),
-											),
-										React.createElement(ChatBar, {
-											input,
-											cursorPos,
-											selectionStart,
-											selectionEnd,
-											loading,
-											historyIndex,
-											historyLength: history.length,
-											scrollOffset,
-											scrollPercent,
-											newMessageCount,
-											model: ctxModel,
-											provider: runtimeProvider,
-											companionMode,
-											tokensUsed:
-												costTracker.getSessionStats().totalPromptTokens +
-												costTracker.getSessionStats().totalCompletionTokens,
-											sessionCost: costTracker.getSessionStats().totalCost,
-										}),
-									),
+					React.createElement(HieroglyphSpinner, {
+						label: "Reasoning...",
+						color: BRANDING.colors.gold,
+					}),
+					React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						`${thinking}`,
+					),
 				),
-				React.createElement(CommandPalette, {
-					commands,
-					onSelect: handleCommandPaletteSelect,
-					onClose: handleCommandPaletteClose,
-					visible: showCommandPalette,
-					initialQuery: commandPaletteInitialQuery,
-				}),
-				showConfigEditor && React.createElement(ConfigEditor, {
-					config: {
-						apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
-						model: ctxModel,
-						provider: runtimeProvider,
-						baseUrl: runtimeBaseUrl,
-						temperature: getGlobalConfig().temperature,
-						maxTokens: getGlobalConfig().maxTokens,
+
+			error &&
+				React.createElement(
+					Box,
+					{
+						marginTop: 1,
+						paddingX: 1,
+						borderStyle: "round",
+						borderColor: RED,
 					},
-					width: terminalWidth,
-					onSave: (updates) => {
-						const normalizedProvider = updates.provider
-							? updates.provider.trim().toLowerCase()
-							: runtimeProvider;
-						const resolvedProvider = normalizedProvider || runtimeProvider;
-	
-						const rawBaseUrl =
-							updates.baseUrl !== undefined
-								? updates.baseUrl?.trim()
-								: runtimeBaseUrl;
-						const nextApiKey =
-							updates.apiKey !== undefined
-								? updates.apiKey.trim()
-								: resolveRuntimeApiKey(resolvedProvider);
-						const resolvedCustomSource =
-							resolvedProvider === "custom"
-								? runtimeCustomProvider ||
-									normalizeCustomProvider(cfg.customProvider)
-								: undefined;
-						const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
-							baseUrl: rawBaseUrl,
-							apiKey: nextApiKey,
-							customProvider: resolvedCustomSource,
-						});
-						if (
-							resolvedProvider === "custom" &&
-							!resolvedState.customProvider?.baseUrl
-						) {
-							setMessages((m) => [
-								...m,
-								{
-									id: msgIdRef.current++,
-									role: "system",
-									content:
-										"Custom provider settings are incomplete. Set provider + baseUrl first.",
-								},
-							]);
-							return;
-						}
-	
-						applyRuntimeProviderState(resolvedState);
-	
-						if (updates.model?.trim()) {
-							setCtxModel(updates.model);
-							if (ctxRef.current) {
-								ctxRef.current.config.model = updates.model;
-							}
-						}
-						const nextModel = updates.model?.trim()
-							? updates.model.trim()
-							: ctxModel;
-						persistRuntimeProviderState(resolvedState, { model: nextModel });
+					React.createElement(
+						Text,
+						{ color: RED },
+						`${DECORATIVE.eyeOfHorus} ${error}`,
+					),
+				),
+			loading &&
+				React.createElement(
+					Box,
+					{ marginTop: 1, paddingX: 1, flexDirection: "column" },
+					React.createElement(
+						Box,
+						{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: 1,
+							marginBottom: 0.5,
+						},
+						React.createElement(
+							Text,
+							{ color: GOLD },
+							React.createElement(Spinner, { type: "dots" }),
+						),
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							operationLabel,
+						),
+					),
+					React.createElement(ProgressBar, {
+						value: progress,
+						width: Math.min(contentMaxWidth - 10, 40),
+					}),
+				),
+		),
+		React.createElement(
+			Box,
+			{
+				paddingX: 1,
+				paddingTop: 1,
+				flexDirection: "column",
+			},
+			showCommandPalette || showConfigEditor || showSessionList
+				? null
+				: pendingPermission
+					? React.createElement(PermissionPrompt, {
+							request: pendingPermission.request,
+							isDangerous: pendingPermission.isDangerous,
+							onAnswer: (allowed: boolean) => {
+								pendingPermission.resolve(allowed);
+								setPendingPermission(null);
+							},
+						})
+					: pendingQuestion
+						? React.createElement(QuestionPrompt, {
+								question: pendingQuestion.questions[0],
+								onAnswer: (ans) => _handleQuestionAnswer(0, ans),
+								onCancel: _handleQuestionCancel,
+							})
+						: React.createElement(
+								Box,
+								{ flexDirection: "column" },
+								queuedMessages.length > 0 &&
+									React.createElement(
+										Box,
+										{ flexDirection: "column", marginBottom: 1 },
+										...queuedMessages.map((msg, i) =>
+											React.createElement(
+												Text,
+												{ key: i, color: "gray", dimColor: true },
+												`[Queued] ${msg}`,
+											),
+										),
+									),
+								React.createElement(ChatBar, {
+									input,
+									cursorPos,
+									selectionStart,
+									selectionEnd,
+									loading,
+									historyIndex,
+									historyLength: history.length,
+									scrollOffset,
+									scrollPercent,
+									newMessageCount,
+									model: ctxModel,
+									provider: runtimeProvider,
+									companionMode,
+									tokensUsed:
+										costTracker.getSessionStats().totalPromptTokens +
+										costTracker.getSessionStats().totalCompletionTokens,
+									sessionCost: costTracker.getSessionStats().totalCost,
+								}),
+							),
+		),
+		React.createElement(CommandPalette, {
+			commands,
+			onSelect: handleCommandPaletteSelect,
+			onClose: handleCommandPaletteClose,
+			visible: showCommandPalette,
+			initialQuery: commandPaletteInitialQuery,
+		}),
+		showConfigEditor &&
+			React.createElement(ConfigEditor, {
+				config: {
+					apiKey: resolveRuntimeApiKey(runtimeProvider) || "",
+					model: ctxModel,
+					provider: runtimeProvider,
+					baseUrl: runtimeBaseUrl,
+					temperature: getGlobalConfig().temperature,
+					maxTokens: getGlobalConfig().maxTokens,
+				},
+				width: terminalWidth,
+				onSave: (updates) => {
+					const normalizedProvider = updates.provider
+						? updates.provider.trim().toLowerCase()
+						: runtimeProvider;
+					const resolvedProvider = normalizedProvider || runtimeProvider;
+
+					const rawBaseUrl =
+						updates.baseUrl !== undefined
+							? updates.baseUrl?.trim()
+							: runtimeBaseUrl;
+					const nextApiKey =
+						updates.apiKey !== undefined
+							? updates.apiKey.trim()
+							: resolveRuntimeApiKey(resolvedProvider);
+					const resolvedCustomSource =
+						resolvedProvider === "custom"
+							? runtimeCustomProvider ||
+								normalizeCustomProvider(cfg.customProvider)
+							: undefined;
+					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
+						baseUrl: rawBaseUrl,
+						apiKey: nextApiKey,
+						customProvider: resolvedCustomSource,
+					});
+					if (
+						resolvedProvider === "custom" &&
+						!resolvedState.customProvider?.baseUrl
+					) {
 						setMessages((m) => [
 							...m,
 							{
 								id: msgIdRef.current++,
 								role: "system",
-								content: "Configuration saved successfully",
+								content:
+									"Custom provider settings are incomplete. Set provider + baseUrl first.",
 							},
 						]);
-						setShowConfigEditor(false);
+						return;
+					}
+
+					applyRuntimeProviderState(resolvedState);
+
+					if (updates.model?.trim()) {
+						setCtxModel(updates.model);
+						if (ctxRef.current) {
+							ctxRef.current.config.model = updates.model;
+						}
+					}
+					const nextModel = updates.model?.trim()
+						? updates.model.trim()
+						: ctxModel;
+					persistRuntimeProviderState(resolvedState, { model: nextModel });
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Configuration saved successfully",
+						},
+					]);
+					setShowConfigEditor(false);
+				},
+				onCancel: () => {
+					setShowConfigEditor(false);
+				},
+			}),
+		showSessionList &&
+			React.createElement(SessionList, {
+				sessions: savedSessions,
+				onLoadSession: async (id: string) => {
+					setShowSessionList(false);
+					await loadSessionById(id);
+				},
+				onClose: () => setShowSessionList(false),
+			}),
+		companionMode
+			? React.createElement(
+					Box,
+					{
+						paddingX: 1,
+						borderStyle: "single",
+						borderColor: "gray",
+						marginTop: 1,
 					},
-					onCancel: () => {
-						setShowConfigEditor(false);
-					},
-				}),
-				showSessionList && React.createElement(SessionList, {
-					sessions: savedSessions,
-					onLoadSession: async (id: string) => {
-						setShowSessionList(false);
-						await loadSessionById(id);
-					},
-					onClose: () => setShowSessionList(false),
-				}),
-				companionMode
-					? React.createElement(
-							Box,
-							{
-								paddingX: 1,
-								borderStyle: "single",
-								borderColor: "gray",
-								marginTop: 1,
-							},
-							React.createElement(
-								Text,
-								{ color: "gray", dimColor: true },
-								"𓋹 Companion mode active",
-							),
-						)
-					: null,
-			);
+					React.createElement(
+						Text,
+						{ color: "gray", dimColor: true },
+						"𓋹 Companion mode active",
+					),
+				)
+			: null,
+	);
 }
 
 function App({
@@ -4074,7 +4074,7 @@ export function createProgram(): Command {
 			const opts = options ?? {};
 			const { cfg, apiKey, model, diffPreview } = await bootstrapCLI(
 				prompt,
-				opts,
+				opts as unknown as BootstrapOptions,
 			);
 
 			if (!prompt && !process.stdout.isTTY) {

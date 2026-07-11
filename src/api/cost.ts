@@ -63,7 +63,7 @@ export function getModelPricing(
 		if (!key) continue;
 		const subPart = modelId.split("/")[1]?.split(":")[0];
 		if (
-			(modelId && modelId.includes(key)) ||
+			modelId?.includes(key) ||
 			(subPart && subPart.trim() !== "" && key.includes(subPart))
 		) {
 			return pricing;

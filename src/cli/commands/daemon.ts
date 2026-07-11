@@ -20,45 +20,52 @@ export function daemonCommand(): Command {
 		.command("start")
 		.description("Start the daemon in the background")
 		.action(async () => {
-			if (fs.existsSync(SOCKET_PATH)) {
-				// verify it's really running
-				try {
-					const client = new TehutiDaemonClient();
-					await client.connect();
-
-					let responded = false;
-					client.onMessage((msg: any) => {
-						if (msg.type === "pong") {
-							responded = true;
-							consola.error("Daemon is already running!");
-							client.disconnect();
-							process.exit(1);
-						}
-					});
-
-					client.send({ type: "ping" });
-
-					setTimeout(() => {
-						if (!responded) {
-							consola.warn(
-								"Daemon socket exists and connects, but daemon is unresponsive (zombie).",
-							);
-							consola.info(
-								"Please run `tehuti daemon stop` or manually kill the process and remove the socket file.",
-							);
-							client.disconnect();
-							process.exit(1);
-						}
-					}, 2000);
-				} catch (e) {
-					// Socket exists but connection failed (e.g. ECONNREFUSED) -> dead socket
+			try {
+				if (fs.existsSync(SOCKET_PATH)) {
+					// verify it's really running
 					try {
-						fs.unlinkSync(SOCKET_PATH);
-					} catch (err) {}
+						const client = new TehutiDaemonClient();
+						await client.connect();
+
+						let responded = false;
+						client.onMessage((msg: any) => {
+							if (msg.type === "pong") {
+								responded = true;
+								consola.error("Daemon is already running!");
+								client.disconnect();
+								process.exit(1);
+							}
+						});
+
+						client.send({ type: "ping" });
+
+						setTimeout(() => {
+							if (!responded) {
+								consola.warn(
+									"Daemon socket exists and connects, but daemon is unresponsive (zombie).",
+								);
+								consola.info(
+									"Please run `tehuti daemon stop` or manually kill the process and remove the socket file.",
+								);
+								client.disconnect();
+								process.exit(1);
+							}
+						}, 2000);
+					} catch (e) {
+						// Socket exists but connection failed (e.g. ECONNREFUSED) -> dead socket
+						try {
+							fs.unlinkSync(SOCKET_PATH);
+						} catch (err) {}
+						startDaemonProcess();
+					}
+				} else {
 					startDaemonProcess();
 				}
-			} else {
-				startDaemonProcess();
+			} catch (error: any) {
+				consola.error(
+					`Failed to execute daemon start: ${error.message || String(error)}`,
+				);
+				process.exit(1);
 			}
 		});
 
@@ -66,30 +73,42 @@ export function daemonCommand(): Command {
 		.command("stop")
 		.description("Stop the background daemon")
 		.action(async () => {
-			const client = new TehutiDaemonClient();
 			try {
-				await client.connect();
-				client.onMessage((msg: any) => {
-					if (msg.type === "stopping") {
-						consola.success("Daemon stopped.");
-						const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", "com.tehuti.daemon.plist");
-						if (fs.existsSync(plistPath)) {
-							try {
-								execSync(`launchctl unload ${plistPath}`);
-								consola.info("Launch agent unloaded.");
-							} catch (err) {}
+				const client = new TehutiDaemonClient();
+				try {
+					await client.connect();
+					client.onMessage((msg: any) => {
+						if (msg.type === "stopping") {
+							consola.success("Daemon stopped.");
+							const plistPath = path.join(
+								os.homedir(),
+								"Library",
+								"LaunchAgents",
+								"com.tehuti.daemon.plist",
+							);
+							if (fs.existsSync(plistPath)) {
+								try {
+									execSync(`launchctl unload ${plistPath}`);
+									consola.info("Launch agent unloaded.");
+								} catch (err) {}
+							}
+							client.disconnect();
+							process.exit(0);
 						}
-						client.disconnect();
+					});
+					client.send({ type: "stop" });
+					setTimeout(() => {
+						consola.warn("Daemon did not respond, it may have already exited.");
 						process.exit(0);
-					}
-				});
-				client.send({ type: "stop" });
-				setTimeout(() => {
-					consola.warn("Daemon did not respond, it may have already exited.");
-					process.exit(0);
-				}, 2000);
-			} catch (e: any) {
-				consola.error(`Failed to connect to daemon: ${e.message}`);
+					}, 2000);
+				} catch (e: any) {
+					consola.error(`Failed to connect to daemon: ${e.message}`);
+					process.exit(1);
+				}
+			} catch (error: any) {
+				consola.error(
+					`Failed to execute daemon stop: ${error.message || String(error)}`,
+				);
 				process.exit(1);
 			}
 		});
@@ -98,33 +117,40 @@ export function daemonCommand(): Command {
 		.command("status")
 		.description("Check daemon status")
 		.action(async () => {
-			const client = new TehutiDaemonClient();
 			try {
-				await client.connect();
-				client.onMessage((msg: any) => {
-					if (msg.type === "pong") {
-						const uptimeStr = formatUptime(msg.uptime);
-						// Format as a simple ASCII table
-						console.log("\n  Daemon Status");
-						console.log(`  ${"=".repeat(35)}`);
-						console.log(`  PID              | ${msg.pid}`);
-						console.log(`  Uptime           | ${uptimeStr}`);
-						if (msg.session_start_time) {
-							console.log(`  Session Start    | ${msg.session_start_time}`);
+				const client = new TehutiDaemonClient();
+				try {
+					await client.connect();
+					client.onMessage((msg: any) => {
+						if (msg.type === "pong") {
+							const uptimeStr = formatUptime(msg.uptime);
+							// Format as a simple ASCII table
+							console.log("\n  Daemon Status");
+							console.log(`  ${"=".repeat(35)}`);
+							console.log(`  PID              | ${msg.pid}`);
+							console.log(`  Uptime           | ${uptimeStr}`);
+							if (msg.session_start_time) {
+								console.log(`  Session Start    | ${msg.session_start_time}`);
+							}
+							console.log(`  Active Clients   | ${msg.clients}`);
+							console.log(`  ${"=".repeat(35)}\n`);
+							client.disconnect();
+							process.exit(0);
 						}
-						console.log(`  Active Clients   | ${msg.clients}`);
-						console.log(`  ${"=".repeat(35)}\n`);
-						client.disconnect();
-						process.exit(0);
-					}
-				});
-				client.send({ type: "ping" });
-				setTimeout(() => {
-					consola.error("Daemon is running but unresponsive.");
+					});
+					client.send({ type: "ping" });
+					setTimeout(() => {
+						consola.error("Daemon is running but unresponsive.");
+						process.exit(1);
+					}, 2000);
+				} catch (e: any) {
+					consola.error(`Daemon is not running. (Error: ${e.message})`);
 					process.exit(1);
-				}, 2000);
-			} catch (e: any) {
-				consola.error(`Daemon is not running. (Error: ${e.message})`);
+				}
+			} catch (error: any) {
+				consola.error(
+					`Failed to execute daemon status: ${error.message || String(error)}`,
+				);
 				process.exit(1);
 			}
 		});
@@ -146,116 +172,149 @@ export function daemonCommand(): Command {
 		});
 
 	daemon.command("_run_server", { hidden: true }).action(async () => {
-		const cfg = await loadConfig();
-		const server = new TehutiDaemonServer();
-		server.start();
-		consola.info(`Daemon server started on ${SOCKET_PATH}`);
+		try {
+			const cfg = await loadConfig();
+			const server = new TehutiDaemonServer();
+			server.start();
+			consola.info(`Daemon server started on ${SOCKET_PATH}`);
 
-		const stateEngine = new DaemonStateEngine(cfg as any);
-		stateEngine.start();
+			const stateEngine = new DaemonStateEngine(cfg as any);
+			stateEngine.start();
 
-		server.on("message", async (dataOrSocket: any, socketOrData: any) => {
-			const socket: net.Socket =
-				dataOrSocket && typeof dataOrSocket.write === "function"
-					? dataOrSocket
-					: socketOrData;
-			const data: any =
-				dataOrSocket && typeof dataOrSocket.write === "function"
-					? socketOrData
-					: dataOrSocket;
+			server.on("message", async (dataOrSocket: any, socketOrData: any) => {
+				const socket: net.Socket =
+					dataOrSocket && typeof dataOrSocket.write === "function"
+						? dataOrSocket
+						: socketOrData;
+				const data: any =
+					dataOrSocket && typeof dataOrSocket.write === "function"
+						? socketOrData
+						: dataOrSocket;
 
-			if (!data || typeof data !== "object" || !socket) return;
+				if (!data || typeof data !== "object" || !socket) return;
 
-			if (data.type === "agent_message" && typeof data.text === "string") {
-				try {
-					const { createAgentContext, runAgentLoop } = await import(
-						"../../agent/index.js"
-					);
-					const targetCwd = (typeof data.cwd === "string" && data.cwd) ? data.cwd : process.cwd();
-					const ctx = await createAgentContext(
-						targetCwd,
-						cfg,
-						undefined,
-						true,
-					);
-					const result = await runAgentLoop(ctx, data.text, {
-						onToken: (token) => {
-							if (!socket.destroyed) {
-								socket.write(
-									`${JSON.stringify({
-										type: "token",
-										text: token,
-									})}\n`,
-								);
-							}
-						},
-						onToolCall: (id, name, args) => {
-							if (!socket.destroyed) {
-								socket.write(
-									`${JSON.stringify({
-										type: "toolCall",
-										id,
-										name,
-										args,
-									})}\n`,
-								);
-							}
-						},
-						onToolResult: (id, name, res) => {
-							if (!socket.destroyed) {
-								socket.write(
-									`${JSON.stringify({
-										type: "toolResult",
-										id,
-										name,
-										result: res,
-									})}\n`,
-								);
-							}
-						},
-					});
-					if (!socket.destroyed) {
-						socket.write(
-							`${JSON.stringify({
-								type: "completion",
-								result,
-							})}\n`,
+				if (data.type === "agent_message" && typeof data.text === "string") {
+					try {
+						const { createAgentContext, runAgentLoop } = await import(
+							"../../agent/index.js"
 						);
-					}
-				} catch (error) {
-					const errorMessage =
-						error instanceof Error ? error.message : String(error);
-					if (!socket.destroyed) {
-						socket.write(
-							`${JSON.stringify({
-								type: "error",
-								message: errorMessage,
-							})}\n`,
+						const targetCwd =
+							typeof data.cwd === "string" && data.cwd
+								? data.cwd
+								: process.cwd();
+						const ctx = await createAgentContext(
+							targetCwd,
+							cfg,
+							undefined,
+							true,
 						);
+						const result = await runAgentLoop(ctx, data.text, {
+							onToken: (token) => {
+								if (!socket.destroyed) {
+									socket.write(
+										`${JSON.stringify({
+											type: "token",
+											text: token,
+										})}\n`,
+									);
+								}
+							},
+							onToolCall: (id, name, args) => {
+								if (!socket.destroyed) {
+									socket.write(
+										`${JSON.stringify({
+											type: "toolCall",
+											id,
+											name,
+											args,
+										})}\n`,
+									);
+								}
+							},
+							onToolResult: (id, name, res) => {
+								if (!socket.destroyed) {
+									socket.write(
+										`${JSON.stringify({
+											type: "toolResult",
+											id,
+											name,
+											result: res,
+										})}\n`,
+									);
+								}
+							},
+						});
+						if (!socket.destroyed) {
+							socket.write(
+								`${JSON.stringify({
+									type: "completion",
+									result,
+								})}\n`,
+							);
+						}
+					} catch (error) {
+						const errorMessage =
+							error instanceof Error ? error.message : String(error);
+						if (!socket.destroyed) {
+							socket.write(
+								`${JSON.stringify({
+									type: "error",
+									message: errorMessage,
+								})}\n`,
+							);
+						}
 					}
 				}
-			}
-		});
+			});
 
-		const shutdown = () => {
-			stateEngine.stop();
-		};
-		server.on("close", shutdown);
-		process.on("SIGINT", shutdown);
-		process.on("SIGTERM", shutdown);
+			const shutdown = () => {
+				stateEngine.stop();
+			};
+			server.on("close", shutdown);
+			process.on("SIGINT", shutdown);
+			process.on("SIGTERM", shutdown);
+		} catch (error: any) {
+			consola.error(`Daemon server crashed: ${error.message || String(error)}`);
+			process.exit(1);
+		}
 	});
 
 	return daemon;
 }
 
 function startDaemonProcess() {
-	const cliScript = process.argv[1];
-	const child = spawn(process.execPath, [cliScript, "daemon", "_run_server"], {
-		detached: true,
-		stdio: "ignore",
-	});
-	child.unref();
-	consola.success(`Daemon started in the background (PID: ${child.pid}).`);
+	try {
+		const cliScript = process.argv[1];
+
+		const logDir = path.join(os.homedir(), ".tehuti");
+		if (!fs.existsSync(logDir)) {
+			fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+		}
+
+		const outPath = path.join(logDir, "tehutid.out.log");
+		const errPath = path.join(logDir, "tehutid.err.log");
+
+		const outFd = fs.openSync(outPath, "a");
+		const errFd = fs.openSync(errPath, "a");
+
+		const child = spawn(
+			process.execPath,
+			[cliScript, "daemon", "_run_server"],
+			{
+				detached: true,
+				stdio: ["ignore", outFd, errFd],
+			},
+		);
+		child.unref();
+		consola.success(
+			`Daemon started in the background (PID: ${child.pid}). logs: ${outPath}`,
+		);
+	} catch (error: any) {
+		consola.error(
+			`Failed to spawn daemon process: ${error.message || String(error)}`,
+		);
+		process.exit(1);
+	}
 }
 
 function formatUptime(seconds: number): string {

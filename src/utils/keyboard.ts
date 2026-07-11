@@ -11,7 +11,7 @@ export function isEnterKey(char: string | undefined, key: any): boolean {
 	// Ink drops the ESC byte and leaves the rest in `char`.
 	// For some combos, Ink decodes to `code="[13~"` with modifier flags.
 	const isModifiedEnter =
-		(keyAny.code === "[13~") ||
+		keyAny.code === "[13~" ||
 		kAny === "[13~" ||
 		kAny === "[27;2;13~" ||
 		kAny === "[27;3;13~" ||

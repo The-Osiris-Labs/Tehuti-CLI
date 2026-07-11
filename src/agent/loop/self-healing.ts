@@ -138,13 +138,46 @@ export class SelfHealingManager {
 				}
 			}
 
+			// Clean up orphaned shadow directories in os.tmpdir()
+			try {
+				const tmpDir = os.tmpdir();
+				const tmpEntries = fs.readdirSync(tmpDir, { withFileTypes: true });
+				for (const entry of tmpEntries) {
+					if (entry.isDirectory() && entry.name.startsWith("tehuti-shadow-")) {
+						const match = entry.name.match(/^tehuti-shadow-(\d+)-(\d+)-(.*)$/);
+						let shouldClean = false;
+						if (match) {
+							const pid = parseInt(match[1], 10);
+							if (!isPidAlive(pid)) {
+								shouldClean = true;
+							}
+						} else {
+							// Legacy format, clean up
+							shouldClean = true;
+						}
+
+						if (shouldClean) {
+							const shadowPath = path.join(tmpDir, entry.name);
+							fs.rmSync(shadowPath, { recursive: true, force: true });
+						}
+					}
+				}
+			} catch (e) {}
+
 			// Delete ephemeral branches
-			const branchesOut = spawnSync("git", ["branch", "--list", "tehuti-shadow-*"], {
-				cwd: this.mainDir,
-				encoding: "utf-8",
-			}).stdout;
+			const branchesOut = spawnSync(
+				"git",
+				["branch", "--list", "tehuti-shadow-*"],
+				{
+					cwd: this.mainDir,
+					encoding: "utf-8",
+				},
+			).stdout;
 			if (branchesOut) {
-				const branches = branchesOut.split("\n").map(b => b.trim().replace(/^\*\s*/, "")).filter(Boolean);
+				const branches = branchesOut
+					.split("\n")
+					.map((b) => b.trim().replace(/^\*\s*/, ""))
+					.filter(Boolean);
 				for (const branch of branches) {
 					const match = branch.match(/^tehuti-shadow-(\d+)-(\d+)-(.*)$/);
 					let shouldClean = false;
@@ -188,6 +221,9 @@ export class SelfHealingManager {
 					cwd: this.mainDir,
 					stdio: "ignore",
 				});
+			} catch (e) {}
+			try {
+				fs.rmSync(worktreePath, { recursive: true, force: true });
 			} catch (e) {}
 		}
 		this.activeWorktrees.clear();
@@ -260,9 +296,13 @@ export class SelfHealingManager {
 			this.activeWorktrees.set(worktreePath, { worktreePath, branchName });
 		} catch (error) {
 			try {
-				try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {} 
-		await execAsync(`git worktree prune`, { cwd: this.mainDir }).catch(() => {});
-		await execAsync(`git worktree remove --force "${worktreePath}"`, {
+				try {
+					fs.rmSync(worktreePath, { recursive: true, force: true });
+				} catch {}
+				await execAsync(`git worktree prune`, { cwd: this.mainDir }).catch(
+					() => {},
+				);
+				await execAsync(`git worktree remove --force "${worktreePath}"`, {
 					cwd: this.mainDir,
 				});
 			} catch {}
@@ -393,11 +433,6 @@ export class SelfHealingManager {
 		}
 	}
 
-	/**
-	 * Cleans up the ephemeral shadow workspace.
-	 * @param worktreePath The path of the shadow workspace.
-	 * @param branchName The branch name to be deleted.
-	 */
 	async cleanupShadowWorkspace(
 		worktreePath: string,
 		branchName: string,
@@ -406,11 +441,14 @@ export class SelfHealingManager {
 			await execAsync(`git worktree remove --force "${worktreePath}"`, {
 				cwd: this.mainDir,
 			}).catch(() => {});
-			await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir }).catch(
-				() => {},
-			);
+			await execAsync(`git branch -D "${branchName}"`, {
+				cwd: this.mainDir,
+			}).catch(() => {});
 		} finally {
 			this.activeWorktrees.delete(worktreePath);
+			await fs.promises
+				.rm(worktreePath, { recursive: true, force: true })
+				.catch(() => {});
 		}
 	}
 

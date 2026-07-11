@@ -171,7 +171,7 @@ export async function searchGraph(
 
 		const CHUNK_SIZE = 400; // Safe limit for SQLite limits (max 999 vars, 400*2 = 800)
 		let edges: any[] = [];
-		
+
 		for (let i = 0; i < currentArray.length; i += CHUNK_SIZE) {
 			const chunk = currentArray.slice(i, i + CHUNK_SIZE);
 			const placeholders = chunk.map(() => "?").join(",");
@@ -277,7 +277,7 @@ export async function getSystemPromptMemory(
 }
 
 /**
- * Iterates through stored nodes and removes or merges insights that are semantically identical or exact duplicates.
+ * Iterates through stored nodes and removes or merges insights that are lexically identical (BM25 token matching) or exact duplicates.
  */
 export async function optimizeInsights(
 	cwd: string = process.cwd(),
@@ -382,9 +382,9 @@ export async function optimizeInsights(
 			const unionSize = tokensA.size + tokensB.size - intersectionSize;
 			const similarity = unionSize === 0 ? 0 : intersectionSize / unionSize;
 
-			const isSemanticMatch = similarity > 0.85;
+			const isLexicalMatch = similarity > 0.85;
 
-			if (isExactMatch || isSemanticMatch) {
+			if (isExactMatch || isLexicalMatch) {
 				toRemove.add(nodeB.id);
 
 				const newPriority = Math.max(nodeA.priority ?? 0, nodeB.priority ?? 0);
@@ -443,7 +443,7 @@ export async function optimizeInsights(
 
 	if (toRemove.size > 0) {
 		const idsToRemove = Array.from(toRemove);
-		
+
 		await Promise.allSettled(
 			idsToRemove.map(async (id) => {
 				try {
@@ -451,7 +451,7 @@ export async function optimizeInsights(
 				} catch (err) {
 					console.error(`Failed to remove vector embedding for ${id}`);
 				}
-			})
+			}),
 		);
 
 		const deleteNodeStmt = db.prepare(`DELETE FROM nodes WHERE id = ?`);

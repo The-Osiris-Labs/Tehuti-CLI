@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useMemo } from "react";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
 import { HieroglyphSpinner } from "./HieroglyphSpinner.js";
 
@@ -87,7 +88,6 @@ export function ChatBar({
 	provider,
 	companionMode = false,
 	tokensUsed = 0,
-	sessionCost = 0,
 }: ChatBarProps): React.ReactElement {
 	// 1. Live Slash Command Suggestions when user types "/"
 	const suggestions = useMemo(() => {

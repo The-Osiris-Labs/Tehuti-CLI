@@ -47,7 +47,6 @@ describe("Background Tool", () => {
 			);
 
 			expect(result.success).toBe(true);
-			
 		});
 
 		it("should reject path traversal in workdir", async () => {

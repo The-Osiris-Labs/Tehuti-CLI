@@ -18,6 +18,46 @@ export const consola = createConsola({
 	},
 });
 
+export function deepRedact(obj: unknown): unknown {
+	if (typeof obj === "string") {
+		return obj.replace(
+			/(?:sk-[A-Za-z0-9-_]+|xoxb-[A-Za-z0-9-_]+)/g,
+			"[REDACTED]",
+		);
+	}
+	if (Array.isArray(obj)) {
+		return obj.map(deepRedact);
+	}
+	if (obj !== null && typeof obj === "object") {
+		if (obj instanceof Error) {
+			const newErr = new Error(
+				typeof obj.message === "string"
+					? obj.message.replace(
+							/(?:sk-[A-Za-z0-9-_]+|xoxb-[A-Za-z0-9-_]+)/g,
+							"[REDACTED]",
+						)
+					: obj.message,
+			);
+			newErr.name = obj.name;
+			if (typeof obj.stack === "string") {
+				newErr.stack = obj.stack.replace(
+					/(?:sk-[A-Za-z0-9-_]+|xoxb-[A-Za-z0-9-_]+)/g,
+					"[REDACTED]",
+				);
+			}
+			return newErr;
+		}
+		if (obj.constructor === Object) {
+			const newObj: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(obj)) {
+				newObj[key] = deepRedact(value);
+			}
+			return newObj;
+		}
+	}
+	return obj;
+}
+
 export const logger: {
 	info: (message: string, ...args: unknown[]) => void;
 	success: (message: string, ...args: unknown[]) => void;
@@ -33,21 +73,25 @@ export const logger: {
 	newline: () => void;
 	prompt: typeof consola.prompt;
 } = {
-	info: (message: string, ...args: unknown[]) => consola.info(message, ...args),
+	info: (message: string, ...args: unknown[]) =>
+		consola.info(deepRedact(message), ...args.map(deepRedact)),
 	success: (message: string, ...args: unknown[]) =>
-		consola.success(message, ...args),
-	warn: (message: string, ...args: unknown[]) => consola.warn(message, ...args),
+		consola.success(deepRedact(message), ...args.map(deepRedact)),
+	warn: (message: string, ...args: unknown[]) =>
+		consola.warn(deepRedact(message), ...args.map(deepRedact)),
 	error: (message: string, ...args: unknown[]) =>
-		consola.error(message, ...args),
+		consola.error(deepRedact(message), ...args.map(deepRedact)),
 	debug: (message: string, ...args: unknown[]) =>
-		consola.debug(message, ...args),
+		consola.debug(deepRedact(message), ...args.map(deepRedact)),
 	trace: (message: string, ...args: unknown[]) =>
-		consola.trace(message, ...args),
-	start: (message: string) => consola.start(message),
-	box: (message: string) => consola.box(message),
-	log: (message: string, ...args: unknown[]) => consola.log(message, ...args),
-	raw: (message: string) => process.stdout.write(message),
-	rawError: (message: string) => process.stderr.write(message),
+		consola.trace(deepRedact(message), ...args.map(deepRedact)),
+	start: (message: string) => consola.start(deepRedact(message)),
+	box: (message: string) => consola.box(deepRedact(message) as string),
+	log: (message: string, ...args: unknown[]) =>
+		consola.log(deepRedact(message), ...args.map(deepRedact)),
+	raw: (message: string) => process.stdout.write(deepRedact(message) as string),
+	rawError: (message: string) =>
+		process.stderr.write(deepRedact(message) as string),
 	newline: () => console.log(),
 	prompt: consola.prompt.bind(consola),
 };
@@ -59,15 +103,17 @@ export function setDebugMode(enabled: boolean): void {
 export function createTaggedLogger(tag: string) {
 	return {
 		info: (message: string, ...args: unknown[]) =>
-			consola.withTag(tag).info(message, ...args),
+			consola.withTag(tag).info(deepRedact(message), ...args.map(deepRedact)),
 		success: (message: string, ...args: unknown[]) =>
-			consola.withTag(tag).success(message, ...args),
+			consola
+				.withTag(tag)
+				.success(deepRedact(message), ...args.map(deepRedact)),
 		warn: (message: string, ...args: unknown[]) =>
-			consola.withTag(tag).warn(message, ...args),
+			consola.withTag(tag).warn(deepRedact(message), ...args.map(deepRedact)),
 		error: (message: string, ...args: unknown[]) =>
-			consola.withTag(tag).error(message, ...args),
+			consola.withTag(tag).error(deepRedact(message), ...args.map(deepRedact)),
 		debug: (message: string, ...args: unknown[]) =>
-			consola.withTag(tag).debug(message, ...args),
+			consola.withTag(tag).debug(deepRedact(message), ...args.map(deepRedact)),
 	};
 }
 

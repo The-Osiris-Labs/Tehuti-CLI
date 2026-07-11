@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import fs from "fs-extra";
 import { z } from "zod";
 import type {
 	AnyToolExecutor,
@@ -310,7 +309,10 @@ async function gitCommit(
 	const result = await runGit(gitArgs, repoRoot);
 
 	if (result.code !== 0) {
-		if (result.stderr.includes("nothing to commit") || result.stdout.includes("nothing to commit")) {
+		if (
+			result.stderr.includes("nothing to commit") ||
+			result.stdout.includes("nothing to commit")
+		) {
 			return {
 				success: true,
 				output: "Nothing to commit",

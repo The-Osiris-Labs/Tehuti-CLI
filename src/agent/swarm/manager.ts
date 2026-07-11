@@ -194,7 +194,9 @@ export class SwarmManager extends EventEmitter {
 			}
 			if (task.lastEventAt && Date.now() - task.lastEventAt > 120_000) {
 				debug.log("agent", `Subagent ${id} watchdog timeout`);
-				finishWithError("Subagent did not respond within 2 minutes (watchdog timeout)");
+				finishWithError(
+					"Subagent did not respond within 2 minutes (watchdog timeout)",
+				);
 			}
 		}, 30_000);
 		watchdogInterval.unref();
@@ -342,22 +344,41 @@ export class SwarmManager extends EventEmitter {
 		if (childProcess.stdout) drain(childProcess.stdout, "stdout");
 		if (childProcess.stderr) drain(childProcess.stderr, "stderr");
 
+		const cleanupProcess = () => {
+			clearTimeout(readyTimeout);
+			clearInterval(watchdogInterval);
+			if (typeof childProcess.removeAllListeners === "function") {
+				childProcess.removeAllListeners();
+			}
+			if (childProcess.stdout && typeof childProcess.stdout.removeAllListeners === "function") {
+				childProcess.stdout.removeAllListeners();
+			}
+			if (childProcess.stderr && typeof childProcess.stderr.removeAllListeners === "function") {
+				childProcess.stderr.removeAllListeners();
+			}
+			task.process = undefined;
+		};
+
 		childProcess.on("error", (error) => {
 			clearTimeout(readyTimeout);
+			clearInterval(watchdogInterval);
 			debug.log("agent", `Subagent ${id} error:`, error);
 			finishWithError(error.message);
+			if (childProcess.pid === undefined) {
+				cleanupProcess();
+			}
 		});
 
 		childProcess.on("exit", (code, signal) => {
 			clearTimeout(readyTimeout);
+			clearInterval(watchdogInterval);
 			// If we already recorded a terminal status, this exit is expected.
 			if (
 				task.status === "completed" ||
 				task.status === "failed" ||
 				task.status === "killed"
 			) {
-				// But if the child died without sending 'completed' and we are
-				// still marked running, this is a silent failure.
+				cleanupProcess();
 				return;
 			}
 			const reason =
@@ -365,6 +386,7 @@ export class SwarmManager extends EventEmitter {
 					? `Subagent exited via ${signal} (likely killed) before reporting completion`
 					: `Subagent exited with code ${code} before reporting completion`;
 			finishWithError(reason);
+			cleanupProcess();
 		});
 
 		return id;
@@ -390,11 +412,12 @@ export class SwarmManager extends EventEmitter {
 		}
 		task.status = "killed";
 		task.endedAt = new Date();
-		if (task.process) {
-			killChild(task.process, HARD_KILL_GRACE_MS);
+		const cp = task.process;
+		if (cp) {
+			killChild(cp, HARD_KILL_GRACE_MS);
 		}
 		this.emitUpdate();
-		if (task.process) {
+		if (cp) {
 			// Wake parent loop if it is sleeping waiting for this subagent.
 			agentEventBus.emit("wakeup", `[Task Completed] Subagent ${id} killed`);
 		}

@@ -166,9 +166,11 @@ export function compressContext(
 
 export { estimateTokens };
 
-export function identifyCriticalMessages(messages: any): number[] {
+export function identifyCriticalMessages(
+	messages: StandardMessage[],
+): number[] {
 	const indices: number[] = [];
-	messages.forEach((m: any, i: number) => {
+	messages.forEach((m: StandardMessage, i: number) => {
 		if (m.role === "system" || m.role === "user" || m.tool_calls || m.name) {
 			indices.push(i);
 		}
@@ -176,14 +178,17 @@ export function identifyCriticalMessages(messages: any): number[] {
 	return indices;
 }
 export async function compressContextWithMetrics(
-	messages: any,
-	_summarizer: any,
+	messages: StandardMessage[],
+	_summarizer: unknown,
 	_target: number,
-	_opts: any,
+	_opts: unknown,
 ) {
 	return { messages, tokensSaved: 0, compressionRatio: 1 };
 }
-export function progressiveCompress(messages: any, _target: number) {
+export function progressiveCompress(
+	messages: StandardMessage[],
+	_target: number,
+) {
 	return messages;
 }
 export function createContextSummarizer() {

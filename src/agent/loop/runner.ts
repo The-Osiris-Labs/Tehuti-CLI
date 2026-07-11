@@ -292,9 +292,8 @@ export async function runAgentLoop(
 								for (const tc of currentToolCalls) {
 									if (dispatchedToolIds.has(tc.id)) continue;
 
-									let args: unknown;
 									try {
-										args = JSON.parse(tc.function.arguments);
+										JSON.parse(tc.function.arguments);
 									} catch {
 										continue;
 									}
@@ -549,39 +548,18 @@ export async function runAgentLoop(
 			finishReason: "max_iterations",
 			sessionStats: costTracker.getSessionStats(),
 		};
-	} 	finally {
+	} finally {
 		// Post-session personality learning (non-blocking)
 		if (ctx.config.personality?.learningEnabled !== false) {
 			try {
-				const { updateProjectProfile } = await import(
+				const { updateProjectProfile, getActualGitDiff } = await import(
 					"../../agent/memory/personality.js"
 				);
 				const cwd = ctx.cwd || process.cwd();
 				const commandsRun = ctx.metadata.commandsRun || [];
-				const filesWritten = ctx.metadata.filesWritten || [];
 
 				try {
-					const fs = await import("node:fs");
-					const path = await import("node:path");
-					let diff = "";
-					const filesToRead = filesWritten.slice(0, 20);
-					for (const filePath of filesToRead) {
-						try {
-							const absPath = path.resolve(cwd, filePath);
-							if (fs.existsSync(absPath)) {
-								const stat = fs.statSync(absPath);
-								if (stat.size > 200 * 1024) continue;
-								const content = fs.readFileSync(absPath, "utf-8");
-								const relativePath = path.relative(cwd, absPath);
-								diff += `+++ b/${relativePath}\n`;
-								for (const line of content.split("\n")) {
-									diff += `+${line}\n`;
-								}
-							}
-						} catch {
-							// Skip files that can't be read (deleted, binary, etc.)
-						}
-					}
+					const diff = getActualGitDiff(cwd);
 					await updateProjectProfile(cwd, diff, commandsRun);
 				} catch {
 					// Best-effort profile update — never crash on this

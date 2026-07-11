@@ -289,7 +289,7 @@ export async function loadConfig(
 			.join(", "),
 	);
 
-	let salvagedConfig = structuredClone(mergedConfig);
+	const salvagedConfig = structuredClone(mergedConfig);
 	let fallbackResult = TEHUTI_CONFIG_SCHEMA.safeParse(salvagedConfig);
 	let attempts = 0;
 
@@ -318,7 +318,9 @@ export async function loadConfig(
 		attempts++;
 	}
 
-	return fallbackResult.success ? fallbackResult.data : (salvagedConfig as TehutiConfig);
+	return fallbackResult.success
+		? fallbackResult.data
+		: (salvagedConfig as TehutiConfig);
 }
 
 export function saveGlobalConfig(updates: {

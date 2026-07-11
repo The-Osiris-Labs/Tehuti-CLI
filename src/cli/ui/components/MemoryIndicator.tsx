@@ -1,5 +1,7 @@
 import { Box, Text } from "ink";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import Spinner from "ink-spinner";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useEffect, useState } from "react";
 import { agentEventBus } from "../../../agent/events.js";
 import { BRANDING } from "../../../branding/index.js";

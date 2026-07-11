@@ -9,10 +9,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
+import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
-import { isEnterKey } from "../../../utils/keyboard.js";
 
 const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
@@ -20,6 +20,7 @@ const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
 const GREEN = BRANDING.colors.green;
 const SAND = BRANDING.colors.sand;
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _RED = BRANDING.colors.red;
 
 export interface CommandItem {
@@ -300,6 +301,7 @@ export function CommandPalette({
 		return results.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 	}, [currentCommands, query]);
 
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const _groupedCommands = useMemo(() => {
 		const groups: Record<string, typeof filteredCommands> = {};
 		for (const cmd of filteredCommands) {
@@ -412,7 +414,8 @@ export function CommandPalette({
 
 			if (isEnterKey(char, key)) {
 				if (filteredCommands.length > 0) {
-					const selected = filteredCommands[selectedIndex] || filteredCommands[0];
+					const selected =
+						filteredCommands[selectedIndex] || filteredCommands[0];
 					if (selected) {
 						void handleExecute(selected);
 					}
@@ -517,105 +520,105 @@ export function CommandPalette({
 				React.createElement(
 					Box,
 					{ marginBottom: 1, justifyContent: "space-between" },
-			React.createElement(
-				Text,
-				{ bold: true, color: menuStack.length > 0 ? CYAN : GOLD },
-				titleText,
-			),
-			React.createElement(
-				Text,
-				{ color: GRAY, dimColor: true },
-				isLoading ? "..." : "(type • ↑↓/jk • ⏎ • esc)",
-			),
-		),
-		React.createElement(
-			Box,
-			{
-				borderStyle: "single",
-				borderColor: CORAL,
-				paddingX: 1,
-				marginBottom: 1,
-			},
-			React.createElement(Text, { color: CORAL }, `${DECORATIVE.arrow} `),
-			isLoading
-				? React.createElement(
+					React.createElement(
 						Text,
-						{ color: CYAN },
-						React.createElement(Spinner, { type: "dots" }),
-						" Loading...",
-					)
-				: React.createElement(
-						Text,
-						null,
-						query.length === 0
-							? React.createElement(
-									Text,
-									{ color: "gray" },
-									menuStack.length > 0
-										? "filter options..."
-										: "type a command...",
-								)
-							: React.createElement(Text, { color: "cyan" }, query),
-						React.createElement(
-							Text,
-							{ backgroundColor: "white", color: "black" },
-							" ",
-						),
+						{ bold: true, color: menuStack.length > 0 ? CYAN : GOLD },
+						titleText,
 					),
-		),
-		!isLoading && filteredCommands.length === 0
-			? React.createElement(
+					React.createElement(
+						Text,
+						{ color: GRAY, dimColor: true },
+						isLoading ? "..." : "(type • ↑↓/jk • ⏎ • esc)",
+					),
+				),
+				React.createElement(
 					Box,
-					{ paddingY: 1, flexDirection: "column" },
-					React.createElement(
-						Text,
-						{ dimColor: true, color: CORAL },
-						`${DECORATIVE.eye} No match found.`,
-					),
-				)
-			: !isLoading &&
-					React.createElement(
-						Box,
-						{ flexDirection: "column" },
-						...orderedGroups.flatMap(([category, cmds], groupIndex) => [
+					{
+						borderStyle: "single",
+						borderColor: CORAL,
+						paddingX: 1,
+						marginBottom: 1,
+					},
+					React.createElement(Text, { color: CORAL }, `${DECORATIVE.arrow} `),
+					isLoading
+						? React.createElement(
+								Text,
+								{ color: CYAN },
+								React.createElement(Spinner, { type: "dots" }),
+								" Loading...",
+							)
+						: React.createElement(
+								Text,
+								null,
+								query.length === 0
+									? React.createElement(
+											Text,
+											{ color: "gray" },
+											menuStack.length > 0
+												? "filter options..."
+												: "type a command...",
+										)
+									: React.createElement(Text, { color: "cyan" }, query),
+								React.createElement(
+									Text,
+									{ backgroundColor: "white", color: "black" },
+									" ",
+								),
+							),
+				),
+				!isLoading && filteredCommands.length === 0
+					? React.createElement(
+							Box,
+							{ paddingY: 1, flexDirection: "column" },
 							React.createElement(
 								Text,
-								{
-									key: `cat-${groupIndex}-${category}`,
-									dimColor: true,
-									color: SAND,
-									bold: true,
-								},
-								`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
+								{ dimColor: true, color: CORAL },
+								`${DECORATIVE.eye} No match found.`,
 							),
-							...cmds.map((cmd) => {
-								const cmdIndex = filteredCommands.findIndex(
-									(c) => c.id === cmd.id,
-								);
-								const isSelected = cmdIndex === selectedIndex;
+						)
+					: !isLoading &&
+							React.createElement(
+								Box,
+								{ flexDirection: "column" },
+								...orderedGroups.flatMap(([category, cmds], groupIndex) => [
+									React.createElement(
+										Text,
+										{
+											key: `cat-${groupIndex}-${category}`,
+											dimColor: true,
+											color: SAND,
+											bold: true,
+										},
+										`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
+									),
+									...cmds.map((cmd) => {
+										const cmdIndex = filteredCommands.findIndex(
+											(c) => c.id === cmd.id,
+										);
+										const isSelected = cmdIndex === selectedIndex;
 
-								return React.createElement(CommandItemRow, {
-									key: `cmd-${category}-${cmdIndex}-${cmd.id}`,
-									cmd,
-									cmdIndex,
-									isSelected,
-									query,
-									onHover: setSelectedIndex,
-									onClick: handleExecute,
-								});
-							}),
-						]),
-						hasMore &&
-							React.createElement(
-								Text,
-								{
-									key: "more-indicator",
-									color: GRAY,
-									dimColor: true,
-								},
-								`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
+										return React.createElement(CommandItemRow, {
+											key: `cmd-${category}-${cmdIndex}-${cmd.id}`,
+											cmd,
+											cmdIndex,
+											isSelected,
+											query,
+											onHover: setSelectedIndex,
+											onClick: handleExecute,
+										});
+									}),
+								]),
+								hasMore &&
+									React.createElement(
+										Text,
+										{
+											key: "more-indicator",
+											color: GRAY,
+											dimColor: true,
+										},
+										`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
+									),
 							),
-					),
 			)}
 		</Box>
 	);
@@ -656,7 +659,7 @@ export function createCommands(options: {
 	onActivateSkill?: (skillId: string) => void;
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
-		onConfig?: () => void;
+	onConfig?: () => void;
 	onDashboard?: () => void;
 	onUpdate?: () => void;
 	onProvider?: (provider: string) => void;

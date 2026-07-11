@@ -46,7 +46,7 @@ export async function createBackup(
 ): Promise<void> {
 	try {
 		const timestamp = Date.now();
-		const entropy = crypto.randomBytes(4).toString('hex');
+		const entropy = crypto.randomBytes(4).toString("hex");
 		const bakPath = `${filePath}.${timestamp}.${entropy}.bak`;
 		await fs.writeFile(bakPath, content, "utf-8");
 
@@ -95,37 +95,7 @@ import type {
 	ToolResult,
 } from "./registry.js";
 
-const PROTECTED_FILES = [
-	"credentials.json",
-	"secrets.json",
-	".pem",
-	".key",
-	".ssh",
-	".netrc",
-	".pgpass",
-	".git-credentials",
-];
-
-const PROTECTED_PATTERNS = [
-	/\/\.ssh\//i,
-	/\/\.gnupg\//i,
-	/\/\.pgp\//i,
-	/\/\.aws\//i,
-	/\.pem$/i,
-	/\.key$/i,
-	/\.ssh$/i,
-	/\.pfx$/i,
-	/\.p12$/i,
-	/\.p7b$/i,
-	/\.keystore$/i,
-	/\.jks$/i,
-	/id_rsa/i,
-	/id_ed25519/i,
-	/id_ecdsa/i,
-	/id_dsa/i,
-];
-
-function isSensitiveFile(filePath: string): boolean {
+function isSensitiveFile(_filePath: string): boolean {
 	// Replaced for local native CLI: The user should have full power.
 	// We no longer block access to environment or user credentials.
 	return false;
@@ -218,26 +188,6 @@ const GET_FILE_INFO_SCHEMA = z.object({
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const MAX_WRITE_SIZE = 50 * 1024 * 1024;
-const _MAX_BACKGROUND_PROCESSES = 200;
-
-async function _safeWriteFile(
-	filePath: string,
-	content: string,
-): Promise<void> {
-	const fd = await fs.promises.open(filePath, "wx");
-	try {
-		await fd.writeFile(content, "utf8");
-	} finally {
-		await fd.close();
-	}
-}
-
-async function _safeOverwriteFile(
-	filePath: string,
-	content: string,
-): Promise<void> {
-	await fs.promises.writeFile(filePath, content, "utf8");
-}
 
 export function resolvePath(filePath: string, cwd: string): string {
 	if (path.isAbsolute(filePath)) {
@@ -418,7 +368,7 @@ async function readFile(
 
 		return {
 			success: true,
-			output: `${numberedLines + summary}\n\nFile Hash: ${fileHash}`,
+			output: `<file_content>\n${numberedLines + summary}\n</file_content>\n\nFile Hash: ${fileHash}`,
 			metadata: {
 				path: resolvedPath,
 				totalLines: lines.length,
@@ -510,7 +460,6 @@ async function writeFile(
 			const existingContent = fileExists
 				? await fs.readFile(resolvedPath, "utf-8")
 				: null;
-			const _operation = fileExists ? "overwrite" : "create";
 
 			const previewResult = await showDiffPreview(
 				existingContent,

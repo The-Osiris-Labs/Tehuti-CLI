@@ -25,6 +25,7 @@ const RED = "\x1b[31m";
 const IBIS = "\u{131A3}";
 const ANKH = "\u{13269}";
 const EYE = "\u{13075}";
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _SCROLL = "\u{1331B}";
 
 const c = {

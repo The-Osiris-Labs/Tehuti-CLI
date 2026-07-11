@@ -156,8 +156,7 @@ const TRACE_RING_SIZE = 10_000;
 const TRACE_FLUSH_EVENTS = 64;
 /** Flush threshold: ms. */
 const TRACE_FLUSH_MS = 1_000;
-/** Truncate strings longer than this in data. */
-const TRACE_TRUNCATE = 4_096;
+
 /** Max size of any single string in `data` to bound memory. */
 const TRACE_MAX_FIELD = 8 * 1024;
 
@@ -450,6 +449,8 @@ export function traceEmit(
 		sessionId?: string | null;
 	} = {},
 ): void {
+	if (!trace.isEnabled()) return;
+
 	trace.emit({
 		kind,
 		level: opts.level ?? "info",
@@ -481,6 +482,9 @@ export function traceTimer(
 	data?: Record<string, unknown>;
 	level?: TraceLevel;
 }) => void {
+	if (!trace.isEnabled()) {
+		return () => {};
+	}
 	const start = Date.now();
 	return (result) => {
 		const r = result ?? {};
@@ -515,6 +519,17 @@ export function defaultTraceLogPath(): string {
  */
 export function initTrace(): void {
 	trace.configure(defaultTraceLogPath());
+}
+
+let _traceIdCounter = 0;
+
+/**
+ * Fast trace/correlation ID generator.
+ * Much faster than crypto.randomUUID() for high-throughput tracing.
+ */
+export function generateTraceId(): string {
+	_traceIdCounter = (_traceIdCounter + 1) % 1_000_000;
+	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-${_traceIdCounter.toString(36)}`;
 }
 
 export default trace;

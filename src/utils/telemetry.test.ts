@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	getTelemetry,
+	redactSensitiveInfo,
 	resetTelemetry,
 	TelemetryCollector,
 } from "./telemetry.js";
@@ -77,6 +78,31 @@ describe("TelemetryCollector", () => {
 		});
 	});
 
+	describe("recordError", () => {
+		it("should record and redact errors", () => {
+			const error = new Error(
+				"Failed connecting to API with key sk-1234567890abcdefghij at /Users/johndoe/project/file.ts",
+			);
+			telemetry.recordError(error);
+
+			const metrics = telemetry.getMetrics();
+			expect(metrics.totalErrors).toBe(1);
+			expect(metrics.errors).toHaveLength(1);
+			expect(metrics.errors[0].message).toContain("sk-[REDACTED]");
+			expect(metrics.errors[0].message).toContain("~");
+			expect(metrics.errors[0].message).not.toContain(
+				"sk-1234567890abcdefghij",
+			);
+			expect(metrics.errors[0].message).not.toContain("/Users/johndoe");
+		});
+
+		it("should handle string errors", () => {
+			telemetry.recordError("Simple string error with sk-secretkey123");
+			const metrics = telemetry.getMetrics();
+			expect(metrics.errors[0].message).toContain("sk-[REDACTED]");
+		});
+	});
+
 	describe("getSummary", () => {
 		it("should generate a summary string", () => {
 			telemetry.recordToolExecution("read", 100, true, true);
@@ -131,5 +157,32 @@ describe("resetTelemetry", () => {
 
 		const t2 = getTelemetry();
 		expect(t2.getMetrics().totalToolCalls).toBe(0);
+	});
+});
+
+describe("redactSensitiveInfo", () => {
+	it("should redact API keys", () => {
+		const input = "Using key sk-1234567890abcdefghij and sk-otherKey_xyz";
+		expect(redactSensitiveInfo(input)).toBe(
+			"Using key sk-[REDACTED] and sk-[REDACTED]",
+		);
+	});
+
+	it("should redact macOS/Linux user paths", () => {
+		const input =
+			"Error at /Users/johndoe/project/file.ts and /home/alice/data.txt";
+		expect(redactSensitiveInfo(input)).toBe(
+			"Error at ~/project/file.ts and ~/data.txt",
+		);
+	});
+
+	it("should redact Windows user paths", () => {
+		const input = "Error at C:\\Users\\johndoe\\project\\file.ts";
+		expect(redactSensitiveInfo(input)).toBe("Error at ~\\project\\file.ts");
+	});
+
+	it("should return the string unchanged if no sensitive info", () => {
+		const input = "Just a normal error message";
+		expect(redactSensitiveInfo(input)).toBe(input);
 	});
 });

@@ -92,6 +92,7 @@ export class ConnectorManager extends EventEmitter {
 	 * with real connection logic.
 	 */
 	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: slated for use by next iteration of init* methods
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	private async connectWithBackoff(
 		platform: string,
 		connectFn: () => Promise<void>,
@@ -140,7 +141,7 @@ export class ConnectorManager extends EventEmitter {
 		}
 	}
 
-	private async initSlackSocketMode(): Promise<void> {
+	private async initSlackSocketMode(attempt = 0): Promise<void> {
 		const slackAppToken =
 			this.config.messaging?.slackAppToken ?? this.config.slackAppToken;
 		const slackBotToken =
@@ -161,12 +162,16 @@ export class ConnectorManager extends EventEmitter {
 					Authorization: `Bearer ${slackAppToken}`,
 					"Content-Type": "application/x-www-form-urlencoded",
 				},
+				signal: AbortSignal.timeout(10000),
 			});
 			const data = (await res.json()) as any;
 			if (!data.ok) throw new Error(data.error || "Failed to get WSS URL");
 
 			// Native WebSocket in Node >= 21 or v20 with flag
 			const ws = new WebSocket(data.url);
+			ws.onopen = () => {
+				attempt = 0;
+			};
 			ws.onmessage = async (event: MessageEvent) => {
 				const payload = JSON.parse(event.data as string);
 				if (payload.type === "hello") return;
@@ -186,22 +191,27 @@ export class ConnectorManager extends EventEmitter {
 						payload,
 						payload.payload.event.channel,
 						payload.payload.event.thread_ts,
-						payload.payload.event.ts
+						payload.payload.event.ts,
 					);
 				}
 			};
 
 			ws.onclose = () => {
-				console.log("[Slack] Connection closed. Reconnecting in 5s...");
-				setTimeout(() => this.initSlackSocketMode(), 5000);
+				const delay =
+					Math.min(60000, 1000 * 2 ** attempt) + Math.random() * 500;
+				console.log(
+					`[Slack] Connection closed. Reconnecting in ${Math.round(delay)}ms...`,
+				);
+				setTimeout(() => this.initSlackSocketMode(attempt + 1), delay);
 			};
 		} catch (err) {
+			const delay = Math.min(60000, 1000 * 2 ** attempt) + Math.random() * 500;
 			console.error("[Slack] Connection error:", err);
-			setTimeout(() => this.initSlackSocketMode(), 10000);
+			setTimeout(() => this.initSlackSocketMode(attempt + 1), delay);
 		}
 	}
 
-	private async initDiscordGateway(): Promise<void> {
+	private async initDiscordGateway(attempt = 0): Promise<void> {
 		const discordToken =
 			this.config.messaging?.discordToken ?? this.config.discordToken;
 
@@ -218,6 +228,7 @@ export class ConnectorManager extends EventEmitter {
 			const ws = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
 
 			ws.onopen = () => {
+				attempt = 0;
 				ws.send(
 					JSON.stringify({
 						op: 2,
@@ -251,19 +262,24 @@ export class ConnectorManager extends EventEmitter {
 						payload,
 						d.channel_id,
 						undefined,
-						d.id
+						d.id,
 					);
 				}
 			};
 
 			ws.onclose = () => {
 				clearInterval(heartbeatInterval);
-				console.log("[Discord] Connection closed. Reconnecting in 5s...");
-				setTimeout(() => this.initDiscordGateway(), 5000);
+				const delay =
+					Math.min(60000, 1000 * 2 ** attempt) + Math.random() * 500;
+				console.log(
+					`[Discord] Connection closed. Reconnecting in ${Math.round(delay)}ms...`,
+				);
+				setTimeout(() => this.initDiscordGateway(attempt + 1), delay);
 			};
 		} catch (err) {
+			const delay = Math.min(60000, 1000 * 2 ** attempt) + Math.random() * 500;
 			console.error("[Discord] Connection error:", err);
-			setTimeout(() => this.initDiscordGateway(), 10000);
+			setTimeout(() => this.initDiscordGateway(attempt + 1), delay);
 		}
 	}
 
@@ -304,7 +320,7 @@ export class ConnectorManager extends EventEmitter {
 								payload,
 								payload.message.chat.id.toString(),
 								payload.message.reply_to_message?.message_id?.toString(),
-								payload.message.message_id.toString()
+								payload.message.message_id.toString(),
 							);
 						}
 						res.writeHead(200);
@@ -386,7 +402,7 @@ export class ConnectorManager extends EventEmitter {
 													payload,
 													msg.from, // channelId is from
 													msg.context?.id,
-													msg.id
+													msg.id,
 												);
 											}
 										}
@@ -427,7 +443,7 @@ export class ConnectorManager extends EventEmitter {
 		rawPayload: unknown,
 		channelId?: string,
 		threadId?: string,
-		messageId?: string
+		messageId?: string,
 	): Promise<void> {
 		const sessionId = await this.resolveSessionId(platform, senderId);
 
@@ -460,71 +476,101 @@ export class ConnectorManager extends EventEmitter {
 		content: string,
 		threadId?: string,
 	): Promise<void> {
-		if (platform === "slack") {
-			const slackBotToken = this.config.messaging?.slackBotToken ?? this.config.slackBotToken;
-			if (!slackBotToken) throw new Error("Missing Slack Bot Token");
-			const res = await fetch("https://slack.com/api/chat.postMessage", {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${slackBotToken}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					channel: channelId,
-					text: content,
-					thread_ts: threadId,
-				}),
-			});
-			const data = await res.json() as any;
-			if (!data.ok) throw new Error(data.error);
-		} else if (platform === "discord") {
-			const discordToken = this.config.messaging?.discordToken ?? this.config.discordToken;
-			if (!discordToken) throw new Error("Missing Discord Token");
-			const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bot ${discordToken}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					content: content,
-					message_reference: threadId ? { message_id: threadId } : undefined,
-				}),
-			});
-			if (!res.ok) throw new Error(`Discord API Error: ${res.statusText}`);
-		} else if (platform === "telegram") {
-			const telegramBotToken = this.config.messaging?.telegramBotToken ?? this.config.telegramBotToken;
-			if (!telegramBotToken) throw new Error("Missing Telegram Bot Token");
-			const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					chat_id: channelId,
-					text: content,
-					reply_to_message_id: threadId ? parseInt(threadId) : undefined,
-				}),
-			});
-			if (!res.ok) throw new Error(`Telegram API Error: ${res.statusText}`);
-		} else if (platform === "whatsapp") {
-			const whatsappToken = this.config.messaging?.whatsappToken ?? this.config.whatsappToken;
-			const whatsappPhoneNumberId = this.config.messaging?.whatsappPhoneNumberId ?? this.config.whatsappPhoneNumberId;
-			if (!whatsappToken || !whatsappPhoneNumberId) throw new Error("Missing WhatsApp Credentials");
-			const res = await fetch(`https://graph.facebook.com/v17.0/${whatsappPhoneNumberId}/messages`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${whatsappToken}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					messaging_product: "whatsapp",
-					to: channelId,
-					text: { body: content },
-					context: threadId ? { message_id: threadId } : undefined,
-				}),
-			});
-			if (!res.ok) throw new Error(`WhatsApp API Error: ${res.statusText}`);
-		} else {
-			throw new Error(`Unsupported platform: ${platform}`);
+		try {
+			if (platform === "slack") {
+				const slackBotToken =
+					this.config.messaging?.slackBotToken ?? this.config.slackBotToken;
+				if (!slackBotToken) throw new Error("Missing Slack Bot Token");
+				const res = await fetch("https://slack.com/api/chat.postMessage", {
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${slackBotToken}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						channel: channelId,
+						text: content,
+						thread_ts: threadId,
+					}),
+					signal: AbortSignal.timeout(10000),
+				});
+				const data = (await res.json()) as any;
+				if (!data.ok) throw new Error(data.error);
+			} else if (platform === "discord") {
+				const discordToken =
+					this.config.messaging?.discordToken ?? this.config.discordToken;
+				if (!discordToken) throw new Error("Missing Discord Token");
+				const res = await fetch(
+					`https://discord.com/api/v10/channels/${channelId}/messages`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bot ${discordToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							content: content,
+							message_reference: threadId
+								? { message_id: threadId }
+								: undefined,
+						}),
+						signal: AbortSignal.timeout(10000),
+					},
+				);
+				if (!res.ok) throw new Error(`Discord API Error: ${res.statusText}`);
+			} else if (platform === "telegram") {
+				const telegramBotToken =
+					this.config.messaging?.telegramBotToken ??
+					this.config.telegramBotToken;
+				if (!telegramBotToken) throw new Error("Missing Telegram Bot Token");
+				const res = await fetch(
+					`https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							chat_id: channelId,
+							text: content,
+							reply_to_message_id: threadId
+								? parseInt(threadId, 10)
+								: undefined,
+						}),
+						signal: AbortSignal.timeout(10000),
+					},
+				);
+				if (!res.ok) throw new Error(`Telegram API Error: ${res.statusText}`);
+			} else if (platform === "whatsapp") {
+				const whatsappToken =
+					this.config.messaging?.whatsappToken ?? this.config.whatsappToken;
+				const whatsappPhoneNumberId =
+					this.config.messaging?.whatsappPhoneNumberId ??
+					this.config.whatsappPhoneNumberId;
+				if (!whatsappToken || !whatsappPhoneNumberId)
+					throw new Error("Missing WhatsApp Credentials");
+				const res = await fetch(
+					`https://graph.facebook.com/v17.0/${whatsappPhoneNumberId}/messages`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${whatsappToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							messaging_product: "whatsapp",
+							to: channelId,
+							text: { body: content },
+							context: threadId ? { message_id: threadId } : undefined,
+						}),
+						signal: AbortSignal.timeout(10000),
+					},
+				);
+				if (!res.ok) throw new Error(`WhatsApp API Error: ${res.statusText}`);
+			} else {
+				throw new Error(`Unsupported platform: ${platform}`);
+			}
+		} catch (error) {
+			console.error(`[${platform}] Error sending message:`, error);
+			throw error;
 		}
 	}
 

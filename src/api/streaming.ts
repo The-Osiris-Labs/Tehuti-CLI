@@ -59,7 +59,12 @@ export function processStreamChunk(
 	newThinking: string;
 } {
 	if (!chunk || typeof chunk !== "object" || Object.keys(chunk).length === 0) {
-		return { hasContent: false, newContent: "", hasThinking: false, newThinking: "" };
+		return {
+			hasContent: false,
+			newContent: "",
+			hasThinking: false,
+			newThinking: "",
+		};
 	}
 
 	if (chunk.usage) {
@@ -89,7 +94,12 @@ export function processStreamChunk(
 		if (choice.finish_reason) {
 			state.finishReason = choice.finish_reason;
 		}
-		return { hasContent: false, newContent: "", hasThinking: false, newThinking: "" };
+		return {
+			hasContent: false,
+			newContent: "",
+			hasThinking: false,
+			newThinking: "",
+		};
 	}
 	let newContent = "";
 	let hasThinking = false;
@@ -184,16 +194,20 @@ export async function* processStreamAsync(
 		usage?: unknown;
 	}>,
 	yieldThresholdMs: number = 16,
-): AsyncGenerator<{ 
-	hasContent: boolean; 
-	newContent: string; 
-	hasThinking: boolean; 
-	newThinking: string; 
-	content: string;
-	reasoning: string;
-	toolCalls: any[];
-	chunk: any;
-}, void, unknown> {
+): AsyncGenerator<
+	{
+		hasContent: boolean;
+		newContent: string;
+		hasThinking: boolean;
+		newThinking: string;
+		content: string;
+		reasoning: string;
+		toolCalls: any[];
+		chunk: any;
+	},
+	void,
+	unknown
+> {
 	const state = createStreamingState();
 	let lastYield = Date.now();
 
@@ -202,12 +216,12 @@ export async function* processStreamAsync(
 			state,
 			chunk as Parameters<typeof processStreamChunk>[1],
 		);
-		yield { 
-			...result, 
+		yield {
+			...result,
 			content: state.content,
 			reasoning: state.thinking,
 			toolCalls: getToolCallsFromState(state),
-			chunk
+			chunk,
 		};
 
 		// HTTP/3 Backpressure-Aware SSE concepts:

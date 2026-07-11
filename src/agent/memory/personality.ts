@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { logger } from "../../utils/logger.js";
 import { agentEventBus } from "../events.js";
 import db from "./db.js";
@@ -24,6 +25,31 @@ export interface ProjectProfile {
 export interface UserPreference {
 	key: string;
 	value: string;
+}
+
+/**
+ * Executes a git diff command to capture actual changes made.
+ */
+export function getActualGitDiff(cwd: string): string {
+	try {
+		return execSync("git diff HEAD", {
+			cwd,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "ignore"],
+			maxBuffer: 5 * 1024 * 1024,
+		});
+	} catch {
+		try {
+			return execSync("git diff", {
+				cwd,
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "ignore"],
+				maxBuffer: 5 * 1024 * 1024,
+			});
+		} catch {
+			return "";
+		}
+	}
 }
 
 /**
@@ -124,10 +150,17 @@ export function updateProjectProfile(
 		let finalCommandPatterns = commandPatterns;
 		if (existingRow?.command_patterns) {
 			try {
-				const existingPatterns = JSON.parse(existingRow.command_patterns) as CommandPatterns;
+				const existingPatterns = JSON.parse(
+					existingRow.command_patterns,
+				) as CommandPatterns;
 				finalCommandPatterns = {
 					...existingPatterns,
-					frequentCommands: Array.from(new Set([...(existingPatterns.frequentCommands || []), ...commandPatterns.frequentCommands]))
+					frequentCommands: Array.from(
+						new Set([
+							...(existingPatterns.frequentCommands || []),
+							...commandPatterns.frequentCommands,
+						]),
+					),
 				};
 			} catch (_err) {}
 		}
@@ -144,7 +177,7 @@ export function updateProjectProfile(
 		stmt.run(
 			projectPath,
 			JSON.stringify(formattingHabits),
-			JSON.stringify(commandPatterns),
+			JSON.stringify(finalCommandPatterns),
 		);
 		agentEventBus.emit("memoryEvent", {
 			type: "learning",

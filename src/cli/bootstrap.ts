@@ -16,6 +16,7 @@ import {
 	getEnvApiKeyForProvider,
 	getProviderInfo,
 } from "../config/providers.js";
+import type { TehutiConfig } from "../config/schema.js";
 import { mcpManager } from "../mcp/index.js";
 import { debug } from "../utils/debug.js";
 import { setupErrorHandlers } from "../utils/errors.js";
@@ -24,7 +25,7 @@ import { getTelemetry } from "../utils/telemetry.js";
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
 
-interface TehutiConfig {
+interface GlobalConfig {
 	apiKey?: string;
 	model?: string;
 	initialized?: boolean;
@@ -32,7 +33,7 @@ interface TehutiConfig {
 	baseUrl?: string;
 }
 
-export function loadTehutiConfig(): TehutiConfig {
+export function loadTehutiConfig(): GlobalConfig {
 	const persisted = getGlobalConfig();
 	return {
 		apiKey: persisted.apiKey,
@@ -44,15 +45,25 @@ export function loadTehutiConfig(): TehutiConfig {
 }
 
 export interface BootstrapResult {
-	cfg: any;
+	cfg: TehutiConfig;
 	apiKey: string;
 	model: string;
 	diffPreview?: { showPreview: boolean; autoConfirm?: boolean };
 }
 
+export interface BootstrapOptions {
+	debug?: boolean;
+	resetKey?: boolean;
+	provider?: string;
+	model?: string;
+	diff?: boolean;
+	diffAuto?: boolean;
+	noMcp?: boolean;
+}
+
 export async function bootstrapCLI(
 	prompt: string | undefined,
-	opts: any,
+	opts: BootstrapOptions,
 ): Promise<BootstrapResult> {
 	if (opts.debug) {
 		setDebugMode(true);
@@ -109,7 +120,7 @@ export async function bootstrapCLI(
 
 	cfg.apiKey = apiKey;
 	cfg.model = model;
-	cfg.provider = provider as any;
+	cfg.provider = provider;
 	configureHooks(cfg);
 	initializeAgent();
 
@@ -120,10 +131,11 @@ export async function bootstrapCLI(
 			: undefined;
 
 	if (cfg.mcp?.enabled && !opts.noMcp) {
-		mcpManager.setSamplingHandler(async (request: any) => {
+		mcpManager.setSamplingHandler(async (request: unknown) => {
+			const req = request as any;
 			const client = StandardAPIClient.getInstance(cfg);
 
-			const messages: StandardMessage[] = request.messages.map((m: any) => {
+			const messages: StandardMessage[] = req.messages.map((m: any) => {
 				const textContent = Array.isArray(m.content)
 					? m.content.find((c: any) => c.type === "text")?.text || ""
 					: m.content.type === "text"
@@ -136,8 +148,8 @@ export async function bootstrapCLI(
 				};
 			});
 
-			if (request.systemPrompt) {
-				messages.unshift({ role: "system", content: request.systemPrompt });
+			if (req.systemPrompt) {
+				messages.unshift({ role: "system", content: req.systemPrompt });
 			}
 
 			const response = await client.completeChat(
@@ -154,7 +166,7 @@ export async function bootstrapCLI(
 
 			return {
 				model:
-					request.modelPreferences?.hints?.[0]?.name ||
+					req.modelPreferences?.hints?.[0]?.name ||
 					cfg.model ||
 					"deepseek-v4-flash",
 				role: "assistant",

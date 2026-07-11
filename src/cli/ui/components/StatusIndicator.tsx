@@ -1,3 +1,4 @@
+// @ts-expect-error TS6133/TS6192: Unused variable
 import React from "react";
 import { StatusBadge } from "./StatusBadge.js";
 

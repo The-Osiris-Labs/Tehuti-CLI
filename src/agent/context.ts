@@ -251,11 +251,12 @@ export async function createAgentContext(
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
 	const systemMemoryPromise = getSystemPromptMemory(resolvedCwd);
-	const personalityBlockPromise = config.personality?.styleInjection !== false
-		? initMemory(config.memory?.consolidationIntervalMs).then(() =>
-				getPersonalityPromptBlock(resolvedCwd),
-			)
-		: Promise.resolve("");
+	const personalityBlockPromise =
+		config.personality?.styleInjection !== false
+			? initMemory(config.memory?.consolidationIntervalMs).then(() =>
+					getPersonalityPromptBlock(resolvedCwd),
+				)
+			: Promise.resolve("");
 
 	return {
 		cwd: resolvedCwd,

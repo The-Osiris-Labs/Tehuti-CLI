@@ -159,7 +159,7 @@ export class MCPClientManager {
 		process.on("exit", () => {
 			for (const server of this.servers.values()) {
 				let pid: number | undefined;
-				
+
 				if (server.transport) {
 					// @modelcontextprotocol/sdk StdioClientTransport exposes the child process as _process
 					if ("_process" in server.transport) {
@@ -582,10 +582,10 @@ export class MCPClientManager {
 		if (this.connectionPromises.has(name)) {
 			return this.connectionPromises.get(name)!;
 		}
-		
+
 		const promise = this._connectServer(name, config);
 		this.connectionPromises.set(name, promise);
-		
+
 		try {
 			return await promise;
 		} finally {
@@ -694,7 +694,11 @@ export class MCPClientManager {
 
 		if (info.capabilities.tools) {
 			try {
-				const toolsResult = await info.client.listTools();
+				const toolsResult = await withTimeout(
+					info.client.listTools(),
+					info.config.timeout ?? DEFAULT_TIMEOUT,
+					`List tools on ${info.name}`,
+				);
 				info.tools = this.filterTools(
 					info.name,
 					(toolsResult.tools as MCPTool[]).map((t) => ({
@@ -714,7 +718,11 @@ export class MCPClientManager {
 
 		if (info.capabilities.resources) {
 			try {
-				const resourcesResult = await info.client.listResources();
+				const resourcesResult = await withTimeout(
+					info.client.listResources(),
+					info.config.timeout ?? DEFAULT_TIMEOUT,
+					`List resources on ${info.name}`,
+				);
 				info.resources = (resourcesResult.resources as MCPResource[]).map(
 					(r) => ({
 						uri: r.uri,
@@ -734,7 +742,11 @@ export class MCPClientManager {
 
 		if (info.capabilities.prompts) {
 			try {
-				const promptsResult = await info.client.listPrompts();
+				const promptsResult = await withTimeout(
+					info.client.listPrompts(),
+					info.config.timeout ?? DEFAULT_TIMEOUT,
+					`List prompts on ${info.name}`,
+				);
 				info.prompts = (promptsResult.prompts as MCPPrompt[]).map((p) => ({
 					name: p.name,
 					description: p.description,
@@ -817,7 +829,11 @@ export class MCPClientManager {
 		if (!info?.client) return [];
 
 		try {
-			const toolsResult = await info.client.listTools();
+			const toolsResult = await withTimeout(
+				info.client.listTools(),
+				info.config.timeout ?? DEFAULT_TIMEOUT,
+				`Refresh tools on ${serverName}`,
+			);
 			info.tools = this.filterTools(
 				serverName,
 				(toolsResult.tools as MCPTool[]).map((t) => ({
@@ -839,7 +855,11 @@ export class MCPClientManager {
 		if (!info?.client) return [];
 
 		try {
-			const resourcesResult = await info.client.listResources();
+			const resourcesResult = await withTimeout(
+				info.client.listResources(),
+				info.config.timeout ?? DEFAULT_TIMEOUT,
+				`Refresh resources on ${serverName}`,
+			);
 			info.resources = (resourcesResult.resources as MCPResource[]).map(
 				(r) => ({
 					uri: r.uri,
@@ -860,7 +880,11 @@ export class MCPClientManager {
 		if (!info?.client) return [];
 
 		try {
-			const promptsResult = await info.client.listPrompts();
+			const promptsResult = await withTimeout(
+				info.client.listPrompts(),
+				info.config.timeout ?? DEFAULT_TIMEOUT,
+				`Refresh prompts on ${serverName}`,
+			);
 			info.prompts = (promptsResult.prompts as MCPPrompt[]).map((p) => ({
 				name: p.name,
 				description: p.description,
@@ -904,10 +928,12 @@ export class MCPClientManager {
 	): Promise<void> {
 		const key = `${serverName}:${uri}`;
 		const subscriptions = this.subscriptions.get(key) ?? [];
-		
+
 		let updatedSubscriptions = subscriptions;
 		if (callback) {
-			updatedSubscriptions = subscriptions.filter(s => s.callback !== callback);
+			updatedSubscriptions = subscriptions.filter(
+				(s) => s.callback !== callback,
+			);
 		} else {
 			updatedSubscriptions = [];
 		}

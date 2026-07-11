@@ -1,6 +1,8 @@
-import { Box, Text, useStdout } from "ink";
-import React, { useEffect, useState } from "react";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import chalk from "chalk";
+import { Box, Text, useStdout } from "ink";
+import type React from "react";
+import { useEffect, useState } from "react";
 import stringWidth from "string-width";
 import {
 	type SubagentTask,
@@ -65,25 +67,27 @@ function stripAnsi(str: string): string {
 	return str.replace(ANSI_STRIP_REGEX, "");
 }
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 function padRight(str: string, width: number): string {
 	const len = stringWidth(stripAnsi(str));
 	if (len >= width) return str;
 	return str + " ".repeat(width - len);
 }
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 function padLeft(str: string, width: number): string {
 	const len = stringWidth(stripAnsi(str));
 	if (len >= width) return str;
 	return " ".repeat(width - len) + str;
 }
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 function sliceAnsi(str: string, limit: number): string {
 	let visibleWidth = 0;
 	let output = "";
 	let i = 0;
 
-	// biome-ignore lint/complexity/useRegexLiterals:
-	const ANSI_SEQUENCE_REGEX = new RegExp("^\\x1b\\[[0-9;]*[a-zA-Z]");
+	const ANSI_SEQUENCE_REGEX = /^\x1b\[[0-9;]*[a-zA-Z]/;
 
 	while (i < str.length) {
 		const remaining = str.slice(i);
@@ -93,7 +97,10 @@ function sliceAnsi(str: string, limit: number): string {
 			i += match[0].length;
 		} else {
 			const codePoint = str.codePointAt(i);
-			if (!codePoint) { i++; continue; }
+			if (!codePoint) {
+				i++;
+				continue;
+			}
 			const char = String.fromCodePoint(codePoint);
 			const charWidth = stringWidth(char);
 			if (visibleWidth + charWidth > limit) {
@@ -116,6 +123,7 @@ export function SwarmVisualizer(): React.ReactElement {
 	);
 	const [frame, setFrame] = useState(0);
 	const { stdout } = useStdout();
+	// @ts-expect-error TS6133/TS6192: Unused variable
 	const termWidth = stdout?.columns || 80;
 
 	useEffect(() => {
@@ -143,69 +151,113 @@ export function SwarmVisualizer(): React.ReactElement {
 
 	const headerRow = (
 		<Box flexDirection="row" paddingX={2} gap={2} marginBottom={0}>
-			<Box width={10}><Text color={COLORS.gold} bold>AGENT ID</Text></Box>
-			<Box width={16}><Text color={COLORS.gold} bold>STATUS</Text></Box>
-			<Box flexGrow={1}><Text color={COLORS.gold} bold>CURRENT TASK</Text></Box>
-			<Box width={8} justifyContent="flex-end"><Text color={COLORS.gold} bold>TOOLS</Text></Box>
-			<Box width={10} justifyContent="flex-end"><Text color={COLORS.gold} bold>TOKENS</Text></Box>
-			<Box width={10} justifyContent="flex-end"><Text color={COLORS.gold} bold>ELAPSED</Text></Box>
+			<Box width={10}>
+				<Text color={COLORS.gold} bold>
+					AGENT ID
+				</Text>
+			</Box>
+			<Box width={16}>
+				<Text color={COLORS.gold} bold>
+					STATUS
+				</Text>
+			</Box>
+			<Box flexGrow={1}>
+				<Text color={COLORS.gold} bold>
+					CURRENT TASK
+				</Text>
+			</Box>
+			<Box width={8} justifyContent="flex-end">
+				<Text color={COLORS.gold} bold>
+					TOOLS
+				</Text>
+			</Box>
+			<Box width={10} justifyContent="flex-end">
+				<Text color={COLORS.gold} bold>
+					TOKENS
+				</Text>
+			</Box>
+			<Box width={10} justifyContent="flex-end">
+				<Text color={COLORS.gold} bold>
+					ELAPSED
+				</Text>
+			</Box>
 		</Box>
 	);
 
-	const rowElements = agents.length === 0 ? (
-		<Box paddingX={2}>
-			<Text color={COLORS.sand} italic>No active subagents in the swarm.</Text>
-		</Box>
-	) : agents.map((agent) => {
-		const elapsed = formatElapsed(now - agent.startedAt);
-		
-		let statusBg = "";
-		let statusColor = "";
-		let statusText = "";
-		
-		if (agent.status === "working") {
-			statusBg = "#332200";
-			statusColor = COLORS.gold;
-			statusText = ` ${HIEROGLYPHS.loading[frame]} RUNNING `;
-		} else if (agent.status === "idle") {
-			statusBg = "#001500";
-			statusColor = COLORS.green;
-			statusText = ` ${DECORATIVE.ankh} SUCCESS `;
-		} else if (agent.status === "error") {
-			statusBg = "#220000";
-			statusColor = COLORS.coral;
-			statusText = ` ${DECORATIVE.eyeOfHorus} ERROR `;
-		} else {
-			statusBg = "#222222";
-			statusColor = COLORS.sand;
-			statusText = ` ✕ KILLED `;
-		}
-
-		const taskColor = (agent.status === "idle" || agent.status === "killed") ? COLORS.sand : undefined;
-
-		return (
-			<Box key={agent.id} flexDirection="row" paddingX={2} gap={2}>
-				<Box width={10}>
-					<Text color={COLORS.nile} wrap="truncate-end">{agent.id}</Text>
-				</Box>
-				<Box width={16}>
-					<Text backgroundColor={statusBg} color={statusColor}>{statusText}</Text>
-				</Box>
-				<Box flexGrow={1}>
-					<Text color={taskColor} wrap="truncate-end">{agent.currentTask.replace(/\n/g, " ")}</Text>
-				</Box>
-				<Box width={8} justifyContent="flex-end">
-					<Text color={COLORS.nile} bold>{agent.toolCallCount}</Text>
-				</Box>
-				<Box width={10} justifyContent="flex-end">
-					<Text color={COLORS.gold}>{agent.tokensUsed.toLocaleString()}</Text>
-				</Box>
-				<Box width={10} justifyContent="flex-end">
-					<Text color={COLORS.sand} dimColor>{elapsed}</Text>
-				</Box>
+	const rowElements =
+		agents.length === 0 ? (
+			<Box paddingX={2}>
+				<Text color={COLORS.sand} italic>
+					No active subagents in the swarm.
+				</Text>
 			</Box>
+		) : (
+			agents.map((agent) => {
+				const elapsed = formatElapsed(now - agent.startedAt);
+
+				let statusBg = "";
+				let statusColor = "";
+				let statusText = "";
+
+				if (agent.status === "working") {
+					statusBg = "#332200";
+					statusColor = COLORS.gold;
+					statusText = ` ${HIEROGLYPHS.loading[frame]} RUNNING `;
+				} else if (agent.status === "idle") {
+					statusBg = "#001500";
+					statusColor = COLORS.green;
+					statusText = ` ${DECORATIVE.ankh} SUCCESS `;
+				} else if (agent.status === "error") {
+					statusBg = "#220000";
+					statusColor = COLORS.coral;
+					statusText = ` ${DECORATIVE.eyeOfHorus} ERROR `;
+				} else {
+					statusBg = "#222222";
+					statusColor = COLORS.sand;
+					statusText = ` ✕ KILLED `;
+				}
+
+				const taskColor =
+					agent.status === "idle" || agent.status === "killed"
+						? COLORS.sand
+						: undefined;
+
+				return (
+					<Box key={agent.id} flexDirection="row" paddingX={2} gap={2}>
+						<Box width={10}>
+							<Text color={COLORS.nile} wrap="truncate-end">
+								{agent.id}
+							</Text>
+						</Box>
+						<Box width={16}>
+							<Text backgroundColor={statusBg} color={statusColor}>
+								{statusText}
+							</Text>
+						</Box>
+						<Box flexGrow={1}>
+							<Text color={taskColor} wrap="truncate-end">
+								{agent.currentTask.replace(/\n/g, " ")}
+							</Text>
+						</Box>
+						<Box width={8} justifyContent="flex-end">
+							<Text color={COLORS.nile} bold>
+								{agent.toolCallCount}
+							</Text>
+						</Box>
+						<Box width={10} justifyContent="flex-end">
+							<Text color={COLORS.gold}>
+								{agent.tokensUsed.toLocaleString()}
+							</Text>
+						</Box>
+						<Box width={10} justifyContent="flex-end">
+							<Text color={COLORS.sand} dimColor>
+								{elapsed}
+							</Text>
+						</Box>
+					</Box>
+				);
+			})
 		);
-	});
 
 	return (
 		<Box

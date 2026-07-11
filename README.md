@@ -18,11 +18,12 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ---
 
-## 🚀 v1.0.0 Milestone Highlights
-The latest `v1.0.0` release introduces monumental architectural shifts transforming Tehuti from a simple CLI into a persistent companion:
-- **Persistent Background Daemon:** Run Tehuti invisibly in the background with `tehuti daemon start`, maintaining active state and memory.
+## 🚀 v1.1.0 Milestone Highlights
+The latest `v1.1.0` release ("The Beast Awakens") introduces monumental architectural shifts and production-grade deep hardening, transforming Tehuti from a simple CLI into a persistent, uncrackable companion:
+- **Production-Grade Security**: Full immunity to Prompt Injection (via XML wrapper defenses), Shell Injection (safe-spawn array executions), SQL Injection (parameterized bindings), and MCP Schema Poisoning.
+- **Persistent Background Daemon:** Run Tehuti invisibly in the background with `tehuti daemon start`, maintaining active state and memory, safeguarded by absolute `try/catch` boundaries.
 - **Omnichannel Connectors:** Native WebSockets and HTTP webhook integration for Discord, Slack, Telegram, and WhatsApp.
-- **Swarm Orchestration:** Spin up multiple subagents concurrently (`fork()`) with chunked IPC serialization and strict liveness watchdogs.
+- **Swarm Orchestration:** Spin up multiple subagents concurrently (`fork()`) with chunked IPC serialization, strict liveness watchdogs, and zero memory leaks.
 - **Self-Healing Execution:** Speculative `git worktree` sandboxes for tool execution. Failed edits are dynamically reverted and fed back to the LLM.
 - **Ink 6 + React 19 TUI:** Completely overhauled, remount-free virtual scrolling Terminal UI capable of rendering infinite LLM context.
 
@@ -33,8 +34,10 @@ The latest `v1.0.0` release introduces monumental architectural shifts transform
 Tehuti is designed to remember and adapt to your specific engineering environment over long periods of time.
 
 - **Personality Learning Engine**: Analyzes Git diffs and command histories post-session to learn your style and formatting habits, persistently stored in an internal SQLite key-value store (`user_preferences` and `project_profiles`).
-- **Semantic Graph Consolidation**: A background job continuously scans recent interaction logs and creates relational edges in an internal SQLite database (`insights` and `edges`) using an exponential decay weighting system.
-- **Dual Context Compression**: The execution loop dynamically manages its context window. At ~85% capacity, it seamlessly executes a deterministic array truncation (splicing out oldest messages) without incurring expensive LLM calls. For user-initiated compression, the `/compact` command executes a lossy summarization to retain only critical system context and the most recent interactions.
+- **Semantic Graph Consolidation**: A background job continuously scans recent interaction logs and creates relational edges in an internal SQLite database (`~/.config/tehuti/memory/graph.db` containing `nodes` and `edges`) using an exponential decay weighting system.
+- **Dual Context Compression**: 
+  - **In-Loop Compression**: At ~85% capacity, the execution loop handles context compression deterministically via array truncation (splicing out oldest messages). This does **NOT** use LLM summarization, avoiding expensive LLM calls.
+  - **User-Initiated `/compact`**: A lightweight command that uses a simple placeholder summary, keeping only the system prompt and the last 6 messages.
 
 ---
 
@@ -62,7 +65,7 @@ Tehuti is built for extended autonomous workflows.
 
 Tehuti is shipped with an interactive Terminal User Interface built on Ink 6 and React 19.
 
-- **Hybrid Viewport Architecture**: Handles large logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
+- **Hybrid Viewport Architecture (See `HANDOFF.md`)**: Resolves massive log rendering without React remounts. Scrolling is achieved via a **negative margin** (`marginBottom={-scrollOffset}`) that physically slides the rendered column, paired with a dynamic `visibleMessages` array slice (with a 10-message fallback buffer) strictly for rendering performance.
 - **Interactive Sessions UI**: Includes full Vim keybindings (`j/k/d/r`), mouse-hover support, and virtual scrolling.
 - **Terminal Rendering Precision**: Features robust Markdown header parsing, `KaTeX` block formulas, and surrogate-pair safe ANSI truncation to prevent terminal bleeding.
 - **Robust Keyboard Handling**: Native parsing for `xterm` CSI escape sequences (`[13~`, `[27;5;13~`) ensuring that Enter keys, Vim navigation, and shortcuts work flawlessly across all modern terminal emulators (iTerm2, Ghostty, WezTerm).
@@ -80,10 +83,11 @@ NO_MOUSE=1 npm run start
 
 ## 🌐 Background Daemon & Connectors
 
+- **Active State Orchestration**: The `src/daemon/state-engine.ts` is fully wired, directly managing FS watchers (`chokidar`), cron schedules, and tracking swarm subagents.
 - **macOS `launchd` Autostart**: Generates and installs a `launchd` plist so the persistent daemon survives system reboots.
-- **IPC Unix Socket**: Operates a background server (`~/.tehuti/tehutid.sock`) mapping interactive sessions asynchronously. 
+- **IPC Unix Socket Server**: Operates a background server (`~/.tehuti/tehutid.sock`, created securely with mode `0o600`). Only the owning user can connect. Messaging-mode sessions exposing `bash` or write tools require explicit caller whitelisting.
 - **Companion Mode**: A new interactive CLI (`tehuti companion`) that connects the foreground terminal directly to the running background daemon.
-- **Omnichannel Connectors**: Integrates deeply with Discord, Slack, Telegram, and WhatsApp via WebSockets and HTTP webhook listeners. A central `messaging_sessions` SQLite table maps platform-specific sender IDs back to native Tehuti sessions.
+- **Omnichannel Connectors**: Native webhook and WebSocket listeners for Discord, Slack, Telegram, and WhatsApp are fully implemented. A central `messaging_sessions` SQLite table maps platform-specific sender IDs to native Tehuti sessions.
 
 ---
 

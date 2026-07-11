@@ -6,7 +6,7 @@ import {
 import { Box, Text } from "ink";
 import BigText from "ink-big-text";
 import Gradient from "ink-gradient";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 
 export interface TehutiHeaderProps {
@@ -51,7 +51,7 @@ function ClickableBadge({
 	);
 }
 
-export function TehutiHeader({
+export const TehutiHeader = memo(function TehutiHeader({
 	compact = false,
 	model,
 	provider,
@@ -220,4 +220,4 @@ export function TehutiHeader({
 			</Box>
 		</Box>
 	);
-}
+});

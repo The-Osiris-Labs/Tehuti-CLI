@@ -4,6 +4,7 @@ import {
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
@@ -54,6 +55,7 @@ function SessionRow({
 		secondary: GOLD,
 		coral: CORAL,
 		sand: SAND,
+		// @ts-expect-error TS6133/TS6192: Unused variable
 		nile: NILE,
 	} = BRANDING.colors;
 	const dateStr = new Date(session.updatedAt).toLocaleDateString();
@@ -196,70 +198,70 @@ export function SessionList({
 				paddingY={1}
 			>
 				<Box paddingX={1} marginBottom={1} marginTop={1}>
-				<Text color={GOLD} bold>
-					𓁹 Saved Sessions
-				</Text>
-			</Box>
-			<Box flexDirection="row" paddingX={1} paddingBottom={1}>
-				<Box width={3} />
-				<Box width={10}>
-					<Text color="gray" bold>
-						ID
+					<Text color={GOLD} bold>
+						𓁹 Saved Sessions
 					</Text>
 				</Box>
-				<Box flexGrow={1} flexBasis={0} paddingRight={1}>
-					<Text color="gray" bold>
-						NAME
+				<Box flexDirection="row" paddingX={1} paddingBottom={1}>
+					<Box width={3} />
+					<Box width={10}>
+						<Text color="gray" bold>
+							ID
+						</Text>
+					</Box>
+					<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+						<Text color="gray" bold>
+							NAME
+						</Text>
+					</Box>
+					<Box width={8}>
+						<Text color="gray" bold>
+							MSGS
+						</Text>
+					</Box>
+					<Box width={10}>
+						<Text color="gray" bold>
+							TOKENS
+						</Text>
+					</Box>
+					<Box flexGrow={1} flexBasis={0} paddingRight={1}>
+						<Text color="gray" bold>
+							MODEL
+						</Text>
+					</Box>
+					<Box width={12}>
+						<Text color="gray" bold>
+							DATE
+						</Text>
+					</Box>
+					<Box width={2} />
+				</Box>
+				{visibleSessions.map((session: SessionMetadata, i: number) => {
+					const actualIndex = windowStart + i;
+					return (
+						<SessionRow
+							key={session.id}
+							session={session}
+							isFocused={actualIndex === selectedIndex}
+							onClick={() => onLoadSession(session.id)}
+							onHover={() => setSelectedIndex(actualIndex)}
+						/>
+					);
+				})}
+				<Box
+					marginTop={1}
+					paddingX={1}
+					flexDirection="row"
+					justifyContent="space-between"
+					width="100%"
+				>
+					<Text dimColor>↑/↓: Navigate • Enter/Click: Select • Esc: Close</Text>
+					<Text dimColor>
+						Showing {windowStart + 1}-
+						{Math.min(windowStart + PAGE_SIZE, sessions.length)} of{" "}
+						{sessions.length}
 					</Text>
 				</Box>
-				<Box width={8}>
-					<Text color="gray" bold>
-						MSGS
-					</Text>
-				</Box>
-				<Box width={10}>
-					<Text color="gray" bold>
-						TOKENS
-					</Text>
-				</Box>
-				<Box flexGrow={1} flexBasis={0} paddingRight={1}>
-					<Text color="gray" bold>
-						MODEL
-					</Text>
-				</Box>
-				<Box width={12}>
-					<Text color="gray" bold>
-						DATE
-					</Text>
-				</Box>
-				<Box width={2} />
-			</Box>
-			{visibleSessions.map((session: SessionMetadata, i: number) => {
-				const actualIndex = windowStart + i;
-				return (
-					<SessionRow
-						key={session.id}
-						session={session}
-						isFocused={actualIndex === selectedIndex}
-						onClick={() => onLoadSession(session.id)}
-						onHover={() => setSelectedIndex(actualIndex)}
-					/>
-				);
-			})}
-			<Box
-				marginTop={1}
-				paddingX={1}
-				flexDirection="row"
-				justifyContent="space-between"
-				width="100%"
-			>
-				<Text dimColor>↑/↓: Navigate • Enter/Click: Select • Esc: Close</Text>
-				<Text dimColor>
-					Showing {windowStart + 1}-
-					{Math.min(windowStart + PAGE_SIZE, sessions.length)} of{" "}
-					{sessions.length}
-				</Text>
-			</Box>
 			</Box>
 		</Box>
 	);

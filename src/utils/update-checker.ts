@@ -72,10 +72,14 @@ function getLatestNpmVersion(): string | null {
 async function getLatestNpmVersionAsync(): Promise<string | null> {
 	return new Promise((resolve) => {
 		import("node:child_process").then(({ exec }) => {
-			exec(`npm view ${PACKAGE_NAME} version`, { timeout: 5000 }, (error, stdout) => {
-				if (error) resolve(null);
-				else resolve(stdout.trim() || null);
-			});
+			exec(
+				`npm view ${PACKAGE_NAME} version`,
+				{ timeout: 5000 },
+				(error, stdout) => {
+					if (error) resolve(null);
+					else resolve(stdout.trim() || null);
+				},
+			);
 		});
 	});
 }

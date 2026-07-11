@@ -1,5 +1,5 @@
-import { AgentError } from "../../utils/errors.js";
 import { randomUUID } from "node:crypto";
+import { AgentError } from "../../utils/errors.js";
 
 export function serializeError(error: unknown): string {
 	if (error instanceof AgentError) {
@@ -93,7 +93,13 @@ export class ChunkReceiver {
 				}
 				return { complete: true, payload: JSON.parse(fullStr) };
 			} catch (err) {
-				return { complete: true, payload: { error: "Failed to parse JSON chunks", details: String(err) } };
+				return {
+					complete: true,
+					payload: {
+						error: "Failed to parse JSON chunks",
+						details: String(err),
+					},
+				};
 			}
 		}
 

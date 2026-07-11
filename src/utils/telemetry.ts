@@ -29,6 +29,12 @@ export interface ModelCostMetric {
 	timestamp: number;
 }
 
+export interface ErrorMetric {
+	message: string;
+	stack?: string;
+	timestamp: number;
+}
+
 export interface PerformanceMetrics {
 	toolExecutions: ToolExecutionMetric[];
 	parallelExecutions: ParallelExecutionMetric[];
@@ -40,6 +46,16 @@ export interface PerformanceMetrics {
 	totalCacheMisses: number;
 	totalTokensSaved: number;
 	totalCostSaved: number;
+	errors: ErrorMetric[];
+	totalErrors: number;
+}
+
+export function redactSensitiveInfo(text: string): string {
+	if (!text) return text;
+	let redacted = text.replace(/sk-[a-zA-Z0-9_-]+/g, "sk-[REDACTED]");
+	redacted = redacted.replace(/(?:\/Users\/|\/home\/)[^/]+/g, "~");
+	redacted = redacted.replace(/[A-Z]:\\Users\\[^\\]+/gi, "~");
+	return redacted;
 }
 
 class TelemetryCollector {
@@ -58,6 +74,8 @@ class TelemetryCollector {
 			totalCacheMisses: 0,
 			totalTokensSaved: 0,
 			totalCostSaved: 0,
+			errors: [],
+			totalErrors: 0,
 		};
 	}
 
@@ -80,7 +98,8 @@ class TelemetryCollector {
 			cacheHit,
 			timestamp: Date.now(),
 		});
-		if (this.metrics.toolExecutions.length > 1000) this.metrics.toolExecutions.shift();
+		if (this.metrics.toolExecutions.length > 1000)
+			this.metrics.toolExecutions.shift();
 
 		this.metrics.totalToolCalls++;
 
@@ -116,7 +135,8 @@ class TelemetryCollector {
 			savingsMs,
 			timestamp: Date.now(),
 		});
-		if (this.metrics.parallelExecutions.length > 1000) this.metrics.parallelExecutions.shift();
+		if (this.metrics.parallelExecutions.length > 1000)
+			this.metrics.parallelExecutions.shift();
 	}
 
 	recordCacheStats(hits: number, misses: number, bytesSaved: number = 0): void {
@@ -144,6 +164,34 @@ class TelemetryCollector {
 			timestamp: Date.now(),
 		});
 		if (this.metrics.modelCosts.length > 1000) this.metrics.modelCosts.shift();
+	}
+
+	recordError(error: unknown): void {
+		if (!this.enabled) return;
+
+		let message = "Unknown error";
+		let stack: string | undefined;
+
+		if (error instanceof Error) {
+			message = error.message;
+			stack = error.stack;
+		} else if (typeof error === "string") {
+			message = error;
+		} else {
+			try {
+				message = JSON.stringify(error);
+			} catch {
+				message = String(error);
+			}
+		}
+
+		this.metrics.errors.push({
+			message: redactSensitiveInfo(message),
+			stack: stack ? redactSensitiveInfo(stack) : undefined,
+			timestamp: Date.now(),
+		});
+		if (this.metrics.errors.length > 100) this.metrics.errors.shift();
+		this.metrics.totalErrors++;
 	}
 
 	getToolStats(): Map<
@@ -206,6 +254,7 @@ class TelemetryCollector {
 		summary += `Cache Hit Rate: ${(this.metrics.cacheMetrics.hitRate * 100).toFixed(1)}%\n`;
 		summary += `Time Saved (Parallel): ${(savings.timeMs / 1000).toFixed(2)}s\n`;
 		summary += `Tokens Saved (Cache): ${this.metrics.totalTokensSaved.toLocaleString()}\n`;
+		summary += `Total Errors: ${this.metrics.totalErrors}\n`;
 
 		if (toolStats.size > 0) {
 			summary += `\n🔧 Tool Performance:\n`;
@@ -236,6 +285,8 @@ class TelemetryCollector {
 			totalCacheMisses: 0,
 			totalTokensSaved: 0,
 			totalCostSaved: 0,
+			errors: [],
+			totalErrors: 0,
 		};
 	}
 }

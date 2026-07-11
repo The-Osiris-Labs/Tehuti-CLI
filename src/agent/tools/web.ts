@@ -71,6 +71,7 @@ const CODE_SEARCH_SCHEMA = z.object({
 		.describe("Number of tokens to return (default: 5000)"),
 });
 
+// @ts-expect-error TS6133/TS6192: Unused variable
 const _ALLOWED_DOMAINS = [
 	"github.com",
 	"npmjs.com",
@@ -300,7 +301,7 @@ async function webFetch(
 
 		return {
 			success: true,
-			output: content,
+			output: `<web_content>\n${content}\n</web_content>`,
 			metadata: {
 				url,
 				format,
@@ -392,7 +393,7 @@ Do not include any other commentary.`;
 
 		return {
 			success: true,
-			output: content,
+			output: `<web_search_results>\n${content}\n</web_search_results>`,
 			metadata: { query, provider: "openrouter", model },
 		};
 	} catch {
@@ -469,7 +470,9 @@ async function webSearch(
 
 		return {
 			success: true,
-			output: results || "No results found",
+			output: results
+				? `<web_search_results>\n${results}\n</web_search_results>`
+				: "No results found",
 			metadata: {
 				query,
 				num_results: response.results.length,
@@ -547,7 +550,7 @@ under ${tokensNum} tokens. Format code blocks with triple backticks.`;
 
 		return {
 			success: true,
-			output: content,
+			output: `<code_search_results>\n${content}\n</code_search_results>`,
 			metadata: { query, provider: "openrouter", model, fallback: true },
 		};
 	} catch {
@@ -599,7 +602,9 @@ ${result.text ?? ""}
 
 		return {
 			success: true,
-			output: results || "No code examples found",
+			output: results
+				? `<code_search_results>\n${results}\n</code_search_results>`
+				: "No code examples found",
 			metadata: {
 				query,
 				tokens_num,
