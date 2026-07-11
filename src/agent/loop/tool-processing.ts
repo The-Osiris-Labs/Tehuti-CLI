@@ -78,7 +78,7 @@ function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
 // --- BEGIN MCP Pipeline Runtime & TypeMapper ---
 /**
  * Maps output properties from a previous MCP pipeline step to the input arguments of the next step.
- * 
+ *
  * In an MCP pipeline, tools may output JSON objects. This utility extracts keys from those objects
  * and maps them into the `args` object for the subsequent tool call. It supports explicit mapping
  * via a configuration object, implicit auto-mapping of identical keys, and fallback to common
@@ -87,7 +87,7 @@ function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
 export class TypeMapper {
 	/**
 	 * Maps properties from source output to target arguments.
-	 * 
+	 *
 	 * @param sourceOutput - The raw output from the previous tool. Can be a string or parsed JSON object.
 	 * @param mappingConfig - Optional explicit mapping of `{ targetKey: sourceKey }`.
 	 * @returns An object containing the mapped arguments ready to be merged into the next tool's input.
@@ -136,7 +136,7 @@ export interface PipelineStep {
 /**
  * Executes a sequence of MCP tool calls as a single pipeline, mapping outputs from one step
  * as inputs to the next using the TypeMapper.
- * 
+ *
  * @param args - The arguments containing the `steps` array.
  * @param contextForTools - Shared context passed to each tool execution.
  * @param options - Execution options including progress callbacks.

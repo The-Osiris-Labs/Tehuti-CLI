@@ -86,13 +86,13 @@ if (currentVersion === 0) {
 
 /**
  * Migration v2 (user_version = 2)
- * 
+ *
  * Introduces the unified `user_profiles` table to enable cross-platform identity management
  * for the companion expansion. Previously, `messaging_sessions` mapped a platform-specific ID
  * (e.g., Slack user ID, Discord ID) directly to a Tehuti session. With `user_profiles`,
  * multiple platform identities can now link to a single profile, enabling consistent memory,
  * learned formatting habits, and preferences across all connected clients.
- * 
+ *
  * This migration:
  * 1. Creates the `user_profiles` table.
  * 2. Alters `messaging_sessions` to include a `profile_id` and `platform`.

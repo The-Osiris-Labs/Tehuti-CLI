@@ -521,7 +521,7 @@ export class SelfHealingManager {
 		let winnerId: string | null = null;
 		let winnerWorktree: string | null = null;
 
-		return new Promise(async (resolve) => {
+		return new Promise((resolve) => {
 			let completedCount = 0;
 
 			// 2. Listen to chunked IPC streams (via swarm orchestrator update events)
@@ -606,16 +606,21 @@ export class SelfHealingManager {
 			swarmManager.on("update", onUpdate);
 
 			// Spawn the N subagents to trigger the paths concurrently
-			for (let i = 0; i < pathsCount; i++) {
-				const id = await swarmManager.spawnSubagent({
-					prompt,
-					workingDir: worktrees[i].worktreePath,
-					parentContext,
-					type: "speculative-path",
-					description: `Speculative Path ${i + 1}/${pathsCount}`,
-				});
-				subagentIds.push(id);
-			}
+			(async () => {
+				for (let i = 0; i < pathsCount; i++) {
+					const id = await swarmManager.spawnSubagent({
+						prompt,
+						workingDir: worktrees[i].worktreePath,
+						parentContext,
+						type: "speculative-path",
+						description: `Speculative Path ${i + 1}/${pathsCount}`,
+					});
+					subagentIds.push(id);
+				}
+			})().catch((error) => {
+				console.error("Failed to spawn subagents:", error);
+				cleanupAndResolve();
+			});
 		});
 	}
 }

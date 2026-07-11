@@ -1,28 +1,32 @@
-import { SubagentManager } from "./manager.js";
-import { execAsync } from "../../utils/exec.js";
+import { exec } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
 
 export class BackgroundRefactorAgent {
-	private manager: SubagentManager;
-
-	constructor(manager: SubagentManager) {
-		this.manager = manager;
-	}
+	constructor() {}
 
 	/**
 	 * Preemptively clones the current context into an ephemeral worktree,
 	 * runs linters/tests to identify issues, and queues fixes for review.
 	 */
 	async computePreemptiveFixes(mainDir: string): Promise<string[]> {
-		const worktreePath = path.join(mainDir, `.git/worktrees/refactor-${Date.now()}`);
+		const worktreePath = path.join(
+			mainDir,
+			`.git/worktrees/refactor-${Date.now()}`,
+		);
 		const branchName = `refactor-speculation-${Date.now()}`;
 
 		try {
 			// Create an isolated worktree branch based on current HEAD
-			await execAsync(`git worktree add -b ${branchName} ${worktreePath} HEAD`, {
-				cwd: mainDir,
-			});
+			await execAsync(
+				`git worktree add -b ${branchName} ${worktreePath} HEAD`,
+				{
+					cwd: mainDir,
+				},
+			);
 
 			// Run linters in the worktree
 			try {
@@ -51,7 +55,9 @@ export class BackgroundRefactorAgent {
 				await execAsync(`git worktree remove --force ${worktreePath}`, {
 					cwd: mainDir,
 				}).catch(() => {});
-				await execAsync(`git branch -D ${branchName}`, { cwd: mainDir }).catch(() => {});
+				await execAsync(`git branch -D ${branchName}`, { cwd: mainDir }).catch(
+					() => {},
+				);
 			}
 		}
 	}
