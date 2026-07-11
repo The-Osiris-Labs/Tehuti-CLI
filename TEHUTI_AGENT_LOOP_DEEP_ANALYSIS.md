@@ -203,11 +203,20 @@ if (/\.git\b/.test(argsStr))
 
 **GAP:** The `_toolName` parameter is prefixed with underscore indicating it's intentionally unused. The firewall only checks argument content, not which tool is being invoked. A tool named "write" modifying `.gitignore` would be blocked by the `.git` regex — but this is arguably intentional.
 
-### 2.4 Result Truncation (L27–L42)
+### 2.4 Autonomous Tool Chaining: `executeMCPPipeline()`
+
+**Feature Added:** A runtime for autonomous tool chaining bypassing the main LLM loop.
+- Takes an array of `PipelineStep` (`{ tool, args, mapping }`).
+- Executes a sequence of MCP tool calls as a single pipeline.
+- Uses `TypeMapper.mapProperties(lastOutput, step.mapping)` to pipe output from one step to the next, mapping specific keys or auto-mapping identical keys.
+- Fails early if any step fails.
+- Allows chaining sequences of specific tools efficiently without round trips to the LLM.
+
+### 2.5 Result Truncation (L27–L42)
 
 `stringifyToolResult()` caps tool output at `MODEL_TOOL_RESULT_MAX_CHARS = 20000` characters. On success: returns `record.output`. On failure: returns `"Error: <error>\nOutput: <output>"` truncated.
 
-### 2.5 Gaps in tool-processing.ts
+### 2.6 Gaps in tool-processing.ts
 
 | Issue | Lines | Severity |
 |-------|-------|----------|
@@ -294,14 +303,14 @@ export function createSmartSummarizer() { return async () => ""; }
 
 ---
 
-## 4. self-healing.ts — What It ACTUALLY Does (331 lines)
+## 4. self-healing.ts — What It ACTUALLY Does (622 lines)
 
 **File:** `src/agent/loop/self-healing.ts` | Class: `SelfHealingManager`
 
 ### 4.1 Core Claim vs Reality
 
 **Claimed:** Speculative edits in a shadow workspace with validation and merge/discard.  
-**Reality:** It creates a git worktree, runs a validation command, BUT **never applies speculative changes and never merges/discards anything.** It only reports whether validation passed or failed.
+**Reality (Updated):** The core `wrapToolFailure` method still only acts as a validation/diagnostic tool. However, the newly added **`runMultiPathSpeculation`** method fully implements speculative multi-path execution: it spawns concurrent subagents in shadow workspaces, listens to chunked IPC streams, runs validations, and auto-merges the winner.
 
 ### 4.2 Detailed Flow
 
@@ -327,13 +336,7 @@ Then (L44–L62):
 5. If validation **passes**: returns original result unchanged (L62)
 6. In `finally`: calls `cleanupShadowWorkspace()` (L58–L61)
 
-**CRITICAL FINDING:** There is NO call to `applySpeculativeChanges()` anywhere in the codebase! The method exists (L242–L247) but is never invoked. The self-healing system:
-- Creates a worktree
-- Runs validation
-- Cleans up
-- Returns the original (unchanged) result
-
-This means **self-healing is purely a validation/diagnostic tool** — it tells you "your changes would break the build" but does NOT attempt to fix anything.
+**FINDING:** The `wrapToolFailure()` pipeline itself does NOT attempt to fix anything or apply changes. It purely acts as a validation/diagnostic tool for tool executions, telling you "your changes would break the build". However, the actual healing and merging logic is now fully implemented in `runMultiPathSpeculation()` via a separate multi-agent pipeline.
 
 ### 4.3 `createShadowWorkspace()` (L137–L234)
 
@@ -369,15 +372,25 @@ Detailed flow:
 - `cleanupOrphanedWorktrees()` (L65–L87): Runs `git worktree prune`, then deletes everything in `.tehuti/shadows/` — **this is aggressive and could delete worktrees from other sessions**
 - Signal handlers (L117–L131): SIGINT → exit(130), SIGTERM → exit(143)
 
-### 4.7 Gaps in self-healing.ts
+### 4.7 Speculative Multi-Path Execution: `runMultiPathSpeculation()`
+
+**Feature Added:** A multi-path speculative loop that spawns concurrent git worktrees to test fixes in parallel and auto-merges the winner.
+- Creates `N` shadow workspaces via `createShadowWorkspace()`.
+- Listens to chunked IPC streams via `swarmManager` update events to track subagent completion.
+- Once a subagent completes, tests its workspace by running `runValidation()`.
+- On the **first success** (`validation.success === true`):
+  - Uses `git status` to ensure there are changes, then auto-merges the winner back into the primary branch using `fs.promises.cp` with filter.
+  - Kills (prunes) all remaining slower or failing subagents via `swarmManager.pruneFailures()`.
+- If no winner passes validation, it cleans up all shadow workspaces and branch references without modifying the primary branch.
+
+### 4.8 Gaps in self-healing.ts
 
 | Issue | Lines | Severity |
 |-------|-------|----------|
-| `applySpeculativeChanges()` exists but NEVER called | L242–L247 | **Critical** — self-healing doesn't actually heal |
+| `applySpeculativeChanges()` exists but NEVER called | L242–L247 | Medium — legacy code now that `runMultiPathSpeculation` handles merging |
 | `parseFailureOutput()` and `injectFailureContext()` exist but NEVER called | L301–L330 | Medium — dead code |
-| No merge/discard logic — worktree result never propagates back | — | **Critical** — stated purpose unimplemented |
 | Orphan cleanup deletes ALL shadows dirs, not just own | L74–L83 | Medium — could affect other sessions |
-| Only validates; never fixes | L35–L63 | **Critical** — misnamed |
+| `wrapToolFailure` only validates; never fixes | L35–L63 | Minor — functionality moved to multi-path speculation |
 | Error during sync silently swallowed | L229–L231 | Low |
 
 ---
@@ -863,7 +876,7 @@ To prevent hanging tasks and event loop leaks, the subagent manager implements r
 - **Prefetch with invalidation:** Speculative prefetch with smart abort when writes conflict
 
 ### Critical Issues
-1. **Self-healing is misnamed:** `SelfHealingManager` does not heal — it only validates. `applySpeculativeChanges()` exists but is never called. No merge/discard logic.
+1. **Self-healing legacy methods:** The `wrapToolFailure` pipeline only validates. While `applySpeculativeChanges()` exists, it's never called. However, this is largely mitigated by the new `runMultiPathSpeculation` loop which fully implements merge/discard logic.
 2. **Type mismatch in model routing:** `classifyTask`'s 3rd parameter receives a `TaskClassification` (object) when it expects an array, making the tool-intent routing path dead code when called from runner.ts.
 3. **Stub functions in context-compressor.ts:** `compressContextWithMetrics`, `progressiveCompress`, `createContextSummarizer`, `createSmartSummarizer` are all no-op stubs returning empty results — LLM-based summarization is NOT implemented.
 
