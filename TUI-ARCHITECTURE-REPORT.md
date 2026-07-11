@@ -419,6 +419,23 @@ Renders filled "━" and empty "─" characters. Shows percentage and optional l
 - **Validation error** display (line 158)
 - Uses `useVimInput` for navigation, `useVirtualScroll` for scrolling
 
+### 2.15 `Profiler` (`src/cli/ui/components/Profiler.tsx`, 123 lines)
+
+**Props**: `onClose: () => void`
+
+**Features**:
+- Parses and visualizes tracing events chronologically via a hierarchical flame-graph model.
+- Constructs virtualized roots by grouping `trace.jsonl` events via `correlationId` and `parentId` (`trace.recent(2000)`).
+- Renders `[actor] kind summary (duration)` with a block-character (`█`) visual duration bar.
+- Implements `useInput` for timeline navigation: Up/Down arrow keys scrub back and forth, slicing a window of 15 `visibleRoots`.
+
+### 2.16 `SocketStreamer` Advisory Toasts (Integrated in `chat.ts`)
+
+Integrated directly into the `ChatUI` loop to stream real-time background daemon events:
+- Intercepts `msg.type === "advisory"` events from the `TehutiDaemonClient` connection.
+- Manages an `advisories` state array with auto-expiring messages (8-second `setTimeout` removal).
+- Renders above the `ChatBar` using cyan `[Advisory] ...` Box elements to provide non-blocking daemon updates in the TUI.
+
 ---
 
 ## (3) All Hooks
@@ -971,7 +988,7 @@ The identical regex-based content block parser exists in both files. Any bug fix
 | Bootstrap | `cli/bootstrap.ts` | Config loading, API key resolution, setup wizard |
 | TUI Core | `chat.ts` (ChatUI+App) | 3200-line monolith: state, rendering, agent loop, scroll |
 | Hooks | `useChatState`, `useChatInput`, `useVimInput`, `useVirtualScroll` | State management, input handling, navigation, virtual scrolling |
-| Components | 14 components in `cli/ui/components/` | Header, spinner, tool output, config editor, palette, lists, prompts |
+| Components | 16 components in `cli/ui/components/` | Header, spinner, tool output, config editor, palette, lists, prompts, profiler, advisories |
 | Markdown | `markdown-mapper.tsx` | TUI React markdown renderer |
 | Terminal | `output.ts`, `markdown.ts`, `buffered-writer.ts`, `highlighter.ts`, `capabilities.ts` | One-shot output, ANSI rendering, Shiki, terminal detection |
 | Branding | `branding/index.ts`, `branding/ascii.ts` | Egyptian theme, colors, hieroglyphs |
