@@ -491,4 +491,131 @@ export class SelfHealingManager {
 		const parsed = this.parseFailureOutput(result.output);
 		return `<validation_failure>\n${parsed}\n</validation_failure>`;
 	}
+
+	/**
+	 * Second half of Speculative Multi-Path Execution:
+	 * Spawns N subagents in isolated shadow workspaces, listens to their chunked IPC streams
+	 * via SwarmManager events, evaluates their validation results as they finish,
+	 * auto-merges the first successful winner into the primary branch, and prunes (kills) the rest.
+	 */
+	async runMultiPathSpeculation(
+		prompt: string,
+		pathsCount: number,
+		parentContext?: any,
+	): Promise<{
+		winnerId: string | null;
+		results: Record<string, ValidationResult>;
+	}> {
+		// Lazily import to prevent circular dependencies
+		const { swarmManager } = await import("../swarm/manager.js");
+		const validationCommand = this.config?.selfHealing?.command || "npm test";
+
+		// 1. Create N shadow workspaces
+		const worktrees: { worktreePath: string; branchName: string }[] = [];
+		for (let i = 0; i < pathsCount; i++) {
+			worktrees.push(await this.createShadowWorkspace());
+		}
+
+		const subagentIds: string[] = [];
+		const results: Record<string, ValidationResult> = {};
+		let winnerId: string | null = null;
+		let winnerWorktree: string | null = null;
+
+		return new Promise(async (resolve) => {
+			let completedCount = 0;
+
+			// 2. Listen to chunked IPC streams (via swarm orchestrator update events)
+			const onUpdate = async () => {
+				if (winnerId) return; // Already found a winner
+
+				for (let i = 0; i < pathsCount; i++) {
+					const id = subagentIds[i];
+					if (!id) continue;
+
+					const task = swarmManager.getSubagent(id);
+					// If the IPC chunk stream has emitted a terminal state for this task and we haven't evaluated it yet
+					if (
+						task &&
+						(task.status === "completed" || task.status === "failed") &&
+						!results[id]
+					) {
+						const worktreeInfo = worktrees[i];
+
+						if (task.status === "completed") {
+							// 3. Evaluate test/lint results on this specific path
+							const validation = await this.runValidation(
+								validationCommand,
+								worktreeInfo.worktreePath,
+							);
+							results[id] = validation;
+
+							if (validation.success && !winnerId) {
+								winnerId = id;
+								winnerWorktree = worktreeInfo.worktreePath;
+
+								// 4. Auto-merge the winner into the primary branch
+								const { stdout: status } = await execAsync(
+									`git status --porcelain`,
+									{ cwd: winnerWorktree },
+								);
+								if (status.trim()) {
+									await fs.promises.cp(winnerWorktree, this.mainDir, {
+										recursive: true,
+										force: true,
+										filter: (src) => {
+											const rel = path.relative(winnerWorktree!, src);
+											return !rel.startsWith(".git") && rel !== ".git";
+										},
+									});
+								}
+
+								// 5. Prune failures: kill all remaining slower/failing subagents
+								swarmManager.pruneFailures(winnerId!, subagentIds);
+
+								cleanupAndResolve();
+								return;
+							}
+						} else {
+							results[id] = {
+								success: false,
+								output: "",
+								error: `Subagent failed with status: ${task.status}`,
+							};
+						}
+
+						completedCount++;
+						if (completedCount === pathsCount && !winnerId) {
+							// All paths finished, but no winner passed validation
+							cleanupAndResolve();
+							return;
+						}
+					}
+				}
+			};
+
+			const cleanupAndResolve = async () => {
+				swarmManager.off("update", onUpdate);
+
+				// Clean up all shadow workspaces (destroying branches and worktrees)
+				for (const wt of worktrees) {
+					await this.cleanupShadowWorkspace(wt.worktreePath, wt.branchName);
+				}
+				resolve({ winnerId, results });
+			};
+
+			swarmManager.on("update", onUpdate);
+
+			// Spawn the N subagents to trigger the paths concurrently
+			for (let i = 0; i < pathsCount; i++) {
+				const id = await swarmManager.spawnSubagent({
+					prompt,
+					workingDir: worktrees[i].worktreePath,
+					parentContext,
+					type: "speculative-path",
+					description: `Speculative Path ${i + 1}/${pathsCount}`,
+				});
+				subagentIds.push(id);
+			}
+		});
+	}
 }

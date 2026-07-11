@@ -23,6 +23,11 @@ export class DaemonStateEngine extends EventEmitter {
 	private cronTasks: cron.ScheduledTask[] = [];
 	private pollInterval?: NodeJS.Timeout;
 	private connectorManager?: ConnectorManager;
+	private fsEventQueue: Array<{
+		event: string;
+		path: string;
+		timestamp: number;
+	}> = [];
 
 	constructor(private config: StateEngineConfig = {}) {
 		super();
@@ -59,9 +64,7 @@ export class DaemonStateEngine extends EventEmitter {
 
 				this.fsWatcher.on("all", (event: string, path: string) => {
 					try {
-						const msg = `FS Event: ${event} on ${path}`;
-						debug.log("daemon", msg);
-						agentEventBus.emit("wakeup", msg);
+						this.fsEventQueue.push({ event, path, timestamp: Date.now() });
 					} catch (err) {
 						debug.log(
 							"daemon",
@@ -71,7 +74,10 @@ export class DaemonStateEngine extends EventEmitter {
 				});
 
 				this.fsWatcher.on("error", (error: any) => {
-					debug.log("daemon", `FS Watcher error: ${error instanceof Error ? error.message : String(error)}`);
+					debug.log(
+						"daemon",
+						`FS Watcher error: ${error instanceof Error ? error.message : String(error)}`,
+					);
 				});
 			} catch (error) {
 				debug.log(
@@ -198,6 +204,26 @@ export class DaemonStateEngine extends EventEmitter {
 	private tick() {
 		try {
 			if (!this.isRunning) return;
+
+			if (this.fsEventQueue.length > 0) {
+				const batch = this.fsEventQueue.splice(0, this.fsEventQueue.length);
+
+				const grouped = batch.reduce(
+					(acc, curr) => {
+						acc[curr.event] = (acc[curr.event] || 0) + 1;
+						return acc;
+					},
+					{} as Record<string, number>,
+				);
+
+				const summary = Object.entries(grouped)
+					.map(([evt, count]) => `${count} ${evt}(s)`)
+					.join(", ");
+
+				const msg = `FS Events Batch: ${batch.length} changes detected [${summary}]. Last path: ${batch[batch.length - 1].path}`;
+				debug.log("daemon", msg);
+				agentEventBus.emit("wakeup", msg);
+			}
 
 			for (const [_id, context] of Array.from(this.activeContexts.entries())) {
 				if (context.isSleeping) {

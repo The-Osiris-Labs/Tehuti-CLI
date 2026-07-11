@@ -155,3 +155,4 @@ Ready for **release** additionally requires M5 adversarial suite and M2 agent ha
 - **Signal Mocks:** Resolved `manager.test.ts` signal mocks for test reliability.
 - **Session Persistence:** Added atomic session JSON writes for `session.json` and `metadata.json` using temp+fsync+rename patterns with `EXDEV` fallback.
 - **Bootstrap Flow:** Added `scripts/bootstrap.sh` for one-shot environment setup, native deps compilation, and test execution.
+- **Speculative Multi-Path Execution:** Added a new test workflow utilizing `runMultiPathSpeculation` in `src/agent/loop/self-healing.ts`. This isolates tests via concurrent `git worktrees` and evaluates them in parallel, auto-merging the first one that successfully passes tests and linters, while pruning the others via IPC chunking.

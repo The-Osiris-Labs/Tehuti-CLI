@@ -84,4 +84,41 @@ if (currentVersion === 0) {
 	initSchema();
 }
 
+if (currentVersion === 1) {
+	const migrateV2 = db.transaction(() => {
+		db.exec(`
+			-- 1. Create the unified User Profiles table
+			CREATE TABLE IF NOT EXISTS user_profiles (
+				profile_id TEXT PRIMARY KEY,
+				tehuti_session_id TEXT NOT NULL UNIQUE,
+				created_at INTEGER DEFAULT (cast(unixepoch() * 1000 as integer)),
+				last_active INTEGER DEFAULT (cast(unixepoch() * 1000 as integer))
+			);
+
+			-- 2. Alter existing messaging_sessions to support platforms and profile linking
+			ALTER TABLE messaging_sessions ADD COLUMN profile_id TEXT;
+			ALTER TABLE messaging_sessions ADD COLUMN platform TEXT DEFAULT 'unknown';
+
+			-- 3. Seed profiles for all existing sessions (backward compatibility)
+			INSERT INTO user_profiles (profile_id, tehuti_session_id, created_at, last_active)
+			SELECT hex(randomblob(16)), tehuti_session_id, created_at, last_active 
+			FROM messaging_sessions;
+
+			-- 4. Link existing sessions to the newly generated profiles
+			UPDATE messaging_sessions
+			SET profile_id = (
+				SELECT profile_id FROM user_profiles 
+				WHERE user_profiles.tehuti_session_id = messaging_sessions.tehuti_session_id
+			);
+
+			-- 5. Add indices for fast cross-platform resolution
+			CREATE INDEX IF NOT EXISTS idx_user_profiles_session ON user_profiles(tehuti_session_id);
+			CREATE INDEX IF NOT EXISTS idx_messaging_sessions_profile_id ON messaging_sessions(profile_id);
+		`);
+		db.pragma("user_version = 2");
+	});
+
+	migrateV2();
+}
+
 export default db;

@@ -47,7 +47,8 @@ export function createMCPToolName(
 }
 
 export function deepNormalizeSchema(schema: any, depth = 0): any {
-	if (depth > 10) return { type: "string", description: "Schema depth limit exceeded" };
+	if (depth > 10)
+		return { type: "string", description: "Schema depth limit exceeded" };
 	if (!schema || typeof schema !== "object") return schema;
 
 	if (Array.isArray(schema)) {
@@ -141,7 +142,8 @@ export function normalizeMCPInputSchema(
 		...normalized,
 		type: "object",
 		properties:
-			typeof normalized.properties === "object" && normalized.properties !== null
+			typeof normalized.properties === "object" &&
+			normalized.properties !== null
 				? normalized.properties
 				: {},
 	};

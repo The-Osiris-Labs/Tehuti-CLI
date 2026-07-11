@@ -31,6 +31,10 @@ export class TehutiDaemonClient {
 		}
 	}
 
+	public sendAdvisory(message: string): void {
+		this.send({ type: "advisory", message });
+	}
+
 	public disconnect(): void {
 		if (this.client) {
 			this.client.end();

@@ -75,6 +75,114 @@ function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
 	return `${resultStr.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... [Output truncated: showing ${MODEL_TOOL_RESULT_MAX_CHARS.toLocaleString()} of ${resultStr.length.toLocaleString()} total characters]`;
 }
 
+// --- BEGIN MCP Pipeline Runtime & TypeMapper ---
+export class TypeMapper {
+	static mapProperties(
+		sourceOutput: unknown,
+		mappingConfig?: Record<string, string>,
+	): Record<string, unknown> {
+		const nextArgs: Record<string, unknown> = {};
+		if (typeof sourceOutput === "object" && sourceOutput !== null) {
+			const sourceObj = sourceOutput as Record<string, unknown>;
+			if (mappingConfig) {
+				// Map specific keys defined by the LLM
+				for (const [targetKey, sourceKey] of Object.entries(mappingConfig)) {
+					if (sourceObj[sourceKey] !== undefined) {
+						nextArgs[targetKey] = sourceObj[sourceKey];
+					}
+				}
+			} else {
+				// Auto-map based on identical keys between output and input
+				for (const [key, value] of Object.entries(sourceObj)) {
+					nextArgs[key] = value;
+				}
+			}
+		} else if (typeof sourceOutput === "string") {
+			// Fallback: pipe raw string directly to common parameter names if not explicitly mapped
+			nextArgs["query"] = sourceOutput;
+			nextArgs["text"] = sourceOutput;
+		}
+		return nextArgs;
+	}
+}
+
+export interface PipelineStep {
+	tool: string;
+	args: Record<string, unknown>;
+	mapping?: Record<string, string>; // Maps output keys from previous step to input keys of this step
+}
+
+export async function executeMCPPipeline(
+	args: unknown,
+	contextForTools: any,
+	options: ToolProcessingOptions,
+	signal?: AbortSignal,
+): Promise<ToolResult> {
+	const pipelineArgs = args as { steps?: PipelineStep[] };
+	if (!pipelineArgs.steps || !Array.isArray(pipelineArgs.steps)) {
+		return makeToolErrorResult(
+			"Invalid pipeline format: 'steps' array is required.",
+		);
+	}
+
+	const steps = pipelineArgs.steps;
+	const pipelineResults: Array<{ tool: string; output: unknown }> = [];
+	let lastOutput: unknown = null;
+
+	for (let i = 0; i < steps.length; i++) {
+		if (signal?.aborted) {
+			return makeToolErrorResult("Pipeline aborted by user");
+		}
+
+		const step = steps[i];
+		let currentArgs = { ...step.args };
+
+		// Map outputs from the previous step to the current step's arguments
+		if (lastOutput !== null) {
+			const mappedArgs = TypeMapper.mapProperties(lastOutput, step.mapping);
+			currentArgs = { ...currentArgs, ...mappedArgs };
+		}
+
+		options.onProgress?.(
+			50,
+			`Pipeline step ${i + 1}/${steps.length}: Executing ${step.tool}...`,
+		);
+
+		// Execute step
+		const stepResult = await executeTool(
+			step.tool,
+			currentArgs,
+			contextForTools,
+		);
+
+		if (!stepResult.success) {
+			return {
+				success: false,
+				error: `Pipeline halted at step ${i + 1} (${step.tool}): ${stepResult.error}`,
+				output: `Partial pipeline results:\n${JSON.stringify(pipelineResults, null, 2)}`,
+			};
+		}
+
+		pipelineResults.push({ tool: step.tool, output: stepResult.output });
+
+		// Parse output for next step mapping
+		try {
+			lastOutput =
+				typeof stepResult.output === "string"
+					? JSON.parse(stepResult.output)
+					: stepResult.output;
+		} catch {
+			lastOutput = stepResult.output;
+		}
+	}
+
+	return {
+		success: true,
+		output: `Pipeline completed successfully.\nFinal Output:\n${typeof lastOutput === "string" ? lastOutput : JSON.stringify(lastOutput, null, 2)}\n\nFull Trace:\n${JSON.stringify(pipelineResults, null, 2)}`,
+	};
+}
+// --- END MCP Pipeline Runtime & TypeMapper ---
+
 export interface ToolProcessingOptions {
 	onToolCall?: (id: string, name: string, args: unknown) => void;
 	onToolResult?: (id: string, name: string, result: unknown) => void;
@@ -433,13 +541,22 @@ export async function processToolCalls(
 				}
 
 				if (!result) {
-					result = await executeTool(tc.function.name, args, contextForTools);
-					result = await applySelfHealingSafely(
-						tc.function.name,
-						args,
-						result,
-						selfHealer,
-					);
+					if (tc.function.name === "mcp_pipeline") {
+						result = await executeMCPPipeline(
+							args,
+							contextForTools,
+							options,
+							signal,
+						);
+					} else {
+						result = await executeTool(tc.function.name, args, contextForTools);
+						result = await applySelfHealingSafely(
+							tc.function.name,
+							args,
+							result,
+							selfHealer,
+						);
+					}
 				}
 
 				if (!result) {

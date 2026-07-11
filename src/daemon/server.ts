@@ -95,7 +95,7 @@ export class TehutiDaemonServer extends EventEmitter {
 								}
 								return;
 							}
-							if (msg.type === "collab") {
+							if (msg.type === "collab" || msg.type === "advisory") {
 								// Broadcast to all active sockets (simple IPC multiplexing)
 								for (const peerSocket of this.activeSockets) {
 									if (peerSocket !== socket && !peerSocket.destroyed) {

@@ -223,6 +223,18 @@ Tests: unit co-located `src/**/*.test.ts`; E2E in `tests/e2e/**/*.test.ts`.
 
 ---
 
+## Advanced Architectural Streams
+
+The following architectural streams have been newly integrated into the Tehuti-CLI ecosystem:
+
+1. **Speculative Multi-Path Execution**: Allows the agent to explore multiple tool-execution or reasoning paths concurrently, evaluating outcomes before committing to the optimal solution.
+2. **Autonomous MCP Workflow Orchestrator**: A robust system that orchestrates complex, multi-step workflows utilizing Model Context Protocol (MCP) tools entirely autonomously.
+3. **Autonomous Speculative Background Refactor**: Continuously analyzes the codebase in the background and speculatively prepares safe, non-breaking refactors for user review.
+4. **Cross-Platform Ambient Context Continuity**: Ensures seamless persistence and synchronization of agent memory, active tasks, and context across the CLI, background daemon, and messaging platforms.
+5. **Swarm Profiler & Time-Travel Replay**: Provides deep introspection into swarm subagent lifecycles and performance, alongside a replay mechanism to step through past agent iterations for debugging.
+
+---
+
 ## Known Gaps
 
 1. **TUI:** `chat.ts` size (~3.7k lines) blocks maintainability; React duplicate-key warnings in some E2E renders.

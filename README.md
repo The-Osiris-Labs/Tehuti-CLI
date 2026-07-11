@@ -29,6 +29,18 @@ The latest `v1.1.0` release ("The Beast Awakens") introduces monumental architec
 
 ---
 
+## 𓁹 The Eye of Ra: Autonomous Swarm Capabilities
+
+Tehuti transcends single-threaded interaction by invoking a legion of autonomous worker agents—a veritable swarm operating under the absolute authority of the daemon. These god-tier capabilities transform Tehuti from a simple assistant into an omniscient, automated engineering syndicate:
+
+- **Speculative Multi-Path Execution (Git Worktrees):** Tehuti fractures time itself by dynamically spinning up ephemeral `git worktree` sandboxes. It tests multiple complex architectural paths in parallel, executing test suites in perfect isolation. It merges only the flawless outcomes while banishing failed timelines to the void—all completely autonomously.
+- **Autonomous MCP Pipelines:** Complete lifecycle mastery through dynamic Model Context Protocol pipelines. Subagents autonomously negotiate with connected MCP servers, discovering, routing, and chaining tools on the fly to forge continuous, self-sustaining execution loops.
+- **Cross-Platform Context Continuity:** True omniscience across realms. Context flows unbroken from Discord and Slack webhooks directly back to the local CLI. Initiate a sprawling architecture refactor on your phone via Slack, and watch as Tehuti seamlessly continues the thread on your local machine.
+- **Background Daemon Mastery (Chokidar):** The newly refactored daemon, vigilant as the Sphinx, uses `chokidar` for deep, leak-free filesystem orchestration. It silently watches over your project, triggering self-healing loops and managing subagent states without ever blocking your primary terminal session.
+- **Swarm Profiler TUI:** Command the legion from the CLI. A breathtaking Ink 6 / React 19 Interactive Profiler allows you to observe multi-process (`fork()`) subagents in real-time. Monitor task lifecycles, inspect chunked IPC streams over wire protocol, and dictate execution states with Vim-bound precision (`j/k/d/r`).
+
+---
+
 ## 🧠 Memory Architecture
 
 Tehuti is designed to remember and adapt to your specific engineering environment over long periods of time.

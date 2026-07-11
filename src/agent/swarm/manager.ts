@@ -1,7 +1,12 @@
-import { type ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, exec, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
+
 import { debug } from "../../utils/debug.js";
 import { agentEventBus } from "../events.js";
 import type { AgentLoopResult } from "../index.js";
@@ -24,6 +29,10 @@ export interface SubagentTask {
 	toolCallCount: number;
 	// Last activity timestamp for liveness checks
 	lastEventAt?: number;
+	// Multi-path worktree support
+	baseWorkingDir?: string;
+	worktreePath?: string;
+	worktreeBranch?: string;
 }
 
 interface SpawnOptions {
@@ -350,13 +359,24 @@ export class SwarmManager extends EventEmitter {
 			if (typeof childProcess.removeAllListeners === "function") {
 				childProcess.removeAllListeners();
 			}
-			if (childProcess.stdout && typeof childProcess.stdout.removeAllListeners === "function") {
+			if (
+				childProcess.stdout &&
+				typeof childProcess.stdout.removeAllListeners === "function"
+			) {
 				childProcess.stdout.removeAllListeners();
 			}
-			if (childProcess.stderr && typeof childProcess.stderr.removeAllListeners === "function") {
+			if (
+				childProcess.stderr &&
+				typeof childProcess.stderr.removeAllListeners === "function"
+			) {
 				childProcess.stderr.removeAllListeners();
 			}
 			task.process = undefined;
+
+			// Cleanup isolated git worktree if applicable
+			this.cleanupWorktree(task).catch((err) => {
+				debug.log("agent", `Worktree cleanup failed for subagent ${id}:`, err);
+			});
 		};
 
 		childProcess.on("error", (error) => {
@@ -401,6 +421,18 @@ export class SwarmManager extends EventEmitter {
 		if (!task) return undefined;
 		const { process, ...rest } = task;
 		return rest;
+	}
+
+	/**
+	 * Prunes (kills) all specified subagents except for the winner.
+	 * Used during Speculative Multi-Path Execution to abort failing or slower paths.
+	 */
+	public pruneFailures(winnerId: string, speculativeIds: string[]): void {
+		for (const id of speculativeIds) {
+			if (id !== winnerId) {
+				this.killSubagent(id);
+			}
+		}
 	}
 
 	public killSubagent(id: string): boolean {
@@ -550,6 +582,93 @@ export class SwarmManager extends EventEmitter {
 			});
 		}
 		this.emitUpdate();
+	}
+
+	/**
+	 * Spawns N variations of a task concurrently, creating an isolated `git worktree` for each path.
+	 */
+	public async spawnMultiPath(
+		prompt: string,
+		baseWorkingDir: string,
+		variations: number,
+		parentContext?: any,
+	): Promise<string[]> {
+		const ids: string[] = [];
+		for (let i = 0; i < variations; i++) {
+			const id = await this.spawnSpeculativePath(
+				prompt,
+				baseWorkingDir,
+				i,
+				parentContext,
+			);
+			ids.push(id);
+		}
+		return ids;
+	}
+
+	private async spawnSpeculativePath(
+		prompt: string,
+		baseWorkingDir: string,
+		index: number,
+		parentContext?: any,
+	): Promise<string> {
+		const epoch = Date.now();
+		const uniqueId = randomUUID().slice(0, 8);
+		const branchName = `multipath-${process.pid}-${epoch}-${uniqueId}-${index}`;
+		const shadowsDir = resolve(baseWorkingDir, ".tehuti", "multipath");
+
+		await fs.promises.mkdir(shadowsDir, { recursive: true }).catch(() => {});
+
+		const worktreePath = resolve(shadowsDir, branchName);
+
+		try {
+			await execAsync(`git branch "${branchName}"`, { cwd: baseWorkingDir });
+			await execAsync(`git worktree add "${worktreePath}" "${branchName}"`, {
+				cwd: baseWorkingDir,
+			});
+		} catch (error) {
+			debug.log(
+				"agent",
+				`Failed to create worktree for speculative path ${index}:`,
+				error,
+			);
+			throw error;
+		}
+
+		const id = await this.spawnSubagent({
+			prompt,
+			workingDir: worktreePath,
+			parentContext,
+			type: "speculative-path",
+			description: `Speculative Path ${index + 1}`,
+		});
+
+		const task = this.tasks.get(id);
+		if (task) {
+			task.baseWorkingDir = baseWorkingDir;
+			task.worktreePath = worktreePath;
+			task.worktreeBranch = branchName;
+		}
+
+		return id;
+	}
+
+	private async cleanupWorktree(task: SubagentTask) {
+		if (!task.worktreePath || !task.worktreeBranch || !task.baseWorkingDir) {
+			return;
+		}
+		try {
+			await execAsync(`git worktree remove --force "${task.worktreePath}"`, {
+				cwd: task.baseWorkingDir,
+			}).catch(() => {});
+			await execAsync(`git branch -D "${task.worktreeBranch}"`, {
+				cwd: task.baseWorkingDir,
+			}).catch(() => {});
+		} finally {
+			await fs.promises
+				.rm(task.worktreePath, { recursive: true, force: true })
+				.catch(() => {});
+		}
 	}
 }
 

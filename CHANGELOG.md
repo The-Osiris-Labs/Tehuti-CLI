@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-11
+
+### Feature Streams
+- **Speculative Multi-Path Execution**: Hardened the self-healing execution pipeline utilizing ephemeral Git worktrees for robust failure validation and automatic rollback.
+- **Autonomous MCP Pipelines**: Solidified the dynamic Model Context Protocol (MCP) integration, allowing autonomous tool discovery and payload sanitization at runtime.
+- **Background Daemon Refactoring**: Stabilized the background daemon state engine (`tehutid.sock`) and IPC socket communications for crash-free, active background orchestration.
+- **Cross-Platform Context Continuity**: Centralized session mapping via SQLite (`messaging_sessions`), enabling seamless context handoff across CLI, TUI, and messaging connectors.
+- **Swarm Profiler Overlay**: Added advanced swarm process lifecycle tracking (`pending`, `running`, `completed`, `failed`), preventing task state duplication with `isTerminal()` status predicates.
+
 ## [1.1.0] - 2026-07-11
 
 ### Security & Hardening

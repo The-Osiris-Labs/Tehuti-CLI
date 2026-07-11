@@ -73,6 +73,7 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 	const [progress, setProgress] = useState(0);
 	const [operationLabel, setOperationLabel] = useState("");
 	const [showConfigEditor, setShowConfigEditor] = useState(false);
+	const [showProfiler, setShowProfiler] = useState(false);
 	const [pendingPermission, setPendingPermission] = useState<{
 		request: PermissionRequest;
 		isDangerous: boolean;
@@ -89,6 +90,8 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 	>(null);
 
 	return {
+		showProfiler,
+		setShowProfiler,
 		messages,
 		setMessages,
 		input,

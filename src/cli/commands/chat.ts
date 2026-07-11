@@ -113,6 +113,7 @@ import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
 import { HieroglyphSpinner } from "../ui/components/HieroglyphSpinner.js";
 import { MemoryIndicator } from "../ui/components/MemoryIndicator.js";
 import { PermissionPrompt } from "../ui/components/PermissionPrompt.js";
+import { Profiler } from "../ui/components/Profiler.js";
 import { ProgressBar } from "../ui/components/ProgressBar.js";
 import { QuestionPrompt } from "../ui/components/QuestionPrompt.js";
 import { SessionList } from "../ui/components/SessionList.js";
@@ -765,6 +766,8 @@ function ChatUI({
 	companionMode?: boolean;
 }) {
 	const {
+		showProfiler,
+		setShowProfiler,
 		messages,
 		setMessages,
 		input,
@@ -1125,6 +1128,10 @@ function ChatUI({
 	const newMessageCountRef = useRef<number>(0);
 	const [newMessageCount, setNewMessageCount] = useState(0);
 	const [hasUpdate, setHasUpdate] = useState(false);
+	const [advisories, setAdvisories] = useState<{ id: number; text: string }[]>(
+		[],
+	);
+	const advisoryIdRef = useRef(0);
 	// Snapshot of message count when the user last scrolled up. We diff
 	// against the current messages.length so the "N new" badge shows the
 	// count of message *arrivals*, not the total.
@@ -1187,6 +1194,12 @@ function ChatUI({
 								type: "error",
 								message: msg.message,
 							});
+						} else if (msg.type === "advisory") {
+							const id = advisoryIdRef.current++;
+							setAdvisories((prev) => [...prev, { id, text: msg.message }]);
+							setTimeout(() => {
+								setAdvisories((prev) => prev.filter((a) => a.id !== id));
+							}, 8000);
 						}
 					});
 				})
@@ -2537,6 +2550,7 @@ function ChatUI({
 	}, [scrollToBottom, messages.length, scrollOffset]);
 
 	useChatInput({
+		showProfiler,
 		input,
 		setInput,
 		cursorPos,
@@ -2841,6 +2855,10 @@ function ChatUI({
 				return;
 			}
 
+			if (cmd === "/profiler") {
+				setShowProfiler(true);
+				return;
+			}
 			if (cmd === "/config") {
 				setShowConfigEditor(true);
 				return;
@@ -3836,7 +3854,7 @@ function ChatUI({
 				paddingTop: 1,
 				flexDirection: "column",
 			},
-			showCommandPalette || showConfigEditor || showSessionList
+			showCommandPalette || showConfigEditor || showSessionList || showProfiler
 				? null
 				: pendingPermission
 					? React.createElement(PermissionPrompt, {
@@ -3865,6 +3883,18 @@ function ChatUI({
 												Text,
 												{ key: i, color: "gray", dimColor: true },
 												`[Queued] ${msg}`,
+											),
+										),
+									),
+								advisories.length > 0 &&
+									React.createElement(
+										Box,
+										{ flexDirection: "column", marginBottom: 1 },
+										...advisories.map((adv) =>
+											React.createElement(
+												Text,
+												{ key: `adv-${adv.id}`, color: "cyan" },
+												`[Advisory] ${adv.text}`,
 											),
 										),
 									),
@@ -3981,6 +4011,10 @@ function ChatUI({
 					await loadSessionById(id);
 				},
 				onClose: () => setShowSessionList(false),
+			}),
+		showProfiler &&
+			React.createElement(Profiler, {
+				onClose: () => setShowProfiler(false),
 			}),
 		companionMode
 			? React.createElement(

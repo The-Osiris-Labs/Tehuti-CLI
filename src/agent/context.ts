@@ -207,6 +207,7 @@ export interface AgentContext {
 	systemMemoryPromise?: Promise<string>;
 	diffPreview?: DiffPreviewOptions;
 	companionMode?: boolean;
+	sessionId?: string;
 	personalityBlockPromise?: Promise<string>;
 	readFilesThisSession: Set<string>;
 	isSleeping?: boolean;
@@ -247,15 +248,52 @@ export async function createAgentContext(
 	config: TehutiConfig,
 	diffPreview?: DiffPreviewOptions,
 	companionMode?: boolean,
+	sessionId?: string,
 ): Promise<AgentContext> {
-	const resolvedCwd = path.resolve(cwd);
+	let resolvedCwd = path.resolve(cwd);
+	let recentFiles: string[] = [];
+
+	if (sessionId) {
+		try {
+			const { getUserPreference, setUserPreference } = await import(
+				"./memory/personality.js"
+			);
+
+			// 1. Preload CWD
+			const dbCwd = await getUserPreference(`cwd_${sessionId}`);
+			if (dbCwd) {
+				resolvedCwd = path.resolve(dbCwd);
+			} else {
+				setUserPreference(`cwd_${sessionId}`, resolvedCwd);
+			}
+
+			// 2. Preload Recent File Cache
+			const dbRecentFiles = await getUserPreference(
+				`recent_files_${sessionId}`,
+			);
+			if (dbRecentFiles) {
+				try {
+					recentFiles = JSON.parse(dbRecentFiles);
+				} catch {}
+			}
+		} catch (e) {
+			debug.log(
+				"context",
+				`Failed to preload DB context for session ${sessionId}: ${e}`,
+			);
+		}
+	}
+
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
 	const systemMemoryPromise = getSystemPromptMemory(resolvedCwd);
+
+	// 3. Preload Personality Styles instantly (move initMemory to background)
 	const personalityBlockPromise =
 		config.personality?.styleInjection !== false
-			? initMemory(config.memory?.consolidationIntervalMs).then(() =>
-					getPersonalityPromptBlock(resolvedCwd),
-				)
+			? (async () => {
+					initMemory(config.memory?.consolidationIntervalMs).catch(() => {});
+					return getPersonalityPromptBlock(resolvedCwd);
+				})()
 			: Promise.resolve("");
 
 	return {
@@ -269,7 +307,8 @@ export async function createAgentContext(
 		personalityBlockPromise,
 		diffPreview,
 		companionMode,
-		readFilesThisSession: new Set(),
+		sessionId,
+		readFilesThisSession: new Set(recentFiles),
 		injectionQueue: new InjectionQueue(),
 		metadata: {
 			startTime: new Date(),
@@ -606,12 +645,36 @@ export function trackToolCall(ctx: AgentContext, toolName: string): void {
 export function trackFileRead(ctx: AgentContext, filePath: string): void {
 	if (!ctx.metadata.filesRead.includes(filePath)) {
 		ctx.metadata.filesRead.push(filePath);
+		ctx.readFilesThisSession.add(filePath);
+
+		if (ctx.sessionId) {
+			import("./memory/personality.js")
+				.then(({ setUserPreference }) => {
+					setUserPreference(
+						`recent_files_${ctx.sessionId}`,
+						JSON.stringify(Array.from(ctx.readFilesThisSession)),
+					);
+				})
+				.catch(() => {});
+		}
 	}
 }
 
 export function trackFileWritten(ctx: AgentContext, filePath: string): void {
 	if (!ctx.metadata.filesWritten.includes(filePath)) {
 		ctx.metadata.filesWritten.push(filePath);
+		ctx.readFilesThisSession.add(filePath);
+
+		if (ctx.sessionId) {
+			import("./memory/personality.js")
+				.then(({ setUserPreference }) => {
+					setUserPreference(
+						`recent_files_${ctx.sessionId}`,
+						JSON.stringify(Array.from(ctx.readFilesThisSession)),
+					);
+				})
+				.catch(() => {});
+		}
 	}
 }
 

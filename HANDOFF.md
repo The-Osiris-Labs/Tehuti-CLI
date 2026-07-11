@@ -75,7 +75,9 @@ return messages.slice(Math.min(sliceIndex, Math.max(0, messages.length - 10)));
 ### Viewport Overlays & Dynamic Input
 
 - `inputHeight` dynamically scales with newlines (capped at 8 lines).
-- `chatViewportHeight` subtracts dynamic input bars and overlays (loading/thinking/error/dashboard) to ensure chat history is not hidden behind the input.
+- `chatViewportHeight` subtracts dynamic input bars and overlays (loading/thinking/error/dashboard/profiler) to ensure chat history is not hidden behind the input.
+- **`<Profiler>` Overlay**: Accessible via the `/profiler` command, this React/Ink component provides live diagnostic and trace information directly over the chat interface.
+- **`SocketStreamer` Toasts**: Background advisory toast notifications are piped directly into the foreground Ink TUI via `SocketStreamer`, seamlessly rendering daemon and background task updates without corrupting the active viewport.
 
 ---
 
@@ -213,10 +215,11 @@ on disk.
 1. **Mouse support** (`@ink-tools/ink-mouse`) on Command Palette and Config Editor
 2. **Terminal images** via `MediaViewer` / `terminal-image` (local files only; remote URLs rejected)
 3. **Reasoning UI** — spinner + truncated thinking text during stream
-4. **UI clash prevention** — input bar hidden when palette/config editor open; header collapses after first message
+4. **UI clash prevention** — input bar hidden when palette/config editor/profiler open; header collapses after first message
 5. **Custom keyboard input** in `useChatInput.ts` — history, selection, bracketed paste, Emacs bindings
+6. **Background Toasts** via `SocketStreamer` piping advisory notifications into the foreground TUI
 
-Extracted components: `CommandPalette.tsx`, `ConfigEditor.tsx`, `ExpandableToolOutput.tsx`, `TehutiHeader.tsx`, `MediaViewer.tsx`, `SwarmVisualizer.tsx`.
+Extracted components: `CommandPalette.tsx`, `ConfigEditor.tsx`, `ExpandableToolOutput.tsx`, `TehutiHeader.tsx`, `MediaViewer.tsx`, `SwarmVisualizer.tsx`, `Profiler.tsx`.
 
 ---
 

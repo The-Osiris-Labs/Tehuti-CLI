@@ -45,6 +45,7 @@ export interface UseChatInputProps {
 	send: (text: string) => Promise<void>;
 	saveHistory: (history: string[]) => void;
 	showConfigEditor?: boolean;
+	showProfiler?: boolean;
 	pendingQuestion?: any;
 	showSessionList?: boolean;
 	queuedMessages: string[];
@@ -87,6 +88,7 @@ export function useChatInput(props: UseChatInputProps) {
 		send,
 		saveHistory,
 		showConfigEditor,
+		showProfiler,
 		pendingQuestion,
 		showSessionList,
 		// @ts-expect-error TS6133/TS6192: Unused variable
@@ -96,6 +98,7 @@ export function useChatInput(props: UseChatInputProps) {
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
 	const showConfigEditorRef = React.useRef(showConfigEditor);
+	const showProfilerRef = React.useRef(showProfiler);
 	const pendingQuestionRef = React.useRef(pendingQuestion);
 	const showSessionListRef = React.useRef(showSessionList);
 
@@ -183,6 +186,7 @@ export function useChatInput(props: UseChatInputProps) {
 	React.useEffect(() => {
 		showCommandPaletteRef.current = showCommandPalette;
 		showConfigEditorRef.current = showConfigEditor;
+		showProfilerRef.current = showProfiler;
 		pendingQuestionRef.current = pendingQuestion;
 		showSessionListRef.current = showSessionList;
 		inputRef.current = input;
@@ -195,6 +199,7 @@ export function useChatInput(props: UseChatInputProps) {
 	}, [
 		showCommandPalette,
 		showConfigEditor,
+		showProfiler,
 		pendingQuestion,
 		showSessionList,
 		input,
@@ -312,6 +317,7 @@ export function useChatInput(props: UseChatInputProps) {
 			if (
 				showCommandPaletteRef.current ||
 				showConfigEditorRef.current ||
+				showProfilerRef.current ||
 				pendingQuestionRef.current ||
 				showSessionListRef.current
 			) {
@@ -871,6 +877,7 @@ export function useChatInput(props: UseChatInputProps) {
 			isActive:
 				!showCommandPalette &&
 				!showConfigEditor &&
+				!showProfiler &&
 				!pendingQuestion &&
 				!showSessionList,
 		},

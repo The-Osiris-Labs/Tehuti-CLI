@@ -1,207 +1,180 @@
 import { randomUUID } from "node:crypto";
-import db from "../agent/memory/db";
+import db from "../agent/memory/db.js";
 
-export interface MessagingSession {
-	platform_sender_id: string;
+export interface UserProfile {
+	profile_id: string;
 	tehuti_session_id: string;
 	created_at: number;
 	last_active: number;
 }
 
+export interface MessagingSession {
+	platform_sender_id: string;
+	profile_id: string;
+	platform: string;
+	tehuti_session_id: string; // Deprecated, mapped to profile for backward-compat
+	created_at: number;
+	last_active: number;
+}
+
 export class SessionResolver {
-	private sessionCache = new Map<string, string>();
-	private reverseCache = new Map<string, string>();
+	// Cache: platformSenderId -> profileId
+	private platformCache = new Map<string, string>();
+	// Cache: profileId -> tehutiSessionId
+	private profileCache = new Map<string, string>();
 	private readonly CACHE_MAX_SIZE = 1000;
 
-	private evictOldestFromSessionCache(): void {
-		const firstKey = this.sessionCache.keys().next().value;
+	private evictOldest(cacheMap: Map<string, string>): void {
+		const firstKey = cacheMap.keys().next().value;
 		if (firstKey !== undefined) {
-			const oldVal = this.sessionCache.get(firstKey);
-			this.sessionCache.delete(firstKey);
-			if (oldVal !== undefined) {
-				this.reverseCache.delete(oldVal);
-			}
+			cacheMap.delete(firstKey);
 		}
 	}
 
-	private evictOldestFromReverseCache(): void {
-		const firstKey = this.reverseCache.keys().next().value;
-		if (firstKey !== undefined) {
-			const oldVal = this.reverseCache.get(firstKey);
-			this.reverseCache.delete(firstKey);
-			if (oldVal !== undefined) {
-				this.sessionCache.delete(oldVal);
-			}
+	private updateCache(
+		platformSenderId: string,
+		profileId: string,
+		tehutiSessionId: string,
+	) {
+		while (this.platformCache.size >= this.CACHE_MAX_SIZE) {
+			this.evictOldest(this.platformCache);
 		}
-	}
-
-	private updateCache(platformSenderId: string, tehutiSessionId: string) {
-		// Clean up any existing mapping for platformSenderId
-		if (this.sessionCache.has(platformSenderId)) {
-			const oldTehutiId = this.sessionCache.get(platformSenderId);
-			this.sessionCache.delete(platformSenderId);
-			if (oldTehutiId !== undefined && oldTehutiId !== tehutiSessionId) {
-				this.reverseCache.delete(oldTehutiId);
-			}
+		while (this.profileCache.size >= this.CACHE_MAX_SIZE) {
+			this.evictOldest(this.profileCache);
 		}
 
-		// Clean up any existing mapping for tehutiSessionId
-		if (this.reverseCache.has(tehutiSessionId)) {
-			const oldSenderId = this.reverseCache.get(tehutiSessionId);
-			this.reverseCache.delete(tehutiSessionId);
-			if (oldSenderId !== undefined && oldSenderId !== platformSenderId) {
-				this.sessionCache.delete(oldSenderId);
-			}
-		}
-
-		// Synchronized LRU eviction hooks
-		while (this.sessionCache.size >= this.CACHE_MAX_SIZE) {
-			this.evictOldestFromSessionCache();
-		}
-		while (this.reverseCache.size >= this.CACHE_MAX_SIZE) {
-			this.evictOldestFromReverseCache();
-		}
-
-		this.sessionCache.set(platformSenderId, tehutiSessionId);
-		this.reverseCache.set(tehutiSessionId, platformSenderId);
-	}
-
-	private getFromCache(platformSenderId: string): string | undefined {
-		if (!this.sessionCache.has(platformSenderId)) return undefined;
-		const tehutiSessionId = this.sessionCache.get(platformSenderId)!;
-		this.updateCache(platformSenderId, tehutiSessionId);
-		return tehutiSessionId;
-	}
-
-	private getFromReverseCache(tehutiSessionId: string): string | undefined {
-		if (!this.reverseCache.has(tehutiSessionId)) return undefined;
-		const platformSenderId = this.reverseCache.get(tehutiSessionId)!;
-		this.updateCache(platformSenderId, tehutiSessionId);
-		return platformSenderId;
+		this.platformCache.set(platformSenderId, profileId);
+		this.profileCache.set(profileId, tehutiSessionId);
 	}
 
 	/**
-	 * Resolves an inbound platform sender ID to a persistent Tehuti session ID.
-	 * If the sender does not exist, a new session is created.
-	 *
-	 * @param platformSenderId The unique ID of the sender on the messaging platform (e.g., Slack user ID)
-	 * @returns The persistent Tehuti session ID for this sender
+	 * Links an external platform sender to an existing user profile.
 	 */
-	public resolveSession(platformSenderId: string): string {
-		if (!platformSenderId) {
-			throw new Error("platformSenderId is required and cannot be empty.");
-		}
-		const cachedSessionId = this.getFromCache(platformSenderId);
-		if (cachedSessionId) {
-			return cachedSessionId;
-		}
-
+	public linkPlatformToProfile(
+		platformSenderId: string,
+		platform: string,
+		profileId: string,
+	): void {
 		try {
 			const stmt = db.prepare(
-				"SELECT tehuti_session_id FROM messaging_sessions WHERE platform_sender_id = ?",
+				"SELECT tehuti_session_id FROM user_profiles WHERE profile_id = ?",
 			);
-			const row = stmt.get(platformSenderId) as
+			const row = stmt.get(profileId) as
 				| { tehuti_session_id: string }
 				| undefined;
 
-			if (row) {
-				// Update last_active
-				const updateStmt = db.prepare(
-					"UPDATE messaging_sessions SET last_active = cast(unixepoch() * 1000 as integer) WHERE platform_sender_id = ?",
+			if (!row) throw new Error("Profile ID does not exist.");
+
+			const insertStmt = db.prepare(`
+				INSERT INTO messaging_sessions (platform_sender_id, platform, profile_id, tehuti_session_id)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(platform_sender_id) DO UPDATE SET profile_id = excluded.profile_id
+			`);
+			insertStmt.run(
+				platformSenderId,
+				platform,
+				profileId,
+				row.tehuti_session_id,
+			);
+
+			this.updateCache(platformSenderId, profileId, row.tehuti_session_id);
+		} catch (error: any) {
+			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
+				throw new Error(
+					"Database is currently locked. Failed to link platform.",
 				);
-				updateStmt.run(platformSenderId);
-				this.updateCache(platformSenderId, row.tehuti_session_id);
+			}
+			throw error;
+		}
+	}
+
+	/**
+	 * Resolves an inbound platform sender ID to a persistent Tehuti session ID via a Unified Profile.
+	 * If the sender does not exist, a new profile and session are created.
+	 *
+	 * @param platformSenderId The unique ID of the sender on the messaging platform (e.g., Slack user ID)
+	 * @param platform The platform identifier (e.g., "slack", "discord")
+	 * @returns The persistent Tehuti session ID for this sender's unified profile
+	 */
+	public resolveSession(
+		platformSenderId: string,
+		platform: string = "unknown",
+	): string {
+		if (!platformSenderId) {
+			throw new Error("platformSenderId is required and cannot be empty.");
+		}
+
+		const cachedProfileId = this.platformCache.get(platformSenderId);
+		if (cachedProfileId && this.profileCache.has(cachedProfileId)) {
+			return this.profileCache.get(cachedProfileId)!;
+		}
+
+		try {
+			// Cross-platform resolution joining messaging_sessions and user_profiles
+			const stmt = db.prepare(`
+				SELECT p.profile_id, p.tehuti_session_id 
+				FROM messaging_sessions m
+				JOIN user_profiles p ON m.profile_id = p.profile_id
+				WHERE m.platform_sender_id = ?
+			`);
+			const row = stmt.get(platformSenderId) as
+				| { profile_id: string; tehuti_session_id: string }
+				| undefined;
+
+			if (row) {
+				// Update ambient context last_active timestamp
+				db.prepare(
+					"UPDATE user_profiles SET last_active = cast(unixepoch() * 1000 as integer) WHERE profile_id = ?",
+				).run(row.profile_id);
+				db.prepare(
+					"UPDATE messaging_sessions SET last_active = cast(unixepoch() * 1000 as integer) WHERE platform_sender_id = ?",
+				).run(platformSenderId);
+
+				this.updateCache(
+					platformSenderId,
+					row.profile_id,
+					row.tehuti_session_id,
+				);
 				return row.tehuti_session_id;
 			}
 
-			// Create new session
+			// Create new unified profile & session
+			const newProfileId = randomUUID();
 			const newSessionId = randomUUID();
-			const insertStmt = db.prepare(
-				"INSERT INTO messaging_sessions (platform_sender_id, tehuti_session_id) VALUES (?, ?)",
-			);
-			insertStmt.run(platformSenderId, newSessionId);
-			this.updateCache(platformSenderId, newSessionId);
 
+			db.transaction(() => {
+				db.prepare(
+					"INSERT INTO user_profiles (profile_id, tehuti_session_id) VALUES (?, ?)",
+				).run(newProfileId, newSessionId);
+				db.prepare(
+					"INSERT INTO messaging_sessions (platform_sender_id, platform, profile_id, tehuti_session_id) VALUES (?, ?, ?, ?)",
+				).run(platformSenderId, platform, newProfileId, newSessionId);
+			})();
+
+			this.updateCache(platformSenderId, newProfileId, newSessionId);
 			return newSessionId;
 		} catch (error: any) {
 			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
 				throw new Error(
-					`Database is currently locked (SQLITE_BUSY). Failed to resolve session for platform sender: ${platformSenderId}`,
+					`Database is locked. Failed to resolve session for platform sender: ${platformSenderId}`,
 				);
 			}
 			throw error;
 		}
 	}
 
-	/**
-	 * Retrieves all active sessions.
-	 */
 	public getAllSessions(): MessagingSession[] {
-		try {
-			const stmt = db.prepare("SELECT * FROM messaging_sessions");
-			return stmt.all() as MessagingSession[];
-		} catch (error: any) {
-			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
-				throw new Error(
-					"Database is currently locked. Failed to get all sessions.",
-				);
-			}
-			throw error;
-		}
+		return db
+			.prepare("SELECT * FROM messaging_sessions")
+			.all() as MessagingSession[];
 	}
 
-	/**
-	 * Retrieves the platform sender ID for a given Tehuti session ID.
-	 */
-	public getPlatformSenderId(tehutiSessionId: string): string | null {
-		if (!tehutiSessionId) return null;
-		const cachedSenderId = this.getFromReverseCache(tehutiSessionId);
-		if (cachedSenderId) {
-			return cachedSenderId;
-		}
-
-		try {
-			const stmt = db.prepare(
-				"SELECT platform_sender_id FROM messaging_sessions WHERE tehuti_session_id = ?",
-			);
-			const row = stmt.get(tehutiSessionId) as
-				| { platform_sender_id: string }
-				| undefined;
-
-			if (row) {
-				this.updateCache(row.platform_sender_id, tehutiSessionId);
-				return row.platform_sender_id;
-			}
-			return null;
-		} catch (error: any) {
-			if (error.code === "SQLITE_BUSY" || error.code === "SQLITE_LOCKED") {
-				throw new Error(
-					`Database is currently locked. Failed to get platform sender for session: ${tehutiSessionId}`,
-				);
-			}
-			throw error;
-		}
+	public getAllProfiles(): UserProfile[] {
+		return db.prepare("SELECT * FROM user_profiles").all() as UserProfile[];
 	}
 
-	/**
-	 * Clears in-memory caches.
-	 */
 	public clearCache(): void {
-		this.sessionCache.clear();
-		this.reverseCache.clear();
-	}
-
-	/**
-	 * Returns current number of entries in the session cache.
-	 */
-	public getCacheSize(): number {
-		return this.sessionCache.size;
-	}
-
-	/**
-	 * Returns current number of entries in the reverse session cache.
-	 */
-	public getReverseCacheSize(): number {
-		return this.reverseCache.size;
+		this.platformCache.clear();
+		this.profileCache.clear();
 	}
 }
