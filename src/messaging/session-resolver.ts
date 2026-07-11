@@ -36,6 +36,12 @@ export class SessionResolver {
 		profileId: string,
 		tehutiSessionId: string,
 	) {
+		// Evict the old profile mapping if this sender is being remapped
+		const oldProfileId = this.platformCache.get(platformSenderId);
+		if (oldProfileId !== undefined && oldProfileId !== profileId) {
+			this.profileCache.delete(oldProfileId);
+		}
+
 		while (this.platformCache.size >= this.CACHE_MAX_SIZE) {
 			this.evictOldest(this.platformCache);
 		}

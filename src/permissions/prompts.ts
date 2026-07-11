@@ -2,8 +2,6 @@ import { Mutex } from "async-mutex";
 import chalk from "chalk";
 import { getTool } from "../agent/tools/registry.js";
 import type { PermissionsConfig } from "../config/schema.js";
-// @ts-expect-error TS6133/TS6192: Unused variable
-import { isMCPTool, parseMCPToolName } from "../mcp/tool-adapter.js";
 import { debug } from "../utils/debug.js";
 import { matchesPattern, permissionManager } from "./rules.js";
 

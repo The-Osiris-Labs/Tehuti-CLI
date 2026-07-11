@@ -71,27 +71,6 @@ const CODE_SEARCH_SCHEMA = z.object({
 		.describe("Number of tokens to return (default: 5000)"),
 });
 
-// @ts-expect-error TS6133/TS6192: Unused variable
-const _ALLOWED_DOMAINS = [
-	"github.com",
-	"npmjs.com",
-	"docs.npmjs.com",
-	"nodejs.org",
-	"developer.mozilla.org",
-	"typescriptlang.org",
-	"react.dev",
-	"vercel.com",
-	"openrouter.ai",
-	"anthropic.com",
-	"openai.com",
-	"stackoverflow.com",
-	"stackoverflow.blog",
-	"stackexchange.com",
-	"medium.com",
-	"dev.to",
-	"stackoverflow.blog",
-];
-
 const BLOCKED_DOMAINS = [
 	"facebook.com",
 	"twitter.com",

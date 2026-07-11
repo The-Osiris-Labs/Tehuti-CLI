@@ -86,7 +86,7 @@ describe("useChatInput hook", () => {
 
 		triggerInput("/", { ctrl: false, meta: false });
 		expect(props.setShowCommandPalette).toHaveBeenCalledWith(true);
-		expect(props.setInput).not.toHaveBeenCalled();
+		expect(props.setInput).toHaveBeenCalledWith("/");
 		unmount();
 	});
 

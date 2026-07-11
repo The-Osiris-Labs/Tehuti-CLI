@@ -84,10 +84,7 @@ function getColors() {
 
 const COLORS = getColors();
 
-// @ts-expect-error TS6133/TS6192: Unused variable
-function _purple(text: string): string {
-	return applyStyle(text, COLORS.purple);
-}
+
 
 function applyStyle(text: string, style: string): string {
 	if (!shouldUseColors()) return text;

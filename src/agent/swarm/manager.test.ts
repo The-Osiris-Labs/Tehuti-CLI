@@ -35,6 +35,7 @@ vi.mock("node:child_process", () => ({
 		forkMock(...args);
 		return makeChild();
 	},
+	exec: vi.fn(),
 }));
 
 import { SwarmManager } from "./manager.js";

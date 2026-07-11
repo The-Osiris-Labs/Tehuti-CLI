@@ -65,8 +65,6 @@ export function useChatInput(props: UseChatInputProps) {
 		historyIndex,
 		setHistoryIndex: originalSetHistoryIndex,
 		inputBeforeHistoryRef,
-		// @ts-expect-error TS6133/TS6192: Unused variable
-		commands,
 		sessionId,
 		ctxRef,
 		sessionManager,
@@ -91,8 +89,6 @@ export function useChatInput(props: UseChatInputProps) {
 		showProfiler,
 		pendingQuestion,
 		showSessionList,
-		// @ts-expect-error TS6133/TS6192: Unused variable
-		queuedMessages,
 		setQueuedMessages,
 	} = props;
 
@@ -111,10 +107,6 @@ export function useChatInput(props: UseChatInputProps) {
 	const loadingRef = React.useRef(loading);
 	// Buffer for split mouse sequence fragments arriving across multiple useInput() callbacks.
 	const mouseBufferRef = React.useRef<string>("");
-	// @ts-expect-error TS6133/TS6192: Unused variable
-	const doubleClickTimerRef = React.useRef<NodeJS.Timeout | null>(null);
-	// @ts-expect-error TS6133/TS6192: Unused variable
-	const lastClickPosRef = React.useRef<number | null>(null);
 	const isPastingRef = React.useRef(false);
 	const pasteBufferRef = React.useRef("");
 	const mouseBufferTimerRef = React.useRef<ReturnType<
