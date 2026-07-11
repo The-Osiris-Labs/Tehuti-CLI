@@ -130,6 +130,10 @@ export function summarizeToolOutput(
 		output = safeStringify(result);
 	}
 
+	if (output.trim() === "") {
+		output = "(empty output)";
+	}
+
 	if (output.length > MAX_RENDERED_OUTPUT_CHARS) {
 		output = `${output.slice(0, MAX_RENDERED_OUTPUT_CHARS)}\n... [truncated]`;
 	}
@@ -323,7 +327,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 		return ansi.split("\n");
 	}, [visibleLines, language]);
 
-	const blockWidth = Math.max(10, maxWidth - 4);
+	const blockWidth = Math.max(10, maxWidth - 6);
 	const contentWidth = Math.max(2, blockWidth - 4); // '│ ' + ' │' takes 4 chars
 
 	const renderedBlock = useMemo(() => {
