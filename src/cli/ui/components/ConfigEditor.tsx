@@ -6,6 +6,7 @@ import { BRANDING, ERROR_SYMBOL } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { isEnterKey } from "../../../utils/keyboard.js";
 
 const GOLD = BRANDING.colors.gold;
 const GRAY = BRANDING.colors.gray;
@@ -299,9 +300,11 @@ export function ConfigEditor({
 	useInput((char, key) => {
 		if (isMouseSequence(char)) return;
 		if (editingField) {
-			if (key.return) {
+			if (isEnterKey(char, key)) {
 				commitFieldEdit();
-			} else if (key.escape) {
+				return;
+			}
+			if (key.escape) {
 				setEditingField(null);
 				setEditValue("");
 				setValidationError(null);
@@ -372,6 +375,7 @@ export function ConfigEditor({
 	return (
 		<Box
 			position="absolute"
+			flexDirection="column"
 			width={terminalWidth}
 			height={terminalHeight}
 			justifyContent="center"
@@ -379,11 +383,12 @@ export function ConfigEditor({
 		>
 			<Box
 				flexDirection="column"
-				width={editorWidth}
+				width={Math.min(80, terminalWidth - 4)}
 				borderStyle="double"
 				borderColor={GOLD}
 				backgroundColor="black"
 				paddingX={1}
+				paddingY={1}
 			>
 				<Box marginBottom={1} justifyContent="space-between">
 				<Text bold color={GOLD}>

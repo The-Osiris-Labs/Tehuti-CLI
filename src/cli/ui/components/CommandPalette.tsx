@@ -12,6 +12,7 @@ import { getAllProviders } from "../../../config/providers.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { isEnterKey } from "../../../utils/keyboard.js";
 
 const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
@@ -409,6 +410,16 @@ export function CommandPalette({
 				}
 			}
 
+			if (isEnterKey(char, key)) {
+				if (filteredCommands.length > 0) {
+					const selected = filteredCommands[selectedIndex] || filteredCommands[0];
+					if (selected) {
+						void handleExecute(selected);
+					}
+				}
+				return;
+			}
+
 			// Handle normal character input
 			if (
 				char &&
@@ -449,14 +460,6 @@ export function CommandPalette({
 				moveDown();
 				return;
 			}
-
-			if (key.return && filteredCommands.length > 0) {
-				const selected = filteredCommands[selectedIndex] || filteredCommands[0];
-				if (selected) {
-					void handleExecute(selected);
-				}
-				return;
-			}
 		},
 		{ isActive: visible },
 	);
@@ -494,6 +497,7 @@ export function CommandPalette({
 	return (
 		<Box
 			position="absolute"
+			flexDirection="column"
 			width={terminalWidth}
 			height={terminalHeight}
 			justifyContent="center"
@@ -844,36 +848,40 @@ export function createCommands(options: {
 
 export function formatHelpOutput(): string {
 	return `
-╭──────────────────────────────────────────────────────────────────╮
-│  𓆣 TEHUTI ─ Scribe of Code Transformations                       │
-├──────────────────────────────────────────────────────────────────┤
-│  SESSION                                                          │
-│    /clear              Clear conversation                         │
-│    /cost               Show tokens and cost                       │
-│    /stats              Show performance metrics                   │
-│    /compact            Compact context to free up token space     │
-│    /save [name]        Save session                               │
-│    /export [format]    Export session to Markdown or JSON         │
-│    /load               Load session (Interactive Submenu)         │
-│    /sessions           List saved sessions                        │
-│    /plan               Enter plan mode (read-only exploration)    │
-│    /config             Open interactive configuration editor      │
-│    /skills             List all available skills                  │
-│    /help               Show this command reference                │
-│    /exit               Exit Tehuti                                │
-├──────────────────────────────────────────────────────────────────┤
-│  MODEL                                                            │
-│    /model              Switch AI model (Interactive Submenu)      │
-│    /provider           Switch provider (Interactive Submenu)      │
-│    /thinking           Toggle extended thinking mode              │
-├──────────────────────────────────────────────────────────────────┤
-│  SHORTCUTS                                                        │
-│    /     Open palette       ⌃L    Clear conversation              │
-│    ⌃A    Move to start      ⌃E    Move to end                     │
-│    ⌃U    Delete to start    ⌃W    Delete previous word            │
-│    ⌃K    Delete to end      Tab   Complete slash command          │
-│    ↑/↓   Prompt history     PgUp/PgDn scroll messages            │
-│    ⌃↑/⌃↓ Scroll messages    ⌃C    Exit when input is empty        │
-╰──────────────────────────────────────────────────────────────────╯
-`.trim();
+# 𓆣 TEHUTI ─ Scribe of Code Transformations
+
+## SESSION
+| Command | Description |
+|---|---|
+| \`/clear\` | Clear conversation |
+| \`/cost\` | Show tokens and cost |
+| \`/stats\` | Show performance metrics |
+| \`/compact\` | Compact context to free up token space |
+| \`/save [name]\` | Save session |
+| \`/export [format]\` | Export session to Markdown or JSON |
+| \`/load\` | Load session (Interactive Submenu) |
+| \`/sessions\` | List saved sessions |
+| \`/plan\` | Enter plan mode (read-only exploration) |
+| \`/config\` | Open interactive configuration editor |
+| \`/skills\` | List all available skills |
+| \`/help\` | Show this command reference |
+| \`/exit\` | Exit Tehuti |
+
+## MODEL
+| Command | Description |
+|---|---|
+| \`/model\` | Switch AI model (Interactive Submenu) |
+| \`/provider\` | Switch provider (Interactive Submenu) |
+| \`/thinking\` | Toggle extended thinking mode |
+
+## SHORTCUTS
+| Shortcut | Action | Shortcut | Action |
+|---|---|---|---|
+| \`/\` | Open palette | \`⌃L\` | Clear conversation |
+| \`⌃A\` | Move to start | \`⌃E\` | Move to end |
+| \`⌃U\` | Delete to start | \`⌃W\` | Delete previous word |
+| \`⌃K\` | Delete to end | \`Tab\` | Complete slash command |
+| \`↑ / ↓\` | Prompt history | \`PgUp/Dn\`| Scroll messages |
+| \`⌃↑ / ⌃↓\`| Scroll messages | \`⌃C\` | Exit when input is empty |
+`;
 }

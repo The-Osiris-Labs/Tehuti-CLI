@@ -1,4 +1,5 @@
 import { exec, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -101,6 +102,15 @@ export class SelfHealingManager {
 	}
 
 	private cleanupOrphanedWorktrees() {
+		const isPidAlive = (pid: number): boolean => {
+			try {
+				process.kill(pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+
 		try {
 			// Manually delete orphaned shadow directories in .tehuti/shadows/
 			const shadowsDir = path.join(this.mainDir, ".tehuti", "shadows");
@@ -108,8 +118,22 @@ export class SelfHealingManager {
 				const entries = fs.readdirSync(shadowsDir, { withFileTypes: true });
 				for (const entry of entries) {
 					if (entry.isDirectory()) {
-						const shadowPath = path.join(shadowsDir, entry.name);
-						fs.rmSync(shadowPath, { recursive: true, force: true });
+						const match = entry.name.match(/^tehuti-shadow-(\d+)-(\d+)-(.*)$/);
+						let shouldClean = false;
+						if (match) {
+							const pid = parseInt(match[1], 10);
+							if (!isPidAlive(pid)) {
+								shouldClean = true;
+							}
+						} else if (entry.name.startsWith("tehuti-shadow-")) {
+							// Legacy format, clean up
+							shouldClean = true;
+						}
+
+						if (shouldClean) {
+							const shadowPath = path.join(shadowsDir, entry.name);
+							fs.rmSync(shadowPath, { recursive: true, force: true });
+						}
 					}
 				}
 			}
@@ -122,10 +146,24 @@ export class SelfHealingManager {
 			if (branchesOut) {
 				const branches = branchesOut.split("\n").map(b => b.trim().replace(/^\*\s*/, "")).filter(Boolean);
 				for (const branch of branches) {
-					spawnSync("git", ["branch", "-D", branch], {
-						cwd: this.mainDir,
-						stdio: "ignore",
-					});
+					const match = branch.match(/^tehuti-shadow-(\d+)-(\d+)-(.*)$/);
+					let shouldClean = false;
+					if (match) {
+						const pid = parseInt(match[1], 10);
+						if (!isPidAlive(pid)) {
+							shouldClean = true;
+						}
+					} else {
+						// Legacy format, clean up
+						shouldClean = true;
+					}
+
+					if (shouldClean) {
+						spawnSync("git", ["branch", "-D", branch], {
+							cwd: this.mainDir,
+							stdio: "ignore",
+						});
+					}
 				}
 			}
 
@@ -208,9 +246,10 @@ export class SelfHealingManager {
 		await fs.promises.mkdir(shadowsDir, { recursive: true }).catch(() => {});
 
 		const epoch = Date.now();
-		const worktreeName = `tehuti-shadow-${epoch}`;
+		const uniqueId = randomUUID().slice(0, 8);
+		const worktreeName = `tehuti-shadow-${process.pid}-${epoch}-${uniqueId}`;
 		const worktreePath = path.join(shadowsDir, worktreeName);
-		const branchName = `tehuti-shadow-${epoch}`;
+		const branchName = `tehuti-shadow-${process.pid}-${epoch}-${uniqueId}`;
 
 		// Create a new branch and worktree
 		try {
@@ -266,7 +305,7 @@ export class SelfHealingManager {
 			if (filesToCopy.length > 0) {
 				const filesListPath = path.join(
 					os.tmpdir(),
-					`rsync-files-${Date.now()}.txt`,
+					`rsync-files-${process.pid}-${Date.now()}-${randomUUID().slice(0, 8)}.txt`,
 				);
 				await fs.promises.writeFile(
 					filesListPath,
@@ -363,13 +402,16 @@ export class SelfHealingManager {
 		worktreePath: string,
 		branchName: string,
 	): Promise<void> {
-		this.activeWorktrees.delete(worktreePath);
-		await execAsync(`git worktree remove --force "${worktreePath}"`, {
-			cwd: this.mainDir,
-		}).catch(() => {});
-		await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir }).catch(
-			() => {},
-		);
+		try {
+			await execAsync(`git worktree remove --force "${worktreePath}"`, {
+				cwd: this.mainDir,
+			}).catch(() => {});
+			await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir }).catch(
+				() => {},
+			);
+		} finally {
+			this.activeWorktrees.delete(worktreePath);
+		}
 	}
 
 	/**

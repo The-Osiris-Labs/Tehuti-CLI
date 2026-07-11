@@ -192,7 +192,7 @@ export function TehutiHeader({
 						•
 					</Text>
 					<Text color={CORAL} bold>
-						𓁹 Write • Edit • Transform
+						Write • Edit • Transform
 					</Text>
 				</Box>
 				<Box marginTop={1} flexDirection="row" gap={1}>

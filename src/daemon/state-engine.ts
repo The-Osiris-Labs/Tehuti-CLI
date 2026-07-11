@@ -6,11 +6,13 @@ import type { AgentContext } from "../agent/context.js";
 import { agentEventBus } from "../agent/events.js";
 import { type SubagentTask, swarmManager } from "../agent/swarm/manager.js";
 import { debug } from "../utils/debug.js";
+import { ConnectorManager } from "../messaging/connector-manager.js";
 
 export interface StateEngineConfig {
 	watchDirs?: string[];
 	cronSchedules?: Array<{ cron: string; action: () => void | Promise<void> }>;
 	pollIntervalMs?: number;
+	messaging?: any; // From TehutiConfig
 }
 
 export class DaemonStateEngine extends EventEmitter {
@@ -20,6 +22,7 @@ export class DaemonStateEngine extends EventEmitter {
 	private fsWatcher?: chokidar.FSWatcher;
 	private cronTasks: cron.ScheduledTask[] = [];
 	private pollInterval?: NodeJS.Timeout;
+	private connectorManager?: ConnectorManager;
 
 	constructor(private config: StateEngineConfig = {}) {
 		super();
@@ -69,6 +72,16 @@ export class DaemonStateEngine extends EventEmitter {
 			}
 		}
 
+		if (this.config.messaging) {
+			try {
+				this.connectorManager = new ConnectorManager(this.config.messaging);
+				await this.connectorManager.start();
+				debug.log("daemon", "Messaging ConnectorManager started successfully.");
+			} catch (err: any) {
+				debug.log("daemon", `Messaging ConnectorManager failed to start: ${err.message}`);
+			}
+		}
+
 		debug.log("daemon", "Daemon State Engine started");
 	}
 
@@ -93,6 +106,15 @@ export class DaemonStateEngine extends EventEmitter {
 			}
 		}
 		this.childProcesses.clear();
+
+		if (this.connectorManager) {
+			try {
+				await this.connectorManager.stop();
+				this.connectorManager = undefined;
+			} catch (err: any) {
+				debug.log("daemon", `Error stopping ConnectorManager: ${err.message}`);
+			}
+		}
 
 		debug.log("daemon", "Daemon State Engine stopped");
 	}

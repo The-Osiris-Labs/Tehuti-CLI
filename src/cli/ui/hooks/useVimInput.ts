@@ -1,4 +1,5 @@
 import { useInput } from "ink";
+import { isEnterKey } from "../../../utils/keyboard.js";
 
 export interface UseVimInputProps {
 	isActive?: boolean;
@@ -35,7 +36,7 @@ export function useVimInput({
 				return;
 			}
 
-			if (key.return) {
+			if (isEnterKey(input, key)) {
 				onSelect?.();
 				return;
 			}

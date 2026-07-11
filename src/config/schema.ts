@@ -151,16 +151,28 @@ export const COLLABORATION_SCHEMA = z.object({
 export const DAEMON_CONFIG_SCHEMA = z.object({
 	enabled: z.boolean().default(false),
 	port: z.number().int().positive().default(9090),
+	socketPath: z.string().optional(),
+	restartPolicy: z.enum(["none", "always", "on-failure"]).default("on-failure"),
+	logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
 export const MESSAGING_CONFIG_SCHEMA = z.object({
 	enabled: z.boolean().default(true),
 	historySize: z.number().int().positive().default(100),
+	slackAppToken: z.string().optional(),
+	slackBotToken: z.string().optional(),
+	discordToken: z.string().optional(),
+	telegramBotToken: z.string().optional(),
+	telegramWebhookSecret: z.string().optional(),
+	whatsappToken: z.string().optional(),
+	whatsappWebhookSecret: z.string().optional(),
+	whatsappPhoneNumberId: z.string().optional(),
 });
 
 export const SELF_HEALING_CONFIG_SCHEMA = z.object({
 	enabled: z.boolean().default(true),
 	maxRetries: z.number().int().min(0).max(10).default(3),
+	command: z.string().default("npm test"),
 });
 
 export const PERSONALITY_CONFIG_SCHEMA = z.object({
@@ -168,6 +180,9 @@ export const PERSONALITY_CONFIG_SCHEMA = z.object({
 		.enum(["professional", "casual", "strict", "helpful"])
 		.default("helpful"),
 	verbosity: z.enum(["low", "medium", "high"]).default("medium"),
+	learningEnabled: z.boolean().default(true),
+	styleInjection: z.boolean().default(true),
+	analysisFrequency: z.number().int().positive().default(1),
 });
 
 export const MEMORY_CONFIG_SCHEMA = z.object({
@@ -359,6 +374,8 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	daemon: {
 		enabled: false,
 		port: 9090,
+		restartPolicy: "on-failure",
+		logLevel: "info",
 	},
 	messaging: {
 		enabled: true,
@@ -367,10 +384,14 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	selfHealing: {
 		enabled: true,
 		maxRetries: 3,
+		command: "npm test",
 	},
 	personality: {
 		style: "helpful",
 		verbosity: "medium",
+		learningEnabled: true,
+		styleInjection: true,
+		analysisFrequency: 1,
 	},
 	memory: {
 		consolidationIntervalMs: 15 * 60 * 1000,

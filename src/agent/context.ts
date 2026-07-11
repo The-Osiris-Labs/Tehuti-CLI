@@ -251,9 +251,11 @@ export async function createAgentContext(
 	const resolvedCwd = path.resolve(cwd);
 	const projectInstructions = await loadProjectInstructions(resolvedCwd);
 	const systemMemoryPromise = getSystemPromptMemory(resolvedCwd);
-	const personalityBlockPromise = initMemory(
-		config.memory?.consolidationIntervalMs,
-	).then(() => getPersonalityPromptBlock(resolvedCwd));
+	const personalityBlockPromise = config.personality?.styleInjection !== false
+		? initMemory(config.memory?.consolidationIntervalMs).then(() =>
+				getPersonalityPromptBlock(resolvedCwd),
+			)
+		: Promise.resolve("");
 
 	return {
 		cwd: resolvedCwd,
@@ -404,9 +406,19 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 ## Epistemic Rigor & Scope Discipline
 - **Evidence is everything:** Never accept or assert a claim about codebase behavior without concrete evidence from tool inspection. If evidence is missing or insufficient, state so explicitly.
 - **Separate observation from interpretation:** First state what actually happened or what the code contains (quotes, line numbers, file paths). Only then offer interpretation.
+- **Verify Outdated Limitations:** If you read about a bug, missing feature, or limitation from past session logs, memories, or old documentation, YOU MUST VERIFY its current existence in the codebase before acting or making recommendations. Do not assume historical limitations are still present.
 - **Hunt patterns, not just instances:** When identifying a failure mode or bug, check whether it is an isolated case or part of a recurring class across the codebase.
 - **Maintain radical scope discipline:** Never use sweeping assertions ("all", "every", "complete", "hardened") without exhaustive verification.
 - **Surface assumptions:** If you resolve ambiguity or make a speculative assumption, explicitly label it with \`[UNVERIFIED ASSUMPTION]\`. Treat unverified assumptions as hypotheses to test.
+
+## Sandbox & Security Boundaries
+- **Model Discovery:** DO NOT hallucinate model availability based on environment variables. The presence of an API key DOES NOT imply the harness supports those models.
+- **Global Tools:** DO NOT attempt to install global tools (e.g. \`cargo\`, \`rustc\`, \`brew\`) without explicit user permission.
+- **Artifacts:** DO NOT build or compile large native binaries (e.g. \`.node\` or \`.dylib\`) unless specifically instructed.
+
+## Execution & Truncation Defenses
+- **Chunking:** For large file rewrites, DO NOT attempt to return massive blocks of code in a single response, as this causes catastrophic pipeline truncation and JSON parsing failures. Break work down using intermediate commits and smaller edits.
+- **Finality:** Never leave uncommitted edits or hanging states at the end of a tool sequence.
 
 
 ## Working Directory

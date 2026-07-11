@@ -226,7 +226,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 
 	const { summary, borderTextColor } = useMemo(() => {
 		const sum = summarizeToolOutput(
-			String(result ?? ""),
+			result,
 			maxWidth,
 			expanded ? 10000 : 12,
 		);
@@ -317,8 +317,11 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [toolName, result]);
 
 	const visibleLines = useMemo(() => {
+		if (!expanded) {
+			return summary.rawLines.slice(0, 4);
+		}
 		return summary.rawLines.slice(windowStart, windowEnd);
-	}, [summary.rawLines, windowStart, windowEnd]);
+	}, [summary.rawLines, windowStart, windowEnd, expanded]);
 
 	const highlightedLines = useMemo(() => {
 		const text = visibleLines.join("\n");
@@ -411,13 +414,13 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				</Box>
 			</Box>
 
-			<Box flexDirection="column" marginY={1} paddingLeft={2}>
-				<Text dimColor={!expanded}>
-					{displayContent}
-				</Text>
-			</Box>
+				<Box flexDirection="column" marginY={1} paddingLeft={2}>
+					<Text dimColor={!expanded}>
+						{displayContent}
+					</Text>
+				</Box>
 
-			<Box flexDirection="row" paddingLeft={2}>
+				<Box flexDirection="row" paddingLeft={2}>
 				<Text dimColor>{footerLabel}</Text>
 			</Box>
 		</Box>

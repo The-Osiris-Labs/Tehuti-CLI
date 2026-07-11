@@ -149,6 +149,7 @@ export function SessionList({
 		return (
 			<Box
 				position="absolute"
+				flexDirection="column"
 				width={terminalWidth}
 				height={terminalHeight}
 				justifyContent="center"
@@ -179,6 +180,7 @@ export function SessionList({
 	return (
 		<Box
 			position="absolute"
+			flexDirection="column"
 			width={terminalWidth}
 			height={terminalHeight}
 			justifyContent="center"
@@ -190,6 +192,8 @@ export function SessionList({
 				borderStyle="double"
 				borderColor={GOLD}
 				backgroundColor="black"
+				paddingX={1}
+				paddingY={1}
 			>
 				<Box paddingX={1} marginBottom={1} marginTop={1}>
 				<Text color={GOLD} bold>

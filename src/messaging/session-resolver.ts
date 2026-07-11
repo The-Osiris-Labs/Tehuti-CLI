@@ -107,7 +107,7 @@ export class SessionResolver {
 			if (row) {
 				// Update last_active
 				const updateStmt = db.prepare(
-					"UPDATE messaging_sessions SET last_active = cast(strftime('%s', 'now') as integer) WHERE platform_sender_id = ?",
+					"UPDATE messaging_sessions SET last_active = cast(unixepoch() * 1000 as integer) WHERE platform_sender_id = ?",
 				);
 				updateStmt.run(platformSenderId);
 				this.updateCache(platformSenderId, row.tehuti_session_id);

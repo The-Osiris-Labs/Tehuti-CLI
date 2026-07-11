@@ -857,5 +857,11 @@ export function useChatInput(props: UseChatInputProps) {
 				setHistoryIndex(-1);
 			}
 		}
+	}, {
+		isActive:
+			!showCommandPalette &&
+			!showConfigEditor &&
+			!pendingQuestion &&
+			!showSessionList,
 	});
 }

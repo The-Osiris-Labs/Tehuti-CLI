@@ -84,7 +84,10 @@ export class ChunkReceiver {
 			try {
 				let fullStr = "";
 				if (msg.encoding === "base64") {
-					fullStr = Buffer.from(chunks.join(""), "base64").toString("utf-8");
+					const decodedChunks = chunks.map((c) =>
+						Buffer.from(c || "", "base64"),
+					);
+					fullStr = Buffer.concat(decodedChunks).toString("utf-8");
 				} else {
 					fullStr = chunks.join("");
 				}

@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import type * as net from "node:net";
+import * as os from "node:os";
 import * as path from "node:path";
 import { Command } from "commander";
 import { consola } from "consola";
@@ -71,6 +72,13 @@ export function daemonCommand(): Command {
 				client.onMessage((msg: any) => {
 					if (msg.type === "stopping") {
 						consola.success("Daemon stopped.");
+						const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", "com.tehuti.daemon.plist");
+						if (fs.existsSync(plistPath)) {
+							try {
+								execSync(`launchctl unload ${plistPath}`);
+								consola.info("Launch agent unloaded.");
+							} catch (err) {}
+						}
 						client.disconnect();
 						process.exit(0);
 					}
@@ -163,18 +171,54 @@ export function daemonCommand(): Command {
 					const { createAgentContext, runAgentLoop } = await import(
 						"../../agent/index.js"
 					);
+					const targetCwd = (typeof data.cwd === "string" && data.cwd) ? data.cwd : process.cwd();
 					const ctx = await createAgentContext(
-						process.cwd(),
+						targetCwd,
 						cfg,
 						undefined,
 						true,
 					);
-					const result = await runAgentLoop(ctx, data.text);
+					const result = await runAgentLoop(ctx, data.text, {
+						onToken: (token) => {
+							if (!socket.destroyed) {
+								socket.write(
+									`${JSON.stringify({
+										type: "token",
+										text: token,
+									})}\n`,
+								);
+							}
+						},
+						onToolCall: (id, name, args) => {
+							if (!socket.destroyed) {
+								socket.write(
+									`${JSON.stringify({
+										type: "toolCall",
+										id,
+										name,
+										args,
+									})}\n`,
+								);
+							}
+						},
+						onToolResult: (id, name, res) => {
+							if (!socket.destroyed) {
+								socket.write(
+									`${JSON.stringify({
+										type: "toolResult",
+										id,
+										name,
+										result: res,
+									})}\n`,
+								);
+							}
+						},
+					});
 					if (!socket.destroyed) {
 						socket.write(
 							`${JSON.stringify({
-								type: "agent_response",
-								content: result.content,
+								type: "completion",
+								result,
 							})}\n`,
 						);
 					}

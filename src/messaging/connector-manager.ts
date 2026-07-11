@@ -527,4 +527,17 @@ export class ConnectorManager extends EventEmitter {
 			throw new Error(`Unsupported platform: ${platform}`);
 		}
 	}
+
+	public async stop(): Promise<void> {
+		if (this.webhookServer) {
+			await new Promise<void>((resolve) => {
+				this.webhookServer?.close(() => {
+					resolve();
+				});
+			});
+			this.webhookServer = null;
+		}
+		this.removeAllListeners();
+		console.log("[ConnectorManager] Stopped.");
+	}
 }

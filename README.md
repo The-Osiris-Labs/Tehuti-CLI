@@ -65,6 +65,8 @@ Tehuti is shipped with an interactive Terminal User Interface built on Ink 6 and
 - **Hybrid Viewport Architecture**: Handles large logs natively by combining a dynamic `visibleMessages` array slice with negative margins for performant, remount-free virtual scrolling.
 - **Interactive Sessions UI**: Includes full Vim keybindings (`j/k/d/r`), mouse-hover support, and virtual scrolling.
 - **Terminal Rendering Precision**: Features robust Markdown header parsing, `KaTeX` block formulas, and surrogate-pair safe ANSI truncation to prevent terminal bleeding.
+- **Robust Keyboard Handling**: Native parsing for `xterm` CSI escape sequences (`[13~`, `[27;5;13~`) ensuring that Enter keys, Vim navigation, and shortcuts work flawlessly across all modern terminal emulators (iTerm2, Ghostty, WezTerm).
+- **Expandable Tool Previews**: Built-in tool outputs automatically truncate into a styled 4-line preview block when collapsed, giving instant observability without cluttering the viewport.
 - **Command Palette**: Type `/` to access built-in workflows including `/save`, `/load`, `/sessions`, and `/compact`.
 
 For environments like SSH or tmux where mouse tracking is unavailable, set either environment variable below to launch in strict keyboard-only mode:

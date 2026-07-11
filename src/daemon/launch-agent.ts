@@ -23,7 +23,10 @@ export function generateLaunchAgentPlist(): string {
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>StandardErrorPath</key>
     <string>${path.join(os.homedir(), ".tehuti", "tehutid.err.log")}</string>
     <key>StandardOutPath</key>

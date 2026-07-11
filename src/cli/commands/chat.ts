@@ -3127,6 +3127,7 @@ function ChatUI({
 				client.send({
 					type: "agent_message",
 					text,
+					cwd: process.cwd(),
 				});
 
 				result = await new Promise((resolve) => {
@@ -3342,7 +3343,7 @@ function ChatUI({
 
 			if (m.role === "user") {
 				const label = `${DECORATIVE.feather} You`;
-				const padLen = Math.max(10, contentMaxWidth - label.length - 2);
+				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
@@ -3361,7 +3362,7 @@ function ChatUI({
 				const label = `${DECORATIVE.scroll} System`;
 				const padLen = Math.max(
 					10,
-					contentMaxWidth - label.length - 2 - (m.status ? 10 : 0),
+					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
 				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -3389,7 +3390,7 @@ function ChatUI({
 						React.createElement(
 							Box,
 							{ key: 0, flexDirection: "column" },
-							...renderMarkdown(m.content, contentMaxWidth, `msg-${m.id}`),
+							...renderMarkdown(m.content, contentMaxWidth - 3, `msg-${m.id}`),
 						),
 					];
 				} else {
@@ -3405,7 +3406,7 @@ function ChatUI({
 				const label = `${DECORATIVE.ibis} Tehuti`;
 				const padLen = Math.max(
 					10,
-					contentMaxWidth - label.length - 2 - (m.status ? 10 : 0),
+					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
 				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -3435,7 +3436,7 @@ function ChatUI({
 									content.push(
 										...renderMarkdown(
 											subBlock.content,
-											contentMaxWidth,
+											contentMaxWidth - 3,
 											`msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`,
 										),
 									);
@@ -3443,7 +3444,7 @@ function ChatUI({
 									content.push(
 										renderReasoningBlock(
 											subBlock.content,
-											contentMaxWidth,
+											contentMaxWidth - 3,
 											`msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
 										),
 									);
@@ -3453,7 +3454,7 @@ function ChatUI({
 							content.push(
 								renderReasoningBlock(
 									block.content,
-									contentMaxWidth,
+									contentMaxWidth - 3,
 									`msg-${m.id}-reasoning-${bIdx}`,
 								),
 							);
@@ -3473,7 +3474,7 @@ function ChatUI({
 											block.description || "",
 										),
 										result: block.result,
-										maxWidth: contentMaxWidth,
+										maxWidth: contentMaxWidth - 3,
 										status: getToolRenderStatus(block.result),
 									}),
 								),
@@ -3488,7 +3489,7 @@ function ChatUI({
 							content.push(
 								...renderMarkdown(
 									subBlock.content,
-									contentMaxWidth,
+									contentMaxWidth - 3,
 									`msg-${m.id}-sub-${sbIdx}`,
 								),
 							);
@@ -3496,7 +3497,7 @@ function ChatUI({
 							content.push(
 								renderReasoningBlock(
 									subBlock.content,
-									contentMaxWidth,
+									contentMaxWidth - 3,
 									`msg-${m.id}-reasoning-fallback-${sbIdx}`,
 								),
 							);
@@ -3510,8 +3511,8 @@ function ChatUI({
 						// keep the original full-width layout.
 						const isParallel = toolCount >= 2;
 						const cardWidth = isParallel
-							? Math.max(40, Math.floor(contentMaxWidth / toolCount) - 2)
-							: contentMaxWidth;
+							? Math.max(40, Math.floor((contentMaxWidth - 3) / toolCount) - 2)
+							: contentMaxWidth - 3;
 						const toolElements = React.createElement(
 							Box,
 							{
@@ -3837,7 +3838,7 @@ function ChatUI({
 						paddingTop: 1,
 						flexDirection: "column",
 					},
-					showCommandPalette || showConfigEditor
+					showCommandPalette || showConfigEditor || showSessionList
 						? null
 						: pendingPermission
 							? React.createElement(PermissionPrompt, {
