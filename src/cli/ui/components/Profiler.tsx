@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { type TraceEvent, trace } from "../../../utils/trace.js";
@@ -11,6 +11,9 @@ interface TraceNode {
 export function Profiler({ onClose }: { onClose: () => void }) {
 	const [offset, setOffset] = useState(0);
 	const [events, setEvents] = useState<TraceEvent[]>([]);
+	const { stdout } = useStdout();
+	const terminalWidth = stdout?.columns || 80;
+	const terminalHeight = stdout?.rows || 24;
 
 	useEffect(() => {
 		// Fetch trace events; reverse to build hierarchy from chronological stream
@@ -94,11 +97,13 @@ export function Profiler({ onClose }: { onClose: () => void }) {
 
 	return (
 		<Box
+			position="absolute"
+			width={terminalWidth}
+			height={terminalHeight}
 			flexDirection="column"
 			borderStyle="round"
 			borderColor="magenta"
 			padding={1}
-			width="100%"
 		>
 			<Text color="cyan" bold>
 				🔥 TraceVisualizer Flame Graph (Scrub backwards: Up/Down Arrows, Q/Esc

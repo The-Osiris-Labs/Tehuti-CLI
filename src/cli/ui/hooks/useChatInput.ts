@@ -315,13 +315,23 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 
 			if (
-				showCommandPaletteRef.current ||
+				
 				showConfigEditorRef.current ||
 				showProfilerRef.current ||
 				pendingQuestionRef.current ||
 				showSessionListRef.current
 			) {
 				return;
+			}
+
+			
+			if (showCommandPaletteRef.current) {
+				if (key.upArrow || key.downArrow || key.return || key.escape || (key.ctrl && k === 'c')) {
+					return;
+				}
+				if (inputRef.current.length === 0 && (k === 'j' || k === 'k')) {
+					return;
+				}
 			}
 
 			const hasSelection = selectionStart !== null && selectionEnd !== null;
@@ -851,7 +861,6 @@ export function useChatInput(props: UseChatInputProps) {
 				if (k === "/" && input.trim() === "" && cursorPos === 0) {
 					showCommandPaletteRef.current = true;
 					setShowCommandPalette(true);
-					return;
 				}
 
 				const sanitized = k
@@ -875,7 +884,6 @@ export function useChatInput(props: UseChatInputProps) {
 		},
 		{
 			isActive:
-				!showCommandPalette &&
 				!showConfigEditor &&
 				!showProfiler &&
 				!pendingQuestion &&

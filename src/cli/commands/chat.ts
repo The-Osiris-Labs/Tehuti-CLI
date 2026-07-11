@@ -831,8 +831,7 @@ function ChatUI({
 		queuedMessages,
 		setQueuedMessages,
 	} = useChatState(model, apiKey, cfg);
-	const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] =
-		React.useState("");
+
 
 	const normalizedProvider = useMemo(
 		() => runtimeProvider.trim().toLowerCase() || "openrouter",
@@ -1376,7 +1375,7 @@ function ChatUI({
 	const handleCommandPaletteSelect = useCallback(
 		(cmd: CommandItem) => {
 			setShowCommandPalette(false);
-			setCommandPaletteInitialQuery("");
+			
 			if (cmd.action) cmd.action();
 		},
 		[setShowCommandPalette],
@@ -1384,7 +1383,7 @@ function ChatUI({
 
 	const handleCommandPaletteClose = useCallback(() => {
 		setShowCommandPalette(false);
-		setCommandPaletteInitialQuery("");
+		
 	}, [setShowCommandPalette]);
 
 	const handleModelSwitch = useCallback(() => {
@@ -1505,7 +1504,7 @@ function ChatUI({
 	}, [setShowConfigEditor]);
 
 	const handleHeaderModelClick = useCallback(() => {
-		setCommandPaletteInitialQuery("/model ");
+		setInput("/model ");
 		setShowCommandPalette(true);
 	}, [setShowCommandPalette]);
 
@@ -3854,7 +3853,7 @@ function ChatUI({
 				paddingTop: 1,
 				flexDirection: "column",
 			},
-			showCommandPalette || showConfigEditor || showSessionList || showProfiler
+			showConfigEditor || showSessionList || showProfiler
 				? null
 				: pendingPermission
 					? React.createElement(PermissionPrompt, {
@@ -3898,34 +3897,46 @@ function ChatUI({
 											),
 										),
 									),
-								React.createElement(ChatBar, {
-									input,
-									cursorPos,
-									selectionStart,
-									selectionEnd,
-									loading,
-									historyIndex,
-									historyLength: history.length,
-									scrollOffset,
-									scrollPercent,
-									newMessageCount,
-									model: ctxModel,
-									provider: runtimeProvider,
-									companionMode,
-									tokensUsed:
-										costTracker.getSessionStats().totalPromptTokens +
-										costTracker.getSessionStats().totalCompletionTokens,
-									sessionCost: costTracker.getSessionStats().totalCost,
-								}),
-							),
+								React.createElement(
+									Box,
+									{ flexDirection: "row", width: "100%" },
+									React.createElement(
+										Box,
+										{ flexGrow: 1, flexDirection: "column" },
+									showCommandPalette &&
+										React.createElement(CommandPalette, {
+											commands,
+											onSelect: handleCommandPaletteSelect,
+											onClose: handleCommandPaletteClose,
+											visible: showCommandPalette,
+											initialQuery: input,
+											onQueryChange: setInput,
+										}),
+										React.createElement(ChatBar, {
+											input,
+											cursorPos,
+											selectionStart,
+											selectionEnd,
+											loading,
+											historyIndex,
+											historyLength: history.length,
+											scrollOffset,
+											scrollPercent,
+											newMessageCount,
+											model: ctxModel,
+											provider: runtimeProvider,
+											companionMode,
+											tokensUsed:
+												costTracker.getSessionStats().totalPromptTokens +
+												costTracker.getSessionStats().totalCompletionTokens,
+											sessionCost: costTracker.getSessionStats().totalCost,
+											hideInput: false,
+										})
+									)
+								)
+							)
 		),
-		React.createElement(CommandPalette, {
-			commands,
-			onSelect: handleCommandPaletteSelect,
-			onClose: handleCommandPaletteClose,
-			visible: showCommandPalette,
-			initialQuery: commandPaletteInitialQuery,
-		}),
+
 		showConfigEditor &&
 			React.createElement(ConfigEditor, {
 				config: {

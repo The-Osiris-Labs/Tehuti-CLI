@@ -4,7 +4,6 @@ import {
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-import Spinner from "ink-spinner";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
@@ -18,8 +17,6 @@ const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
 const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
-const GREEN = BRANDING.colors.green;
-const SAND = BRANDING.colors.sand;
 // @ts-expect-error TS6133/TS6192: Unused variable
 const _RED = BRANDING.colors.red;
 
@@ -41,18 +38,9 @@ interface CommandPaletteProps {
 	onClose: () => void;
 	visible: boolean;
 	initialQuery?: string;
+	onQueryChange?: (q: string) => void;
 }
 
-const CATEGORY_LABELS: Record<
-	CommandItem["category"],
-	{ label: string; color: string; glyph: string }
-> = {
-	session: { label: "SESSION", color: GREEN, glyph: DECORATIVE.scroll },
-	model: { label: "MODEL", color: CYAN, glyph: DECORATIVE.ibis },
-	help: { label: "HELP", color: GRAY, glyph: DECORATIVE.eye },
-	recent: { label: "RECENT", color: SAND, glyph: DECORATIVE.ankh },
-	submenu: { label: "OPTIONS", color: GOLD, glyph: "»" },
-};
 
 function fuzzyMatch(
 	text: string,
@@ -219,10 +207,11 @@ export function CommandPalette({
 	onClose,
 	visible,
 	initialQuery = "",
+	onQueryChange,
 }: CommandPaletteProps): React.ReactElement | null {
-	const [query, setQuery] = useState("");
+	const query = initialQuery;
 	const { stdout } = useStdout();
-	const [terminalWidth, setTerminalWidth] = useState(stdout?.columns || 80);
+
 
 	const [menuStack, setMenuStack] = useState<
 		{ title: string; commands: CommandItem[] }[]
@@ -235,8 +224,7 @@ export function CommandPalette({
 
 	useEffect(() => {
 		const handleResize = () => {
-			setTerminalWidth(stdout?.columns || 80);
-		};
+					};
 		stdout?.on("resize", handleResize);
 		return () => {
 			stdout?.off("resize", handleResize);
@@ -318,14 +306,14 @@ export function CommandPalette({
 			const initQ = initialQuery || "";
 			// Only reset if we are opening fresh
 			if (menuStack.length === 0 && !query) {
-				setQuery(initQ);
+				if (onQueryChange) onQueryChange(initQ);
 			}
 			setSelectedIndex(0);
 			setError(null);
 		} else {
 			// Reset on close
 			setMenuStack([]);
-			setQuery("");
+			if (onQueryChange) onQueryChange("");
 			setError(null);
 		}
 	}, [visible, initialQuery, menuStack.length, query]);
@@ -361,7 +349,7 @@ export function CommandPalette({
 					...prev,
 					{ title: selected.label, commands: children },
 				]);
-				setQuery("");
+				if (onQueryChange) onQueryChange("");
 			} catch (err: any) {
 				setError(err.message || String(err));
 			} finally {
@@ -387,29 +375,25 @@ export function CommandPalette({
 			if (isMouseSequence(char)) return;
 			if (!visible || isLoading) return;
 
-			if (key.escape || (key.ctrl && (char === "p" || char === "\x10"))) {
+			if (key.backspace || key.delete) {
+				if (query.length === 0 && menuStack.length > 0) {
+					setMenuStack((prev) => prev.slice(0, -1));
+					setError(null);
+				}
+				// We do NOT modify query here, because ChatBar handles the actual string deletion
+				return;
+			}
+
+			if (key.escape || (key.ctrl && (char === "p" || char === ""))) {
 				if (menuStack.length > 0) {
 					// Pop stack
 					setMenuStack((prev) => prev.slice(0, -1));
-					setQuery("");
+					if (onQueryChange) onQueryChange("");
 					setError(null);
 				} else {
 					onClose();
 				}
 				return;
-			}
-
-			if (key.backspace || key.delete) {
-				if (query.length === 0 && menuStack.length > 0) {
-					// Pop stack on backspace if query is empty
-					setMenuStack((prev) => prev.slice(0, -1));
-					setError(null);
-					return;
-				}
-				if (query.length > 0) {
-					setQuery((prev) => prev.slice(0, -1));
-					return;
-				}
 			}
 
 			if (isEnterKey(char, key)) {
@@ -421,37 +405,6 @@ export function CommandPalette({
 					}
 				}
 				return;
-			}
-
-			// Handle normal character input
-			if (
-				char &&
-				!key.ctrl &&
-				!key.meta &&
-				!char.startsWith("\x1b") &&
-				char !== "\r" &&
-				char !== "\n" &&
-				char !== "\t"
-			) {
-				if (
-					isMouseSequence(char) ||
-					char === "[" ||
-					char === "<" ||
-					char === "[[ " ||
-					/^(?:\d+;)+\d+[Mm]?$/.test(char) ||
-					/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(char) ||
-					char.includes("[<") ||
-					char.includes("[M")
-				) {
-					return;
-				}
-
-				// Delegate j/k to useVimInput when query is empty
-				if (query.length === 0 && (char === "j" || char === "k")) {
-					return;
-				}
-
-				setQuery((prev) => prev + char);
 			}
 
 			if (key.upArrow) {
@@ -469,8 +422,8 @@ export function CommandPalette({
 
 	if (!visible) return null;
 
-	const terminalHeight = stdout?.rows || 24;
-	const paletteWidth = Math.min(80, terminalWidth - 4);
+
+
 	const displayCommands = getVisibleItems(filteredCommands);
 	const hasMore = filteredCommands.length > MAX_DISPLAY;
 
@@ -497,29 +450,28 @@ export function CommandPalette({
 		? ` ${DECORATIVE.ibis} Palette > ${breadcrumbs} `
 		: ` ${DECORATIVE.ibis} COMMAND PALETTE `;
 
+
+
 	return (
 		<Box
-			position="absolute"
 			flexDirection="column"
-			width={terminalWidth}
-			height={terminalHeight}
-			justifyContent="center"
-			alignItems="center"
+			width="100%"
 		>
 			{React.createElement(
 				Box,
 				{
 					flexDirection: "column",
-					width: paletteWidth,
-					borderStyle: "double",
-					borderColor: menuStack.length > 0 ? CYAN : GOLD,
+					width: "100%",
+					borderStyle: "round",
+					borderColor: CYAN,
 					backgroundColor: "black",
 					paddingX: 1,
-					paddingY: 1,
+					paddingY: 0,
+					borderBottom: false,
 				},
 				React.createElement(
 					Box,
-					{ marginBottom: 1, justifyContent: "space-between" },
+					{ marginTop: 1, marginBottom: 1, justifyContent: "space-between" },
 					React.createElement(
 						Text,
 						{ bold: true, color: menuStack.length > 0 ? CYAN : GOLD },
@@ -528,44 +480,10 @@ export function CommandPalette({
 					React.createElement(
 						Text,
 						{ color: GRAY, dimColor: true },
-						isLoading ? "..." : "(type • ↑↓/jk • ⏎ • esc)",
+						isLoading ? "..." : "(↑↓/jk • ⏎ • esc)",
 					),
 				),
-				React.createElement(
-					Box,
-					{
-						borderStyle: "single",
-						borderColor: CORAL,
-						paddingX: 1,
-						marginBottom: 1,
-					},
-					React.createElement(Text, { color: CORAL }, `${DECORATIVE.arrow} `),
-					isLoading
-						? React.createElement(
-								Text,
-								{ color: CYAN },
-								React.createElement(Spinner, { type: "dots" }),
-								" Loading...",
-							)
-						: React.createElement(
-								Text,
-								null,
-								query.length === 0
-									? React.createElement(
-											Text,
-											{ color: "gray" },
-											menuStack.length > 0
-												? "filter options..."
-												: "type a command...",
-										)
-									: React.createElement(Text, { color: "cyan" }, query),
-								React.createElement(
-									Text,
-									{ backgroundColor: "white", color: "black" },
-									" ",
-								),
-							),
-				),
+				
 				!isLoading && filteredCommands.length === 0
 					? React.createElement(
 							Box,
@@ -580,34 +498,31 @@ export function CommandPalette({
 							React.createElement(
 								Box,
 								{ flexDirection: "column" },
-								...orderedGroups.flatMap(([category, cmds], groupIndex) => [
-									React.createElement(
-										Text,
-										{
-											key: `cat-${groupIndex}-${category}`,
-											dimColor: true,
-											color: SAND,
-											bold: true,
-										},
-										`── ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.glyph || ""} ${CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]?.label || category}`,
-									),
-									...cmds.map((cmd) => {
-										const cmdIndex = filteredCommands.findIndex(
-											(c) => c.id === cmd.id,
-										);
-										const isSelected = cmdIndex === selectedIndex;
-
-										return React.createElement(CommandItemRow, {
-											key: `cmd-${category}-${cmdIndex}-${cmd.id}`,
-											cmd,
-											cmdIndex,
-											isSelected,
-											query,
-											onHover: setSelectedIndex,
-											onClick: handleExecute,
-										});
-									}),
-								]),
+								orderedGroups.map(([category, items]) => {
+									const isRecent = category === "recent";
+									return React.createElement(Box, { key: `group-${category}`, flexDirection: "column" }, [
+										React.createElement(
+											Text,
+											{ key: `header-${category}`, dimColor: true },
+											isRecent ? `── RECENT ` : `── ${category.toUpperCase()} `,
+										),
+										...items.map((cmd) => {
+											const cmdIndex = filteredCommands.findIndex(
+												(c) => c.id === cmd.id,
+											);
+											const isSelected = cmdIndex === selectedIndex;
+											return React.createElement(CommandItemRow, {
+												key: `cmd-${category}-${cmdIndex}-${cmd.id}`,
+												cmd,
+												cmdIndex,
+												isSelected,
+												query,
+												onHover: setSelectedIndex,
+												onClick: handleExecute,
+											});
+										}),
+									]);
+								}),
 								hasMore &&
 									React.createElement(
 										Text,
@@ -617,8 +532,8 @@ export function CommandPalette({
 											dimColor: true,
 										},
 										`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
-									),
-							),
+									)
+							)
 			)}
 		</Box>
 	);

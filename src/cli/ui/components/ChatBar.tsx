@@ -26,52 +26,10 @@ export interface ChatBarProps {
 	companionMode?: boolean;
 	tokensUsed?: number;
 	sessionCost?: number;
+	hideInput?: boolean;
 }
 
-interface SlashSuggestion {
-	cmd: string;
-	description: string;
-	category: string;
-}
 
-const SLASH_COMMANDS: SlashSuggestion[] = [
-	{ cmd: "/help", description: "Show command reference", category: "GENERAL" },
-	{
-		cmd: "/clear",
-		description: "Clear conversation & tasks",
-		category: "SESSION",
-	},
-	{
-		cmd: "/config",
-		description: "Interactive config editor",
-		category: "SETTINGS",
-	},
-	{ cmd: "/model", description: "Switch AI model", category: "MODEL" },
-	{ cmd: "/provider", description: "Switch provider", category: "MODEL" },
-	{
-		cmd: "/compact",
-		description: "Compact context tokens",
-		category: "SESSION",
-	},
-	{ cmd: "/cost", description: "Show tokens and cost", category: "SESSION" },
-	{
-		cmd: "/stats",
-		description: "Show performance metrics",
-		category: "GENERAL",
-	},
-	{
-		cmd: "/update",
-		description: "Check for and apply Tehuti updates",
-		category: "SYSTEM",
-	},
-	{ cmd: "/sessions", description: "List saved sessions", category: "SESSION" },
-	{ cmd: "/save", description: "Save current session", category: "SESSION" },
-	{ cmd: "/load", description: "Load saved session", category: "SESSION" },
-	{ cmd: "/skills", description: "List available skills", category: "SKILLS" },
-	{ cmd: "/plan", description: "Enter read-only plan mode", category: "MODE" },
-	{ cmd: "/todos clear", description: "Clear active tasks", category: "TASKS" },
-	{ cmd: "/exit", description: "Exit Tehuti", category: "GENERAL" },
-];
 
 export function ChatBar({
 	input,
@@ -88,14 +46,9 @@ export function ChatBar({
 	provider,
 	companionMode = false,
 	tokensUsed = 0,
+	hideInput = false,
 }: ChatBarProps): React.ReactElement {
-	// 1. Live Slash Command Suggestions when user types "/"
-	const suggestions = useMemo(() => {
-		if (loading || !input.startsWith("/")) return [];
-		const query = input.trim().toLowerCase();
-		return SLASH_COMMANDS.filter((s) => s.cmd.startsWith(query)).slice(0, 4);
-	}, [input, loading]);
-
+	
 	// 2. Render Prompt Line (Input + Selection + Cursor)
 	const renderedInputText = useMemo(() => {
 		const historyIndicator =
@@ -162,7 +115,7 @@ export function ChatBar({
 		Box,
 		{ flexDirection: "column", marginTop: 1 },
 		// Scroll Banner Warning (if scrolled up)
-		scrollOffset > 0
+		scrollOffset > 0 && !hideInput
 			? React.createElement(
 					Box,
 					{
@@ -234,9 +187,11 @@ export function ChatBar({
 		),
 
 		// Main Framed Chat Input Row
-		React.createElement(
-			Box,
-			{
+		hideInput
+			? React.createElement(Box, { height: 3 })
+			: React.createElement(
+					Box,
+					{
 				flexDirection: "row",
 				borderStyle: loading ? "double" : "round",
 				borderColor: loading ? GOLD : CYAN,
@@ -263,29 +218,5 @@ export function ChatBar({
 					`${input.length} chars`,
 				),
 		),
-
-		// Live Autocomplete Slash Command Suggestions Row
-		suggestions.length > 0 &&
-			React.createElement(
-				Box,
-				{
-					flexDirection: "row",
-					gap: 2,
-					paddingX: 1,
-					marginTop: 0,
-				},
-				...suggestions.map((s) =>
-					React.createElement(
-						Box,
-						{ key: s.cmd, flexDirection: "row", gap: 1 },
-						React.createElement(Text, { color: GOLD, bold: true }, s.cmd),
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							s.description,
-						),
-					),
-				),
-			),
 	);
 }

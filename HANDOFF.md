@@ -243,10 +243,11 @@ See [TEST_INFRA.md](./TEST_INFRA.md) and [TEST_READY.md](./TEST_READY.md).
 
 1. **Read this file and AGENTS.md before touching `chat.ts`**
 2. **Do not break the negative-margin scroll model**
-3. **Register new tools in `src/agent/index.ts`** via `registerTools([...])`
-4. **Match existing patterns:** Zod params, `ToolResult`, `requiresPermission`, `isReadonly`
-5. **Run full gate before PR:** `typecheck && test && test:e2e && build`
-6. **Update docs** when changing defaults, tool lists, or config schema
+3. **Absolute Overlays in Ink**: Ink's `position="absolute"` does not support `top` or `left` props natively on the Box component. To prevent terminal scroll-jumping, any absolute full-screen overlays (`ConfigEditor`, `SessionList`, `Profiler`) MUST be placed at the END of the root `React.Fragment` in `chat.ts`, and they MUST NOT be nested inside the `height={terminalHeight}` Flex container. Floating inline components like `CommandPalette` should use standard flex layout and NOT absolute positioning to anchor cleanly to the ChatBar.
+4. **Register new tools in `src/agent/index.ts`** via `registerTools([...])`
+5. **Match existing patterns:** Zod params, `ToolResult`, `requiresPermission`, `isReadonly`
+6. **Run full gate before PR:** `typecheck && test && test:e2e && build`
+7. **Update docs** when changing defaults, tool lists, or config schema
 
 ---
 
