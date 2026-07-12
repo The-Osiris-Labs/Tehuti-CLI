@@ -564,6 +564,7 @@ export function createCommands(options: {
 	onHelp: () => void;
 	onSessions: () => void;
 	onModels: () => void;
+	onRestart?: () => void;
 	onSave?: () => void;
 	onLoad?: (sessionId: string) => void;
 	onStats?: () => void;
@@ -628,6 +629,13 @@ export function createCommands(options: {
 			description: "Compact context to free up token space",
 			category: "session",
 			action: options.onCompact || (() => {}),
+		},
+		{
+			id: "/restart",
+			label: "/restart",
+			description: "Save session and start a fresh conversation (same cwd, new session ID)",
+			category: "session",
+			action: options.onRestart || (() => {}),
 		},
 		{
 			id: "/save",

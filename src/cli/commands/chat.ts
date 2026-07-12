@@ -1414,6 +1414,26 @@ function ChatUI({
 		await resetConversation();
 	}, [resetConversation]);
 
+	const handleRestart = useCallback(async () => {
+		// Save current session, then start a fresh one with a new session ID
+		if (sessionId && ctxRef.current) {
+			try {
+				await sessionManager.saveSession(sessionId, ctxRef.current);
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: `Session saved: ${sessionId.slice(0, 8)}. Starting fresh.`,
+					},
+				]);
+			} catch (err) {
+				debug.log("chat", "Session save during restart failed:", err);
+			}
+		}
+		await resetConversation(true);
+	}, [resetConversation, sessionId, ctxRef, debug, setMessages, msgIdRef]);
+
 	const handleCompact = useCallback(() => {
 		const ctx = ctxRef.current;
 		if (ctx) {
@@ -2103,6 +2123,7 @@ function ChatUI({
 				onHelp: handleShowHelp,
 				onSessions: handleShowSessions,
 				onModels: handleShowModels,
+				onRestart: handleRestart,
 				onSave: handleSave,
 				onLoad: handleLoad,
 				onProvider: handleProviderSwitch,
@@ -2634,6 +2655,11 @@ function ChatUI({
 
 			if (cmd === "/clear") {
 				await resetConversation();
+				return;
+			}
+
+			if (cmd === "/restart") {
+				await handleRestart();
 				return;
 			}
 
