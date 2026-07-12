@@ -6,6 +6,7 @@ import fs from "fs-extra";
 import Fuse from "fuse.js";
 import { v4 as uuidv4 } from "uuid";
 import type { AgentContext } from "../agent/context.js";
+import type { CompactionDigest } from "../agent/context-compressor.js";
 import { exportState, importState } from "../agent/subagents/manager.js";
 import { swarmManager } from "../agent/swarm/manager.js";
 import type { StandardMessage } from "../api/base-client.js";
@@ -30,7 +31,10 @@ function isValidSessionId(id: string): boolean {
  * Without it, a crash between write() and rename() can leave the final file
  * empty or truncated even though the rename hasn't happened yet.
  */
-export async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+export async function writeJsonAtomic(
+	filePath: string,
+	data: unknown,
+): Promise<void> {
 	const tempPath = `${filePath}.${randomUUID()}.tmp`;
 	const json = JSON.stringify(data, null, 2);
 	const handle = await open(tempPath, "w");
@@ -49,7 +53,9 @@ export async function writeJsonAtomic(filePath: string, data: unknown): Promise<
 		// Clean up temp file on failure, then rethrow.
 		// EXDEV (cross-device link) is impossible here because tempPath and
 		// filePath share the same directory by construction.
-		try { await fs.unlink(tempPath); } catch {}
+		try {
+			await fs.unlink(tempPath);
+		} catch {}
 		throw error;
 	}
 }
@@ -128,11 +134,14 @@ export interface SessionData {
 	metadata: SessionMetadata;
 	messages: StandardMessage[];
 	appendOnlyLog: StandardMessage[];
+	/** New sessions store the full append-only transcript outside session.json. */
+	archiveFile?: string;
 	context: {
 		cwd: string;
 		workingDir: string;
 		metadata: AgentContext["metadata"];
 		readFilesThisSession: string[];
+		compactionHistory?: CompactionDigest[];
 	};
 	subagentsState?: any;
 	swarmState?: any;
@@ -222,7 +231,9 @@ class SessionManager {
 				const stat = await fs.stat(sessionDir).catch(() => null);
 				if (!stat?.isDirectory()) continue;
 				// Match UUID-suffixed temp files: <name>.<uuid>.tmp
-				const entries = await fs.readdir(sessionDir).catch(() => [] as string[]);
+				const entries = await fs
+					.readdir(sessionDir)
+					.catch(() => [] as string[]);
 				for (const entry of entries) {
 					if (entry.endsWith(".tmp")) {
 						await fs.remove(path.join(sessionDir, entry)).catch(() => {});
@@ -345,21 +356,34 @@ class SessionManager {
 
 		await this.saveSessionMetadata(id, metadata);
 
+		const archive = ctx.appendOnlyLog || ctx.messages;
+		const needsExternalArchive =
+			archive.length > ctx.messages.length ||
+			(ctx.compactionHistory?.length ?? 0) > 0;
 		const sessionData: SessionData = {
 			metadata,
 			messages: ctx.messages,
-			appendOnlyLog: ctx.appendOnlyLog || ctx.messages,
+			// Keep ordinary sessions backward-compatible. Once compaction creates
+			// a larger audit transcript, move that transcript to archive.json so
+			// repeated checkpoints do not duplicate it inside session.json.
+			appendOnlyLog: needsExternalArchive ? [] : archive,
+			archiveFile: needsExternalArchive ? "archive.json" : undefined,
 			context: {
 				cwd: ctx.cwd,
 				workingDir: ctx.workingDir,
 				metadata: ctx.metadata,
 				readFilesThisSession: Array.from(ctx.readFilesThisSession || []),
+				compactionHistory: ctx.compactionHistory,
 			},
 			subagentsState: exportState(),
 			swarmState: swarmManager.exportState(),
 		};
 
 		const sessionFile = path.join(sessionDir, "session.json");
+		if (sessionData.archiveFile) {
+			const archiveFile = path.join(sessionDir, sessionData.archiveFile);
+			await writeJsonAtomic(archiveFile, archive);
+		}
 		await writeJsonAtomic(sessionFile, sessionData);
 
 		debug.log(
@@ -374,7 +398,8 @@ class SessionManager {
 			return null;
 		}
 
-		const sessionFile = path.join(this.sessionsDir, id, "session.json");
+		const sessionDir = path.join(this.sessionsDir, id);
+		const sessionFile = path.join(sessionDir, "session.json");
 
 		if (!(await fs.pathExists(sessionFile))) {
 			return null;
@@ -387,6 +412,18 @@ class SessionManager {
 				return null;
 			}
 			const data = normalizeSessionData(rawData);
+			if (
+				data.archiveFile &&
+				path.basename(data.archiveFile) === data.archiveFile
+			) {
+				const archivePath = path.join(sessionDir, data.archiveFile);
+				if (await fs.pathExists(archivePath)) {
+					const archive = await fs.readJson(archivePath);
+					if (Array.isArray(archive)) {
+						data.appendOnlyLog = archive as StandardMessage[];
+					}
+				}
+			}
 			if (data.subagentsState) importState(data.subagentsState);
 			if (data.swarmState) swarmManager.importState(data.swarmState);
 			this.currentSessionId = id;

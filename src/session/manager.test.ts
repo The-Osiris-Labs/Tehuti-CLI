@@ -77,6 +77,28 @@ describe("SessionManager", () => {
 					{ role: "user" as const, content: "Hello" },
 					{ role: "assistant" as const, content: "Hi there!" },
 				],
+				appendOnlyLog: [
+					{ role: "user" as const, content: "Hello" },
+					{ role: "assistant" as const, content: "Hi there!" },
+				],
+				compactionHistory: [
+					{
+						id: "compaction-test",
+						createdAt: Date.now(),
+						source: {
+							activeStartIndex: 1,
+							activeEndIndex: 1,
+							messageCount: 1,
+						},
+						originalTokens: 20,
+						compactedTokens: 10,
+						keyDecisions: [],
+						actions: [],
+						recoveries: [],
+						openThreads: [],
+						milestones: [],
+					},
+				],
 				config: {
 					model: "test-model",
 					maxIterations: 10,
@@ -101,6 +123,7 @@ describe("SessionManager", () => {
 			expect(loaded?.messages).toHaveLength(2);
 			expect(loaded?.context.metadata.tokensUsed).toBe(150);
 			expect(loaded?.context.metadata.startTime).toBeInstanceOf(Date);
+			expect(loaded?.context.compactionHistory).toHaveLength(1);
 		});
 
 		it("should preserve existing name on save", async () => {
