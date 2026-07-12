@@ -147,6 +147,24 @@ export interface SessionData {
 	swarmState?: any;
 }
 
+/**
+ * Resolve a path to its canonical form, returning the original string on any
+ * failure (ENOENT, non-string, permission errors). Used by getRecentSession so
+ * that symlinked cwd paths (e.g. macOS /tmp -> /private/tmp, or
+ * /var/folders/... vs /private/var/folders/...) still match saved session cwd
+ * values. Resolving at lookup time (rather than at write time) is intentional:
+ * the saved `metadata.cwd` is preserved exactly as the user typed it, so we
+ * don't have to migrate existing session files.
+ */
+async function safeRealpath(p: unknown): Promise<string> {
+	if (typeof p !== "string" || !p) return "";
+	try {
+		return await fs.realpath(p);
+	} catch {
+		return typeof p === "string" ? p : "";
+	}
+}
+
 function normalizeStartTime(value: unknown): Date {
 	if (value instanceof Date && !Number.isNaN(value.getTime())) {
 		return value;
@@ -526,8 +544,14 @@ class SessionManager {
 
 	async getRecentSession(cwd: string): Promise<string | null> {
 		const sessions = await this.listSessions();
-		const cwdSession = sessions.find((s) => s.cwd === cwd);
-		return cwdSession?.id ?? null;
+		const target = await safeRealpath(cwd);
+		for (const session of sessions) {
+			if (session.cwd === cwd) return session.id;
+			if (session.cwd === target) return session.id;
+			const saved = await safeRealpath(session.cwd);
+			if (saved === target) return session.id;
+		}
+		return null;
 	}
 
 	getCurrentSessionId(): string | null {

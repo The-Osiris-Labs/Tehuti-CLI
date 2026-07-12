@@ -333,6 +333,52 @@ describe("SessionManager", () => {
 
 			await fs.remove(otherDir);
 		});
+
+		// Regression: on macOS (and Linux with /var -> /private/var symlinks) the
+		// process cwd can come back as the canonical realpath even though the
+		// user typed (and the session was saved with) the symlinked path. The
+		// original implementation used a strict string compare and silently
+		// returned null, dropping the user into a fresh empty session.
+		it("should match a session whose saved cwd differs by a symlink", async () => {
+			const realDir = path.join(os.tmpdir(), "tehuti-test-symlink-real");
+			const linkDir = path.join(os.tmpdir(), "tehuti-test-symlink-alias");
+			await fs.ensureDir(realDir);
+			// best-effort cleanup of any previous run
+			await fs.remove(linkDir).catch(() => {});
+			try {
+				await fs.symlink(realDir, linkDir, "dir");
+			} catch {
+				// Skip the test on platforms/filesystems that disallow symlinks
+				// (e.g. Windows without developer mode). The bug is POSIX-only.
+				return;
+			}
+
+			try {
+				const id = await sessionManager.createSession(linkDir, "test-model");
+
+				// Lookup by the real (canonical) path — should still find the
+				// session that was saved under the symlinked path.
+				const realPath = await fs.realpath(realDir);
+				const recentId = await sessionManager.getRecentSession(realPath);
+				expect(recentId).toBe(id);
+
+				// And the reverse: lookup by the symlink path, when saved
+				// cwd was the real path.
+				const id2 = await sessionManager.createSession(realDir, "test-model-2");
+				const recentId2 = await sessionManager.getRecentSession(linkDir);
+				expect(recentId2).toBe(id2);
+			} finally {
+				await fs.remove(linkDir).catch(() => {});
+				await fs.remove(realDir).catch(() => {});
+			}
+		});
+
+		it("should match a session whose saved cwd has a trailing slash", async () => {
+			const dirWithSlash = `${testDir}/`;
+			const id = await sessionManager.createSession(testDir, "test-model");
+			const recentId = await sessionManager.getRecentSession(dirWithSlash);
+			expect(recentId).toBe(id);
+		});
 	});
 
 	describe("session ID management", () => {
