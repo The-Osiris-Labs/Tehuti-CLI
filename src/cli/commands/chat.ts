@@ -10,7 +10,7 @@ import { Box, render, Text, useApp, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import React, {
 	useCallback,
-	useDeferredValue,
+	
 	useEffect,
 	useMemo,
 	useRef,
@@ -3474,7 +3474,14 @@ function ChatUI({
 		}
 	}
 
-	const deferredVisibleMessages = useDeferredValue(visibleMessages);
+	// Note: previously wrapped visibleMessages in useDeferredValue to keep the
+	// UI responsive while the agent streams tokens. That deferred the entire
+	// slice from re-computing on every render, which made pageUp/pageDown feel
+	// "stuck" while loading was true (scrollOffset updated, but the visible
+	// window lagged behind - user saw the SCROLLED UP banner without content
+	// moving). Streaming is already batched upstream, so the deferral is no
+	// longer needed and the visible window can render synchronously.
+	const deferredVisibleMessages = visibleMessages;
 
 	const messageElements = useMemo(() => {
 		return deferredVisibleMessages.map((m) => {
