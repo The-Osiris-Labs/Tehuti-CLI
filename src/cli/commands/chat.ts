@@ -1415,24 +1415,55 @@ function ChatUI({
 	}, [resetConversation]);
 
 	const handleRestart = useCallback(async () => {
-		// Save current session, then start a fresh one with a new session ID
+		// /restart = kill the TUI process and re-spawn it in the same terminal,
+		// auto-resuming the same session ID. Mental model: as if the user typed
+		// /exit, ran `tehuti`, and the same session was already selected.
+		//
+		// Step 1: force a final save. The 5s autosave (see effect at line ~1245)
+		// may be up to 5s stale, and the unmount cleanup runs AFTER we exit so
+		// we can't rely on it here. Best-effort — if save fails, we still
+		// proceed to respawn; the on-disk session file is the durable record.
 		if (sessionId && ctxRef.current) {
 			try {
 				await sessionManager.saveSession(sessionId, ctxRef.current);
-				setMessages((m) => [
-					...m,
-					{
-						id: msgIdRef.current++,
-						role: "system",
-						content: `Session saved: ${sessionId.slice(0, 8)}. Starting fresh.`,
-					},
-				]);
 			} catch (err) {
 				debug.log("chat", "Session save during restart failed:", err);
 			}
 		}
-		await resetConversation(true);
-	}, [resetConversation, sessionId, ctxRef, debug, setMessages, msgIdRef]);
+
+		// Step 2: spawn a detached TUI child with the resume env var, then
+		// exit the current process. detached:true + child.unref() ensures the
+		// new process survives the parent's death. stdio:inherit passes the
+		// controlling TTY through, so the new TUI opens in the same terminal.
+		try {
+			const { spawn } = await import("node:child_process");
+			const child = spawn(
+				process.execPath,
+				[process.argv[1], ...process.argv.slice(2)],
+				{
+					detached: true,
+					stdio: "inherit",
+					env: { ...process.env, TEHUTI_RESUME_SESSION: sessionId ?? "" },
+				},
+			);
+			child.unref();
+			// Defer exit so the spawn handle is returned to the event loop and
+			// the child has a chance to initialize before the parent dies.
+			setImmediate(() => process.exit(0));
+		} catch (err) {
+			// Spawn threw synchronously (EACCES, ENOENT, etc.). The old TUI is
+			// still running; surface a warning and bail.
+			debug.log("chat", "Respawn during restart failed:", err);
+			setMessages((m) => [
+				...m,
+				{
+					id: msgIdRef.current++,
+					role: "system",
+					content: `Restart failed: ${err instanceof Error ? err.message : String(err)}. Session is saved; please exit and re-launch manually.`,
+				},
+			]);
+		}
+	}, [sessionId, ctxRef, debug, setMessages, msgIdRef]);
 
 	const handleCompact = useCallback(() => {
 		const ctx = ctxRef.current;
@@ -2322,6 +2353,24 @@ function ChatUI({
 
 		async function initSession() {
 			try {
+				// /restart handoff: if the parent process spawned us with
+				// TEHUTI_RESUME_SESSION=<id>, prefer that exact session over
+				// the recent-session heuristic. Falls through to the default
+				// paths below if the session can't be loaded.
+				const resumeFromEnv = process.env.TEHUTI_RESUME_SESSION;
+				if (resumeFromEnv && mounted && !controller.signal.aborted) {
+					const data = await sessionManager.loadSession(resumeFromEnv);
+					if (
+						data &&
+						data.messages.length > 0 &&
+						mounted &&
+						!controller.signal.aborted
+					) {
+						await loadSessionById(resumeFromEnv);
+						return;
+					}
+				}
+
 				const recentId = continueSession
 					? await sessionManager.getRecentSession(process.cwd())
 					: null;
