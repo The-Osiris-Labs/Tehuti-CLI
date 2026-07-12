@@ -134,6 +134,7 @@ import { daemonCommand } from "./daemon.js";
 import { doctorCommand } from "./doctor.js";
 import { sessionCommand } from "./session.js";
 import { skillsCommand } from "./skills.js";
+import { traceCommand } from "./trace.js";
 import { toolsCommand } from "./tools.js";
 
 interface PendingSessionFlush {
@@ -4479,6 +4480,7 @@ export function createProgram(): Command {
 	program.addCommand(doctorCommand());
 	program.addCommand(sessionCommand());
 	program.addCommand(skillsCommand());
+	program.addCommand(traceCommand());
 	program.addCommand(toolsCommand());
 
 	return program;
