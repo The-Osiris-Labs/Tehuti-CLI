@@ -1125,6 +1125,7 @@ function ChatUI({
 		[],
 	);
 	const advisoryIdRef = useRef(0);
+	const advisoryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 	// Snapshot of message count when the user last scrolled up. We diff
 	// against the current messages.length so the "N new" badge shows the
 	// count of message *arrivals*, not the total.
@@ -1190,9 +1191,11 @@ function ChatUI({
 						} else if (msg.type === "advisory") {
 							const id = advisoryIdRef.current++;
 							setAdvisories((prev) => [...prev, { id, text: msg.message }]);
-							setTimeout(() => {
+							const timer = setTimeout(() => {
+								advisoryTimersRef.current.delete(timer);
 								setAdvisories((prev) => prev.filter((a) => a.id !== id));
 							}, 8000);
+							advisoryTimersRef.current.add(timer);
 						}
 					});
 				})
@@ -1203,6 +1206,10 @@ function ChatUI({
 			return () => {
 				client.disconnect();
 				daemonClientRef.current = null;
+				for (const timer of advisoryTimersRef.current) {
+					clearTimeout(timer);
+				}
+				advisoryTimersRef.current.clear();
 			};
 		}
 	}, [companionMode, setError]);
