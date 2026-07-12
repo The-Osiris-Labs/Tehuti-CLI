@@ -104,12 +104,6 @@ function validateSessionData(data: unknown): data is SessionData {
 	return true;
 }
 
-// @ts-expect-error TS6133/TS6192: Unused variable
-function _sanitizeSessionId(id: string): string {
-	const sanitized = id.replace(/[^0-9a-f-]/gi, "");
-	return sanitized.length === 36 && UUID_REGEX.test(sanitized) ? sanitized : "";
-}
-
 export interface SessionMetadata {
 	id: string;
 	name?: string;
@@ -366,8 +360,6 @@ class SessionManager {
 		};
 
 		const sessionFile = path.join(sessionDir, "session.json");
-		// @ts-expect-error TS6133/TS6192: Unused variable
-		const tempFile = path.join(sessionDir, "session.json.tmp");
 		await writeJsonAtomic(sessionFile, sessionData);
 
 		debug.log(
@@ -427,11 +419,10 @@ class SessionManager {
 		const sessionDir = path.join(this.sessionsDir, id);
 		await fs.ensureDir(sessionDir);
 		const metaFile = path.join(sessionDir, "metadata.json");
-		// Atomic write: temp file + rename. A SIGKILL or power loss during the
-		// write leaves the previous metadata.json intact (or the temp file
-		// orphaned, which is harmless and overwritten on the next save).
-		// @ts-expect-error TS6133/TS6192: Unused variable
-		const tempFile = path.join(sessionDir, "metadata.json.tmp");
+		// Atomic write: temp file + rename (see writeJsonAtomic in this file).
+		// A SIGKILL or power loss during the write leaves the previous
+		// metadata.json intact; the orphaned <file>.<uuid>.tmp is cleaned up
+		// on the next startup by cleanupOrphanedTempFiles().
 		await writeJsonAtomic(metaFile, metadata);
 	}
 
