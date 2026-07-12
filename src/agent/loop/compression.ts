@@ -4,15 +4,16 @@ import type {
 	StandardAPIClient,
 } from "../../api/index.js";
 import { debug } from "../../utils/debug.js";
-import type { AgentContext } from "../context.js";
+import { type AgentContext, compactContext } from "../context.js";
 import { estimateTokens } from "../context-compressor.js";
 
 export async function manageContextWindow(
 	ctx: AgentContext,
 	_client: StandardAPIClient | KiloCodeClient | CustomProviderClient,
 	maxContext?: number,
-): Promise<void> {
+): Promise<boolean> {
 	let currentTokens = estimateTokens(ctx.messages);
+	const initialTokens = currentTokens;
 	const effectiveMaxContext =
 		maxContext ??
 		ctx.modelContextLength ??
@@ -25,51 +26,14 @@ export async function manageContextWindow(
 	if (currentTokens > triggerThreshold) {
 		debug.log(
 			"agent",
-			`Context compression triggered (${currentTokens} > ${triggerThreshold} tokens). Relying on deterministic head/tail truncation.`,
+			`Context compression triggered (${currentTokens} > ${triggerThreshold} tokens). Building a structured digest and retaining the append-only archive.`,
 		);
 
-		// Deterministic truncation: keep head (system prompts) and tail (recent messages)
-		// We remove the oldest non-system messages until under target
-		const keepLastN = 10;
-		while (
-			currentTokens > targetTokens &&
-			ctx.messages.length > keepLastN + 1
-		) {
-			const endIndex = ctx.messages.length - keepLastN;
-			let removed = false;
-			for (let i = 0; i < endIndex; i++) {
-				if (ctx.messages[i].role !== "system") {
-					const [removedMsg] = ctx.messages.splice(i, 1);
-					removed = true;
-					if (
-						removedMsg.role === "assistant" &&
-						removedMsg.tool_calls &&
-						removedMsg.tool_calls.length > 0
-					) {
-						const toolCallIds = new Set(
-							removedMsg.tool_calls
-								.map((tc) => tc.id)
-								.filter((id): id is string => Boolean(id)),
-						);
-						for (let j = ctx.messages.length - 1; j >= 0; j--) {
-							const msg = ctx.messages[j];
-							if (
-								msg.role === "tool" &&
-								msg.tool_call_id &&
-								toolCallIds.has(msg.tool_call_id)
-							) {
-								ctx.messages.splice(j, 1);
-							}
-						}
-					}
-					break;
-				}
-			}
-			if (!removed) break; // Only system messages remain before the keep window
-			currentTokens = estimateTokens(ctx.messages);
-		}
+		const compacted = compactContext(ctx, targetTokens, effectiveMaxContext);
+		currentTokens = estimateTokens(ctx.messages);
 
-		// Fallback 1: Truncate massive individual strings
+		// Fallback 1: Truncate massive individual strings in the model-facing
+		// copy. The original content remains in appendOnlyLog.
 		if (currentTokens > targetTokens) {
 			debug.log(
 				"agent",
@@ -86,7 +50,8 @@ export async function manageContextWindow(
 			currentTokens = estimateTokens(ctx.messages);
 		}
 
-		// Fallback 2: Override keep window if still exceeded
+		// Fallback 2: Override keep window if still exceeded. This is only a
+		// last-resort provider-safety measure; the append-only archive is intact.
 		while (currentTokens > targetTokens && ctx.messages.length > 2) {
 			let removed = false;
 			for (let i = 0; i < ctx.messages.length - 1; i++) {
@@ -99,5 +64,9 @@ export async function manageContextWindow(
 			if (!removed) break;
 			currentTokens = estimateTokens(ctx.messages);
 		}
+
+		return compacted || currentTokens < initialTokens;
 	}
+
+	return false;
 }

@@ -11,6 +11,7 @@ import { TehutiDaemonClient } from "../daemon/client.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
 import {
+	type CompactionDigest,
 	compressContext,
 	estimateTokens as tiktokenEstimateTokens,
 } from "./context-compressor.js";
@@ -29,7 +30,9 @@ const PROJECT_INSTRUCTION_FILES = [
 	"AGENTS.md",
 ];
 const COMPACT_THRESHOLD = 0.85;
-const MIN_MESSAGES_TO_KEEP = 6;
+// Keep a meaningful recent window in model context. The append-only archive
+// retains everything else, so this is a UX/relevance tradeoff, not data loss.
+const MIN_MESSAGES_TO_KEEP = 20;
 
 export function stripReasoningTokens(content: string): string {
 	return content.replace(
@@ -80,14 +83,11 @@ export function compactContext(
 
 	ctx.messages = result.messages;
 
-	// Keep appendOnlyLog bounded to match ctx.messages length. Without this
-	// the log grows without limit (it's pushed on every message addition),
-	// and the save payload serializes the full log on every checkpoint.
-	// We keep the most recent N entries (matching ctx.messages) and the
-	// same first entry to preserve session context anchors.
-	if (ctx.appendOnlyLog.length > ctx.messages.length) {
-		const overflow = ctx.appendOnlyLog.length - ctx.messages.length;
-		ctx.appendOnlyLog.splice(0, overflow);
+	// appendOnlyLog is the audit/archive transcript. Model context reduction
+	// and human-visible history are separate concerns, so it must remain intact.
+	if (result.digest) {
+		ctx.compactionHistory ??= [];
+		ctx.compactionHistory.push(result.digest);
 	}
 
 	debug.log(
@@ -202,6 +202,8 @@ export interface AgentContext {
 	workingDir: string;
 	messages: StandardMessage[];
 	appendOnlyLog: StandardMessage[];
+	/** Deterministic summaries of ranges removed from the model-facing context. */
+	compactionHistory: CompactionDigest[];
 	config: TehutiConfig;
 	projectInstructions?: string;
 	systemMemoryPromise?: Promise<string>;
@@ -301,6 +303,7 @@ export async function createAgentContext(
 		workingDir: resolvedCwd,
 		messages: [],
 		appendOnlyLog: [],
+		compactionHistory: [],
 		config,
 		projectInstructions,
 		systemMemoryPromise,

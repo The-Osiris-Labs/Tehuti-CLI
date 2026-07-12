@@ -12,9 +12,8 @@ import {
 	resolveModelCapabilities,
 } from "../../api/model-capabilities.js";
 import type { StandardAPIClient } from "../../api/standard-client.js";
-
+import { permissionManager } from "../../permissions/rules.js";
 import { debug } from "../../utils/debug.js";
-
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
 import type { AgentContext } from "../context.js";
@@ -33,7 +32,6 @@ import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
 import { getToolDefinitions } from "../tools/index.js";
 import { getTool } from "../tools/registry.js";
 import { setParentContext } from "../tools/system.js";
-import { permissionManager } from "../../permissions/rules.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
 import { SelfHealingManager } from "./self-healing.js";
@@ -105,12 +103,14 @@ export async function runAgentLoop(
 		const systemPromptContent = await buildSystemPrompt(ctx, userMessage);
 
 		if (ctx.messages.length === 0) {
-			ctx.messages.push({
+			const systemMessage = {
 				role: "system",
 				content: systemPromptContent,
 				timestamp: Date.now(),
 				internalId: randomUUID(),
-			});
+			} as const;
+			ctx.messages.push(systemMessage);
+			ctx.appendOnlyLog.push(systemMessage);
 		} else if (ctx.messages[0]?.role === "system") {
 			ctx.messages[0].content = systemPromptContent;
 		}
@@ -192,12 +192,14 @@ export async function runAgentLoop(
 					const message = await wakeupQueue.consume(signal);
 					ctx.isSleeping = false;
 					if (message) {
-						ctx.messages.push({
+						const wakeupMessage = {
 							role: "system",
 							content: message,
 							timestamp: Date.now(),
 							internalId: randomUUID(),
-						});
+						} as const;
+						ctx.messages.push(wakeupMessage);
+						ctx.appendOnlyLog.push(wakeupMessage);
 						debug.log("agent", `Agent woke up with message: ${message}`);
 					}
 					iteration--;
@@ -206,16 +208,25 @@ export async function runAgentLoop(
 
 				const injectedMessages = ctx.injectionQueue.consumeAll();
 				for (const msg of injectedMessages) {
-					ctx.messages.push({
+					const injectedMessage = {
 						role: "user",
 						content: msg,
 						timestamp: Date.now(),
 						internalId: randomUUID(),
-					});
+					} as const;
+					ctx.messages.push(injectedMessage);
+					ctx.appendOnlyLog.push(injectedMessage);
 					debug.log("agent", `Injected mid-flight message: ${msg}`);
 				}
 
-				await manageContextWindow(ctx, client, ctx.modelContextLength);
+				const contextCompacted = await manageContextWindow(
+					ctx,
+					client,
+					ctx.modelContextLength,
+				);
+				if (contextCompacted) {
+					await onCheckpoint?.("context_compacted", ctx);
+				}
 
 				ctx.messages = normalizeToolMessageHistory(ctx.messages);
 
