@@ -18,8 +18,24 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ---
 
-## 🚀 v1.1.0 Milestone Highlights
-The latest `v1.1.0` release ("The Beast Awakens") introduces monumental architectural shifts and production-grade deep hardening, transforming Tehuti from a simple CLI into a persistent, uncrackable companion:
+## 🚀 Latest: v1.2.1
+The current release introduces operator-facing tooling and a real-world leak fix on top of the v1.2.0 compaction-digest overhaul.
+
+- **`tehuti trace` CLI**: Surface the per-second `~/.tehuti/trace.jsonl` log for debugging and post-mortem analysis. Subcommands: `tail`, `show <id>`, `search <q>`, `tree` (swarm lifecycle), `stats`, `kinds`. `--json` for machine-readable output, `--follow` for live tail.
+- **`tehuti doctor` / `tehuti skills` / `tehuti tools`**: Three operator subcommands for env checks, skill listing, and built-in + MCP tool inventory.
+- **Advisory timer leak fix**: The companion-mode daemon's 8s `setTimeout` cleanup for advisory messages is now tracked in a ref-set and torn down on unmount — no more setState-on-unmounted-component warnings.
+- **`useVirtualScroll` tailFollow mode**: New `mode: "tailFollow"` option in the shared hook auto-anchors the window to the last N items (chat-style viewports, log streams). Existing cursor-mode consumers are unaffected.
+- **`useChatViewport` hook**: The line-budgeted chat viewport (windowed render, new-message badge, scroll-anchor) extracted into a reusable hook for future components.
+
+## v1.2.0 Milestone Highlights
+The v1.2.0 release ("Compaction Digest") replaces the previous greedy context-window trimming with a structured digest system:
+- **Deterministic Compaction Digests**: When context grows large, the agent loop extracts actions / decisions / recoveries / open-threads from the removed messages and persists them as a structured digest, instead of dropping them. The digest is rendered as a persistent system marker that survives `/resume`.
+- **Append-Only Archive**: The full transcript is moved to `archive.json` (external file) on compaction, keeping `session.json` small. `appendOnlyLog` is the source of truth, not `messages[]`.
+- **Trace Infrastructure**: Per-second trace collector writing to `~/.tehuti/trace.jsonl` (10K ring buffer, 1s flush, JSONL append). Used by the new `tehuti trace` CLI.
+- **Session resume-by-cwd**: `tehuti --resume` picks the most recently created session for the canonical cwd.
+
+## v1.1.0 Milestone Highlights
+The v1.1.0 release ("The Beast Awakens") introduced monumental architectural shifts and production-grade deep hardening, transforming Tehuti from a simple CLI into a persistent, uncrackable companion:
 - **Production-Grade Security**: Full immunity to Prompt Injection (via XML wrapper defenses), Shell Injection (safe-spawn array executions), SQL Injection (parameterized bindings), and MCP Schema Poisoning.
 - **Persistent Background Daemon:** Run Tehuti invisibly in the background with `tehuti daemon start`, maintaining active state and memory, safeguarded by absolute `try/catch` boundaries.
 - **Omnichannel Connectors:** Native WebSockets and HTTP webhook integration for Discord, Slack, Telegram, and WhatsApp.

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-12
+
+### Added
+- **`tehuti trace` CLI** for querying the `~/.tehuti/trace.jsonl` log: `tail`, `show <id>`, `search <q>`, `tree` (swarm lifecycle), `stats`, `kinds`. `--json` and `--follow` flags for machine-readable and live-tail use.
+- **`tehuti doctor`**, **`tehuti skills`**, **`tehuti tools`** subcommands for environment checks, skill listing, and tool inventory.
+- **`useVirtualScroll` `tailFollow` mode**: New `mode: "tailFollow"` option in the shared hook auto-anchors the window to the last N items. User scroll up breaks the anchor; `scrollToEnd()` re-anchors. Existing cursor-mode consumers are unaffected (backward-compatible).
+- **`useChatViewport` hook**: Extracted the line-budgeted chat viewport (windowed render, new-message badge, scroll-anchor) from `chat.ts` into a reusable hook at `src/cli/ui/hooks/useChatViewport.ts`.
+
+### Fixed
+- **Advisory timer unmount race**: The companion-mode daemon's 8s `setTimeout` cleanup for advisory messages is now tracked in a `useRef<Set<...>>` and torn down on unmount. Previously, the timer would fire and call `setAdvisories` on an unmounted component if the user exited chat within 8s of an advisory.
+
 ## [1.2.0] - 2026-07-11
 
 ### Feature Streams
@@ -13,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Background Daemon Refactoring**: Stabilized the background daemon state engine (`tehutid.sock`) and IPC socket communications for crash-free, active background orchestration.
 - **Cross-Platform Context Continuity**: Centralized session mapping via SQLite (`messaging_sessions`), enabling seamless context handoff across CLI, TUI, and messaging connectors.
 - **Swarm Profiler Overlay**: Added advanced swarm process lifecycle tracking (`pending`, `running`, `completed`, `failed`), preventing task state duplication with `isTerminal()` status predicates.
+
+### Compaction Digest System
+- **Deterministic Compaction Digests**: Replaced the previous greedy head/tail context-window trim (which could split tool_call/tool_result pairs) with a structured `buildStructuredCompactionDigest` that extracts actions / decisions / recoveries / open-threads from removed messages.
+- **Append-Only Archive**: `appendOnlyLog` is the source of truth, kept unbounded. On compaction, the full transcript moves to `archive.json` (external file) when it diverges from `messages[]`, keeping `session.json` small.
+- **Persistent Compaction Markers**: UI surfaces digests as system markers that survive `/resume`.
 
 ## [1.1.0] - 2026-07-11
 
