@@ -92,6 +92,7 @@ import {
 	compactBlockForUi,
 	compactMessagesForUi,
 	compactToolResultForUi,
+	formatCompactionDigestForUi,
 	needsUiCompaction,
 	safeStringify,
 	TOOL_RESULT_PREVIEW_CHARS,
@@ -130,7 +131,10 @@ import {
 } from "../ui/utils/custom-provider.js";
 import { companionCommand } from "./companion.js";
 import { daemonCommand } from "./daemon.js";
+import { doctorCommand } from "./doctor.js";
 import { sessionCommand } from "./session.js";
+import { skillsCommand } from "./skills.js";
+import { toolsCommand } from "./tools.js";
 
 interface PendingSessionFlush {
 	sessionId: string;
@@ -822,7 +826,6 @@ function ChatUI({
 		setQueuedMessages,
 	} = useChatState(model, apiKey, cfg);
 
-
 	const normalizedProvider = useMemo(
 		() => runtimeProvider.trim().toLowerCase() || "openrouter",
 		[runtimeProvider],
@@ -1365,7 +1368,7 @@ function ChatUI({
 	const handleCommandPaletteSelect = useCallback(
 		(cmd: CommandItem) => {
 			setShowCommandPalette(false);
-			
+
 			if (cmd.action) cmd.action();
 		},
 		[setShowCommandPalette],
@@ -1373,7 +1376,6 @@ function ChatUI({
 
 	const handleCommandPaletteClose = useCallback(() => {
 		setShowCommandPalette(false);
-		
 	}, [setShowCommandPalette]);
 
 	const handleModelSwitch = useCallback(() => {
@@ -1411,12 +1413,17 @@ function ChatUI({
 			const compacted = compactContext(ctx);
 			if (compacted) {
 				const newTokens = estimateTokens(ctx.messages);
+				const digest = ctx.compactionHistory.at(-1);
 				setMessages((m) => [
 					...m,
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: `Context compacted: ${currentTokens} → ${newTokens} tokens`,
+						kind: digest ? "compaction" : undefined,
+						compaction: digest,
+						content: digest
+							? formatCompactionDigestForUi(digest)
+							: `Context compacted: ${currentTokens} → ${newTokens} tokens`,
 					},
 				]);
 			} else {
@@ -1496,7 +1503,7 @@ function ChatUI({
 	const handleHeaderModelClick = useCallback(() => {
 		setInput("/model ");
 		setShowCommandPalette(true);
-	}, [setShowCommandPalette]);
+	}, [setInput, setShowCommandPalette]);
 
 	const handleHeaderConfigClick = useCallback(() => {
 		setShowConfigEditor(true);
@@ -1799,6 +1806,16 @@ function ChatUI({
 							? data.appendOnlyLog
 							: data.messages;
 
+					for (const digest of data.context?.compactionHistory ?? []) {
+						loadedMsgs.push({
+							id: uiMsgId++,
+							role: "system",
+							kind: "compaction",
+							compaction: digest,
+							content: formatCompactionDigestForUi(digest),
+						});
+					}
+
 					for (let i = 0; i < historyMessages.length; i++) {
 						const m = historyMessages[i];
 						if (m.role === "system" || m.role === "tool") continue;
@@ -1917,6 +1934,9 @@ function ChatUI({
 					ctxRef.current.messages = JSON.parse(JSON.stringify(data.messages));
 					ctxRef.current.appendOnlyLog = JSON.parse(
 						JSON.stringify(data.appendOnlyLog || data.messages),
+					);
+					ctxRef.current.compactionHistory = JSON.parse(
+						JSON.stringify(data.context?.compactionHistory || []),
 					);
 
 					if (data.context) {
@@ -2882,15 +2902,25 @@ function ChatUI({
 
 				try {
 					let exportData = "";
+					const messages = ctxRef.current?.appendOnlyLog?.length
+						? ctxRef.current.appendOnlyLog
+						: ctxRef.current?.messages || [];
 					if (format === "json") {
 						exportData = JSON.stringify(
-							ctxRef.current?.messages || [],
+							{
+								messages,
+								compactionHistory: ctxRef.current?.compactionHistory || [],
+							},
 							null,
 							2,
 						);
 					} else {
 						exportData = `# Tehuti Session Export\n\n`;
-						const messages = ctxRef.current?.messages || [];
+						if (ctxRef.current?.compactionHistory?.length) {
+							exportData += `## Compaction digests\n\n${ctxRef.current.compactionHistory
+								.map((digest) => formatCompactionDigestForUi(digest))
+								.join("\n\n---\n\n")}\n\n---\n\n`;
+						}
 						for (const msg of messages) {
 							const role = msg.role.toUpperCase();
 							const content =
@@ -3165,13 +3195,28 @@ function ChatUI({
 					setProgress(progress);
 					setOperationLabel(label);
 				},
-				onCheckpoint: async (_event: string, checkpointCtx: AgentContext) => {
+				onCheckpoint: async (event: string, checkpointCtx: AgentContext) => {
 					if (
 						!isCurrentRequest(requestId, requestController.signal) ||
 						requestController.signal.aborted ||
 						!sessionId
 					) {
 						return;
+					}
+					if (event === "context_compacted") {
+						const digest = checkpointCtx.compactionHistory.at(-1);
+						if (digest) {
+							setMessages((m) => [
+								...m,
+								{
+									id: msgIdRef.current++,
+									role: "system",
+									kind: "compaction",
+									compaction: digest,
+									content: formatCompactionDigestForUi(digest),
+								},
+							]);
+						}
 					}
 					try {
 						await sessionManager.saveSession(sessionId, checkpointCtx);
@@ -3402,7 +3447,24 @@ function ChatUI({
 			let header: React.ReactNode;
 			let content: React.ReactNode[];
 
-			if (m.role === "user") {
+			if (m.kind === "compaction") {
+				const label = `${DECORATIVE.scroll} Historical digest`;
+				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
+				const divider = "─".repeat(padLen);
+				header = React.createElement(
+					Box,
+					{ flexDirection: "row", alignItems: "center", marginBottom: 0.5 },
+					React.createElement(Text, { bold: true, color: CYAN }, `${label} `),
+					React.createElement(Text, { color: CYAN, dimColor: true }, divider),
+				);
+				content = [
+					React.createElement(
+						Text,
+						{ key: 0, color: CYAN, dimColor: true, wrap: "wrap" },
+						m.content,
+					),
+				];
+			} else if (m.role === "user") {
 				const label = `${DECORATIVE.feather} You`;
 				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
@@ -3893,15 +3955,15 @@ function ChatUI({
 									React.createElement(
 										Box,
 										{ flexGrow: 1, flexDirection: "column" },
-									showCommandPalette &&
-										React.createElement(CommandPalette, {
-											commands,
-											onSelect: handleCommandPaletteSelect,
-											onClose: handleCommandPaletteClose,
-											visible: showCommandPalette,
-											initialQuery: input,
-											onQueryChange: setInput,
-										}),
+										showCommandPalette &&
+											React.createElement(CommandPalette, {
+												commands,
+												onSelect: handleCommandPaletteSelect,
+												onClose: handleCommandPaletteClose,
+												visible: showCommandPalette,
+												initialQuery: input,
+												onQueryChange: setInput,
+											}),
 										React.createElement(ChatBar, {
 											input,
 											cursorPos,
@@ -3921,10 +3983,10 @@ function ChatUI({
 												costTracker.getSessionStats().totalCompletionTokens,
 											sessionCost: costTracker.getSessionStats().totalCost,
 											hideInput: false,
-										})
-									)
-								)
-							)
+										}),
+									),
+								),
+							),
 		),
 
 		showConfigEditor &&
@@ -4414,7 +4476,10 @@ export function createProgram(): Command {
 
 	program.addCommand(daemonCommand());
 	program.addCommand(companionCommand());
+	program.addCommand(doctorCommand());
 	program.addCommand(sessionCommand());
+	program.addCommand(skillsCommand());
+	program.addCommand(toolsCommand());
 
 	return program;
 }
