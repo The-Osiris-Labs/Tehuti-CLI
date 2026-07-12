@@ -1,3 +1,5 @@
+import type { CompactionDigest } from "../../agent/context-compressor.js";
+
 export const UI_MAX_MESSAGES = 120;
 export const UI_KEEP_FULL_RECENT_MESSAGES = 24;
 export const UI_MAX_TEXT_CHARS = 24000;
@@ -22,6 +24,8 @@ export type UiMessage = {
 	id: number;
 	role: string;
 	content: string;
+	kind?: "compaction";
+	compaction?: CompactionDigest;
 	status?: "success" | "error" | "loading";
 	toolCalls?: Array<{
 		id: string;
@@ -32,6 +36,22 @@ export type UiMessage = {
 	}>;
 	blocks?: UiBlock[];
 };
+
+export function formatCompactionDigestForUi(digest: CompactionDigest): string {
+	const range = `${digest.source.activeStartIndex + 1}-${digest.source.activeEndIndex + 1}`;
+	const section = (title: string, values: string[]) =>
+		`${title}: ${values.length > 0 ? values.join(" · ") : "No evidence recorded"}`;
+
+	return [
+		`Historical context digest ${digest.id}`,
+		`Messages ${range} summarized · ${digest.source.messageCount} messages · ${digest.originalTokens.toLocaleString()} → ${digest.compactedTokens.toLocaleString()} tokens`,
+		section("Actions", digest.actions),
+		section("Observed decisions", digest.keyDecisions),
+		section("Errors/recoveries", digest.recoveries),
+		section("Open threads", digest.openThreads),
+		"Full original messages remain in the session archive; use /export json to inspect them.",
+	].join("\n");
+}
 
 export function truncateMiddle(
 	text: string,
@@ -167,11 +187,17 @@ export function compactMessageForUi(
 }
 
 export function compactMessagesForUi<T extends UiMessage>(messages: T[]): T[] {
-	const kept = messages.slice(-UI_MAX_MESSAGES);
+	const markers = messages.filter((message) => message.kind === "compaction");
+	const kept = messages
+		.filter((message) => message.kind !== "compaction")
+		.slice(-UI_MAX_MESSAGES);
 	const fullStart = Math.max(0, kept.length - UI_KEEP_FULL_RECENT_MESSAGES);
-	return kept.map(
-		(message, index) => compactMessageForUi(message, index >= fullStart) as T,
-	);
+	return [
+		...markers,
+		...kept.map(
+			(message, index) => compactMessageForUi(message, index >= fullStart) as T,
+		),
+	] as T[];
 }
 
 export function estimateUiMessageChars(message: UiMessage): number {
@@ -190,11 +216,19 @@ export function estimateUiMessageChars(message: UiMessage): number {
 }
 
 export function needsUiCompaction(messages: UiMessage[]): boolean {
-	if (messages.length > UI_MAX_MESSAGES) return true;
-	const fullStart = Math.max(0, messages.length - UI_KEEP_FULL_RECENT_MESSAGES);
-	return messages.some((message, index) => {
+	const historyMessages = messages.filter(
+		(message) => message.kind !== "compaction",
+	);
+	if (historyMessages.length > UI_MAX_MESSAGES) return true;
+	const fullStart = Math.max(
+		0,
+		historyMessages.length - UI_KEEP_FULL_RECENT_MESSAGES,
+	);
+	return messages.some((message) => {
+		if (message.kind === "compaction") return false;
+		const historyIndex = historyMessages.indexOf(message);
 		const size = estimateUiMessageChars(message);
-		if (index < fullStart && size > 1500) return true;
+		if (historyIndex < fullStart && size > 1500) return true;
 		return size > UI_MAX_TEXT_CHARS * 2;
 	});
 }

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { CompactionDigest } from "../../../agent/context-compressor.js";
 import type { QuestionData } from "../../../agent/tools/system.js";
 import type { PermissionRequest } from "../../../permissions/prompts.js";
 
@@ -15,6 +16,8 @@ export function useChatState(model: string, apiKey: string, cfg: any) {
 			id: number;
 			role: string;
 			content: string;
+			kind?: "compaction";
+			compaction?: CompactionDigest;
 			status?: "success" | "error" | "loading";
 			toolCalls?: Array<{
 				id: string;

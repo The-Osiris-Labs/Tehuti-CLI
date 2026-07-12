@@ -107,4 +107,28 @@ describe("chat UI memory compaction", () => {
 		expect(truncated).toContain("-end");
 		expect(truncated).toContain("test");
 	});
+
+	it("keeps historical compaction markers while bounding ordinary messages", () => {
+		const marker = {
+			id: 999,
+			role: "system",
+			kind: "compaction" as const,
+			content: "historical digest",
+		};
+		const messages = [
+			marker,
+			...Array.from({ length: UI_MAX_MESSAGES + 10 }, (_, id) => ({
+				id,
+				role: "user",
+				content: `message-${id}`,
+			})),
+		];
+
+		const compacted = compactMessagesForUi(messages);
+
+		expect(compacted[0]).toMatchObject({ kind: "compaction", id: 999 });
+		expect(
+			compacted.filter((message) => message.kind !== "compaction"),
+		).toHaveLength(UI_MAX_MESSAGES);
+	});
 });
