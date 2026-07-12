@@ -97,7 +97,7 @@ export interface SessionCostTracker {
 	requestCount: number;
 }
 
-class CostTracker {
+export class CostTracker {
 	private session: SessionCostTracker = {
 		totalPromptTokens: 0,
 		totalCompletionTokens: 0,
@@ -193,3 +193,7 @@ class CostTracker {
 
 export const costTracker = new CostTracker();
 export default costTracker;
+
+export function createCostScope(): CostTracker {
+	return new CostTracker();
+}

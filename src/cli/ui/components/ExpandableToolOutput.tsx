@@ -305,7 +305,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	);
 	const truncatedToolName =
 		stringWidth(cleanToolName) > maxToolNameWidth
-			? `${cleanToolName.substring(0, maxToolNameWidth - 3)}...`
+			? `${sliceAnsi(cleanToolName, maxToolNameWidth - 3)}...`
 			: cleanToolName;
 
 	const language = useMemo(() => {
@@ -319,10 +319,13 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [toolName, result]);
 
 	const visibleLines = useMemo(() => {
+		let lines = summary.rawLines;
 		if (!expanded) {
-			return summary.rawLines.slice(0, 4);
+			lines = lines.slice(0, 4);
+		} else {
+			lines = lines.slice(windowStart, windowEnd);
 		}
-		return summary.rawLines.slice(windowStart, windowEnd);
+		return lines.map((l) => l.replace(/\t/g, "  ").replace(/[\u202F\u00A0]/g, " "));
 	}, [summary.rawLines, windowStart, windowEnd, expanded]);
 
 	const highlightedLines = useMemo(() => {
@@ -381,6 +384,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			borderRight={false}
 			borderBottom={false}
 			borderColor={borderTextColor}
+			width={maxWidth}
+			overflow="hidden"
 		>
 			<Box flexDirection="row" justifyContent="space-between" width="100%">
 				<Box flexDirection="row" gap={1} alignItems="center">
@@ -417,7 +422,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			</Box>
 
 			<Box flexDirection="column" marginY={1} paddingLeft={2}>
-				<Text dimColor={!expanded}>{displayContent}</Text>
+				<Text dimColor={!expanded} wrap="truncate-end">{displayContent}</Text>
 			</Box>
 
 			<Box flexDirection="row" paddingLeft={2}>

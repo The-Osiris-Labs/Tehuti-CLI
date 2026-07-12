@@ -165,8 +165,8 @@ export class TehutiDaemonServer extends EventEmitter {
 		if (this.processHandlersSetup) return;
 		this.processHandlersSetup = true;
 
-		const cleanup = () => {
-			this.stop();
+		const cleanup = async () => {
+			await this.stop();
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
 					fs.unlinkSync(SOCKET_PATH);
@@ -175,8 +175,8 @@ export class TehutiDaemonServer extends EventEmitter {
 			process.exit(0);
 		};
 
-		process.on("SIGINT", cleanup);
-		process.on("SIGTERM", cleanup);
+		process.on("SIGINT", () => { void cleanup(); });
+		process.on("SIGTERM", () => { void cleanup(); });
 		process.on("exit", () => {
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
@@ -187,12 +187,12 @@ export class TehutiDaemonServer extends EventEmitter {
 
 		process.on("uncaughtException", (err) => {
 			console.error("Uncaught exception in daemon:", err);
-			cleanup();
+			process.exit(1);
 		});
 
 		process.on("unhandledRejection", (reason, promise) => {
 			console.error("Unhandled Rejection at:", promise, "reason:", reason);
-			cleanup();
+			process.exit(1);
 		});
 	}
 
@@ -278,7 +278,7 @@ export class TehutiDaemonServer extends EventEmitter {
 		}
 	}
 
-	public stop(): void {
+	public async stop(): Promise<void> {
 		if (this.gcInterval) {
 			clearInterval(this.gcInterval);
 		}
@@ -286,7 +286,7 @@ export class TehutiDaemonServer extends EventEmitter {
 			clearInterval(this.logRotationInterval);
 		}
 
-		daemonStateEngine.stop().catch(console.error);
+		await daemonStateEngine.stop().catch(console.error);
 
 		for (const socket of this.activeSockets) {
 			socket.destroy();

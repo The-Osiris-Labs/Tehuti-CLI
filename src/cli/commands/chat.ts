@@ -62,7 +62,7 @@ import {
 	checkSessionHealth,
 	formatSessionHealthSummary,
 } from "../../session/health.js";
-import { sessionManager } from "../../session/manager.js";
+import { sessionManager, writeJsonAtomic } from "../../session/manager.js";
 import {
 	createStreamingOutputManager,
 	type StreamingOutputManager,
@@ -548,23 +548,13 @@ function loadHistory(): string[] {
 	return [];
 }
 
-function saveHistory(history: string[]): void {
+async function saveHistory(history: string[]): Promise<void> {
 	try {
 		fs.mkdirSync(path.dirname(HISTORY_PATH), { recursive: true });
-		// Atomic write: temp file + rename. Mirrors the pattern used for
-		// session.json so a crash mid-write cannot corrupt the history file.
-		const tmpFile = `${HISTORY_PATH}.tmp`;
-		fs.writeFileSync(tmpFile, JSON.stringify(history.slice(0, 1000), null, 2));
-		try {
-			fs.renameSync(tmpFile, HISTORY_PATH);
-		} catch (renameError: any) {
-			if (renameError?.code === "EXDEV") {
-				fs.copyFileSync(tmpFile, HISTORY_PATH);
-				fs.unlinkSync(tmpFile);
-			} else {
-				throw renameError;
-			}
-		}
+		// Atomic write with fsync barrier: uses writeJsonAtomic from session/manager,
+		// which fsync's the temp file to disk before renaming. This ensures a SIGKILL
+		// between write and rename cannot leave the history file empty or corrupted.
+		await writeJsonAtomic(HISTORY_PATH, history.slice(0, 1000));
 	} catch {}
 }
 

@@ -60,13 +60,22 @@ export class WakeupQueue {
 		});
 	}
 
-	public async consume(): Promise<string> {
+	public async consume(signal?: AbortSignal): Promise<string> {
 		if (this.queue.length > 0) {
 			const msg = this.queue.shift();
 			if (msg !== undefined) return Promise.resolve(msg);
 		}
-		return new Promise((resolve) => {
-			this.waitingResolves.push(resolve);
+		return new Promise((resolve, reject) => {
+			const resolver = (msg: string) => resolve(msg);
+			this.waitingResolves.push(resolver);
+			if (signal) {
+				const onAbort = () => {
+					const idx = this.waitingResolves.indexOf(resolver);
+					if (idx !== -1) this.waitingResolves.splice(idx, 1);
+					reject(new DOMException('Aborted', 'AbortError'));
+				};
+				signal.addEventListener('abort', onAbort, { once: true });
+			}
 		});
 	}
 

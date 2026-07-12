@@ -306,7 +306,16 @@ export class ConnectorManager extends EventEmitter {
 				req.url === `/telegram/${telegramBotToken}`
 			) {
 				let body = "";
-				req.on("data", (chunk) => {
+				let bodySize = 0;
+				const MAX_BODY_BYTES = 1024 * 1024; // 1MB limit
+				req.on("data", (chunk: Buffer) => {
+					bodySize += chunk.length;
+					if (bodySize > MAX_BODY_BYTES) {
+						req.destroy();
+						res.writeHead(413, { "Content-Type": "text/plain" });
+						res.end("Payload Too Large");
+						return;
+					}
 					body += chunk.toString();
 				});
 				req.on("end", async () => {
@@ -330,6 +339,10 @@ export class ConnectorManager extends EventEmitter {
 						res.end("Internal Server Error");
 					}
 				});
+			}
+			if (!res.writableEnded) {
+				res.writeHead(404);
+				res.end();
 			}
 		});
 	}
@@ -375,7 +388,16 @@ export class ConnectorManager extends EventEmitter {
 			// Webhook incoming message
 			if (req.method === "POST" && req.url?.startsWith("/whatsapp")) {
 				let body = "";
-				req.on("data", (chunk) => {
+				let bodySize = 0;
+				const MAX_BODY_BYTES = 1024 * 1024; // 1MB limit
+				req.on("data", (chunk: Buffer) => {
+					bodySize += chunk.length;
+					if (bodySize > MAX_BODY_BYTES) {
+						req.destroy();
+						res.writeHead(413, { "Content-Type": "text/plain" });
+						res.end("Payload Too Large");
+						return;
+					}
 					body += chunk.toString();
 				});
 				req.on("end", async () => {
@@ -417,6 +439,11 @@ export class ConnectorManager extends EventEmitter {
 						res.end("Internal Server Error");
 					}
 				});
+				return;
+			}
+			if (!res.writableEnded) {
+				res.writeHead(404);
+				res.end();
 			}
 		});
 	}

@@ -43,7 +43,7 @@ export interface UseChatInputProps {
 	scrollToBottom: () => void;
 	resetConversation: () => Promise<void>;
 	send: (text: string) => Promise<void>;
-	saveHistory: (history: string[]) => void;
+	saveHistory: (history: string[]) => Promise<void>;
 	showConfigEditor?: boolean;
 	showProfiler?: boolean;
 	pendingQuestion?: any;
@@ -564,7 +564,7 @@ export function useChatInput(props: UseChatInputProps) {
 					100,
 				);
 				setHistory(newHistory);
-				saveHistory(newHistory);
+				void saveHistory(newHistory);
 				setHistoryIndex(-1);
 				void send(text);
 				return;

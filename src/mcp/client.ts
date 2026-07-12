@@ -682,6 +682,11 @@ export class MCPClientManager {
 			info.lastError = message;
 			this.stopHealthCheck(name);
 			this.updateStatus(info, "error");
+			// Clean up orphaned transport to prevent child process / socket leaks
+			if (info.transport) {
+				try { await info.transport.close(); } catch {}
+				info.transport = null;
+			}
 			throw createMCPError(
 				`Failed to connect to MCP server "${name}": ${message}`,
 				MCPErrorCode.CONNECTION_FAILED,

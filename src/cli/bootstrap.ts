@@ -10,6 +10,7 @@ import {
 	DEFAULT_CONFIG,
 	getGlobalConfig,
 	loadConfig,
+	resetGlobalConfig,
 	runSetupWizard,
 } from "../config/index.js";
 import {
@@ -71,16 +72,19 @@ export async function bootstrapCLI(
 	}
 	setupErrorHandlers(opts.debug);
 
-	const cfg = await loadConfig();
+	let cfg = await loadConfig();
 	getTelemetry().setEnabled(cfg.telemetry ?? false);
 	if (cfg.http) {
 		await updateHttpAgentConfig(cfg.http);
 	}
-	const tehuti = loadTehutiConfig();
+	let tehuti = loadTehutiConfig();
 
 	if (opts.resetKey) {
 		fs.rmSync(CONFIG_PATH, { force: true });
+		resetGlobalConfig();
 		console.log("\x1b[38;5;214m  Config reset\x1b[0m\n");
+		cfg = await loadConfig();
+		tehuti = loadTehutiConfig();
 	}
 
 	let provider =

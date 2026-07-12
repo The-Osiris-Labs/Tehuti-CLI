@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -29,8 +30,8 @@ function isValidSessionId(id: string): boolean {
  * Without it, a crash between write() and rename() can leave the final file
  * empty or truncated even though the rename hasn't happened yet.
  */
-async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
-	const tempPath = `${filePath}.tmp`;
+export async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+	const tempPath = `${filePath}.${randomUUID()}.tmp`;
 	const json = JSON.stringify(data, null, 2);
 	const handle = await open(tempPath, "w");
 	try {
@@ -45,15 +46,11 @@ async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
 	try {
 		await fs.rename(tempPath, filePath);
 	} catch (error: any) {
-		// EXDEV: temp + final are on different filesystems. Fall back to
-		// copy + unlink, preserving the atomic-visible-to-readers property
-		// (copy either fully completes or leaves the old final file intact).
-		if (error?.code === "EXDEV") {
-			await fs.copyFile(tempPath, filePath);
-			await fs.unlink(tempPath);
-		} else {
-			throw error;
-		}
+		// Clean up temp file on failure, then rethrow.
+		// EXDEV (cross-device link) is impossible here because tempPath and
+		// filePath share the same directory by construction.
+		try { await fs.unlink(tempPath); } catch {}
+		throw error;
 	}
 }
 
@@ -230,10 +227,11 @@ class SessionManager {
 				const sessionDir = path.join(this.sessionsDir, dir);
 				const stat = await fs.stat(sessionDir).catch(() => null);
 				if (!stat?.isDirectory()) continue;
-				for (const tmpName of ["session.json.tmp", "metadata.json.tmp"]) {
-					const tmpFile = path.join(sessionDir, tmpName);
-					if (await fs.pathExists(tmpFile)) {
-						await fs.remove(tmpFile);
+				// Match UUID-suffixed temp files: <name>.<uuid>.tmp
+				const entries = await fs.readdir(sessionDir).catch(() => [] as string[]);
+				for (const entry of entries) {
+					if (entry.endsWith(".tmp")) {
+						await fs.remove(path.join(sessionDir, entry)).catch(() => {});
 					}
 				}
 			}

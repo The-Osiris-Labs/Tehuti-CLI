@@ -33,6 +33,7 @@ import { getPrefetcher, resetPrefetcher } from "../prefetcher.js";
 import { getToolDefinitions } from "../tools/index.js";
 import { getTool } from "../tools/registry.js";
 import { setParentContext } from "../tools/system.js";
+import { permissionManager } from "../../permissions/rules.js";
 import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
 import { SelfHealingManager } from "./self-healing.js";
@@ -90,6 +91,10 @@ export async function runAgentLoop(
 	} = options;
 
 	try {
+		// Clear session-scoped permission decisions to prevent cross-session bleed
+		// in long-lived processes (daemon mode). Permanent rules are preserved.
+		permissionManager.clearSessionDecisions();
+
 		let totalTokensGenerated = 0;
 
 		setParentContext(ctx);
@@ -184,7 +189,7 @@ export async function runAgentLoop(
 						50,
 						"Sleeping... waiting for background task or subagent to complete",
 					);
-					const message = await wakeupQueue.consume();
+					const message = await wakeupQueue.consume(signal);
 					ctx.isSleeping = false;
 					if (message) {
 						ctx.messages.push({
