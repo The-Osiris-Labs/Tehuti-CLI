@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 
+export type VirtualScrollMode = "cursor" | "tailFollow";
+
 export interface UseVirtualScrollOptions {
 	totalItems: number;
 	maxVisibleWindow?: number;
 	initialSelectedIndex?: number;
+	/**
+	 * Behavior mode:
+	 * - "cursor" (default): a selected index is tracked and visible.
+	 *   Good for menus, command palettes, session lists.
+	 * - "tailFollow": the window auto-anchors to the last `maxVisibleWindow`
+	 *   items when `tailFollowActive` is true. User scroll up breaks the
+	 *   anchor; explicit `scrollToEnd` re-anchors. Good for log streams,
+	 *   chat-style viewports where new items arrive at the tail.
+	 */
+	mode?: VirtualScrollMode;
 }
 
 export function useVirtualScroll({
 	totalItems,
 	maxVisibleWindow = 15,
 	initialSelectedIndex = 0,
+	mode = "cursor",
 }: UseVirtualScrollOptions) {
 	const safeTotalItems = Math.max(
 		0,
@@ -20,6 +33,8 @@ export function useVirtualScroll({
 		Number.isNaN(maxVisibleWindow) ? 15 : Number(maxVisibleWindow),
 	);
 
+	const isTailFollow = mode === "tailFollow";
+
 	const [selectedIndex, setSelectedIndex] = useState(() =>
 		safeTotalItems === 0
 			? 0
@@ -29,8 +44,13 @@ export function useVirtualScroll({
 				),
 	);
 
+	const [tailFollowActive, setTailFollowActive] = useState(isTailFollow);
+
 	const [windowStart, setWindowStart] = useState(() => {
 		if (safeTotalItems === 0) return 0;
+		if (isTailFollow && tailFollowActive) {
+			return Math.max(0, safeTotalItems - safeMaxWindow);
+		}
 		const start = Math.max(0, selectedIndex - Math.floor(safeMaxWindow / 2));
 		return Math.min(start, Math.max(0, safeTotalItems - safeMaxWindow));
 	});
@@ -49,11 +69,14 @@ export function useVirtualScroll({
 		});
 
 		setWindowStart((prev) => {
-			// If the current window start is beyond what's possible, bring it back
+			// In tail-follow mode: if active, snap to end; otherwise just clamp
+			if (isTailFollow && tailFollowActive) {
+				return Math.max(0, safeTotalItems - safeMaxWindow);
+			}
 			const maxPossibleStart = Math.max(0, safeTotalItems - safeMaxWindow);
 			return Math.min(prev, maxPossibleStart);
 		});
-	}, [safeTotalItems, safeMaxWindow]);
+	}, [safeTotalItems, safeMaxWindow, isTailFollow, tailFollowActive]);
 
 	const windowEnd = Math.min(windowStart + safeMaxWindow, safeTotalItems);
 
@@ -139,28 +162,58 @@ export function useVirtualScroll({
 	);
 
 	const scrollUp = useCallback(() => {
+		if (isTailFollow && tailFollowActive) {
+			setTailFollowActive(false);
+		}
 		setWindowStart((prev) => Math.max(0, prev - 1));
-	}, []);
+	}, [isTailFollow, tailFollowActive]);
 
 	const scrollDown = useCallback(() => {
 		const maxStart = Math.max(0, safeTotalItems - safeMaxWindow);
-		setWindowStart((prev) => Math.min(maxStart, prev + 1));
-	}, [safeTotalItems, safeMaxWindow]);
+		setWindowStart((prev) => {
+			const newStart = Math.min(maxStart, prev + 1);
+			if (isTailFollow && newStart >= maxStart && !tailFollowActive) {
+				setTailFollowActive(true);
+			}
+			return newStart;
+		});
+	}, [safeTotalItems, safeMaxWindow, isTailFollow, tailFollowActive]);
 
 	const scrollPageUp = useCallback(() => {
+		if (isTailFollow && tailFollowActive) {
+			setTailFollowActive(false);
+		}
 		setWindowStart((prev) => Math.max(0, prev - safeMaxWindow));
-	}, [safeMaxWindow]);
+	}, [safeMaxWindow, isTailFollow, tailFollowActive]);
 
 	const scrollPageDown = useCallback(() => {
 		const maxStart = Math.max(0, safeTotalItems - safeMaxWindow);
-		setWindowStart((prev) => Math.min(maxStart, prev + safeMaxWindow));
-	}, [safeTotalItems, safeMaxWindow]);
+		setWindowStart((prev) => {
+			const newStart = Math.min(maxStart, prev + safeMaxWindow);
+			if (isTailFollow && newStart >= maxStart && !tailFollowActive) {
+				setTailFollowActive(true);
+			}
+			return newStart;
+		});
+	}, [safeTotalItems, safeMaxWindow, isTailFollow, tailFollowActive]);
+
+	const scrollToEnd = useCallback(() => {
+		if (safeTotalItems === 0) return;
+		const lastStart = Math.max(0, safeTotalItems - safeMaxWindow);
+		setWindowStart(lastStart);
+		if (isTailFollow) {
+			setTailFollowActive(true);
+		}
+	}, [safeTotalItems, safeMaxWindow, isTailFollow]);
 
 	return {
 		selectedIndex,
 		windowStart,
 		windowEnd,
 		visibleSelectedIndex: Math.max(0, selectedIndex - windowStart),
+		tailFollowActive: isTailFollow ? tailFollowActive : undefined,
+		setTailFollowActive: isTailFollow ? setTailFollowActive : undefined,
+		scrollToEnd: isTailFollow ? scrollToEnd : undefined,
 		moveUp,
 		moveDown,
 		movePageUp,
