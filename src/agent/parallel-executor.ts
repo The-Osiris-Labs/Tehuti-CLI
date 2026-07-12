@@ -14,18 +14,10 @@ import type { ToolResult } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
 import {
 	applySelfHealingSafely,
+	formatToolResultForLLM,
 	makeToolErrorResult,
 	type ToolFailureHealer,
 } from "./tools/result-utils.js";
-
-const MODEL_TOOL_RESULT_MAX_CHARS = 250000;
-
-function truncateToolResultForModel(result: string): string {
-	if (result.length <= MODEL_TOOL_RESULT_MAX_CHARS) {
-		return result;
-	}
-	return `${result.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... (truncated due to excessive size)`;
-}
 
 export interface ToolCall {
 	id: string;
@@ -228,9 +220,7 @@ export async function executeToolsParallel(
 						logger.warn(
 							`Tool execution aborted for ${tc.function.name} (${tc.id})`,
 						);
-						let resultStr = `Error: ${result.error}\nOutput: `;
-						resultStr = truncateToolResultForModel(resultStr);
-						addToolResult(ctx, tc.id, tc.function.name, resultStr);
+						addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 						onToolResult?.(tc.id, tc.function.name, result);
 					}
 				}
@@ -265,9 +255,7 @@ export async function executeToolsParallel(
 								logger.warn(
 									`Tool execution aborted for ${tc.function.name} (${tc.id})`,
 								);
-								let resultStr = `Error: ${result.error}\nOutput: `;
-								resultStr = truncateToolResultForModel(resultStr);
-								addToolResult(ctx, tc.id, tc.function.name, resultStr);
+								addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 								onToolResult?.(tc.id, tc.function.name, result);
 							}
 						}
@@ -293,9 +281,7 @@ export async function executeToolsParallel(
 										`Tool execution aborted for ${tc.function.name} (${tc.id})`,
 									);
 									await mutex.runExclusive(async () => {
-										let resultStr = `Error: ${result.error}\nOutput: `;
-										resultStr = truncateToolResultForModel(resultStr);
-										addToolResult(ctx, tc.id, tc.function.name, resultStr);
+										addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 									});
 									onToolResult?.(tc.id, tc.function.name, result);
 									return result;
@@ -311,15 +297,7 @@ export async function executeToolsParallel(
 								);
 
 								await mutex.runExclusive(async () => {
-									const outStr =
-										typeof result.output === "string"
-											? result.output
-											: JSON.stringify(result.output ?? "");
-									let resultStr = result.success
-										? outStr
-										: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
-									resultStr = truncateToolResultForModel(resultStr);
-									addToolResult(ctx, tc.id, tc.function.name, resultStr);
+									addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 								});
 
 								onToolResult?.(tc.id, tc.function.name, result);
@@ -341,9 +319,7 @@ export async function executeToolsParallel(
 									error,
 								);
 								await mutex.runExclusive(async () => {
-									let resultStr = `Error: ${result.error}\nOutput: `;
-									resultStr = truncateToolResultForModel(resultStr);
-									addToolResult(ctx, tc.id, tc.function.name, resultStr);
+									addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 								});
 								onToolResult?.(tc.id, tc.function.name, result);
 								return result;
@@ -392,15 +368,7 @@ export async function executeToolsParallel(
 						selfHealer,
 					);
 
-					const outStr =
-						typeof result.output === "string"
-							? result.output
-							: JSON.stringify(result.output ?? "");
-					let resultStr = result.success
-						? outStr
-						: `Error: ${String(result.error ?? "Tool failed")}\nOutput: ${outStr}`;
-					resultStr = truncateToolResultForModel(resultStr);
-					addToolResult(ctx, tc.id, tc.function.name, resultStr);
+					addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 
 					onToolResult?.(tc.id, tc.function.name, result);
 
@@ -419,9 +387,7 @@ export async function executeToolsParallel(
 						`Sequential execution exception for tool ${tc.function.name} (${tc.id}):`,
 						error,
 					);
-					let resultStr = `Error: ${result.error}\nOutput: `;
-					resultStr = truncateToolResultForModel(resultStr);
-					addToolResult(ctx, tc.id, tc.function.name, resultStr);
+					addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 					onToolResult?.(tc.id, tc.function.name, result);
 					const globalIndex = toolCalls.indexOf(tc);
 					if (globalIndex >= 0) {
@@ -446,9 +412,7 @@ export async function executeToolsParallel(
 				logger.error(
 					`Orphaned tool call resolved with fallback error for ${tc.function.name} (${tc.id})`,
 				);
-				let resultStr = `Error: ${result.error}\nOutput: `;
-				resultStr = truncateToolResultForModel(resultStr);
-				addToolResult(ctx, tc.id, tc.function.name, resultStr);
+				addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 				onToolResult?.(tc.id, tc.function.name, result);
 			}
 		}

@@ -8,6 +8,8 @@ import { glob } from "tinyglobby";
 
 const require = createRequire(import.meta.url);
 let tehutiCore: any = null;
+
+import { debug } from "../../utils/debug.js";
 try {
 	const currentDir = url.fileURLToPath(new URL(".", import.meta.url));
 	const isDist = currentDir.includes("dist") || currentDir.endsWith("dist/");
@@ -68,11 +70,14 @@ function containsTraversal(pattern: string): boolean {
 	try {
 		decoded = decodeURIComponent(pattern);
 	} catch {
+		debug.log("tools", "Failed to decode URI component for traversal check");
 		decoded = pattern;
 	}
 	try {
 		decoded = decodeURIComponent(decoded);
-	} catch {}
+	} catch {
+		debug.log("tools", "Failed to double-decode URI component for traversal check");
+	}
 	const normalized = path.normalize(decoded);
 	return normalized.startsWith("..") || path.isAbsolute(normalized);
 }
@@ -119,6 +124,7 @@ async function validateSearchPath(
 			}
 		}
 	} catch {
+		debug.log("tools", "validateSearchPath: path doesn't exist yet or is inaccessible");
 		// Path doesn't exist yet, that's fine for search
 	}
 
@@ -455,13 +461,15 @@ async function grepFiles(
 				resolved = true;
 				try {
 					proc.kill("SIGKILL");
-				} catch {}
-				resolve({
-					output: [],
-					matchCount: 0,
-					stderr: `Search timed out after ${timeoutMs}ms`,
-					code: 124,
-				});
+				} catch {
+					debug.log("tools", "Failed to kill rg process on timeout");
+				}
+			resolve({
+				output: [],
+				matchCount: 0,
+				stderr: `Search timed out after ${timeoutMs}ms`,
+				code: 124,
+			});
 			}, timeoutMs);
 
 			rl.on("line", (line) => {
@@ -483,6 +491,7 @@ async function grepFiles(
 						output.push(`${filePath}:${lineNum}:${col}: ${text.trimEnd()}`);
 					}
 				} catch {
+					debug.log("tools", "Failed to parse rg JSON line, pushing raw");
 					output.push(line);
 				}
 			});

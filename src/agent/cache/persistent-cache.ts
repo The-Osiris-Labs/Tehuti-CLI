@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolResult } from "../tools/registry.js";
 import { getToolCache } from "./tool-cache.js";
+import { debug } from "../../utils/debug.js";
 
 const CACHE_DIR = path.join(os.homedir(), ".tehuti", "cache");
 const CACHE_FILE = path.join(CACHE_DIR, "tool-cache.json");
@@ -55,7 +56,9 @@ export function saveCacheToDisk(): void {
 
 	try {
 		fs.writeFileSync(CACHE_FILE, JSON.stringify(serialized), "utf-8");
-	} catch {}
+	} catch {
+		debug.log("tools", "Failed to save cache to disk");
+	}
 }
 
 export function loadCacheFromDisk(): void {
@@ -98,17 +101,23 @@ export function loadCacheFromDisk(): void {
 						ttl: entry.ttl,
 					});
 					_loaded++;
-				} catch {}
+				} catch {
+					debug.log("tools", "Failed to parse cached entry args");
+				}
 			}
 		}
-	} catch {}
+	} catch {
+		debug.log("tools", "Failed to load cache from disk");
+	}
 }
 
 export function clearCacheFromDisk(): void {
 	if (fs.existsSync(CACHE_FILE)) {
 		try {
 			fs.rmSync(CACHE_FILE, { force: true });
-		} catch {}
+		} catch {
+			debug.log("tools", "Failed to clear cache file from disk");
+		}
 	}
 }
 

@@ -53,13 +53,10 @@ export const ProgressBar = ({
 }: ProgressBarProps): React.ReactElement => {
 	const safeWidth = Math.max(8, Math.min(200, Math.round(width)));
 
-	// Indeterminate mode
-	const indeterminate =
-		value === null ||
-		value === undefined ||
-		(Number.isNaN(value) as boolean) ||
-		(phase === "running" && false); // explicit opt-in
-	const active = value !== null && value !== undefined && !Number.isNaN(value);
+	// Indeterminate mode when phase is "running" but no concrete value provided
+	const noValue = value === null || value === undefined || Number.isNaN(value);
+	const indeterminate = noValue && phase === "running";
+	const active = !noValue;
 
 	const clamped = active ? Math.max(0, Math.min(100, value as number)) : 0;
 	const filledWidth = Math.round((clamped / 100) * safeWidth);

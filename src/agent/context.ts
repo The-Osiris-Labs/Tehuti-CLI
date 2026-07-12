@@ -240,7 +240,9 @@ async function loadProjectInstructions(
 				debug.log("context", `Loaded project instructions from ${file}`);
 				return content;
 			}
-		} catch {}
+		} catch {
+			debug.log("context", `Failed to load project instructions from ${file}`);
+		}
 	}
 	return undefined;
 }
@@ -276,7 +278,9 @@ export async function createAgentContext(
 			if (dbRecentFiles) {
 				try {
 					recentFiles = JSON.parse(dbRecentFiles);
-				} catch {}
+				} catch {
+					debug.log("context", "Failed to parse recent files from DB");
+				}
 			}
 		} catch (e) {
 			debug.log(
@@ -293,7 +297,9 @@ export async function createAgentContext(
 	const personalityBlockPromise =
 		config.personality?.styleInjection !== false
 			? (async () => {
-					initMemory(config.memory?.consolidationIntervalMs).catch(() => {});
+					initMemory(config.memory?.consolidationIntervalMs).catch(() => {
+				debug.log("context", "Failed to initialize memory");
+			});
 					return getPersonalityPromptBlock(resolvedCwd);
 				})()
 			: Promise.resolve("");
@@ -493,6 +499,7 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 						: "none";
 			return `${c.emulator} (${c.size.columns}x${c.size.rows}, ${colorLabel}, graphics: ${graphicsList})`;
 		} catch {
+			debug.log("context", "Terminal capability detection failed");
 			return "unknown";
 		}
 	})()}

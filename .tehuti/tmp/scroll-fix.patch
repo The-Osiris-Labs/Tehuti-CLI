@@ -1,0 +1,14 @@
+diff --git a/src/cli/commands/chat.ts b/src/cli/commands/chat.ts
+--- a/src/cli/commands/chat.ts
++++ b/src/cli/commands/chat.ts
+@@ -3477,1 +3477,10 @@
+-	const deferredVisibleMessages = useDeferredValue(visibleMessages);
++	// Note: previously wrapped visibleMessages in useDeferredValue to keep the
++	// UI responsive while the agent streams tokens. That deferred the entire
++	// slice from re-computing on every render, which made pageUp/pageDown feel
++	// "stuck" while loading was true (scrollOffset updated, but the visible
++	// window lagged behind - user saw the SCROLLED UP banner without content
++	// moving). Streaming is already batched upstream, so the deferral is no
++	// longer needed and the visible window can render synchronously.
++	const deferredVisibleMessages = visibleMessages;
+

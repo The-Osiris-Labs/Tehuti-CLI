@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
+import { debug } from "../../utils/debug.js";
+
 export interface ValidationResult {
 	success: boolean;
 	output: string;
@@ -89,6 +91,7 @@ export class SelfHealingManager {
 				} as T;
 			}
 		} catch {
+			debug.log("agent", "Self-healing validation failed, returning original result");
 			// Ignore self-healing system errors and return original result
 		} finally {
 			if (worktreeInfo) {
@@ -107,6 +110,7 @@ export class SelfHealingManager {
 				process.kill(pid, 0);
 				return true;
 			} catch {
+				debug.log("agent", `isPidAlive check failed for PID ${pid}`);
 				return false;
 			}
 		};
@@ -206,6 +210,7 @@ export class SelfHealingManager {
 				stdio: "ignore",
 			});
 		} catch (error) {
+			debug.log("agent", "cleanupOrphanedWorktrees error:", error instanceof Error ? error.message : String(error));
 			// Ignore errors during cleanup
 		}
 	}
@@ -221,10 +226,14 @@ export class SelfHealingManager {
 					cwd: this.mainDir,
 					stdio: "ignore",
 				});
-			} catch (e) {}
+			} catch (e) {
+				debug.log("agent", `cleanupActiveWorktrees: failed to remove worktree ${worktreePath}: ${e instanceof Error ? e.message : String(e)}`);
+			}
 			try {
 				fs.rmSync(worktreePath, { recursive: true, force: true });
-			} catch (e) {}
+			} catch (e) {
+				debug.log("agent", `cleanupActiveWorktrees: failed to rm worktree dir ${worktreePath}: ${e instanceof Error ? e.message : String(e)}`);
+			}
 		}
 		this.activeWorktrees.clear();
 	}
@@ -298,17 +307,23 @@ export class SelfHealingManager {
 			try {
 				try {
 					fs.rmSync(worktreePath, { recursive: true, force: true });
-				} catch {}
+				} catch {
+					debug.log("agent", `Failed to rm worktree path during cleanup: ${worktreePath}`);
+				}
 				await execAsync(`git worktree prune`, { cwd: this.mainDir }).catch(
 					() => {},
 				);
 				await execAsync(`git worktree remove --force "${worktreePath}"`, {
 					cwd: this.mainDir,
 				});
-			} catch {}
+			} catch {
+				debug.log("agent", `Failed to remove worktree ${worktreePath} during error recovery`);
+			}
 			try {
 				await execAsync(`git branch -D "${branchName}"`, { cwd: this.mainDir });
-			} catch {}
+			} catch {
+				debug.log("agent", `Failed to delete branch ${branchName} during error recovery`);
+			}
 			throw error;
 		}
 
@@ -378,7 +393,9 @@ export class SelfHealingManager {
 							} else {
 								await fs.promises.cp(src, dest, { preserveTimestamps: true });
 							}
-						} catch (err) {}
+						} catch (err) {
+							debug.log("agent", `Failed to copy file ${file} to worktree: ${err instanceof Error ? err.message : String(err)}`);
+						}
 					}
 				} finally {
 					await fs.promises.rm(filesListPath, { force: true }).catch(() => {});

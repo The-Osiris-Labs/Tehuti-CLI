@@ -46,7 +46,7 @@ describe("Background Tool", () => {
 				mockCtx,
 			);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
 		});
 
 		it("should reject path traversal in workdir", async () => {
@@ -214,7 +214,7 @@ describe("Background Tool", () => {
 				mockCtx,
 			);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
 		});
 
 		it("should block shutdown command", async () => {
@@ -223,7 +223,7 @@ describe("Background Tool", () => {
 				mockCtx,
 			);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
 		});
 
 		it("should block rm -rf /", async () => {
@@ -232,7 +232,7 @@ describe("Background Tool", () => {
 				mockCtx,
 			);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
 		});
 
 		it("should block pipe to bash", async () => {
@@ -250,7 +250,7 @@ describe("Background Tool", () => {
 				mockCtx,
 			);
 
-			expect(result.success).toBe(true);
+			expect(result.success).toBe(false);
 		});
 
 		it("should allow safe commands", async () => {

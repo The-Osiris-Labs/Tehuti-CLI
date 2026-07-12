@@ -3,7 +3,6 @@ import chalk from "chalk";
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
-import stringWidth from "string-width";
 import {
 	type SubagentTask,
 	swarmManager,
@@ -55,66 +54,6 @@ function formatElapsed(ms: number): string {
 	if (min < 60) return `${min}m ${sec % 60}s`;
 	const hr = Math.floor(min / 60);
 	return `${hr}h ${min % 60}m`;
-}
-
-// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
-const ANSI_STRIP_REGEX = new RegExp(
-	"[\\x1b\\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]",
-	"g",
-);
-
-function stripAnsi(str: string): string {
-	return str.replace(ANSI_STRIP_REGEX, "");
-}
-
-// @ts-expect-error TS6133/TS6192: Unused variable
-function padRight(str: string, width: number): string {
-	const len = stringWidth(stripAnsi(str));
-	if (len >= width) return str;
-	return str + " ".repeat(width - len);
-}
-
-// @ts-expect-error TS6133/TS6192: Unused variable
-function padLeft(str: string, width: number): string {
-	const len = stringWidth(stripAnsi(str));
-	if (len >= width) return str;
-	return " ".repeat(width - len) + str;
-}
-
-// @ts-expect-error TS6133/TS6192: Unused variable
-function sliceAnsi(str: string, limit: number): string {
-	let visibleWidth = 0;
-	let output = "";
-	let i = 0;
-
-	const ANSI_SEQUENCE_REGEX = /^\x1b\[[0-9;]*[a-zA-Z]/;
-
-	while (i < str.length) {
-		const remaining = str.slice(i);
-		const match = remaining.match(ANSI_SEQUENCE_REGEX);
-		if (match) {
-			output += match[0];
-			i += match[0].length;
-		} else {
-			const codePoint = str.codePointAt(i);
-			if (!codePoint) {
-				i++;
-				continue;
-			}
-			const char = String.fromCodePoint(codePoint);
-			const charWidth = stringWidth(char);
-			if (visibleWidth + charWidth > limit) {
-				break;
-			}
-			visibleWidth += charWidth;
-			output += char;
-			i += char.length;
-		}
-	}
-	if (i < str.length) {
-		output += "\x1b[0m";
-	}
-	return output;
 }
 
 export function SwarmVisualizer(): React.ReactElement {

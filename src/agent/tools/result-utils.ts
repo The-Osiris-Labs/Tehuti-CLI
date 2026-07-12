@@ -1,4 +1,55 @@
+import type { ContentBlock } from "../../api/base-client.js";
 import type { ToolResult } from "./registry.js";
+
+const MODEL_TOOL_RESULT_MAX_CHARS = 250000;
+
+export function formatToolResultForLLM(result: unknown): string | ContentBlock[] {
+	const record =
+		result && typeof result === "object"
+			? (result as Record<string, unknown>)
+			: undefined;
+	const outStr = String(record?.output ?? "");
+	const baseResultStr = record?.success
+		? outStr
+		: `Error: ${String(record?.error ?? "Tool failed")}\nOutput: ${outStr}`;
+
+	let diagnosticsHeader = "";
+	if (record?.metadata && typeof record.metadata === "object") {
+		const meta = record.metadata as Record<string, unknown>;
+		if (typeof meta.base64 === "string" && typeof meta.mimeType === "string") {
+			return [
+				{
+					type: "text",
+					text: record?.success
+						? outStr
+						: `Error: ${String(record?.error ?? "Tool failed")}\nOutput: ${outStr}`,
+				},
+				{
+					type: "image_url",
+					image_url: {
+						url: `data:${meta.mimeType};base64,${meta.base64}`,
+					},
+				},
+			];
+		}
+
+		const entries = Object.entries(meta)
+			.filter(
+				([k, v]) =>
+					v !== undefined && v !== null && k !== "base64" && k !== "mimeType",
+			)
+			.map(([k, v]) => `${k}: ${String(v)}`);
+		if (entries.length > 0) {
+			diagnosticsHeader = `[Diagnostics | ${entries.join(" | ")}]\n`;
+		}
+	}
+
+	const resultStr = `${diagnosticsHeader}${baseResultStr}`;
+	if (resultStr.length <= MODEL_TOOL_RESULT_MAX_CHARS) {
+		return resultStr;
+	}
+	return `${resultStr.slice(0, MODEL_TOOL_RESULT_MAX_CHARS)}\n... [Output truncated: showing ${MODEL_TOOL_RESULT_MAX_CHARS.toLocaleString()} of ${resultStr.length.toLocaleString()} total characters]`;
+}
 
 export interface ToolFailureHealer {
 	wrapToolFailure?: (

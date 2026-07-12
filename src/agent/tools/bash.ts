@@ -69,10 +69,115 @@ const BASH_SCHEMA = z.object({
 		.describe("Run command in background mode (default: false)"),
 });
 
-function isDangerousCommand(..._args: any[]): {
+function isDangerousCommand(command: string): {
 	dangerous: boolean;
 	reason?: string;
 } {
+	// Patterns for dangerous commands — checked against the raw command string
+	const patterns: Array<{ regex: RegExp; reason: string }> = [
+		// rm -rf on root or home
+		{
+			regex: /\brm\s+(-rf|-r\s+-f|--recursive\s+--force)\s+\/\s/,
+			reason: "Recursive delete on root filesystem (rm -rf /)",
+		},
+		{
+			regex: /\brm\s+(-rf|-r\s+-f|--recursive\s+--force)\s+\/\s*$/,
+			reason: "Recursive delete on root filesystem (rm -rf /)",
+		},
+		{
+			regex: /\brm\s+(-rf|-r\s+-f|--recursive\s+--force)\s+\/\*/,
+			reason: "Recursive delete on root filesystem (rm -rf /*)",
+		},
+		{
+			regex: /\brm\s+(-rf|-r\s+-f|--recursive\s+--force)\s+~(\s|$)/,
+			reason: "Recursive delete on home directory (rm -rf ~)",
+		},
+
+		// Pipe-to-shell: curl | bash, wget | sh, etc.
+		{
+			regex: /\b(curl|wget)\b.*\|\s*(bash|sh|zsh|dash)\b/,
+			reason: "Piping network download to shell interpreter",
+		},
+		{
+			regex: /\b(curl|wget)\b.*\|\s*\/bin\/(bash|sh|zsh|dash)\b/,
+			reason: "Piping network download to shell interpreter",
+		},
+		{
+			regex: /\b(curl|wget)\b.*\|\s*\/usr\/bin\/env\s+(bash|sh|zsh|dash)\b/,
+			reason: "Piping network download to shell interpreter",
+		},
+
+		// Destructive SQL
+		{ regex: /\bDROP\s+(TABLE|DATABASE)\s+/i, reason: "Destructive SQL statement detected" },
+		{ regex: /\bDELETE\s+FROM\s+/i, reason: "Destructive SQL DELETE statement detected" },
+
+		// eval
+		{ regex: /\beval\s+\S/, reason: "Unrestricted eval execution detected" },
+
+		// Fork bomb
+		{ regex: /:\(\s*\)\s*\{/, reason: "Fork bomb detected" },
+
+		// dd raw disk writes
+		{ regex: /\bdd\s+if=\/dev\/(zero|random|urandom)\s+of=\/dev\//, reason: "Raw disk write with dd detected" },
+
+		// mkfs, fdisk, parted — partition/format
+		{ regex: /\bmkfs\.\w+\s+/, reason: "Filesystem format command detected" },
+		{ regex: /\bfdisk\s+/, reason: "Partition table manipulation detected" },
+		{ regex: /\bparted\s+/, reason: "Partition manipulation detected" },
+
+		// chmod/chown -R on root
+		{
+			regex: /\bchmod\s+(-R|--recursive)\s+0\d{2}\s+\//,
+			reason: "Recursive permission removal on root filesystem",
+		},
+		{
+			regex: /\bchown\s+(-R|--recursive)\s+.*\s+\//,
+			reason: "Recursive ownership change on root filesystem",
+		},
+
+		// Shutdown/reboot/poweroff/halt (without --no-wall safeguard)
+		{
+			regex: /\b(shutdown|reboot|poweroff|halt)\s*$/,
+			reason: "System shutdown/reboot command detected",
+		},
+		{
+			regex: /\b(shutdown|reboot|poweroff|halt)\s+/,
+			reason: "System shutdown/reboot command detected",
+		},
+
+		// iptables firewall changes
+		{ regex: /\biptables\s+-[FP]/, reason: "Firewall rule manipulation detected" },
+
+		// crontab manipulation
+		{ regex: /\bcrontab\s+(-e|-r)\b/, reason: "Crontab manipulation detected" },
+
+		// xargs rm
+		{ regex: /\bxargs\s+rm\b/, reason: "Bulk file deletion via xargs rm detected" },
+
+		// Base64 decode piped to shell (obfuscated execution)
+		{
+			regex: /\b(base64|base64\.exe)\s+(-d|--decode|decode)\s*\|\s*(bash|sh|zsh|dash)\b/,
+			reason: "Obfuscated script execution via base64 decode",
+		},
+
+		// git push --force
+		{
+			regex: /\bgit\s+push\b.*--force\b/,
+			reason: "Force push to git repository detected",
+		},
+
+		// Command substitution — $(...) and backticks
+		// These enable arbitrary code injection and obfuscation
+		{ regex: /\$\(/, reason: "Command substitution ($(...)) detected" },
+		{ regex: /`[^`]+`/, reason: "Backtick command substitution detected" },
+	];
+
+	for (const { regex, reason } of patterns) {
+		if (regex.test(command)) {
+			return { dangerous: true, reason };
+		}
+	}
+
 	return { dangerous: false };
 }
 
@@ -255,7 +360,9 @@ function startBackgroundProcess(
 			if (backgroundProcesses.has(pid)) {
 				try {
 					process.kill(-pid, "SIGKILL");
-				} catch {}
+				} catch {
+					debug.log("tools", `Failed to kill background process ${pid} after max lifetime`);
+				}
 				processInfo.status = "killed";
 				processInfo.errorBuffer +=
 					"\nProcess killed: exceeded maximum lifetime (24 hours)";
@@ -399,7 +506,7 @@ export function cleanupProcess(pid: number): boolean {
 		try {
 			process.kill(-pid, "SIGKILL");
 		} catch {
-			// Process might already be dead
+			debug.log("tools", `cleanupProcess: failed to kill PID ${pid} (already exited)`);
 		}
 	}
 
@@ -413,7 +520,7 @@ export function cleanupAllProcesses(): void {
 			try {
 				process.kill(-pid, "SIGKILL");
 			} catch {
-				// Process might already be dead
+				debug.log("tools", `cleanupAllProcesses: background PID ${pid} already dead`);
 			}
 		}
 	}
@@ -423,7 +530,7 @@ export function cleanupAllProcesses(): void {
 		try {
 			if (proc.pid) process.kill(-proc.pid, "SIGKILL");
 		} catch {
-			// Process might already be dead
+			debug.log("tools", `cleanupAllProcesses: foreground PID ${proc.pid} already dead`);
 		}
 	}
 	foregroundProcesses.clear();
@@ -527,7 +634,9 @@ async function executeBash(
 				if (proc.pid) {
 					process.kill(-proc.pid, "SIGKILL");
 				}
-			} catch {}
+			} catch {
+				debug.log("tools", "Failed to kill foreground process on user abort");
+			}
 			resolve({
 				success: false,
 				output: "",
@@ -562,7 +671,9 @@ async function executeBash(
 				resolved = true;
 				try {
 					if (proc.pid) process.kill(-proc.pid, "SIGKILL");
-				} catch {}
+				} catch {
+					debug.log("tools", "Failed to kill process on stdout limit");
+				}
 				resolve({
 					success: false,
 					output: "",
@@ -581,7 +692,9 @@ async function executeBash(
 				resolved = true;
 				try {
 					if (proc.pid) process.kill(-proc.pid, "SIGKILL");
-				} catch {}
+				} catch {
+					debug.log("tools", "Failed to kill process on stderr limit");
+				}
 				resolve({
 					success: false,
 					output: "",
@@ -597,7 +710,9 @@ async function executeBash(
 			resolved = true;
 			try {
 				if (proc.pid) process.kill(-proc.pid, "SIGKILL");
-			} catch {}
+			} catch {
+				debug.log("tools", `Failed to kill foreground process on timeout after ${timeoutMs}ms`);
+			}
 			resolve({
 				success: false,
 				output: "",

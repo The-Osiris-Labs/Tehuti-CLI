@@ -383,7 +383,11 @@ export async function runAgentLoop(
 
 				if (ctx.messages.length > streamStartMessageCount) {
 					const newMessages = ctx.messages.splice(streamStartMessageCount);
-					const assistantMessage = newMessages.pop();
+					const assistantIndex = newMessages.findIndex((m) => m.role === "assistant");
+					const assistantMessage =
+						assistantIndex !== -1
+							? newMessages.splice(assistantIndex, 1)[0]
+							: newMessages.pop();
 					if (assistantMessage) {
 						ctx.messages.push(assistantMessage);
 					}

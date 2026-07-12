@@ -104,6 +104,7 @@ export class Prefetcher {
 			})
 			.catch((_err) => {
 				if (timeoutId) clearTimeout(timeoutId);
+				debug.log("prefetch", `Prefetch failed for ${toolName}: ${_err instanceof Error ? _err.message : String(_err)}`);
 				return null;
 			});
 
@@ -196,7 +197,9 @@ export class Prefetcher {
 								}
 							}
 						}
-					} catch {}
+					} catch {
+						debug.log("prefetch", "Failed to parse prefetch key args for abort check");
+					}
 				}
 			}
 		} else {
@@ -261,7 +264,9 @@ export class Prefetcher {
 					const args = JSON.parse(argsStr);
 					const score = count * 10;
 					predictions.push({ tool, args, score });
-				} catch {}
+				} catch {
+					debug.log("prefetch", "Failed to parse history args for prediction");
+				}
 			}
 		}
 
@@ -328,6 +333,7 @@ export class Prefetcher {
 					}
 				}
 			} catch (error) {
+				debug.log("prefetch", `Prefetch condition/mapper error: ${error instanceof Error ? error.message : String(error)}`);
 				// Prevent condition/mapper errors from crashing the loop
 			}
 		}

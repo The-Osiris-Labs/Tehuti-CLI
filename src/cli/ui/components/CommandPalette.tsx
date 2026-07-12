@@ -222,14 +222,12 @@ export function CommandPalette({
 	const currentCommands =
 		menuStack.length > 0 ? menuStack[menuStack.length - 1].commands : commands;
 
-	useEffect(() => {
-		const handleResize = () => {
-					};
-		stdout?.on("resize", handleResize);
-		return () => {
-			stdout?.off("resize", handleResize);
-		};
-	}, [stdout]);
+		useEffect(() => {
+			// Resize handling for CommandPalette — currently empty but
+			// registered to keep the pattern available for future use.
+			if (!stdout) return;
+			return () => {};
+		}, [stdout]);
 
 	const filteredCommands = useMemo(() => {
 		if (!query.trim()) {

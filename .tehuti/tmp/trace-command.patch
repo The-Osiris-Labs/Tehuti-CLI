@@ -1,0 +1,19 @@
+--- a/src/cli/commands/chat.ts
++++ b/src/cli/commands/chat.ts
+@@ -134,6 +134,7 @@ import { daemonCommand } from "./daemon.js";
+ import { doctorCommand } from "./doctor.js";
+ import { sessionCommand } from "./session.js";
+ import { skillsCommand } from "./skills.js";
++import { traceCommand } from "./trace.js";
+ import { toolsCommand } from "./tools.js";
+
+ interface PendingSessionFlush {
+@@ -4480,6 +4481,7 @@ export function buildProgram(): Command {
+ 	program.addCommand(companionCommand());
+ 	program.addCommand(doctorCommand());
+ 	program.addCommand(sessionCommand());
+ 	program.addCommand(skillsCommand());
++	program.addCommand(traceCommand());
+ 	program.addCommand(toolsCommand());
+
+ 	return program;

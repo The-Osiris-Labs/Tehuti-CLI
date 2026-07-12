@@ -13,6 +13,10 @@ import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 // @ts-expect-error TS6133/TS6192: Unused variable
 import { GlobalInputState } from "../input-state.js";
 import { StatusBadge } from "./StatusBadge.js";
+import {
+	ANSI_STRIP_REGEX,
+	sliceAnsi,
+} from "../../../utils/ansi.js";
 
 const disableMouse = process.env.NO_MOUSE || process.env.TEHUTI_DISABLE_MOUSE;
 
@@ -35,15 +39,7 @@ export interface ToolOutputSummary {
 	hiddenLineCount: number;
 	rawLines: string[];
 }
-
 const MAX_RENDERED_OUTPUT_CHARS = 500000;
-// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
-const ANSI_SEQUENCE_REGEX = new RegExp("^\\x1b\\[[0-9;]*[a-zA-Z]");
-// biome-ignore lint/complexity/useRegexLiterals: literals with ESC bytes trigger noControlCharactersInRegex.
-const ANSI_STRIP_REGEX = new RegExp(
-	"[\\x1b\\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]",
-	"g",
-);
 
 function safeStringify(value: unknown): string {
 	try {
@@ -51,39 +47,6 @@ function safeStringify(value: unknown): string {
 	} catch {
 		return String(value);
 	}
-}
-
-function sliceAnsi(str: string, limit: number): string {
-	let visibleWidth = 0;
-	let output = "";
-	let i = 0;
-
-	while (i < str.length) {
-		const remaining = str.slice(i);
-		const match = remaining.match(ANSI_SEQUENCE_REGEX);
-		if (match) {
-			output += match[0];
-			i += match[0].length;
-		} else {
-			const codePoint = str.codePointAt(i);
-			if (!codePoint) {
-				i++;
-				continue;
-			}
-			const char = String.fromCodePoint(codePoint);
-			const charWidth = stringWidth(char);
-			if (visibleWidth + charWidth > limit) {
-				break;
-			}
-			visibleWidth += charWidth;
-			output += char;
-			i += char.length;
-		}
-	}
-	if (i < str.length) {
-		output += "\x1b[0m";
-	}
-	return output;
 }
 
 export function summarizeToolOutput(

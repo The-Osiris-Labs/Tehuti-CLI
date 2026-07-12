@@ -179,7 +179,7 @@ export class MCPClientManager {
 					try {
 						process.kill(pid, "SIGTERM");
 					} catch {
-						// Process might already be dead
+						debug.log("mcp", `Failed to kill MCP process ${pid} on exit (already dead)`);
 					}
 				}
 			}
@@ -337,7 +337,9 @@ export class MCPClientManager {
 						"data",
 						(info as any)._stderrListener,
 					);
-				} catch {}
+				} catch {
+					debug.log("mcp", `Failed to remove stderr listener for ${info.name}`);
+				}
 				(info as any)._stderrListener = undefined;
 				(info as any)._stderrStream = undefined;
 			}
@@ -684,7 +686,9 @@ export class MCPClientManager {
 			this.updateStatus(info, "error");
 			// Clean up orphaned transport to prevent child process / socket leaks
 			if (info.transport) {
-				try { await info.transport.close(); } catch {}
+				try { await info.transport.close(); } catch {
+					debug.log("mcp", `Failed to close transport for ${name} during error recovery`);
+				}
 				info.transport = null;
 			}
 			throw createMCPError(
@@ -950,7 +954,7 @@ export class MCPClientManager {
 				try {
 					await info.client.unsubscribeResource({ uri });
 				} catch {
-					// Ignore unsubscribe errors on client side
+					debug.log("mcp", `Failed to unsubscribe resource ${uri} from ${serverName}`);
 				}
 			}
 		} else {
@@ -975,7 +979,9 @@ export class MCPClientManager {
 		if ((info as any)._stderrStream && (info as any)._stderrListener) {
 			try {
 				(info as any)._stderrStream.off("data", (info as any)._stderrListener);
-			} catch {}
+			} catch {
+				debug.log("mcp", `Failed to remove stderr listener for ${name}`);
+			}
 			(info as any)._stderrListener = undefined;
 			(info as any)._stderrStream = undefined;
 		}

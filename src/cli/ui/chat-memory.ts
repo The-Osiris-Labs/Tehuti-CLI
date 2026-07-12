@@ -2,6 +2,7 @@ import type { CompactionDigest } from "../../agent/context-compressor.js";
 
 export const UI_MAX_MESSAGES = 120;
 export const UI_KEEP_FULL_RECENT_MESSAGES = 24;
+export const MAX_COMPACTION_MARKERS = 10;
 export const UI_MAX_TEXT_CHARS = 24000;
 export const UI_MAX_REASONING_CHARS = 8000;
 export const UI_MAX_TOOL_OUTPUT_CHARS = 6000;
@@ -187,7 +188,9 @@ export function compactMessageForUi(
 }
 
 export function compactMessagesForUi<T extends UiMessage>(messages: T[]): T[] {
-	const markers = messages.filter((message) => message.kind === "compaction");
+	const markers = messages
+		.filter((message) => message.kind === "compaction")
+		.slice(-MAX_COMPACTION_MARKERS);
 	const kept = messages
 		.filter((message) => message.kind !== "compaction")
 		.slice(-UI_MAX_MESSAGES);

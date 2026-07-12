@@ -66,15 +66,21 @@ export class WakeupQueue {
 			if (msg !== undefined) return Promise.resolve(msg);
 		}
 		return new Promise((resolve, reject) => {
-			const resolver = (msg: string) => resolve(msg);
+			let cleanup: (() => void) | undefined;
+			const resolver = (msg: string) => {
+				cleanup?.();
+				resolve(msg);
+			};
 			this.waitingResolves.push(resolver);
 			if (signal) {
 				const onAbort = () => {
+					cleanup = undefined;
 					const idx = this.waitingResolves.indexOf(resolver);
 					if (idx !== -1) this.waitingResolves.splice(idx, 1);
 					reject(new DOMException('Aborted', 'AbortError'));
 				};
 				signal.addEventListener('abort', onAbort, { once: true });
+				cleanup = () => signal.removeEventListener('abort', onAbort);
 			}
 		});
 	}

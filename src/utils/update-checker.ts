@@ -24,6 +24,7 @@ function getVersionFromPackage(): string {
 		);
 		return packageJson.version ?? "0.0.0";
 	} catch {
+		console.warn("update-checker: Failed to read package version");
 		return "0.0.0";
 	}
 }
@@ -46,14 +47,18 @@ function getLastCheck(): UpdateCheckResult | null {
 		if (existsSync(file)) {
 			return JSON.parse(readFileSync(file, "utf-8")) as UpdateCheckResult;
 		}
-	} catch {}
+	} catch {
+		console.warn("update-checker: Failed to read last check file");
+	}
 	return null;
 }
 
 function saveLastCheck(result: UpdateCheckResult): void {
 	try {
 		writeFileSync(getLastCheckFile(), JSON.stringify(result, null, 2));
-	} catch {}
+	} catch {
+		console.warn("update-checker: Failed to save last check file");
+	}
 }
 
 function getLatestNpmVersion(): string | null {
@@ -92,6 +97,7 @@ export function isGitRepo(): boolean {
 		});
 		return true;
 	} catch {
+		console.warn("update-checker: Not a git repo or git not available");
 		return false;
 	}
 }

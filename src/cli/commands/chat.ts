@@ -563,22 +563,6 @@ async function saveHistory(history: string[]): Promise<void> {
 	} catch {}
 }
 
-// @ts-expect-error TS6133/TS6192: Unused variable
-const _ANSI = {
-	reset: "\x1b[0m",
-	bold: "\x1b[1m",
-	italic: "\x1b[3m",
-	dim: "\x1b[2m",
-	cyan: "\x1b[36m",
-	yellow: "\x1b[33m",
-	green: "\x1b[32m",
-	red: "\x1b[31m",
-	magenta: "\x1b[35m",
-	blue: "\x1b[34m",
-	orange: "\x1b[38;5;208m",
-	coral: "\x1b[38;5;174m",
-};
-
 // Initialize highlighter early
 initHighlighter().catch((err) => {
 	console.error("Failed to initialize syntax highlighter:", err);
@@ -1447,12 +1431,18 @@ function ChatUI({
 				},
 			);
 			child.unref();
+			// Write confirmation directly to stdout (bypass Ink's render cycle)
+			// so the user sees feedback before the process exits.
+			process.stdout.write(
+				`\nSession saved. Restarting with resume\u2026\n`,
+			);
 			// Defer exit so the spawn handle is returned to the event loop and
 			// the child has a chance to initialize before the parent dies.
 			setImmediate(() => process.exit(0));
 		} catch (err) {
-			// Spawn threw synchronously (EACCES, ENOENT, etc.). The old TUI is
-			// still running; surface a warning and bail.
+			process.stdout.write(
+				`\nRestart failed: ${err instanceof Error ? err.message : String(err)}. Session is saved; please exit and re-launch manually.\n`,
+			);
 			debug.log("chat", "Respawn during restart failed:", err);
 			setMessages((m) => [
 				...m,

@@ -1,0 +1,53 @@
+--- a/src/cli/commands/chat.ts
++++ b/src/cli/commands/chat.ts
+@@ -1124,6 +1124,11 @@ function ChatUI({
+ 	const advisoryIdRef = useRef(0);
+ 	const advisoryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(
+ 		new Set(),
+ 	);
++	// Memoize the line-count estimate for the virtual scroll windowing logic
++	// below. The estimate walks every message in `messages` and is O(messages)
++	// per call. Without this cache, scrolling re-estimates all messages on
++	// every keystroke, which dominates render time for 500+ message sessions.
++	const lineEstimateCacheRef = useRef<Map<number, number>>(new Map());
+ 	// Snapshot of message count when the user last scrolled up. We diff
+ 	// against the current messages.length so the "N new" badge shows the
+ 	// count of message *arrivals*, not the total.
+@@ -2407,6 +2412,11 @@ function ChatUI({
+ 	const visibleMessages = useMemo(() => {
+ 		const linesNeeded = chatViewportHeight + scrollOffset + 20;
+ 		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
++		const cache = lineEstimateCacheRef.current;
++		const liveIds = new Set<number>();
++		for (const m of messages) {
++			if (typeof m.id === "number") liveIds.add(m.id);
++		}
++		for (const cachedId of cache.keys()) {
++			if (!liveIds.has(cachedId)) cache.delete(cachedId);
++		}
+ 		const estimateMsgLines = (msg: any) => {
+ 			let l = 1;
+ 			const blocks =
+@@ -2476,6 +2486,9 @@ function ChatUI({
+ 				if (!hasToolBlock) {
+ 					l += msg.toolCalls.length * 8;
+ 				}
+ 			}
++			if (typeof msg.id === "number") {
++				cache.set(msg.id, l);
++			}
+ 			return l + 1;
+ 		};
+ 		let accumulatedLines = 0;
+@@ -2483,8 +2496,8 @@ function ChatUI({
+ 			accumulatedLines += estimateMsgLines(messages[i]);
+ 			sliceIndex = i;
+ 			if (accumulatedLines >= linesNeeded) break;
+ 		}
+-		return messages.slice(Math.max(0, sliceIndex - 10));
+-	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
++		return messages.slice(Math.max(0, sliceIndex - 10));
++	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth, lineEstimateCacheRef]);
+
+ 	const scrollToBottom = useCallback(() => {
+ 		messagesEndRef.current = true;

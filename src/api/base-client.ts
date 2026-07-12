@@ -661,6 +661,7 @@ export abstract class BaseAPIClient {
 			reader = response.body.getReader();
 			const decoder = new TextDecoder();
 			let buffer = "";
+			let lastYield = Date.now();
 
 			while (true) {
 				const { done, value } = await reader.read();
@@ -707,6 +708,13 @@ export abstract class BaseAPIClient {
 							throw new Error(`Zod validation failed: ${result.error.message}`);
 						}
 						yield result.data as unknown as StandardStreamChunk;
+
+						// Yield to event loop every ~16ms to prevent starvation during fast SSE streams
+						const _now = Date.now();
+						if (_now - lastYield > 16) {
+							await new Promise((resolve) => setImmediate(resolve));
+							lastYield = _now;
+						}
 					} catch (e) {
 						if (e instanceof APIError) throw e;
 

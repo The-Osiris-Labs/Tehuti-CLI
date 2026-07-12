@@ -17,6 +17,10 @@ export interface UseChatViewportOptions {
 	errorOverlayHeight: number;
 	input: string;
 	showWelcome: boolean;
+	/** External scroll offset state (from parent). If omitted, the hook creates its own. */
+	scrollOffset?: number;
+	/** External setScrollOffset (from parent). Must be provided alongside scrollOffset. */
+	setScrollOffset?: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export interface UseChatViewportReturn {
@@ -65,8 +69,30 @@ export function useChatViewport({
 	errorOverlayHeight,
 	input,
 	showWelcome,
+	scrollOffset: externalScrollOffset,
+	setScrollOffset: externalSetScrollOffset,
 }: UseChatViewportOptions): UseChatViewportReturn {
-	const [scrollOffset, setScrollOffset] = useState(0);
+	const hasExternalScrollOffset =
+		externalScrollOffset !== undefined && externalSetScrollOffset !== undefined;
+	const [internalScrollOffset, internalSetScrollOffset] = useState(0);
+
+	const scrollOffset = hasExternalScrollOffset ? externalScrollOffset! : internalScrollOffset;
+	const setScrollOffset: React.Dispatch<React.SetStateAction<number>> = useCallback(
+		(action) => {
+			const next =
+				typeof action === "function"
+					? action(hasExternalScrollOffset ? externalScrollOffset : internalScrollOffset)
+					: action;
+			if (hasExternalScrollOffset) {
+				externalSetScrollOffset(next as any);
+			}
+			internalSetScrollOffset(next);
+		},
+		// We intentionally omit externalScrollOffset / externalSetScrollOffset here
+		// to avoid recreating the callback on every render — values are read from
+		// the closure at call time.
+		[internalSetScrollOffset, hasExternalScrollOffset], // eslint-disable-line react-hooks/exhaustive-deps
+	);
 	const messagesEndRef = useRef<boolean>(true);
 	const messagesRef = useRef<typeof messages>([]);
 	const newMessageCountRef = useRef<number>(0);
