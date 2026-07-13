@@ -13,7 +13,10 @@ import {
 	TEHUTI_CONFIG_SCHEMA,
 	type TehutiConfig,
 } from "./schema.js";
-
+import {
+	encryptOAuthConfig,
+	decryptOAuthConfig,
+} from "./token-encryption.js";
 const MODULE_NAME = "tehuti";
 export const configWarnings: string[] = [];
 const CONFIG_CWD =
@@ -215,7 +218,7 @@ export async function loadConfig(
 			maxTokens: globalConfig.get("maxTokens"),
 		}),
 		...(globalConfig.get("oauth") && {
-			oauth: globalConfig.get("oauth"),
+			oauth: decryptOAuthConfig(globalConfig.get("oauth")!).config,
 		}),
 		...resolvedFileConfig,
 		...(envModel && { model: envModel }),
@@ -384,6 +387,15 @@ export function saveGlobalConfig(updates: {
 			globalConfig.set("customProvider", updates.customProvider);
 		} else {
 			globalConfig.delete("customProvider");
+		}
+	}
+	if ("oauth" in updates) {
+		if (updates.oauth) {
+			// Encrypt OAuth tokens before persisting
+			const encryptedOauth = encryptOAuthConfig(updates.oauth);
+			globalConfig.set("oauth", encryptedOauth);
+		} else {
+			globalConfig.delete("oauth");
 		}
 	}
 	globalConfig.set("initialized", true);

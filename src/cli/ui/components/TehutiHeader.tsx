@@ -45,7 +45,11 @@ function ClickableBadge({
 	useOnMouseLeave(ref, () => setIsHovered(false));
 
 	return (
-		<Box ref={ref}>
+		<Box 
+			ref={ref}
+			accessibilityRole="button"
+			accessibilityLabel={label}
+		>
 			<Text color={isHovered ? hoverColor : color}>{label}</Text>
 		</Box>
 	);
@@ -85,6 +89,15 @@ export const TehutiHeader = memo(function TehutiHeader({
 			? GREEN
 			: CORAL;
 
+	// Accessibility: build descriptive status label
+	const statusDescription = isStreaming
+		? "Currently thinking"
+		: companionMode
+			? "Companion mode active"
+			: daemonStatus === "connected"
+				? "Daemon connected"
+				: "Idle";
+
 	if (compact) {
 		return (
 			<Box
@@ -94,6 +107,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 				borderStyle="round"
 				borderColor={GOLD}
 				paddingX={2}
+				accessibilityRole="banner"
 			>
 				<Text color={GOLD} bold>
 					𓆣 TEHUTI{" "}
@@ -118,16 +132,20 @@ export const TehutiHeader = memo(function TehutiHeader({
 					{" "}
 					│{" "}
 				</Text>
-				<Text color={statusColor} bold>
-					{statusLabel}
-				</Text>
+				<Box accessibilityRole="status" accessibilityLabel={statusDescription}>
+					<Text color={statusColor} bold>
+						{statusLabel}
+					</Text>
+				</Box>
 				{sessionName && (
 					<>
 						<Text color={SAND} dimColor>
 							{" "}
 							│{" "}
 						</Text>
-						<Text color={SAND}>𓏛 {sessionName}</Text>
+						<Box accessibilityLabel={`Session: ${sessionName}`}>
+							<Text color={SAND}>𓏛 {sessionName}</Text>
+						</Box>
 					</>
 				)}
 			</Box>
@@ -143,6 +161,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 			borderColor={GOLD}
 			paddingX={4}
 			paddingY={1}
+			accessibilityRole="banner"
 		>
 			<Gradient colors={[GOLD, CORAL]}>
 				<BigText text="TEHUTI" font="chrome" space={false} />
@@ -184,7 +203,13 @@ export const TehutiHeader = memo(function TehutiHeader({
 					)}
 				</Box>
 
-				<Box marginTop={1} flexDirection="row" gap={2}>
+				<Box 
+					marginTop={1} 
+					flexDirection="row" 
+					gap={2}
+					accessibilityRole="status"
+					accessibilityLabel={statusDescription}
+				>
 					<Text color={statusColor} bold>
 						{statusLabel}
 					</Text>
@@ -195,7 +220,11 @@ export const TehutiHeader = memo(function TehutiHeader({
 						Write • Edit • Transform
 					</Text>
 				</Box>
-				<Box marginTop={1} flexDirection="row" gap={1}>
+				<Box 
+					marginTop={1} 
+					flexDirection="row" 
+					gap={1}
+				>
 					<ClickableBadge
 						label="/help"
 						onClick={() => onCommandClick?.("/help")}

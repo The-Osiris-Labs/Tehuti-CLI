@@ -34,6 +34,23 @@ const COMPACT_THRESHOLD = 0.85;
 // retains everything else, so this is a UX/relevance tradeoff, not data loss.
 const MIN_MESSAGES_TO_KEEP = 20;
 
+/**
+ * Removes reasoning/thinking tokens from model output.
+ * 
+ * Strips XML-style thinking tags (<think>, <thinking>, <reasoning>) and their
+ * content from the response. Used to clean up model output before displaying
+ * to users or persisting to session history.
+ * 
+ * @param content - Raw model output potentially containing thinking tags
+ * @returns Cleaned content with all thinking/reasoning blocks removed
+ * 
+ * @example
+ * ```typescript
+ * const raw = "<think>Let me analyze this...</think>Here's the solution";
+ * const clean = stripReasoningTokens(raw);
+ * // clean = "Here's the solution"
+ * ```
+ */
 export function stripReasoningTokens(content: string): string {
 	return content.replace(
 		/<(think|thinking|reasoning)>[\s\S]*?(?:<\/\1>|$)/g,
@@ -41,10 +58,59 @@ export function stripReasoningTokens(content: string): string {
 	);
 }
 
+/**
+ * Estimates token count for a message array using tiktoken.
+ * 
+ * Uses OpenAI's tiktoken library to estimate the number of tokens in the
+ * message array. This is used for context window management and compression
+ * decisions. The estimation is approximate but highly accurate for most models.
+ * 
+ * @param messages - Array of messages to estimate tokens for
+ * @returns Estimated token count (number of tokens)
+ * 
+ * @example
+ * ```typescript
+ * const tokens = estimateTokens(ctx.messages);
+ * if (tokens > 100000) {
+ *   console.warn('Context is getting large');
+ * }
+ * ```
+ */
 export function estimateTokens(messages: StandardMessage[]): number {
 	return tiktokenEstimateTokens(messages);
 }
 
+/**
+ * Compacts the agent context by removing old messages and creating a digest.
+ * 
+ * When context grows large (>85% of max), this function compresses it by:
+ * 1. Keeping the first message (system prompt) and last 20 messages
+ * 2. Extracting a structured digest from removed messages (actions, decisions, recoveries)
+ * 3. Persisting the digest to compactionHistory for future reference
+ * 4. Moving full transcript to archive.json (append-only log)
+ * 
+ * This is deterministic compression (no LLM calls), making it fast and cost-free.
+ * The digest captures key information without losing context entirely.
+ * 
+ * @param ctx - Agent context containing messages to compact
+ * @param targetTokens - Optional target token count (default: 85% of maxContext)
+ * @param maxContext - Optional maximum context length (default: from config or 128000)
+ * @returns true if compaction occurred, false if context was already small enough
+ * 
+ * @example
+ * ```typescript
+ * // Manual compaction
+ * const compacted = compactContext(ctx, 50000);
+ * if (compacted) {
+ *   console.log('Context compacted, digest created');
+ * }
+ * 
+ * // Auto-compact at 90% capacity
+ * if (estimateTokens(ctx.messages) > maxContext * 0.9) {
+ *   compactContext(ctx);
+ * }
+ * ```
+ */
 export function compactContext(
 	ctx: AgentContext,
 	targetTokens?: number,
@@ -98,6 +164,27 @@ export function compactContext(
 	return true;
 }
 
+/**
+ * Checks context usage and warns/compacts if near limit.
+ * 
+ * Monitors context size relative to model's maximum context length:
+ * - >90% capacity: Logs warning and triggers automatic compaction
+ * - >80% capacity: Logs warning (no action)
+ * - ≤80% capacity: No action
+ * 
+ * This is called periodically during the agent loop to prevent context overflow.
+ * 
+ * @param ctx - Agent context to check
+ * @returns true if context is >90% capacity (compaction triggered), false otherwise
+ * 
+ * @example
+ * ```typescript
+ * // Check before sending to model
+ * if (warnOnContextLimit(ctx)) {
+ *   console.warn('Context auto-compacted, consider /compact for manual control');
+ * }
+ * ```
+ */
 export function warnOnContextLimit(ctx: AgentContext): boolean {
 	const maxContext =
 		ctx.modelContextLength ??
@@ -122,6 +209,31 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 	return false;
 }
 
+/**
+ * Normalizes tool call history by removing orphaned tool calls.
+ * 
+ * Ensures message history is valid for the API by:
+ * 1. Removing assistant messages with tool_calls that have no corresponding tool responses
+ * 2. Removing tool messages that reference non-existent tool_call_ids
+ * 3. Preserving valid tool call/response pairs
+ * 
+ * This is critical for API compatibility - most providers reject requests with
+ * unmatched tool calls/responses.
+ * 
+ * @param messages - Raw message history potentially containing orphaned tool calls
+ * @returns Normalized message history with all tool calls properly matched
+ * 
+ * @example
+ * ```typescript
+ * // After loading session from disk
+ * const normalized = normalizeToolMessageHistory(session.messages);
+ * ctx.messages = normalized;
+ * 
+ * // Before sending to API
+ * const clean = normalizeToolMessageHistory(ctx.messages);
+ * await client.streamChat(clean, tools);
+ * ```
+ */
 export function normalizeToolMessageHistory(
 	messages: StandardMessage[],
 ): StandardMessage[] {
@@ -197,6 +309,51 @@ export function normalizeToolMessageHistory(
 		});
 }
 
+/**
+ * Agent execution context containing all state for an agent session.
+ * 
+ * This is the central state object passed throughout the agent system. It contains:
+ * - Current working directory and session metadata
+ * - Message history (both model-facing and append-only archive)
+ * - Configuration and provider settings
+ * - Memory and personality context (loaded asynchronously)
+ * - Session metadata (token usage, cost, tool calls, etc.)
+ * 
+ * The context is created once per session via `createAgentContext()` and passed
+ * to all agent functions. It's mutable (messages array is updated during the loop)
+ * but the metadata is append-only for accurate session tracking.
+ * 
+ * @property cwd - Current working directory (resolved from sessionId or parameter)
+ * @property workingDir - Working directory for file operations (usually same as cwd)
+ * @property messages - Model-facing message history (compacted when large)
+ * @property appendOnlyLog - Full transcript (never deleted, used for archive)
+ * @property compactionHistory - Array of digests from past compactions
+ * @property config - Tehuti configuration (provider, model, API keys, etc.)
+ * @property projectInstructions - Content from CLAUDE.md/TEHUTI.md/AGENTS.md
+ * @property systemMemoryPromise - Async-loaded memory graph context
+ * @property diffPreview - Optional diff preview settings for file edits
+ * @property companionMode - Whether running in companion (daemon-connected) mode
+ * @property sessionId - Unique session identifier (for resume/continuity)
+ * @property personalityBlockPromise - Async-loaded personality/preferences
+ * @property readFilesThisSession - Set of files read this session (for context)
+ * @property isSleeping - Whether agent is in sleep/idle state
+ * @property injectionQueue - Queue for system message injections
+ * @property modelContextLength - Live-resolved model context length (from API)
+ * @property metadata - Session statistics (tokens, cost, tool calls, files, commands)
+ * 
+ * @example
+ * ```typescript
+ * const ctx = await createAgentContext(process.cwd(), config);
+ * 
+ * // Access session metadata
+ * console.log(`Session started: ${ctx.metadata.startTime}`);
+ * console.log(`Tool calls: ${ctx.metadata.toolCalls}`);
+ * console.log(`Tokens used: ${ctx.metadata.tokensUsed}`);
+ * 
+ * // Modify messages (mutable)
+ * ctx.messages.push({ role: 'user', content: 'Hello' });
+ * ```
+ */
 export interface AgentContext {
 	cwd: string;
 	workingDir: string;
@@ -247,6 +404,49 @@ async function loadProjectInstructions(
 	return undefined;
 }
 
+/**
+ * Creates a new agent context for running the agent loop.
+ * 
+ * Initializes all asynchronous context loading:
+ * 1. Resolves CWD from sessionId (if resuming) or uses provided cwd
+ * 2. Loads project instructions from CLAUDE.md/TEHUTI.md/AGENTS.md
+ * 3. Initializes memory system (background, non-blocking)
+ * 4. Loads personality/preferences (background, non-blocking)
+ * 5. Preloads recent files from database
+ * 
+ * The context is fully usable immediately (async loads happen in background),
+ * but system prompt will be incomplete until async loads complete.
+ * 
+ * @param cwd - Current working directory (used if no sessionId)
+ * @param config - Tehuti configuration object
+ * @param diffPreview - Optional diff preview settings
+ * @param companionMode - Whether running in companion mode (daemon-connected)
+ * @param sessionId - Optional session ID for resume/continuity
+ * @returns Fully initialized agent context
+ * 
+ * @example
+ * ```typescript
+ * // New session
+ * const ctx = await createAgentContext(process.cwd(), config);
+ * 
+ * // Resume existing session
+ * const ctx = await createAgentContext(
+ *   process.cwd(),
+ *   config,
+ *   undefined,
+ *   false,
+ *   'session-abc123'
+ * );
+ * 
+ * // Companion mode (connected to daemon)
+ * const ctx = await createAgentContext(
+ *   process.cwd(),
+ *   config,
+ *   undefined,
+ *   true
+ * );
+ * ```
+ */
 export async function createAgentContext(
 	cwd: string,
 	config: TehutiConfig,
@@ -333,6 +533,40 @@ export async function createAgentContext(
 	};
 }
 
+/**
+ * Builds the complete system prompt for the agent.
+ * 
+ * Assembles all system prompt components:
+ * 1. Base identity and operational rules
+ * 2. Project instructions (from CLAUDE.md/TEHUTI.md/AGENTS.md)
+ * 3. Memory context (from memory graph)
+ * 4. Personality/preferences (learned user style)
+ * 5. Relevant skills/expertise (matched to user query)
+ * 6. Daemon status (if in companion mode)
+ * 7. Environment info (platform, Node version, terminal capabilities)
+ * 
+ * The system prompt is rebuilt on every agent loop iteration to ensure
+ * fresh context (memory updates, skill matching, etc.).
+ * 
+ * @param ctx - Agent context containing all state
+ * @param userQuery - Optional user query for skill matching (finds relevant expertise)
+ * @returns Complete system prompt string ready for API
+ * 
+ * @example
+ * ```typescript
+ * // Build with skill matching
+ * const prompt = await buildSystemPrompt(ctx, 'Fix the authentication bug');
+ * 
+ * // Build without skill matching (faster)
+ * const prompt = await buildSystemPrompt(ctx);
+ * 
+ * // Use in API call
+ * const messages = [
+ *   { role: 'system', content: prompt },
+ *   ...ctx.messages
+ * ];
+ * ```
+ */
 export async function buildSystemPrompt(
 	ctx: AgentContext,
 	userQuery?: string,

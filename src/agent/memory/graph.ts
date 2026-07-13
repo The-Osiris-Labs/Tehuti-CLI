@@ -280,13 +280,24 @@ export async function getSystemPromptMemory(
  * Iterates through stored nodes and removes or merges insights that are lexically identical (BM25 token matching) or exact duplicates.
  */
 export async function optimizeInsights(
-	cwd: string = process.cwd(),
+  cwd: string = process.cwd(),
 ): Promise<{ removed: number; merged: number }> {
-	const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
+  const resolvedCwd = cwd && cwd !== "global" ? path.resolve(cwd) : cwd;
 
-	const stmt = db.prepare(`SELECT * FROM nodes`);
-	const allNodesRows = stmt.all() as any[];
-	let nodes = allNodesRows.map(mapRowToNode);
+  // Optimized: use JSON extraction to filter at database level
+  // This avoids loading all nodes and filtering in JavaScript
+  const stmt = db.prepare(`
+    SELECT * FROM nodes 
+    WHERE (
+      JSON_EXTRACT(metadata, '$.priority') > 0 
+      OR JSON_EXTRACT(metadata, '$.importance') > 0 
+      OR JSON_EXTRACT(metadata, '$.accessCount') > 1
+    )
+    ORDER BY created_at DESC
+    LIMIT 1000
+  `);
+  const allNodesRows = stmt.all() as any[];
+  let nodes = allNodesRows.map(mapRowToNode);
 
 	if (resolvedCwd && resolvedCwd !== "global") {
 		nodes = nodes.filter(

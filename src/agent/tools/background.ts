@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
 import { agentEventBus } from "../events.js";
+import { debug } from "../../utils/debug.js";
 import { isDangerousCommand } from "./bash.js";
 import type {
 	AnyToolExecutor,
@@ -401,7 +402,9 @@ export function cleanupAllProcesses(): void {
 		if (proc.status === "running") {
 			try {
 				process.kill(-pid, "SIGKILL");
-			} catch {}
+			} catch (err) {
+				debug.log("tools", `Failed to kill process ${pid}: ${err}`);
+			}
 		}
 	}
 	backgroundProcesses.clear();

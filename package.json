@@ -111,6 +111,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
     "@mswjs/interceptors": "^0.41.9",
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/fs-extra": "^11.0.4",
@@ -118,6 +119,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.0.0",
     "@vitest/coverage-v8": "^3.2.6",
+    "ink-testing-library": "^4.0.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",

@@ -59,7 +59,9 @@ export async function initMemory(
 			stopBackgroundConsolidation();
 			try {
 				db.close();
-			} catch (_err) {}
+			} catch (_err) {
+				debug.log("memory", `Failed to close memory database: ${_err}`);
+			}
 		});
 	}
 }

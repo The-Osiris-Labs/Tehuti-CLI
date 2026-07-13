@@ -55,7 +55,9 @@ export async function writeJsonAtomic(
 		// filePath share the same directory by construction.
 		try {
 			await fs.unlink(tempPath);
-		} catch {}
+		} catch (cleanupErr) {
+			debug.log("session", "Failed to cleanup temp file after rename failure:", cleanupErr);
+		}
 		throw error;
 	}
 }

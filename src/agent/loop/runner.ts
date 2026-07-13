@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { StandardTool } from "../../api/base-client.js";
 import type { CustomProviderClient, KiloCodeClient } from "../../api/index.js";
+import { debug } from "../../utils/debug.js";
 import {
 	costTracker,
 	createStreamingState,
@@ -13,7 +14,6 @@ import {
 } from "../../api/model-capabilities.js";
 import type { StandardAPIClient } from "../../api/standard-client.js";
 import { permissionManager } from "../../permissions/rules.js";
-import { debug } from "../../utils/debug.js";
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
 import type { AgentContext } from "../context.js";
@@ -581,11 +581,13 @@ export async function runAgentLoop(
 				try {
 					const diff = getActualGitDiff(cwd);
 					await updateProjectProfile(cwd, diff, commandsRun);
-				} catch {
-					// Best-effort profile update — never crash on this
+				} catch (err) {
+					debug.log("agent", `Best-effort profile update failed: ${err}`);
 				}
-			} catch {}
-		}
+				} catch (err) {
+				debug.log("agent", `Failed to update project profile: ${err}`);
+				}
+				}
 
 		resetPrefetcher();
 	}

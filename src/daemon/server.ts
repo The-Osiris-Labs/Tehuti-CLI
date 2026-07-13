@@ -4,7 +4,9 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { sweepCacheDir } from "../agent/cache/persistent-cache.js";
+import { sweepResponseCache } from "../api/response-cache.js";
 import { daemonStateEngine } from "./state-engine.js";
+import { debug } from "../utils/debug.js";
 
 export const SOCKET_PATH = path.join(os.homedir(), ".tehuti", "tehutid.sock");
 
@@ -170,7 +172,9 @@ export class TehutiDaemonServer extends EventEmitter {
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
 					fs.unlinkSync(SOCKET_PATH);
-				} catch (err) {}
+				} catch (err) {
+					debug.log("daemon", `Failed to unlink socket during cleanup: ${err}`);
+				}
 			}
 			process.exit(0);
 		};
@@ -181,7 +185,9 @@ export class TehutiDaemonServer extends EventEmitter {
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
 					fs.unlinkSync(SOCKET_PATH);
-				} catch (err) {}
+				} catch (err) {
+					debug.log("daemon", `Failed to unlink socket on exit: ${err}`);
+				}
 			}
 		});
 
@@ -204,7 +210,9 @@ export class TehutiDaemonServer extends EventEmitter {
 				umaskRestored = true;
 				try {
 					process.umask(oldUmask);
-				} catch (err) {}
+				} catch (err) {
+					debug.log("daemon", `Failed to restore umask: ${err}`);
+				}
 			}
 		};
 
@@ -215,7 +223,9 @@ export class TehutiDaemonServer extends EventEmitter {
 				restoreUmask();
 				try {
 					fs.chmodSync(SOCKET_PATH, 0o600);
-				} catch (err) {}
+				} catch (err) {
+					debug.log("daemon", `Failed to chmod socket: ${err}`);
+				}
 				this.emit("listening", SOCKET_PATH);
 				this.setupProcessHandlers();
 				this.startGarbageCollector();
@@ -231,11 +241,13 @@ export class TehutiDaemonServer extends EventEmitter {
 	private startGarbageCollector(): void {
 		// Run a sweep immediately
 		sweepCacheDir().catch(() => {});
+		sweepResponseCache().catch(() => {});
 
 		// Run a sweep every 12 hours
 		const GC_INTERVAL = 12 * 60 * 60 * 1000;
 		this.gcInterval = setInterval(() => {
 			sweepCacheDir().catch(() => {});
+			sweepResponseCache().catch(() => {});
 		}, GC_INTERVAL);
 
 		if (this.gcInterval?.unref) {
@@ -297,7 +309,9 @@ export class TehutiDaemonServer extends EventEmitter {
 			if (fs.existsSync(SOCKET_PATH)) {
 				try {
 					fs.unlinkSync(SOCKET_PATH);
-				} catch (err) {}
+				} catch (err) {
+					debug.log("daemon", `Failed to unlink socket during stop: ${err}`);
+				}
 			}
 			this.emit("close");
 		});

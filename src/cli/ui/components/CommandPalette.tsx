@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
+import { debug } from "../../../utils/debug.js";
 import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { useVimInput } from "../hooks/useVimInput.js";
@@ -19,6 +20,14 @@ const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
 // @ts-expect-error TS6133/TS6192: Unused variable
 const _RED = BRANDING.colors.red;
+
+/** High-contrast mode detection for terminal accessibility */
+const HIGH_CONTRAST = process.env.TEHUTI_HIGH_CONTRAST === "1" || process.env.NO_COLOR === undefined;
+
+/** Get accessible color based on high-contrast preference */
+function getAccessibleColor(normalColor: string, highContrastColor: string): string {
+  return HIGH_CONTRAST ? highContrastColor : normalColor;
+}
 
 export interface CommandItem {
 	id: string;
@@ -120,85 +129,90 @@ function highlightMatch(
 }
 
 function CommandItemRow({
-	cmd,
-	cmdIndex,
-	isSelected,
-	query,
-	onHover,
-	onClick,
+  cmd,
+  cmdIndex,
+  isSelected,
+  query,
+  onHover,
+  onClick,
 }: any) {
-	const ref = useRef<any>(null);
-	const [isMouseHovered, setIsMouseHovered] = useState(false);
+  const ref = useRef<any>(null);
+  const [isMouseHovered, setIsMouseHovered] = useState(false);
 
-	const disableMouse =
-		process.env.TEHUTI_DISABLE_MOUSE === "1" || process.env.NO_MOUSE === "1";
+  const disableMouse =
+    process.env.TEHUTI_DISABLE_MOUSE === "1" || process.env.NO_MOUSE === "1";
 
-	useOnClick(ref, disableMouse ? () => {} : () => onClick(cmd));
-	useOnMouseEnter(
-		ref,
-		disableMouse
-			? () => {}
-			: () => {
-					setIsMouseHovered(true);
-					onHover(cmdIndex);
-				},
-	);
-	useOnMouseLeave(
-		ref,
-		disableMouse ? () => {} : () => setIsMouseHovered(false),
-	);
+  useOnClick(ref, disableMouse ? () => {} : () => onClick(cmd));
+  useOnMouseEnter(
+    ref,
+    disableMouse
+      ? () => {}
+      : () => {
+          setIsMouseHovered(true);
+          onHover(cmdIndex);
+        },
+  );
+  useOnMouseLeave(
+    ref,
+    disableMouse ? () => {} : () => setIsMouseHovered(false),
+  );
 
-	const active = isSelected || isMouseHovered;
+  const active = isSelected || isMouseHovered;
 
-	const label =
-		query.trim() &&
-		cmd.matchIndices &&
-		cmd.matchIndices.length > 0 &&
-		cmd.matchField === "label"
-			? highlightMatch(cmd.label, cmd.matchIndices, active)
-			: [
-					React.createElement(
-						Text,
-						{ key: "l", color: active ? "black" : CORAL, bold: active },
-						cmd.label,
-					),
-				];
+  // Accessibility: Use high-contrast colors when enabled
+  const labelColor = getAccessibleColor(CORAL, "white");
+  const descColor = getAccessibleColor(GRAY, "white");
+  const shortcutColor = getAccessibleColor(CYAN, "cyan");
 
-	return React.createElement(
-		Box,
-		{
-			ref,
-			flexDirection: "column",
-			paddingX: 1,
-			paddingY: 0,
-			backgroundColor: active ? GOLD : undefined,
-		},
-		React.createElement(
-			Box,
-			{ flexDirection: "row" },
-			React.createElement(
-				Text,
-				{ color: active ? "black" : CORAL, bold: active },
-				active ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
-			),
-			React.createElement(Text, null, ...label),
-			cmd.shortcut &&
-				React.createElement(
-					Text,
-					{ color: active ? "black" : CYAN, dimColor: !active },
-					`  ${cmd.shortcut}`,
-				),
-		),
-		React.createElement(
-			Box,
-			{ paddingLeft: 2 },
-			React.createElement(
-				Text,
-				{ color: active ? "black" : GRAY, dimColor: !active },
-				`${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ""}`,
-			),
-		),
-	);
+  const label =
+    query.trim() &&
+    cmd.matchIndices &&
+    cmd.matchIndices.length > 0 &&
+    cmd.matchField === "label"
+      ? highlightMatch(cmd.label, cmd.matchIndices, active)
+      : [
+          React.createElement(
+            Text,
+            { key: "l", color: active ? "black" : labelColor, bold: active },
+            cmd.label,
+          ),
+        ];
+
+  return React.createElement(
+    Box,
+    {
+      ref,
+      flexDirection: "column",
+      paddingX: 1,
+      paddingY: 0,
+      backgroundColor: active ? GOLD : undefined,
+    },
+    React.createElement(
+      Box,
+      { flexDirection: "row" },
+      React.createElement(
+        Text,
+        { color: active ? "black" : labelColor, bold: active },
+        active ? `${cmd.submenu ? "»" : DECORATIVE.arrow} ` : "  ",
+      ),
+      React.createElement(Text, null, ...label),
+      cmd.shortcut &&
+        React.createElement(
+          Text,
+          { color: active ? "black" : shortcutColor, dimColor: !active },
+          `  ${cmd.shortcut}`,
+        ),
+    ),
+    React.createElement(
+      Box,
+      { paddingLeft: 2 },
+      React.createElement(
+        Text,
+        { color: active ? "black" : descColor, dimColor: !active },
+        `${cmd.description}${cmd.usage ? `  ${cmd.usage}` : ""}`,
+      ),
+    ),
+  );
 }
 
 export function CommandPalette({
@@ -551,7 +565,9 @@ function addRecentCommand(commandId: string): void {
 		const filtered = recent.filter((id) => id !== commandId);
 		const updated = [commandId, ...filtered].slice(0, 5);
 		globalConfig.set("recentCommands", updated);
-	} catch {}
+	} catch (err) {
+		debug.log("chat", `Failed to add recent command: ${err}`);
+	}
 }
 
 export function createCommands(options: {

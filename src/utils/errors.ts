@@ -1,6 +1,7 @@
 import cleanStack from "clean-stack";
 import { serializeError } from "serialize-error";
 import { consola } from "./logger.js";
+import { debug } from "./debug.js";
 
 const GOLD = "\x1b[38;5;178m";
 const RESET = "\x1b[0m";
@@ -159,7 +160,9 @@ export function restoreTerminal(): void {
 	if (process.stdin.isTTY && process.stdin.setRawMode) {
 		try {
 			process.stdin.setRawMode(false);
-		} catch {}
+		} catch (err) {
+			debug.log("agent", `Failed to restore stdin raw mode: ${err}`);
+		}
 	}
 	if (process.stdout.isTTY) {
 		try {
@@ -175,7 +178,9 @@ export function restoreTerminal(): void {
 					"\x1b[0m",
 				].join(""),
 			);
-		} catch {}
+		} catch (err) {
+			debug.log("agent", `Failed to restore terminal state: ${err}`);
+		}
 	}
 }
 

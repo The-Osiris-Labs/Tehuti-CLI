@@ -47,6 +47,14 @@ export interface StatusBadgeProps {
 	 * Show a subtle background pill around the label for emphasis.
 	 */
 	emphasize?: boolean;
+	/**
+	 * Enable smooth transitions between states (default: true)
+	 */
+	animate?: boolean;
+	/**
+	 * Reduce motion for accessibility (default: false, respects env var)
+	 */
+	reduceMotion?: boolean;
 }
 
 const ICONS: Record<
@@ -90,18 +98,43 @@ const DEFAULT_LABELS: Record<StatusKind, string> = {
 	thinking: "Thinking",
 };
 
+// Accessibility role mapping for screen readers
+const ARIA_ROLES: Record<StatusKind, string> = {
+	success: "status",
+	error: "alert",
+	warning: "status",
+	info: "status",
+	pending: "status",
+	running: "status",
+	idle: "status",
+	killed: "alert",
+	cached: "status",
+	readonly: "status",
+	mutating: "status",
+	verified: "status",
+	speculative: "status",
+	thinking: "status",
+};
+
 /**
  * StatusBadge — a single source of truth for status display across the TUI.
  *
  * Replaces ad-hoc emoji (`⏳`, `✅`, `❌`) and `ink-spinner` usages with
  * brand-consistent hieroglyphs and a uniform color palette. Optionally
  * animates a 150ms spinner for `running`/`pending`/`thinking` kinds.
+ * 
+ * Accessibility:
+ * - ARIA roles for screen readers (alert for errors, status for others)
+ * - Accessibility labels for non-visual consumption
+ * - Respects reduce motion preferences
  */
 export function StatusBadge({
 	kind,
 	label,
 	compact = false,
 	emphasize = false,
+	animate = true,
+	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
 }: StatusBadgeProps): React.ReactElement {
 	const { glyph, color, spin } = ICONS[kind];
 	const [frame, setFrame] = useState(0);
@@ -110,38 +143,57 @@ export function StatusBadge({
 	// (loading vs. thinking) and update at 150ms, the same cadence as
 	// `HieroglyphSpinner` and `ExpandableToolOutput`.
 	useEffect(() => {
-		if (!spin) return;
+		if (!spin || reduceMotion) return;
 		const frames =
 			kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading;
 		const id = setInterval(() => {
 			setFrame((f: number) => (f + 1) % frames.length);
 		}, 150);
 		return () => clearInterval(id);
-	}, [spin, kind]);
+	}, [spin, kind, reduceMotion]);
 
-	const animatedGlyph = spin
+	const animatedGlyph = spin && !reduceMotion
 		? (kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading)[frame]
 		: glyph;
 	const text = label ?? DEFAULT_LABELS[kind];
+	const ariaRole = ARIA_ROLES[kind];
+	const ariaLabel = `${text} status`;
 
 	if (compact) {
-		return <Text color={color}>{animatedGlyph}</Text>;
+		return (
+			<Text 
+				color={color} 
+				accessibilityLabel={ariaLabel}
+				accessibilityRole={ariaRole}
+			>
+				{animatedGlyph}
+			</Text>
+		);
 	}
 
 	if (emphasize) {
 		return (
-			<Text color={color} inverse>
+			<Text 
+				color={color} 
+				inverse
+				accessibilityLabel={ariaLabel}
+				accessibilityRole={ariaRole}
+			>
 				{` ${animatedGlyph} ${text} `}
 			</Text>
 		);
 	}
 
 	return (
-		<Text>
+		<Box 
+			flexDirection="row" 
+			accessibilityLabel={ariaLabel}
+			accessibilityRole={ariaRole}
+		>
 			<Text color={color}>{animatedGlyph}</Text>
 			<Text color={color} dimColor={kind === "idle" || kind === "killed"}>
 				{` ${text}`}
 			</Text>
-		</Text>
+		</Box>
 	);
 }

@@ -753,9 +753,13 @@ export abstract class BaseAPIClient {
 		} finally {
 			if (reader) {
 				try {
-					await reader.cancel().catch(() => {});
+					await reader.cancel().catch((err) => {
+						debug.log("api", `Failed to cancel reader: ${err}`);
+					});
 					reader.releaseLock();
-				} catch {}
+				} catch (err) {
+					debug.log("api", `Failed to release reader lock: ${err}`);
+				}
 			}
 			this.abortController = null;
 		}

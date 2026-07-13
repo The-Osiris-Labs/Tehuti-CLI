@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "fs-extra";
 import type { SessionData } from "./manager.js";
+import { debug } from "../utils/debug.js";
 
 export interface SessionHealth {
 	status: "ok" | "warning" | "blocked";
@@ -50,7 +51,9 @@ function extractTranscriptPids(data: SessionData): number[] {
 				const parsed = JSON.parse(content) as { metadata?: { pid?: unknown } };
 				const pid = Number(parsed.metadata?.pid);
 				if (Number.isSafeInteger(pid) && pid > 0) pids.push(pid);
-			} catch {}
+			} catch (err) {
+				debug.log("session", "Failed to parse tool message for PID:", err);
+			}
 		}
 	}
 

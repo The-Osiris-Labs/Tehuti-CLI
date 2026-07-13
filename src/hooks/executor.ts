@@ -272,7 +272,9 @@ class HookExecutor {
 					} else {
 						proc.kill("SIGKILL");
 					}
-				} catch {}
+				} catch (err) {
+					debug.log("hooks", `Failed to kill process group ${proc.pid}: ${err}`);
+				}
 				resolve({ success: false, error: `Hook timed out after ${timeout}ms` });
 			}, timeout);
 		});

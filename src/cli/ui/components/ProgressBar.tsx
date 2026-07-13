@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useEffect, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 
@@ -28,6 +29,10 @@ export interface ProgressBarProps {
 	 * default gold.
 	 */
 	phase?: "running" | "success" | "error" | "warning";
+	/** Accessibility: reduce motion mode (default: false, respects env var) */
+	reduceMotion?: boolean;
+	/** Accessibility: custom label for screen readers */
+	ariaLabel?: string;
 }
 
 /**
@@ -43,6 +48,8 @@ export interface ProgressBarProps {
  *   - Phase coloring (success/error/warning).
  *   - Optional label + percent display above the bar.
  *   - Smooth numeric clamping.
+ *   - Accessibility: ARIA progressbar role with value/label
+ *   - Respects reduce motion preferences
  */
 export const ProgressBar = ({
 	value,
@@ -50,6 +57,8 @@ export const ProgressBar = ({
 	width = 40,
 	showPercent = true,
 	phase = "running",
+	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
+	ariaLabel,
 }: ProgressBarProps): React.ReactElement => {
 	const safeWidth = Math.max(8, Math.min(200, Math.round(width)));
 
@@ -81,13 +90,14 @@ export const ProgressBar = ({
 	const [frame, setFrame] = useState(0);
 
 	useEffect(() => {
-		if (!indeterminate) return;
+		if (!indeterminate || reduceMotion) return;
 		const id = setInterval(() => setFrame((f) => (f + 1) % totalCycle), 60);
 		return () => clearInterval(id);
-	}, [indeterminate, totalCycle]);
+	}, [indeterminate, totalCycle, reduceMotion]);
 
 	function renderIndeterminate(): React.ReactNode {
-		const pos = frame % totalCycle;
+		// Static position in reduce motion mode
+		const pos = reduceMotion ? Math.floor(totalCycle / 4) : frame % totalCycle;
 		const start = pos <= maxStep ? pos : totalCycle - pos;
 		const end = Math.min(safeWidth, start + segWidth);
 		const head = emptyChar.repeat(start);
@@ -121,9 +131,19 @@ export const ProgressBar = ({
 
 	const percentText = active ? `${Math.round(clamped)}%` : "…";
 
+	// Accessibility: build descriptive label
+	const accessibleLabel = ariaLabel || label || "Progress";
+	const accessibleValue = active ? `${Math.round(clamped)} percent` : "indeterminate";
+
 	return React.createElement(
 		Box,
-		{ flexDirection: "column", marginY: 0.5 },
+		{ 
+			flexDirection: "column", 
+			marginY: 0.5,
+			accessibilityLabel: `${accessibleLabel}: ${accessibleValue}`,
+			accessibilityRole: "progressbar",
+			accessibilityValue: active ? Math.round(clamped) : undefined,
+		},
 		(label || showPercent) &&
 			React.createElement(
 				Box,

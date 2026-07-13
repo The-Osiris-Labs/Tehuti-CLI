@@ -1,3 +1,4 @@
+import { debug } from "../utils/debug.js";
 export * from "./prompts.js";
 
 export const PERMISSION_RULES = {
@@ -138,13 +139,17 @@ export class PermissionManager {
 					this.rules = parsed;
 				}
 			}
-		} catch {}
+		} catch (err) {
+			debug.log("permissions", `Failed to load permission rules: ${err}`);
+		}
 	}
 
 	private saveRules(): void {
 		try {
 			process.env.TEHUTI_PERMISSION_RULES = JSON.stringify(this.rules);
-		} catch {}
+		} catch (err) {
+			debug.log("permissions", `Failed to save permission rules: ${err}`);
+		}
 	}
 
 	addRule(rule: Omit<PermissionRule, "id" | "createdAt">): PermissionRule {

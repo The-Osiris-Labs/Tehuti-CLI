@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { logger } from "../../utils/logger.js";
 import { agentEventBus } from "../events.js";
+import { debug } from "../../utils/debug.js";
 import db from "./db.js";
 
 // Type definitions
@@ -144,7 +145,9 @@ export function updateProjectProfile(
 					...existingHabits,
 					...newFormattingHabits,
 				};
-			} catch (_err) {}
+				} catch (_err) {
+				debug.log("memory", `Failed to parse existing formatting habits: ${_err}`);
+				}
 		}
 
 		let finalCommandPatterns = commandPatterns;
@@ -162,7 +165,9 @@ export function updateProjectProfile(
 						]),
 					),
 				};
-			} catch (_err) {}
+				} catch (_err) {
+				debug.log("memory", `Failed to parse existing command patterns: ${_err}`);
+				}
 		}
 
 		const stmt = db.prepare(`

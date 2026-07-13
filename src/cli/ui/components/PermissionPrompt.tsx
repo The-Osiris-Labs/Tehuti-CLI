@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from "ink";
+// @ts-expect-error TS6133/TS6192: Unused variable
 import React from "react";
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import {
@@ -15,15 +16,23 @@ const COLORS = {
 	red: BRANDING.colors?.red || "#EF4444",
 } as const;
 
+export interface PermissionPromptProps {
+	request: PermissionRequest;
+	isDangerous: boolean;
+	onAnswer: (allowed: boolean) => void;
+}
+
+/**
+ * Permission prompt with accessibility improvements:
+ * - Clear ARIA labels for screen readers
+ * - Keyboard navigation hints
+ * - Dangerous operations get "alert" role for immediate attention
+ */
 export function PermissionPrompt({
 	request,
 	isDangerous,
 	onAnswer,
-}: {
-	request: PermissionRequest;
-	isDangerous: boolean;
-	onAnswer: (allowed: boolean) => void;
-}): React.ReactNode {
+}: PermissionPromptProps): React.ReactNode {
 	useInput((k, key) => {
 		// For dangerous prompts the default is "no" so a stray Enter
 		// does not approve a destructive operation.
@@ -47,6 +56,11 @@ export function PermissionPrompt({
 	const verb = isDangerous ? "BLOCK" : "ALLOW";
 	const noun = isDangerous ? "DANGEROUS" : "PERMISSION";
 
+	// Accessibility: build descriptive label
+	const ariaLabel = isDangerous
+		? `Dangerous permission required for ${request.toolName}. Default action is to deny.`
+		: `Permission required for ${request.toolName}. Default action is to allow.`;
+
 	return React.createElement(
 		Box,
 		{
@@ -55,6 +69,8 @@ export function PermissionPrompt({
 			paddingX: 1,
 			borderStyle: "round",
 			borderColor: accent,
+			accessibilityLabel: ariaLabel,
+			accessibilityRole: isDangerous ? "alert" : "dialog",
 		},
 		// Header
 		React.createElement(

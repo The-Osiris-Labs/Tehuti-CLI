@@ -544,12 +544,21 @@ function loadHistory(): string[] {
 		if (fs.existsSync(tmpFile)) {
 			try {
 				fs.unlinkSync(tmpFile);
-			} catch {}
+			} catch (err) {
+				debug.log("chat", `Failed to cleanup temp history file: ${err}`);
+			}
 		}
 		if (fs.existsSync(HISTORY_PATH)) {
-			return JSON.parse(fs.readFileSync(HISTORY_PATH, "utf-8")) as string[];
+			try {
+				return JSON.parse(fs.readFileSync(HISTORY_PATH, "utf-8")) as string[];
+			} catch (err) {
+				debug.log("chat", `Failed to parse history file: ${err}`);
+				return [];
+			}
 		}
-	} catch {}
+	} catch (err) {
+		debug.log("chat", `Failed to load history: ${err}`);
+	}
 	return [];
 }
 
@@ -560,7 +569,9 @@ async function saveHistory(history: string[]): Promise<void> {
 		// which fsync's the temp file to disk before renaming. This ensures a SIGKILL
 		// between write and rename cannot leave the history file empty or corrupted.
 		await writeJsonAtomic(HISTORY_PATH, history.slice(0, 1000));
-	} catch {}
+	} catch (err) {
+		debug.log("chat", `Failed to save history: ${err}`);
+	}
 }
 
 // Initialize highlighter early
@@ -1905,7 +1916,9 @@ function ChatUI({
 									if (toolResultStr) {
 										try {
 											parsedResult = JSON.parse(toolResultStr);
-										} catch {}
+										} catch (err) {
+											debug.log("chat", `Failed to parse tool result JSON: ${err}`);
+										}
 									}
 
 									const toolData = {
