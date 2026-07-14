@@ -35,6 +35,8 @@ import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
 import { memoryTools } from "./tools/memory.js";
 import { networkTools } from "./tools/network.js";
+import { dapTools } from "./tools/dap.js";
+import { lspTools } from "./tools/lsp.js";
 import {
 	isPlanMode,
 	isToolAllowedInPlanMode,
@@ -68,6 +70,8 @@ registerTools([
 	...gitTools,
 	...skillsTools,
 	...semanticTools,
+	...lspTools,
+	...dapTools,
 	...kiloCodeTools,
 	...kilocodeAdvancedTools,
 	...collaborationTools,

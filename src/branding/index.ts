@@ -56,6 +56,22 @@ export const ASCII_ART = `
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
 `;
 
+export const GRADIENT_STOPS = {
+	tehu: ["#F5C518", "#FF6B35", "#D4AF37"] as const,
+	splash: ["#F5C518", "#E67D22", "#A08860"] as const,
+	header: ["#F5C518", "#D4AF37"] as const,
+	welcome: ["#D4AF37", "#FF6B35"] as const,
+} as const;
+
+export const SPLASH_ASCII = `
+    ╔══════════════════════════════════════╗
+    ║                                      ║
+    ║     𓆣  T E H U T I                  ║
+    ║     Scribe of Code Transformations   ║
+    ║                                      ║
+    ╚══════════════════════════════════════╝
+`;
+
 export const WELCOME_MESSAGE = `
   𓁹 Write • Edit • Transform
   

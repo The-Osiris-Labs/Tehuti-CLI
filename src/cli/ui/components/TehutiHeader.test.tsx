@@ -12,10 +12,10 @@ function TestHeader(props: TehutiHeaderProps) {
 }
 
 describe('TehutiHeader', () => {
-  it('renders in full mode by default', () => {
+  it('renders in full mode with enhanced splash', () => {
     const { lastFrame } = render(<TestHeader />);
     const output = lastFrame();
-    expect(output).toContain('T H O T H');
+    expect(output).toContain('Scribe of Code Transformations');
   });
 
   it('renders in compact mode', () => {
@@ -33,7 +33,7 @@ describe('TehutiHeader', () => {
   it('displays provider when provided', () => {
     const { lastFrame } = render(<TestHeader provider="openai" />);
     const output = lastFrame();
-    expect(output).toContain('API: openai');
+    expect(output).toContain('Provider: openai');
   });
 
   it('shows "Unknown" for model when not provided', () => {
@@ -45,7 +45,7 @@ describe('TehutiHeader', () => {
   it('shows "Unknown" for provider when not provided', () => {
     const { lastFrame } = render(<TestHeader />);
     const output = lastFrame();
-    expect(output).toContain('API: Unknown');
+    expect(output).toContain('Provider: Unknown');
   });
 
   it('displays streaming status', () => {
@@ -96,20 +96,20 @@ describe('TehutiHeader', () => {
     const { lastFrame } = render(<TestHeader />);
     const output = lastFrame();
     expect(output).toContain('/help');
-    expect(output).toContain('/clear');
+    expect(output).toContain('Ctrl+P palette');
     expect(output).toContain('/exit');
   });
 
   it('displays tagline in full mode', () => {
     const { lastFrame } = render(<TestHeader />);
     const output = lastFrame();
-    expect(output).toContain('T H O T H, T O N G U E O F R A');
+    expect(output).toContain('Scribe of Code Transformations');
   });
 
-  it('displays subtitle in full mode', () => {
+  it('displays status line in full mode', () => {
     const { lastFrame } = render(<TestHeader />);
     const output = lastFrame();
-    expect(output).toContain('Write • Edit • Transform');
+    expect(output).toContain('Idle');
   });
 
   it('handles all props together', () => {

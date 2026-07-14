@@ -1,5 +1,5 @@
 import { getProviderInfo } from "../config/providers.js";
-import type { ModelSelectionMode } from "../config/schema.js";
+import type { ModelSelectionMode, TehutiConfig } from "../config/schema.js";
 import type { AgentContext } from "./context.js";
 import { getTool } from "./tools/registry.js";
 
@@ -294,4 +294,57 @@ export function getCheaperAlternative(modelId: string): string | null {
 	}
 
 	return null;
+}
+/**
+ * Simple glob pattern matcher supporting `*`, `**`, and `?` wildcards.
+ * Converts a glob pattern to a regex and tests against the given path.
+ */
+function simpleGlobMatch(pattern: string, filePath: string): boolean {
+	// Normalize separators
+	const normalizedPattern = pattern.replace(/\\/g, "/");
+	const normalizedPath = filePath.replace(/\\/g, "/");
+
+	// Escape regex special chars except glob wildcards
+	let regexStr = "";
+	for (let i = 0; i < normalizedPattern.length; i++) {
+		const ch = normalizedPattern[i];
+		if (ch === "*" && normalizedPattern[i + 1] === "*" && normalizedPattern[i + 2] === "/") {
+			// **/ matches zero or more directory segments
+			regexStr += "(?:.+/)?";
+			i += 2;
+		} else if (ch === "*" && normalizedPattern[i + 1] === "*") {
+			// ** at end matches everything
+			regexStr += ".*";
+			i += 1;
+		} else if (ch === "*") {
+			regexStr += "[^/]*";
+		} else if (ch === "?") {
+			regexStr += "[^/]";
+		} else if (ch === "." || ch === "+" || ch === "^" || ch === "$" || ch === "(" || ch === ")" || ch === "[" || ch === "]" || ch === "{" || ch === "}" || ch === "|" || ch === "\\") {
+			regexStr += "\\" + ch;
+		} else {
+			regexStr += ch;
+		}
+	}
+
+	const re = new RegExp("^" + regexStr + "$");
+	return re.test(normalizedPath);
+}
+
+/**
+ * Resolve a model ID for a given file path based on path-scoped routing rules.
+ * Iterates through configured `pathModels` rules in order and returns the
+ * model of the first matching pattern. Falls back to the default model if no
+ * rule matches.
+ */
+export function getModelForPath(
+	filePath: string,
+	config: TehutiConfig,
+): { model: string; provider?: string } {
+	for (const rule of config.pathModels ?? []) {
+		if (simpleGlobMatch(rule.pattern, filePath)) {
+			return { model: rule.model, provider: rule.provider };
+		}
+	}
+	return { model: config.model };
 }

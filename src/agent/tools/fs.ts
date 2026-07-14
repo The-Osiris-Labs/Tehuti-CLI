@@ -567,8 +567,19 @@ async function writeFile(
 	}
 }
 
-function computeHashline(text: string): string {
+export function computeHashline(text: string): string {
 	return crypto.createHash("sha256").update(text, "utf-8").digest("hex").substring(0, 12);
+}
+
+/** Find a line index by its hashline. Returns 0-indexed line number or null. */
+export function findLineByHash(content: string, hash: string): number | null {
+	const lines = content.split("\n");
+	for (let i = 0; i < lines.length; i++) {
+		if (computeHashline(lines[i]) === hash) {
+			return i;
+		}
+	}
+	return null;
 }
 
 async function editFile(

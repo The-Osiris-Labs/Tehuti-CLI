@@ -725,6 +725,31 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 		})
 		.optional()
 		.describe("Overrides for model capabilities"),
+	pathModels: z
+		.array(
+			z.object({
+				pattern: z
+					.string()
+					.describe(
+						"Glob pattern for file paths (e.g., 'src/**/*.ts')",
+					),
+				model: z
+					.string()
+					.describe(
+						"Model ID to use for files matching this pattern",
+					),
+				provider: z
+					.string()
+					.optional()
+					.describe(
+						"Provider to use for this path pattern",
+					),
+			}),
+		)
+		.default([])
+		.describe(
+			"Path-scoped model routing rules for matching file paths to models",
+		),
 	streamRules: z.array(STREAM_RULE_SCHEMA).default([]).describe("Stream monitoring rules"),
 });
 
@@ -850,5 +875,6 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		supportsVision: true,
 		supportsTools: true,
 	},
+	pathModels: [],
 	streamRules: DEFAULT_STREAM_RULES,
 };
