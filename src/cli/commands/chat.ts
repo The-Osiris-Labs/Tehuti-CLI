@@ -2736,32 +2736,6 @@ function ChatUI({
 	const totalVisibleCount = visibleMessages.length;
 
 	// Handle keyboard input for search overlay
-	useInput(
-		(k, key) => {
-			if (!showSearch) return;
-
-			if (key.return) {
-				// Jump to next match — update matchIndex to cycle through matches
-				setSearchMatchIndex(
-					(prev) => (prev + 1) % Math.max(1, searchMatchCount),
-				);
-				return;
-			}
-
-			// Backspace
-			if (key.backspace || k === "\x7f" || k === "\b") {
-				setSearchQuery((q) => q.slice(0, -1));
-				return;
-			}
-
-			// Regular character input
-			if (k && !key.ctrl && !key.meta && k.length === 1 && k >= " ") {
-				setSearchQuery((q) => q + k);
-				return;
-			}
-		},
-		{ isActive: showSearch },
-	);
 
 	const scrollToBottom = useCallback(() => {
 		messagesEndRef.current = true;
@@ -2891,6 +2865,32 @@ function ChatUI({
 			setSearchMatchIndex(0);
 		},
 	});
+
+	// Search overlay keyboard handling — registers AFTER useChatInput so
+	// the main handler gets first dibs on Ctrl+F and Esc.
+	useInput(
+		(k, key) => {
+			if (!showSearch) return;
+			if (key.escape) {
+				setShowSearch(false);
+				setSearchQuery("");
+				return;
+			}
+			if (key.return) {
+				setSearchMatchIndex((p) => (p + 1) % Math.max(1, searchMatchCount));
+				return;
+			}
+			if (key.backspace || k === "\x7f" || k === "\b") {
+				setSearchQuery((q) => q.slice(0, -1));
+				return;
+			}
+			if (k && !key.ctrl && !key.meta && k.length === 1 && k >= " ") {
+				setSearchQuery((q) => q + k);
+				return;
+			}
+		},
+		{ isActive: showSearch },
+	);
 
 	useEffect(() => {
 		if (!loading && queuedMessages.length > 0) {

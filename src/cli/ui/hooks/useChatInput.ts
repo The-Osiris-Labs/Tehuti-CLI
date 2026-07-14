@@ -379,7 +379,7 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 
 			if (
-				
+				showSearchRef.current ||
 				showConfigEditorRef.current ||
 				showProfilerRef.current ||
 				pendingQuestionRef.current ||
