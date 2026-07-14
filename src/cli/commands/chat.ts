@@ -1123,6 +1123,10 @@ function ChatUI({
 	);
 	const advisoryIdRef = useRef(0);
 	const advisoryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+	const activeSkillsCount = useMemo(
+		() => getSkillsManager().getActiveSkills().length,
+		[],
+	);
 	// Snapshot of message count when the user last scrolled up. We diff
 	// against the current messages.length so the "N new" badge shows the
 	// count of message *arrivals*, not the total.
@@ -2728,6 +2732,7 @@ function ChatUI({
 		pendingQuestion,
 		queuedMessages,
 		setQueuedMessages,
+		onToggleDashboard: () => setShowDashboard((s) => !s),
 	});
 
 	useEffect(() => {
@@ -4097,6 +4102,7 @@ function ChatUI({
 								onModelClick: handleHeaderModelClick,
 								onConfigClick: handleHeaderConfigClick,
 								onCommandClick: handleHeaderCommandClick,
+								activeSkills: activeSkillsCount,
 							}),
 						React.createElement(
 							Text,
@@ -4168,6 +4174,7 @@ function ChatUI({
 										onModelClick: handleHeaderModelClick,
 										onConfigClick: handleHeaderConfigClick,
 										onCommandClick: handleHeaderCommandClick,
+										activeSkills: activeSkillsCount,
 									}),
 								),
 							...messageElements,

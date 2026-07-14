@@ -22,6 +22,7 @@ export interface TehutiHeaderProps {
 	onModelClick?: () => void;
 	onConfigClick?: () => void;
 	onCommandClick?: (cmd: string) => void;
+	activeSkills?: number;
 }
 
 function ClickableBadge({
@@ -65,6 +66,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 	onModelClick,
 	onConfigClick,
 	onCommandClick,
+	activeSkills,
 }: TehutiHeaderProps) {
 	const ascii = isAsciiMode();
 	const {
@@ -135,6 +137,17 @@ export const TehutiHeader = memo(function TehutiHeader({
 						<Box>
 							<Text color={SAND}>{ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} {sessionName}</Text>
 						</Box>
+					</>
+				)}
+				{activeSkills !== undefined && activeSkills > 0 && (
+					<>
+						<Text color={SAND} dimColor>
+							{" "}
+							│{" "}
+						</Text>
+						<Text color={SAND} dimColor>
+							🎴 +{activeSkills}
+						</Text>
 					</>
 				)}
 			</Box>
@@ -209,6 +222,13 @@ export const TehutiHeader = memo(function TehutiHeader({
 						Write • Edit • Transform
 					</Text>
 				</Box>
+				{activeSkills !== undefined && activeSkills > 0 && (
+					<Box marginTop={1}>
+						<Text color={SAND} dimColor>
+							🎴 +{activeSkills}
+						</Text>
+					</Box>
+				)}
 				<Box 
 					marginTop={1} 
 					flexDirection="row" 

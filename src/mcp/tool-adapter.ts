@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { z } from "zod";
 import { getToolCache } from "../agent/cache/tool-cache.js";
 import type {
@@ -9,41 +8,24 @@ import type {
 import type { StandardTool } from "../api/base-client.js";
 import type { MCPTool } from "./client.js";
 
-function safeNamePart(
+function sanitizeNamePart(
 	value: string,
 	fallback: string,
 	maxLength: number,
-	hashInput?: string,
-	isServer?: boolean,
 ): string {
 	let safe = value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
-
-	if (isServer) {
-		safe = safe.replace(/_/g, "-");
-	}
-
-	if (hashInput && (value !== safe || safe.length > maxLength)) {
-		const hash = crypto
-			.createHash("md5")
-			.update(hashInput)
-			.digest("hex")
-			.slice(0, 4);
-		const availableLength = Math.max(1, maxLength - 5);
-		safe = `${safe.slice(0, availableLength)}${isServer ? "-" : "_"}${hash}`;
-	} else if (safe.length > maxLength) {
-		safe = safe.slice(0, maxLength);
-	}
-
-	return safe || fallback;
+	if (!safe || safe.length === 0) return fallback;
+	if (safe.length > maxLength) safe = safe.slice(0, maxLength);
+	return safe;
 }
 
 export function createMCPToolName(
 	serverName: string,
 	toolName: string,
 ): string {
-	const safeServer = safeNamePart(serverName, "server", 15, serverName, true);
-	const safeTool = safeNamePart(toolName, "tool", 43, toolName, false);
-	return `mcp_${safeServer}_${safeTool}`;
+	const safeServer = sanitizeNamePart(serverName, "server", 30);
+	const safeTool = sanitizeNamePart(toolName, "tool", 60);
+	return `mcp_${safeServer}.${safeTool}`;
 }
 
 export function deepNormalizeSchema(schema: any, depth = 0): any {
@@ -295,15 +277,15 @@ export function parseMCPToolName(
 	if (!isMCPTool(fullName)) return null;
 
 	const rest = fullName.slice(4); // Remove "mcp_"
-	const underscoreIdx = rest.indexOf("_");
-	if (underscoreIdx === -1) return null;
+	const dotIdx = rest.indexOf(".");
+	if (dotIdx === -1) return null;
 
 	return {
-		serverName: rest.slice(0, underscoreIdx),
-		toolName: rest.slice(underscoreIdx + 1),
+		serverName: rest.slice(0, dotIdx),
+		toolName: rest.slice(dotIdx + 1),
 	};
 }
 
 export function isMCPTool(name: string): boolean {
-	return name.startsWith("mcp_") && name.indexOf("_", 4) !== -1;
+	return name.startsWith("mcp_") && name.indexOf(".", 4) !== -1;
 }

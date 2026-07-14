@@ -243,6 +243,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	useEffect(() => {
 		if (status === "pending") {
 			startTimeRef.current = Date.now();
+			if (!expanded) return;
 			const interval = setInterval(() => {
 				setDuration((Date.now() - startTimeRef.current) / 1000);
 			}, 100);
@@ -253,7 +254,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			const finalDuration = (Date.now() - startTimeRef.current) / 1000;
 			setDuration(finalDuration);
 		}
-	}, [status]);
+	}, [status, expanded]);
 
 	// ── File operation display ──
 	const cleanName = toolName.toLowerCase();

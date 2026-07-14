@@ -103,6 +103,7 @@ export const swarmTools: ToolDefinition[] = [
 		parameters: checkSubagentStatusSchema,
 		category: "development",
 		isReadonly: true,
+		requiresPermission: false,
 		execute: async (args: unknown) => {
 			const { id } = args as z.infer<typeof checkSubagentStatusSchema>;
 			const subagent = swarmManager.getSubagent(id);
@@ -156,6 +157,7 @@ export const swarmTools: ToolDefinition[] = [
 		parameters: awaitSubagentsSchema,
 		category: "development",
 		isReadonly: true,
+		requiresPermission: false,
 		execute: async (args: unknown) => {
 			const { ids, timeout_ms } = args as z.infer<typeof awaitSubagentsSchema>;
 			const views = await swarmManager.awaitSubagents(
@@ -204,6 +206,7 @@ export const swarmTools: ToolDefinition[] = [
 		parameters: listSubagentsSchema,
 		category: "development",
 		isReadonly: true,
+		requiresPermission: false,
 		execute: async (args: unknown) => {
 			const { include_terminal } = args as z.infer<typeof listSubagentsSchema>;
 			const all = swarmManager.listSubagents();
@@ -266,7 +269,8 @@ export const swarmTools: ToolDefinition[] = [
 		description: "Sends a message to a running subagent by its ID.",
 		parameters: sendMessageToSubagentSchema,
 		category: "development",
-		isReadonly: false,
+		isReadonly: true,
+		requiresPermission: false,
 		execute: async (args: unknown) => {
 			const { id, message } = args as z.infer<
 				typeof sendMessageToSubagentSchema

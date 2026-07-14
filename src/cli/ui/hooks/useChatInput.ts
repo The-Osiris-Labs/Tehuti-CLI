@@ -105,6 +105,7 @@ export interface UseChatInputProps {
 	showSessionList?: boolean;
 	queuedMessages: string[];
 	setQueuedMessages: React.Dispatch<React.SetStateAction<string[]>>;
+	onToggleDashboard?: () => void;
 }
 
 export function useChatInput(props: UseChatInputProps) {
@@ -738,6 +739,10 @@ export function useChatInput(props: UseChatInputProps) {
 			if (key.ctrl && k === "k") {
 				setInput(input.slice(0, cursorPos));
 				setCursorPos(cursorPos);
+				return;
+			}
+			if (key.ctrl && key.shift && k === "d") {
+				props.onToggleDashboard?.();
 				return;
 			}
 

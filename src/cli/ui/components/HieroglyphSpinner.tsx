@@ -18,14 +18,16 @@ export function HieroglyphSpinner({
 	color = BRANDING.colors.gold,
 	speedMs = 150,
 }: HieroglyphSpinnerProps) {
+	const reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1";
 	const [frame, setFrame] = useState(0);
 
 	useEffect(() => {
+		if (reduceMotion) return;
 		const interval = setInterval(() => {
 			setFrame((f) => (f + 1) % glyphs.length);
 		}, speedMs);
 		return () => clearInterval(interval);
-	}, [glyphs, speedMs]);
+	}, [glyphs, speedMs, reduceMotion]);
 
 	const currentGlyph = glyphs[frame] ?? (ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis);
 
