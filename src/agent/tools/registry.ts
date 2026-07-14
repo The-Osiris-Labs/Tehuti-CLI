@@ -2,6 +2,9 @@ import type { z } from "zod";
 import type { StandardTool } from "../../api/base-client.js";
 import type { AgentContext, DiffPreviewOptions } from "../../agent/types.js";
 import { debug } from "../../utils/debug.js";
+function hasSafeParse(obj: unknown): obj is { safeParse: (data: unknown) => unknown } {
+	return obj !== null && typeof obj === 'object' && 'safeParse' in obj && typeof (obj as { safeParse: unknown }).safeParse === 'function';
+}
 
 export interface ToolResult {
 	success: boolean;
@@ -89,7 +92,7 @@ export function validateJsonSchema(
 
 		// Check required fields
 		for (const reqKey of required) {
-			if (!(reqKey in data) || (data as any)[reqKey] === undefined) {
+			if (!(reqKey in data) || (data as Record<string, unknown>)[reqKey] === undefined) {
 				return {
 					success: false,
 					error: `Missing required property: ${reqKey}`,
@@ -274,7 +277,7 @@ export class ToolRegistryManager {
 		return this.getAllTools().map((tool) => {
 			const schema =
 				tool.jsonSchema ??
-				(typeof (tool.parameters as any).safeParse === "function"
+				(hasSafeParse(tool.parameters)
 					? zodToJsonSchema(tool.parameters as z.ZodType<unknown>)
 					: (tool.parameters as Record<string, unknown>));
 			return {
@@ -307,7 +310,7 @@ export class ToolRegistryManager {
 
 		try {
 			let validatedArgs: unknown;
-			if (typeof (tool.parameters as any).safeParse === "function") {
+			if (hasSafeParse(tool.parameters)) {
 				const parsed = (tool.parameters as z.ZodType<unknown>).safeParse(args);
 
 				if (!parsed.success) {

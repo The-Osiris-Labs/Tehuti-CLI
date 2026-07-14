@@ -8,6 +8,7 @@ import fs from "fs-extra";
 import sharp from "sharp";
 import { z } from "zod";
 import { formatDiffStats, showDiffPreview } from "../../utils/diff-preview.js";
+import { metrics } from "../../utils/metrics.js";
 
 const execAsync = promisify(exec);
 
@@ -324,6 +325,8 @@ async function readFile(
 			error: `Security error: ${securityCheck.reason}`,
 		};
 	}
+	metrics.counter('fs.read');
+	const startTime = Date.now();
 
 	try {
 		const symlinkCheck = await checkSymlinkSafety(resolvedPath, ctx.cwd);
@@ -363,6 +366,8 @@ async function readFile(
 
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
+		metrics.histogram('fs.read.duration', Date.now() - startTime);
+		metrics.histogram('fs.read.size', stats.size);
 		const fileHash = crypto
 			.createHash("md5")
 			.update(content)
@@ -402,6 +407,21 @@ async function readFile(
 			},
 		};
 	} catch (error) {
+		const err = error instanceof Error ? error as NodeJS.ErrnoException : null;
+		if (err?.code === 'ENOENT') {
+			return {
+				success: false,
+				output: "",
+				error: `File not found: ${resolvedPath}`,
+			};
+		}
+		if (err?.code === 'EACCES') {
+			return {
+				success: false,
+				output: "",
+				error: `Permission denied: ${resolvedPath}`,
+			};
+		}
 		return {
 			success: false,
 			output: "",
@@ -454,6 +474,8 @@ async function writeFile(
 			error: `ACI Linter failed (Syntax Error):\n${linterResult.error}\n\nWrite was NOT applied. Please self-correct.`,
 		};
 	}
+	metrics.counter('fs.write');
+	const startTime = Date.now();
 
 	try {
 		const fileExists = await fs.pathExists(resolvedPath);
@@ -568,6 +590,9 @@ async function writeFile(
 		const statsNote = ctx.diffPreview?.showPreview
 			? ` (${formatDiffStats(fileExists ? await fs.readFile(resolvedPath, "utf-8") : args.content)})`
 			: "";
+		metrics.histogram('fs.write.duration', Date.now() - startTime);
+		metrics.histogram('fs.write.size', contentBytes);
+
 
 		return {
 			success: true,

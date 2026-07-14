@@ -57,9 +57,10 @@ const EXTRA_PREFETCH_RULES: Record<string, PrefetchRule["nextTools"]> = {
 	],
 };
 
-const DEFAULT_MAX_PREFETCH_QUEUE = 10;
-const DEFAULT_PREFETCH_TIMEOUT_MS = 5000;
-
+const MAX_PREFETCH_QUEUE = 10;
+const PREFETCH_TIMEOUT_MS = 5000;
+/** Maximum number of recent tool-call patterns to retain for prediction */
+const MAX_RECENT_PATTERNS = 50;
 export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
 	private abortControllers = new Map<string, AbortController>();
@@ -69,7 +70,6 @@ export class Prefetcher {
 		args: unknown;
 		timestamp: number;
 	}> = [];
-	private readonly maxRecentPatterns = 50;
 
 	setEnabled(enabled: boolean): void {
 		this.enabled = enabled;
@@ -87,7 +87,7 @@ export class Prefetcher {
 		args: unknown,
 		ctx: ToolContext,
 		key: string,
-		timeoutMs: number = DEFAULT_PREFETCH_TIMEOUT_MS,
+		timeoutMs: number = PREFETCH_TIMEOUT_MS,
 	): void {
 		debug.log("prefetch", `Queueing prefetch for ${toolName}`, args);
 		const controller = new AbortController();
@@ -256,7 +256,7 @@ export class Prefetcher {
 			timestamp: Date.now(),
 		});
 
-		if (this.recentPatterns.length > this.maxRecentPatterns) {
+		if (this.recentPatterns.length > MAX_RECENT_PATTERNS) {
 			this.recentPatterns.shift();
 		}
 	}
@@ -308,8 +308,8 @@ export class Prefetcher {
 		this.recordPattern(toolName, args);
 
 		const perfConfig = extractPerfConfig(ctx.agentContext);
-		const maxQueueSize = perfConfig?.prefetchQueueSize ?? DEFAULT_MAX_PREFETCH_QUEUE;
-		const prefetchTimeout = perfConfig?.prefetchTimeoutMs ?? DEFAULT_PREFETCH_TIMEOUT_MS;
+		const maxQueueSize = perfConfig?.prefetchQueueSize ?? MAX_PREFETCH_QUEUE;
+		const prefetchTimeout = perfConfig?.prefetchTimeoutMs ?? PREFETCH_TIMEOUT_MS;
 
 		if (this.pending.size >= maxQueueSize) {
 			debug.log("prefetch", `Prefetch queue full (size=${this.pending.size})`);

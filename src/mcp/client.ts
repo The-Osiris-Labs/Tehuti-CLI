@@ -695,9 +695,9 @@ export class MCPClientManager {
 			// Automatic reconnection with exponential backoff
 			if (info.reconnectAttempts < (config.reconnect?.maxAttempts ?? 3)) {
 				info.reconnectAttempts++;
-				const delay = 1000 * info.reconnectAttempts;
-				log.info(`[${name}] Scheduling reconnect attempt ${info.reconnectAttempts} in ${delay}ms`);
-				setTimeout(() => this.connectServer(name, config), delay);
+				const backoffMs = Math.min(1000 * Math.pow(2, info.reconnectAttempts), 30000);
+				log.info(`[${name}] Scheduling reconnect attempt ${info.reconnectAttempts} in ${backoffMs}ms`);
+				setTimeout(() => this.connectServer(name, config), backoffMs);
 			}
 			throw createMCPError(
 				`Failed to connect to MCP server "${name}": ${message}`,

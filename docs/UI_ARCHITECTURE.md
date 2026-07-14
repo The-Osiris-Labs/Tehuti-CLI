@@ -1367,3 +1367,379 @@ graph TD
 3. Add the slash variant (e.g., `/foo`) to the `slashCommands` array in
    `buildHelpText()` (chat.ts, ~line 342)
 4. Set the `category` field for palette ordering
+---
+
+## Development Guide
+
+### How to Add New Tools
+
+Tools are the primary extension point for agent capabilities. Each tool is a
+plain object conforming to `ToolDefinition` in `src/agent/tools/registry.ts`.
+
+**Step-by-step:**
+
+1. **Create the tool file** in `src/agent/tools/` — one file per logical tool
+   (e.g., `my-tool.ts`). Use the `createTool()` factory for type safety:
+
+   ```typescript
+   import { z } from "zod";
+   import { createTool, type ToolResult } from "./registry.js";
+
+   export const myTool = createTool({
+     name: "my_tool",
+     description: "Does something useful",
+     category: "system",
+     isReadonly: true,
+     parameters: z.object({
+       input: z.string().describe("The input to process"),
+     }),
+     execute: async (args, ctx) => {
+       // args is typed as { input: string }
+       // ctx.cwd, ctx.env, ctx.timeout, ctx.signal are available
+       return { content: [{ type: "text", text: "result" }] };
+     },
+   });
+   ```
+
+2. **Register the tool** in the appropriate index file (e.g.,
+   `src/agent/tools/system.ts`) using `registerTool(myTool)` or include it
+   in the `registerTools([...])` batch call.
+
+3. **Key `ToolDefinition` fields:**
+
+   | Field | Purpose |
+   |-------|---------|
+   | `name` | Unique snake_case identifier sent to the model |
+   | `description` | Shown to the LLM in the tool schema — write for the model, not the developer |
+   | `parameters` | Zod schema or raw JSON Schema object |
+   | `category` | One of `fs`, `bash`, `web`, `mcp`, `system`, `git`, `search`, `development`, `plugin` |
+   | `requiresPermission` | `true` for destructive actions (file writes, shell, git push) |
+   | `isReadonly` | `true` for pure reads — enables prefetching and parallel execution |
+   | `intent` | `"read-only"`, `"destructive"`, or `"interactive"` |
+   | `estimatedDuration` | Milliseconds — used for UI loading feedback |
+   | `modifiesFs` | `true` when the tool writes to disk |
+   | `requiresNetwork` | `true` for HTTP/WS tools |
+   | `costTier` | `"free"`, `"low"`, `"medium"`, `"high"` — budget tracking |
+   | `prefetchRules` | Array of `{ tool, argMapper, condition?, priority? }` for speculative prefetching |
+   | `onRegister` / `onUnregister` | Lifecycle hooks (async OK) |
+
+4. **Write a test** in `src/agent/tools/<name>.test.ts`. The test should
+   exercise the `execute()` function directly, mocking `ctx` with a minimal
+   `{ cwd, workingDir, env, timeout }` object. Verify both success and
+   error paths.
+
+**The `ToolContext` object** passed to every executor:
+
+```typescript
+interface ToolContext {
+  cwd: string;              // Current working directory
+  workingDir: string;       // Alias for cwd
+  env: Record<string, string>;
+  timeout: number;          // Execution timeout in ms
+  signal?: AbortSignal;     // Abort for cancellation
+  cache?: unknown;          // Shared cache within a run
+  readFilesThisSession?: Set<string>;
+  agentContext?: AgentContext;
+}
+```
+
+---
+
+### How to Add New Commands
+
+Slash commands appear in the CommandPalette (Ctrl+P) and as `/name` in
+the chat input.
+
+1. **Define the command** in `createCommands()` inside
+   `src/cli/ui/components/CommandPalette.tsx`:
+
+   ```typescript
+   {
+     id: "my-command",
+     label: "My Command",
+     description: "Does something useful",
+     usage: "/my-command [args]",
+     shortcut: "Ctrl+M",        // optional keyboard shortcut
+     aliases: ["mc"],            // optional shorter aliases
+     category: "session",        // session | model | help | recent | submenu
+     action: async () => { /* handler */ },
+   }
+   ```
+
+2. **Handle the action** in `handleCommandPaletteSelect()` in `chat.ts`.
+   This function receives the selected `CommandItem` and dispatches based
+   on `cmd.id`.
+
+3. **Register the slash variant** in `buildHelpText()` (chat.ts, ~line 342)
+   by adding it to the `slashCommands` array so it appears in `/help`.
+
+4. **Set the `category` field** for palette ordering. Categories control
+   sort order: `session` commands appear first, then `model`, `help`, and
+   `recent`.
+
+---
+
+### How to Add New UI Components
+
+UI components live in `src/cli/ui/components/` and are exported from the
+barrel `index.ts`.
+
+1. **Create the component file** — PascalCase, `.tsx` extension:
+
+   ```typescript
+   import React from "react";
+   import { Box, Text } from "ink";
+   import { BRANDING } from "../../../branding/index.js";
+
+   export interface MyComponentProps {
+     title: string;
+     width: number;
+   }
+
+   export function MyComponent({ title, width }: MyComponentProps) {
+     return (
+       <Box flexDirection="column" width={width}>
+         <Text color={BRANDING.colors.primary} bold>{title}</Text>
+       </Box>
+     );
+   }
+   ```
+
+2. **Follow the color system.** Use `BRANDING.colors` and `ROLE_COLORS`
+   from `src/branding/index.ts` — never hardcode hex values or raw chalk
+   calls. This ensures theme consistency.
+
+3. **Add to the barrel export** in `src/cli/ui/components/index.ts`.
+
+4. **Mount in the render tree** in `chat.ts`:
+   - Inline components go in the `ChatUI` Box children.
+   - Overlay components are gated by a `show*` boolean from `useChatState`
+     and rendered conditionally.
+
+5. **Add keyboard handling** via `useChatInput` (in
+   `src/cli/ui/hooks/useChatInput.ts`) or Ink's `useInput` directly.
+   Mouse handling uses `@ink-tools/ink-mouse`.
+
+6. **Write a test** using the Ink testing library — see existing
+   `*.test.ts(x)` files in `src/cli/ui/components/` for patterns.
+
+**Available hooks for components:**
+
+| Hook | File | Purpose |
+|------|------|---------|
+| `useChatInput` | `hooks/useChatInput.ts` | Keyboard/mouse input, cursor, history, vim bindings |
+| `useChatViewport` | `hooks/useChatViewport.ts` | Scroll mechanics, tail following, page/line navigation |
+| `useVimInput` | (in components) | Vim-style j/k/d/r navigation for lists |
+| `useVirtualScroll` | (in components) | Windowed rendering for long lists |
+
+---
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Blank screen / no output | Terminal doesn't support Unicode or truecolor | Set `TERM=xterm-256color` or use a modern terminal (iTerm2, Ghostty, Kitty) |
+| Garbled characters | Font missing glyphs for box-drawing or emoji | Switch to a Nerd Font or a font with full Unicode coverage |
+| Input not responding | Stuck on a permission prompt or pending tool | Check the status bar — look for `PermissionPrompt` or `QuestionPrompt` overlays |
+| "Model not found" error | Config references a deleted or renamed model | Run `tehuti config` and select a valid model, or set `model: "auto"` |
+| API key rejected | Expired key or wrong provider | Run `tehuti doctor` — it validates API keys across all configured providers |
+ | Session corrupted | Crash during auto-save | Sessions are at `~/.tehuti/sessions/`. Delete the corrupt `.json` file or use `tehuti session list` to switch |
+| Tool execution timeout | Default timeout too short for long-running commands | Increase `timeout` in tool config or use `start_background` for long shells |
+| MCP server not connecting | Server binary not found or port conflict | Check `tehuti doctor` MCP section; verify the server command in `mcpServers` config |
+| Out of context window | Conversation too long | Automatic compression triggers at 85% (`contextCompressionThreshold`). Manual fix: start a new session or reduce context |
+| Memory leak / high RAM | Large messages or many open sessions | Use `tehuti session prune` to clean old sessions; the trace ring buffer is capped at 10,000 events |
+
+### Debug Mode
+
+Enable verbose debug logging by setting the environment variable:
+
+```bash
+TEHUTI_DEBUG=true tehuti chat
+```
+
+Debug output is formatted as `[HH:MM:SS.mmm] [tehuti:<category>] <message>` and
+covers these categories (from `src/utils/debug.ts`):
+
+| Category | What It Logs |
+|----------|-------------|
+| `agent` | Agent loop decisions, model routing |
+| `tools` | Tool dispatch, execution, results |
+| `mcp` | MCP server connections, tool discovery |
+| `config` | Config loading, validation, migration |
+| `api` | HTTP requests, responses, streaming events |
+| `permissions` | Permission prompt triggers, decisions |
+| `stream` / `streaming` | SSE/streaming connection lifecycle |
+| `context` | Context window usage, compression events |
+| `session` | Session create, save, load, delete |
+| `memory` | Memory read, write, search, consolidation |
+| `daemon` | Daemon server start, socket connections |
+| `plugins` | Plugin loading, registration |
+| `prefetch` | Speculative tool prefetch predictions |
+| `self-healing` | Self-healing retry and recovery events |
+
+You can also use the `debug.category("tools")` helper in code for scoped
+logging that only fires when debug mode is enabled.
+
+### Structured Logging
+
+For application-level logging outside debug mode, use `createLogger()` from
+`src/utils/structured-logger.ts`:
+
+```typescript
+import { createLogger } from "../utils/structured-logger.js";
+
+const log = createLogger("my-component");
+log.info("Operation completed", { duration: 42 });
+log.warn("Retry needed", { attempt: 3 });
+log.error("Unexpected failure", error);
+```
+
+Structured logs are stored in-memory (capped at 1,000 entries) and can be
+queried via `log.getEntries("error")`. They also forward to the debug
+system when `TEHUTI_DEBUG=true`.
+
+### Trace System
+
+The trace system (`src/utils/trace.ts`) provides per-second event tracking
+for the entire application. Events are written to a JSONL file at
+`~/.tehuti/trace.jsonl` (capped at 10 MiB) and kept in a 10,000-event
+ring buffer in memory.
+
+Trace events cover: model requests/responses, tool dispatches, file I/O,
+shell execution, network calls, subagent lifecycle, session operations,
+memory operations, cache hits/misses, and user inputs.
+
+**Sensitive fields** (API keys, tokens) are automatically redacted in trace
+output.
+
+### Diagnostic Checks
+
+Run `tehuti doctor` to validate the full runtime environment:
+
+```bash
+tehuti doctor          # Basic checks
+tehuti doctor --network  # Include network connectivity tests
+```
+
+Checks include: Node.js version, API key validity, MCP server connectivity,
+session directory integrity, memory database, daemon socket, skill
+registry, tool count, and model availability.
+
+### Log File Locations
+
+| Log | Path | Format |
+|-----|------|--------|
+| Trace events | `~/.tehuti/trace.jsonl` | JSONL (one JSON object per line) |
+| Debug output | stderr (terminal) | Timestamped text |
+| Session data | `~/.tehuti/sessions/*.json` | JSON |
+| Memory DB | `~/.config/tehuti/memory/graph.db` | SQLite |
+| MCP config | `~/.tehuti/config.json` (inside `mcpServers`) | JSON |
+
+---
+
+## Performance Guide
+
+### How to Measure Performance
+
+Tehuti ships with built-in observability for measuring performance:
+
+1. **Metrics Collector** (`src/utils/metrics.ts`): A singleton
+   `MetricsCollector` supports counters, gauges, and histograms with label
+   support and automatic p50/p99 aggregation:
+
+   ```typescript
+   import { metrics } from "../utils/metrics.js";
+
+   metrics.counter("tool.execute", { name: "read" });
+   metrics.histogram("tool.duration", elapsedMs, { name: "read" });
+   metrics.gauge("context.usage", usagePercent);
+
+   // Query later:
+   metrics.getCounter("tool.execute");     // total count
+   metrics.getHistogram("tool.duration");  // { avg, p50, p99 }
+   metrics.export();                       // all gauge values
+   ```
+
+2. **Trace Timing** (`src/utils/trace.ts`): Use `traceTimer()` for
+   automatic duration measurement on any trace event:
+
+   ```typescript
+   import { traceTimer } from "../utils/trace.js";
+
+   const end = traceTimer("tool.start", "reading file", { tool: "read" });
+   // ... do work ...
+   end({ result: "ok" });
+   // Automatically records durationMs in the trace event
+   ```
+
+3. **Built-in Profiler**: Open the Profiler overlay in the TUI (see the
+   `showProfiler` state) to view real-time performance data including
+   render times, tool execution times, and API latency.
+
+4. **Debug Timing**: When `TEHUTI_DEBUG=true`, use `debug.time(label)` /
+   `debug.timeEnd(label)` for quick wall-clock measurements in any module.
+
+### Common Bottlenecks
+
+| Bottleneck | Symptom | Where to Look |
+|-----------|---------|---------------|
+ | Large message rendering | UI lag when scrolling long conversations | `messageElements` useMemo in `ChatUI`; check `computeMessageLines()` in `src/terminal/output.ts` |
+| Tool execution blocking | UI freezes during tool runs | Tools run in the agent loop (`src/agent/loop/runner.ts`). Check `parallel-executor.ts` for concurrency limits |
+| Context compression | Pause before model response | `src/agent/loop/compression.ts` — triggers at 85% context usage |
+| Session save latency | Brief freeze during auto-save | `src/session/manager.ts` — auto-save interval defaults to 300s |
+| MCP server startup | Delay on first tool call from an MCP server | `src/mcp/client.ts` — server discovery and handshake |
+| LRU cache thrashing | Repeated cache misses for the same data | `src/agent/cache/lru-cache.ts` — check eviction rate vs. cache size |
+| Prefetch misses | Tools not ready when the model calls them | `src/agent/prefetcher.ts` — check `prefetchRules` on tool definitions |
+| Streaming reconnection | Delayed token display after network blip | `src/api/streaming.ts` — SSE reconnect logic |
+
+### Optimization Strategies
+
+The `performance` section of `~/.tehuti/config.json` controls runtime
+tuning (schema: `PERFORMANCE_CONFIG_SCHEMA` in `src/config/schema.ts`):
+
+| Setting | Default | Range | Purpose |
+|---------|---------|-------|---------|
+| `maxParallelTools` | `5` | 1–20 | Max concurrent tool executions. Increase for I/O-heavy workloads; decrease to reduce memory pressure |
+| `prefetchQueueSize` | `10` | 1–50 | Speculative tool prefetch queue depth. Higher values trade memory for latency reduction |
+| `prefetchTimeoutMs` | `5000` | 1000–30000 | How long to wait for prefetch results before falling back |
+| `contextCompressionThreshold` | `0.85` | 0.5–0.95 | When to trigger context compression (85% of window) |
+| `contextCompressionTarget` | `0.80` | 0.5–0.95 | Target after compression (reduces by ~5% each pass) |
+| `autoSaveIntervalMs` | `300000` | 30000–3600000 | Session auto-save interval (5 min default) |
+| `searchCacheTTL` | `60000` | 10000–600000 | Memory search result cache lifetime |
+| `searchCacheMaxSize` | `500` | 100–5000 | Max cached search results |
+
+**General optimization strategies:**
+
+1. **Leverage prefetching.** Define `prefetchRules` on your tools so the
+   runtime speculatively executes likely-next tools while the model is
+   still generating. This is the single largest latency win for interactive
+   sessions.
+
+2. **Mark tools correctly.** Setting `isReadonly: true` enables parallel
+   execution and prefetching. Only set `requiresPermission: true` for
+   genuinely destructive operations — unnecessary permission prompts
+   degrade the user experience and slow down the loop.
+
+3. **Tune parallelism.** The `parallel-executor.ts` module respects
+   `maxParallelTools`. For sessions with many independent file reads or
+   searches, increase this to 8–10. For sessions focused on large file
+   writes, keep it at 3–5.
+
+4. **Use the LRU cache.** The tool result cache (`src/agent/cache/lru-cache.ts`)
+   deduplicates repeated identical calls within a session. Tools that
+   return `isCached: true` in their result skip redundant execution.
+
+5. **Manage context proactively.** Monitor the context usage bar in the
+   StatusBar. When it approaches 85%, compression kicks in — but you can
+   reduce cost by starting new sessions for unrelated tasks rather than
+   accumulating context across topics.
+
+6. **Session pruning.** Old sessions accumulate on disk. Run
+   `tehuti session prune` periodically, or reduce
+   `autoSaveIntervalMs` if sessions are large.
+
+7. **Trace-guided profiling.** Enable tracing and analyze the JSONL log to
+   find the slowest operations in your specific workflow. Focus on the
+   highest-p99 histograms — those are what users feel.

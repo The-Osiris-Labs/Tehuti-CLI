@@ -21,8 +21,8 @@ export function createStreamingState(modelId?: string): StreamingState {
 	if (modelId && isReasoningModel(modelId)) {
 		debug.log("streaming", `Reasoning model detected: ${modelId}`);
 	}
-	const contentChunks: string[] = [];
-	const thinkingChunks: string[] = [];
+	const contentChunks: string[] = new Array(1000);
+	const thinkingChunks: string[] = new Array(1000);
 	return {
 		get content() { return contentChunks.join(""); },
 		set content(v) { contentChunks.length = 0; contentChunks.push(v); },

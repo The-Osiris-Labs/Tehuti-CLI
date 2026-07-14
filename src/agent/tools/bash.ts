@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
 import { debug } from "../../utils/debug.js";
+import { metrics } from "../../utils/metrics.js";
 import { type ToolContext, type ToolDefinition, type ToolResult } from "./registry.js";
 
 // Environment variables that must never be forwarded to spawned child processes
@@ -195,6 +196,12 @@ function isDangerousCommand(command: string): {
 		// These enable arbitrary code injection and obfuscation
 		{ regex: /\$\(/, reason: "Command substitution ($(...)) detected" },
 		{ regex: /`[^`]+`/, reason: "Backtick command substitution detected" },
+		// Arithmetic command injection
+		{ regex: /\$\(\(/, reason: "Arithmetic command injection ($(()) detected" },
+		// Nested command substitution (double dollar-paren)
+		{ regex: /\$\([^)]*\$\(/, reason: "Nested command substitution detected" },
+		// Backtick within command substitution
+		{ regex: /\$\(.*`.*\)/, reason: "Mixed command substitution syntax detected" },
 
 		// Privilege escalation
 		{ regex: /\bsudo\b/i, reason: "Privilege escalation via sudo detected" },
@@ -646,6 +653,9 @@ async function executeBash(
 			error: "Unable to resolve working directory",
 		};
 	}
+	metrics.counter('bash.execute');
+	const startTime = Date.now();
+
 	const timeoutMs = Math.max(1000, timeout ?? ctx.timeout ?? DEFAULT_TIMEOUT_MS);
 
 	debug.log(
@@ -790,6 +800,8 @@ async function executeBash(
 				output += (output ? "\n" : "") + stderr;
 			}
 			output = output || "(no output)";
+			metrics.histogram('bash.execute.duration', Date.now() - startTime);
+
 
 			resolve({
 				success: code === 0,

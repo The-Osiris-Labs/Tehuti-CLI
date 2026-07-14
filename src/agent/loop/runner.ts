@@ -41,6 +41,14 @@ import { withRetry } from "./retry.js";
 import { SelfHealingManager } from "./self-healing.js";
 import { processToolCalls } from "./tool-processing.js";
 const log = createLogger("agent-loop");
+/** Maximum number of iterations in the agent loop */
+const MAX_ITERATIONS = 150;
+
+/** Timeout per iteration before it is skipped (2 minutes) */
+const ITERATION_TIMEOUT_MS = 120_000;
+
+/** Maximum retry attempts for transient API errors */
+const MAX_RETRY_ATTEMPTS = 3;
 /**
  * Structured error suggestions keyed by Node.js error code or API error pattern.
  * Each entry maps to actionable suggestions shown to the user.
@@ -233,7 +241,7 @@ export async function runAgentLoop(
 		const tools = getToolDefinitions() as StandardTool[];
 
 		let iteration = 0;
-		const maxIterations = ctx.config.maxIterations;
+		const maxIterations = ctx.config.maxIterations ?? MAX_ITERATIONS;
 		let totalContent = "";
 		let totalToolCalls = 0;
 		const selfHealer = new SelfHealingManager(ctx.cwd, ctx.config);
@@ -256,8 +264,8 @@ export async function runAgentLoop(
 			// Use manual AbortController + setTimeout to avoid AbortSignal.timeout timer leak
 			const iterationController = new AbortController();
 			const timer = setTimeout(() => {
-				iterationController.abort(new DOMException('Iteration timeout after 120s', 'TimeoutError'));
-			}, 120_000);
+				iterationController.abort(new DOMException(`Iteration timeout after ${ITERATION_TIMEOUT_MS / 1000}s`, 'TimeoutError'));
+			}, ITERATION_TIMEOUT_MS);
 			iterationController.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
 			const iterationSignal = iterationController.signal;
 			const combinedSignal = signal
@@ -471,7 +479,7 @@ export async function runAgentLoop(
 					},
 					{
 						signal: combinedSignal,
-						maxRetries: 3,
+						maxRetries: MAX_RETRY_ATTEMPTS,
 						initialDelayMs: 2000,
 						onRetry: (attempt, maxRetries, _error) => {
 							onProgress?.(

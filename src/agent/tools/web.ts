@@ -108,6 +108,21 @@ const PRIVATE_IP_RANGES = [
 	/^localhost$/i,
 	/^metadata\.google\.internal$/i,
 	/^metadata\.azure$/i,
+	// Carrier-grade NAT (RFC 6598)
+	/^100\.(6[4-9]|[7-9]\d|1[0-2][0-7])\./,
+	// Multicast (RFC 5771)
+	/^22[4-9]\./,
+	/^23[0-9]\./,
+	/^24[0-9]\./,
+	/^25[0-5]\./,
+	// Documentation/test ranges (RFC 5737)
+	/^192\.0\.2\./,
+	/^198\.51\.100\./,
+	/^203\.0\.113\./,
+	// Benchmarking (RFC 2544)
+	/^198\.(1[89])\./,
+	// Broadcast
+	/^255\.255\.255\.255$/,
 ];
 
 const CLOUD_METADATA_IPS = ["169.254.169.254", "100.100.100.200"];

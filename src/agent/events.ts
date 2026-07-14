@@ -1,43 +1,7 @@
-import { EventEmitter } from "node:events";
+import { TypedEventEmitter, type AgentEvents } from "./event-types.js";
 
-export interface AgentEvents {
-	wakeup: (message: string) => void;
-	error: (error: Error) => void;
-	memoryEvent: (data: { type: string; message: string }) => void;
-	streamEvent: (data: any) => void;
-}
-
-export class TypedEventEmitter<TEvents extends Record<string, any>> {
-	private emitter = new EventEmitter();
-
-	public emit<TEventName extends keyof TEvents & string>(
-		eventName: TEventName,
-		...eventArg: Parameters<TEvents[TEventName]>
-	) {
-		this.emitter.emit(eventName, ...(eventArg as unknown as any[]));
-	}
-
-	public on<TEventName extends keyof TEvents & string>(
-		eventName: TEventName,
-		handler: TEvents[TEventName],
-	) {
-		this.emitter.on(eventName, handler as any);
-	}
-
-	public once<TEventName extends keyof TEvents & string>(
-		eventName: TEventName,
-		handler: TEvents[TEventName],
-	) {
-		this.emitter.once(eventName, handler as any);
-	}
-
-	public off<TEventName extends keyof TEvents & string>(
-		eventName: TEventName,
-		handler: TEvents[TEventName],
-	) {
-		this.emitter.off(eventName, handler as any);
-	}
-}
+export type { AgentEvents } from "./event-types.js";
+export { TypedEventEmitter } from "./event-types.js";
 
 export const agentEventBus = new TypedEventEmitter<AgentEvents>();
 

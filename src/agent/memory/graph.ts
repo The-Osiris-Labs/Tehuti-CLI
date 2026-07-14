@@ -121,6 +121,9 @@ export async function searchGraph(
 	maxDepth: number = 2,
 	maxAgeDays: number = 30,
 ): Promise<Node[]> {
+	if (!query || query.trim().length === 0) {
+		return [];
+	}
 	const lowerQuery = query.toLowerCase();
 	const resolvedCwd = cwd ? path.resolve(cwd) : undefined;
 

@@ -2,6 +2,9 @@ import { z } from "zod";
 import { CustomProviderClient } from "../../api/custom-provider.js";
 import type { AgentContext } from "../context.js";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
+function isAgentContext(ctx: unknown): ctx is AgentContext {
+	return ctx !== null && typeof ctx === 'object' && 'config' in ctx;
+}
 
 /**
  * @status implemented — configures a real OpenAI-compatible custom provider
@@ -40,7 +43,10 @@ export const configureCustomProviderTool = createTool({
 			headers?: Record<string, string>;
 		};
 
-		const agentCtx = ctx as unknown as AgentContext;
+		if (!isAgentContext(ctx)) {
+			return { success: false, output: "", error: "Internal error: invalid context" };
+		}
+		const agentCtx = ctx;
 
 		try {
 			agentCtx.config.provider = "custom";
@@ -89,7 +95,10 @@ export const setCustomHeaderTool = createTool({
 	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
 		const { key, value } = args as { key: string; value: string };
 
-		const agentCtx = ctx as unknown as AgentContext;
+		if (!isAgentContext(ctx)) {
+			return { success: false, output: "", error: "Internal error: invalid context" };
+		}
+		const agentCtx = ctx;
 
 		try {
 			if (agentCtx.config.provider !== "custom") {
@@ -149,7 +158,10 @@ export const removeCustomHeaderTool = createTool({
 	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
 		const { key } = args as { key: string };
 
-		const agentCtx = ctx as unknown as AgentContext;
+		if (!isAgentContext(ctx)) {
+			return { success: false, output: "", error: "Internal error: invalid context" };
+		}
+		const agentCtx = ctx;
 
 		try {
 			if (agentCtx.config.provider !== "custom") {
@@ -202,7 +214,10 @@ export const getCustomProviderInfoTool = createTool({
 	parameters: z.object({}),
 	category: "system",
 	execute: async (_args, ctx: ToolContext): Promise<ToolResult> => {
-		const agentCtx = ctx as unknown as AgentContext;
+		if (!isAgentContext(ctx)) {
+			return { success: false, output: "", error: "Internal error: invalid context" };
+		}
+		const agentCtx = ctx;
 
 		try {
 			if (
