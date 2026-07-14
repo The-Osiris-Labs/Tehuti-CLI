@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { confirm, input, search, select } from "@inquirer/prompts";
-import { listModelsForProvider } from "../api/models.js";
+import { listModelsForProvider, type LiveModelInfo } from "../api/models.js";
 import { loadConfig, saveGlobalConfig } from "./loader.js";
 import {
 	getApiKeyEnvVarsForProvider,
@@ -64,54 +64,114 @@ const PROVIDER_CHOICES = [
 	{ name: "Custom OpenAI-compatible endpoint", value: "custom" },
 ];
 
+/** Format a LiveModelInfo into a display label with context/pricing/modality metadata. */
+function formatModelLabel(m: LiveModelInfo): string {
+	const parts: string[] = [m.name ?? m.id];
+
+	// Context window
+	if (m.contextLength != null) {
+		const ctx = m.contextLength;
+		const ctxStr =
+			ctx >= 1_000_000
+				? `${(ctx / 1_000_000).toFixed(ctx % 1_000_000 === 0 ? 0 : 1).replace(/\.0$/, "")}M ctx`
+				: ctx >= 1_000
+					? `${(ctx / 1_000).toFixed(ctx % 1_000 === 0 ? 0 : 1).replace(/\.0$/, "")}K ctx`
+					: `${ctx} ctx`;
+		parts.push(ctxStr);
+	}
+
+	// Pricing per million tokens
+	if (m.pricing) {
+		if (m.pricing.input != null && m.pricing.input > 0) {
+			parts.push(`$${m.pricing.input.toFixed(2)}/M in`);
+		}
+		if (m.pricing.output != null && m.pricing.output > 0) {
+			parts.push(`$${m.pricing.output.toFixed(2)}/M out`);
+		}
+	}
+
+	// Modalities — derive from raw API data (architecture.modality, description) and model id
+	const mods: string[] = [];
+	const raw = m.raw as Record<string, unknown> | undefined;
+	const modality = (raw?.architecture as Record<string, unknown> | undefined)
+		?.modality as string | undefined;
+	if (modality) {
+		if (modality.includes("image") || modality.includes("vision"))
+			mods.push("vision");
+		if (modality.includes("audio")) mods.push("audio");
+		if (modality.includes("video")) mods.push("video");
+	}
+	const desc = (
+		(raw?.description as string | undefined) ?? ""
+	).toLowerCase();
+	if (
+		desc.includes("reasoning") ||
+		m.id.toLowerCase().includes("reasoner") ||
+		m.id.toLowerCase().includes("reasoning")
+	) {
+		if (!mods.includes("reasoning")) mods.push("reasoning");
+	}
+	if (mods.length > 0) {
+		parts.push(mods.join(", "));
+	}
+
+	return parts.join("  ");
+}
+
 const SUGGESTED_MODELS: Record<
 	string,
 	Array<{ name: string; value: string }>
 > = {
 	openrouter: [
 		{
-			name: "google/gemini-2.5-flash (Fast, cost-efficient)",
+			name: "google/gemini-2.5-flash  1M ctx  $0.15/M in  reasoning",
 			value: "google/gemini-2.5-flash",
 		},
 		{
-			name: "deepseek/deepseek-chat (DeepSeek V3)",
+			name: "deepseek/deepseek-chat  128K ctx  $0.27/M in  reasoning",
 			value: "deepseek/deepseek-chat",
 		},
 		{
-			name: "anthropic/claude-3.5-sonnet (Highly capable coding model)",
+			name: "anthropic/claude-3.5-sonnet  200K ctx  $3.00/M in  vision",
 			value: "anthropic/claude-3.5-sonnet",
 		},
 	],
-	opencode: [{ name: "minimax-m3 (Default)", value: "minimax-m3" }],
+	opencode: [{ name: "minimax-m3 (Default)  1M ctx  subscription", value: "minimax-m3" }],
 	ollama: [
 		{
-			name: "qwen2.5-coder:7b (Excellent for local coding)",
+			name: "qwen2.5-coder:7b  32K ctx  Excellent for local coding",
 			value: "qwen2.5-coder:7b",
 		},
-		{ name: "llama3 (General capability)", value: "llama3" },
-		{ name: "mistral (Balanced local model)", value: "mistral" },
+		{ name: "llama3  8K ctx  General capability", value: "llama3" },
+		{ name: "mistral  32K ctx  Balanced local model", value: "mistral" },
 	],
 	lmstudio: [
 		{ name: "Use whatever model is loaded in LM Studio", value: "default" },
 	],
 	google: [
-		{ name: "gemini-2.5-flash", value: "gemini-2.5-flash" },
-		{ name: "gemini-2.5-pro", value: "gemini-2.5-pro" },
+		{ name: "gemini-2.5-flash  1M ctx  free", value: "gemini-2.5-flash" },
+		{ name: "gemini-2.5-pro  1M ctx  paid tier", value: "gemini-2.5-pro" },
 	],
 	anthropic: [
-		{ name: "claude-3-5-sonnet-latest", value: "claude-3-5-sonnet-latest" },
-		{ name: "claude-3-5-haiku-latest", value: "claude-3-5-haiku-latest" },
+		{
+			name: "claude-3-5-sonnet-latest  200K ctx  $3.00/M in  vision",
+			value: "claude-3-5-sonnet-latest",
+		},
+		{
+			name: "claude-3-5-haiku-latest  200K ctx  $0.80/M in  vision",
+			value: "claude-3-5-haiku-latest",
+		},
 	],
 	openai: [
-		{ name: "gpt-4o", value: "gpt-4o" },
-		{ name: "gpt-4o-mini", value: "gpt-4o-mini" },
-		{ name: "o3-mini (Reasoning model)", value: "o3-mini" },
+		{ name: "gpt-4o  128K ctx  $2.50/M in  vision", value: "gpt-4o" },
+		{ name: "gpt-4o-mini  128K ctx  $0.15/M in  vision", value: "gpt-4o-mini" },
+		{ name: "o3-mini  200K ctx  $1.10/M in  reasoning", value: "o3-mini" },
 	],
 	deepseek: [
-		{ name: "deepseek-chat (V3)", value: "deepseek-chat" },
-		{ name: "deepseek-reasoner (R1)", value: "deepseek-reasoner" },
+		{ name: "deepseek-chat  128K ctx  $0.27/M in  reasoning", value: "deepseek-chat" },
+		{ name: "deepseek-reasoner  128K ctx  $0.55/M in  reasoning", value: "deepseek-reasoner" },
 	],
-	xai: [{ name: "grok-2-1212", value: "grok-2-1212" }],
+	xai: [{ name: "grok-2-1212  128K ctx  $2.00/M in", value: "grok-2-1212" }],
 };
 
 export async function runSetupWizard(): Promise<TehutiConfig> {
@@ -245,7 +305,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 			baseUrl,
 		});
 		if (liveModels && liveModels.length > 0) {
-			modelChoices = liveModels.map((m) => ({ name: m.id, value: m.id }));
+			modelChoices = liveModels.map((m) => ({ name: formatModelLabel(m), value: m.id }));
 		}
 	} catch (_e) {
 		console.log(
