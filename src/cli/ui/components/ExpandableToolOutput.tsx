@@ -479,8 +479,8 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			ref={boxRef}
 			flexDirection="column"
 			marginTop={0}
-			marginBottom={1}
-			paddingLeft={1}
+			marginBottom={0.5}
+			paddingLeft={0.5}
 			borderStyle="single"
 			borderLeft={status !== "error"}
 			borderTop={status === "error"}
@@ -531,7 +531,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				</Box>
 			</Box>
 
-			<Box flexDirection="column" marginY={1} paddingLeft={2}>
+			<Box flexDirection="column" marginY={0.5} paddingLeft={2}>
 				<Text dimColor={!expanded} wrap="truncate-end">{displayContent}</Text>
 			</Box>
 

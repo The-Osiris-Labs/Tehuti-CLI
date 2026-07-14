@@ -46,6 +46,7 @@ import {
 } from "../../agent/tools/system.js";
 import { getAllTools, getToolDefinitions } from "../../agent/tools/registry.js";
 import { getSkillsManager } from "../../agent/skills/manager.js";
+import { swarmManager } from "../../agent/swarm/manager.js";
 import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { costTracker } from "../../api/index.js";
 import { listModelsForProvider } from "../../api/models.js";
@@ -170,7 +171,6 @@ async function flushPendingSession(): Promise<void> {
 }
 const GOLD = BRANDING.colors.primary;
 const CORAL = BRANDING.colors.accent;
-const GREEN = BRANDING.colors.green;
 const GRAY = BRANDING.colors.gray;
 const RED = BRANDING.colors.red;
 const CYAN = BRANDING.colors.cyan;
@@ -2379,6 +2379,24 @@ function ChatUI({
 		const limit = ctx.modelContextLength ?? 1_000_000;
 		return { pct: Math.round((total / limit) * 1000) / 10, total, limit };
 	}, [ctxRef]);
+	const activeAgents = useMemo(() => {
+		try {
+			return swarmManager?.listSubagents()?.filter((s) => s.status === "running").length ?? 0;
+		} catch {
+			return 0;
+		}
+	}, []);
+	const sessionDuration = useMemo(() => {
+		const start = ctxRef.current?.metadata.startTime;
+		if (!start) return "";
+		const elapsed = Date.now() - start.getTime();
+		const seconds = Math.round(elapsed / 1000);
+		if (seconds >= 60) {
+			const m = Math.floor(seconds / 60);
+			return `${m}m`;
+		}
+		return `${seconds}s`;
+	}, [ctxRef]);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
 	// We can now use computeMessageLines directly since it caches results,
@@ -3939,24 +3957,18 @@ function ChatUI({
 			let content: React.ReactNode[];
 
 			if (m.kind === "compaction") {
-				const label = `${ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} Historical digest`;
+				const label = `Historical digest`;
 				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
 					{ flexDirection: "row", alignItems: "center", marginBottom: 0.5 },
-					React.createElement(Text, { bold: true, color: CYAN }, `${label} `),
+					React.createElement(Text, { color: CYAN, dimColor: true }, `${label} `),
 					React.createElement(Text, { color: CYAN, dimColor: true }, divider),
 				);
-				content = [
-					React.createElement(
-						Text,
-						{ key: 0, color: CYAN, dimColor: true, wrap: "wrap" },
-						m.content,
-					),
-				];
+				content = [];
 			} else if (m.role === "user") {
-				const label = `${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} You`;
+				const label = `${ascii ? "| " : "▎ "}${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} You`;
 				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -3968,7 +3980,7 @@ function ChatUI({
 				content = [
 					React.createElement(
 						Text,
-						{ key: 0, color: CORAL, wrap: "wrap" },
+						{ key: 0, wrap: "wrap" },
 						m.content,
 					),
 				];
@@ -4017,7 +4029,7 @@ function ChatUI({
 					];
 				}
 			} else {
-				const label = `${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Tehuti`;
+				const label = `${ascii ? "| " : "▎ "}${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Tehuti`;
 				const padLen = Math.max(
 					10,
 					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
@@ -4030,14 +4042,14 @@ function ChatUI({
 						alignItems: "center",
 						marginBottom: 0.5,
 					},
-					React.createElement(Text, { bold: true, color: GREEN }, `${label} `),
+					React.createElement(Text, { bold: true, color: GOLD }, `${label} `),
 					m.status &&
 						React.createElement(
 							Box,
 							{ marginRight: 1 },
 							React.createElement(StatusIndicator, { status: m.status }),
 						),
-					React.createElement(Text, { color: GREEN, dimColor: true }, divider),
+					React.createElement(Text, { color: GOLD, dimColor: true }, divider),
 				);
 
 				if (m.blocks && m.blocks.length > 0) {
@@ -4180,6 +4192,10 @@ function ChatUI({
 					}
 				}
 			}
+			const msgBorderColor =
+				m.role === "user" ? CORAL :
+				m.role === "assistant" ? GOLD :
+				undefined;
 
 			return React.createElement(
 				Box,
@@ -4187,9 +4203,10 @@ function ChatUI({
 					key: m.id,
 					flexDirection: "column",
 					marginBottom: 0.5,
+					...(msgBorderColor ? { borderLeft: true, borderColor: msgBorderColor } : {}),
 				},
 				header,
-				React.createElement(Box, { flexDirection: "column", paddingLeft: 2 }, ...content),
+				React.createElement(Box, { flexDirection: "column", paddingLeft: 0.5 }, ...content),
 			);
 		});
 	}, [visibleMessages, contentMaxWidth, terminalWidth]);
@@ -4457,11 +4474,25 @@ function ChatUI({
 					"  ",
 					React.createElement(Text, { dimColor: true }, `·`),
 					"  ",
-					React.createElement(Text, { dimColor: true }, `${contextInfo.pct}%`),
+					React.createElement(Text, { dimColor: true }, `${(contextInfo.total / 1000).toFixed(1)}K`),
 					"/",
-					React.createElement(Text, { dimColor: true }, `${Math.round(contextInfo.limit / 1000)}K`),
+					React.createElement(Text, { dimColor: true }, `${Math.round(contextInfo.limit / 1000)}K ctx`),
+					"  ",
+					React.createElement(Text, { dimColor: true }, `·`),
 					"  ",
 					React.createElement(Text, { dimColor: true }, `$${sessionCost.toFixed(4)}`),
+					...(activeAgents > 0
+						? [
+								"  ",
+								React.createElement(Text, { dimColor: true }, `·`),
+								"  ",
+								React.createElement(Text, { dimColor: true }, `${activeAgents} agents`),
+							]
+						: []),
+					"  ",
+					React.createElement(Text, { dimColor: true }, `·`),
+					"  ",
+					React.createElement(Text, { dimColor: true }, sessionDuration || "0s"),
 				),
 			),
 		React.createElement(

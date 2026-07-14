@@ -97,7 +97,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 			<Box
 				flexDirection="row"
 				alignItems="center"
-				marginBottom={1}
+				marginBottom={0.5}
 				borderStyle="round"
 				borderColor={GOLD}
 				paddingX={2}
@@ -171,7 +171,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 		<Box
 			flexDirection="column"
 			alignItems="center"
-			marginBottom={1}
+			marginBottom={0.5}
 			borderStyle="round"
 			borderColor={GOLD}
 			paddingX={2}

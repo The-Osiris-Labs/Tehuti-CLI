@@ -147,8 +147,8 @@ function renderDiffContent(
 		{
 			key,
 			flexDirection: "column",
-			marginTop: 1,
-			marginBottom: 1,
+			marginTop: 0.5,
+			marginBottom: 0.5,
 			paddingLeft: 1,
 			paddingRight: 1,
 			borderStyle: "round",
@@ -267,8 +267,8 @@ export function renderToken(
 				{
 					key: getKey(),
 					flexDirection: "column",
-					marginTop: 1,
-					marginBottom: 1,
+					marginTop: 0.5,
+					marginBottom: 0.5,
 					paddingLeft: 1,
 					paddingRight: 1,
 					borderStyle: "round",
@@ -363,7 +363,7 @@ export function renderToken(
 			}
 			return React.createElement(
 				Box,
-				{ key: getKey(), flexDirection: "column", marginY: 0.5 },
+				{ key: getKey(), flexDirection: "column", marginY: 0.25 },
 				...items,
 			);
 		}
@@ -383,7 +383,7 @@ export function renderToken(
 					borderBottom: false,
 					borderRight: false,
 					borderColor: GRAY,
-					marginY: 0.5,
+					marginY: 0.25,
 				},
 				React.createElement(Box, { flexDirection: "column" }, ...innerBlocks),
 			);
@@ -573,7 +573,7 @@ export function renderToken(
 
 			return React.createElement(
 				Box,
-				{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
+				{ key: getKey(), flexDirection: "column", marginY: 0.5, paddingX: 1 },
 				...children,
 			);
 		}
