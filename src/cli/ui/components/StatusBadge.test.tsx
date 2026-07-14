@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'ink-testing-library';
-import React from 'react';
 import { StatusBadge } from './StatusBadge.js';
 
 describe('StatusBadge', () => {

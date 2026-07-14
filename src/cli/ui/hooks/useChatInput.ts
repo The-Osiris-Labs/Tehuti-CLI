@@ -2,14 +2,67 @@ import chalk from "chalk";
 import { useInput } from "ink";
 import React from "react";
 import { interruptAgent } from "../../../agent/events.js";
+import { logger } from "../../../utils/logger.js";
 import {
 	isMouseSequence,
 	isMouseSequenceFragment,
-	isMouseSequenceTail,
 } from "../../../utils/mouse.js";
 
 // Maximum time to wait for a mouse sequence fragment to complete before flushing.
 const MOUSE_BUFFER_TIMEOUT_MS = 50;
+
+function clampCursor(text: string, position: number): number {
+	const clamped = Math.max(0, Math.min(Number.isFinite(position) ? position : 0, text.length));
+	// Never leave a cursor between a UTF-16 surrogate pair.
+	if (
+		clamped > 0 &&
+		clamped < text.length &&
+		text.charCodeAt(clamped - 1) >= 0xd800 &&
+		text.charCodeAt(clamped - 1) <= 0xdbff &&
+		text.charCodeAt(clamped) >= 0xdc00 &&
+		text.charCodeAt(clamped) <= 0xdfff
+	) {
+		return clamped - 1;
+	}
+	return clamped;
+}
+
+function previousCharacterStart(text: string, position: number): number {
+	const cursor = clampCursor(text, position);
+	if (cursor === 0) return 0;
+	const previous = cursor - 1;
+	return previous > 0 &&
+		text.charCodeAt(previous) >= 0xdc00 &&
+		text.charCodeAt(previous) <= 0xdfff &&
+		text.charCodeAt(previous - 1) >= 0xd800 &&
+		text.charCodeAt(previous - 1) <= 0xdbff
+		? previous - 1
+		: previous;
+}
+
+function nextCharacterEnd(text: string, position: number): number {
+	const cursor = clampCursor(text, position);
+	if (cursor >= text.length) return text.length;
+	return cursor +
+		(text.charCodeAt(cursor) >= 0xd800 &&
+		text.charCodeAt(cursor) <= 0xdbff &&
+		text.charCodeAt(cursor + 1) >= 0xdc00 &&
+		text.charCodeAt(cursor + 1) <= 0xdfff
+			? 2
+			: 1);
+}
+
+function sanitizeHistory(history: unknown): string[] {
+	if (!Array.isArray(history)) return [];
+	const seen = new Set<string>();
+	return history.filter((entry): entry is string => {
+		if (typeof entry !== "string" || entry.trim().length === 0 || seen.has(entry)) {
+			return false;
+		}
+		seen.add(entry);
+		return true;
+	});
+}
 
 export interface UseChatInputProps {
 	input: string;
@@ -47,6 +100,7 @@ export interface UseChatInputProps {
 	showConfigEditor?: boolean;
 	showProfiler?: boolean;
 	pendingQuestion?: any;
+	pendingPermission?: unknown;
 	showSessionList?: boolean;
 	queuedMessages: string[];
 	setQueuedMessages: React.Dispatch<React.SetStateAction<string[]>>;
@@ -88,6 +142,7 @@ export function useChatInput(props: UseChatInputProps) {
 		showConfigEditor,
 		showProfiler,
 		pendingQuestion,
+		pendingPermission,
 		showSessionList,
 		setQueuedMessages,
 	} = props;
@@ -96,6 +151,7 @@ export function useChatInput(props: UseChatInputProps) {
 	const showConfigEditorRef = React.useRef(showConfigEditor);
 	const showProfilerRef = React.useRef(showProfiler);
 	const pendingQuestionRef = React.useRef(pendingQuestion);
+	const pendingPermissionRef = React.useRef(pendingPermission);
 	const showSessionListRef = React.useRef(showSessionList);
 
 	const inputRef = React.useRef(input);
@@ -180,6 +236,7 @@ export function useChatInput(props: UseChatInputProps) {
 		showConfigEditorRef.current = showConfigEditor;
 		showProfilerRef.current = showProfiler;
 		pendingQuestionRef.current = pendingQuestion;
+		pendingPermissionRef.current = pendingPermission;
 		showSessionListRef.current = showSessionList;
 		inputRef.current = input;
 		cursorPosRef.current = cursorPos;
@@ -193,6 +250,7 @@ export function useChatInput(props: UseChatInputProps) {
 		showConfigEditor,
 		showProfiler,
 		pendingQuestion,
+		pendingPermission,
 		showSessionList,
 		input,
 		cursorPos,
@@ -223,40 +281,33 @@ export function useChatInput(props: UseChatInputProps) {
 
 	const absorbMouseFragment = React.useCallback(
 		(k: string): boolean => {
-			// True if the chunk was absorbed into the mouse buffer (caller should return early).
-			// NOTE: Bare "M"/"m" is NOT treated as a tail — that would eat literal
-			// letter M/m typed by the user (the old isMouseSequence() bare-tail check
-			// was removed in mouse.ts for the same reason).
-			if (
-				mouseBufferRef.current.length > 0 &&
-				(isMouseSequenceTail(k) ||
-					(k.length > 1 && (k.endsWith("M") || k.endsWith("m"))))
-			) {
-				// Tail arrived — consume the whole buffer + this chunk as a mouse sequence.
-				const fullSeq = mouseBufferRef.current + k;
-				if (fullSeq.includes("<64;")) scrollLineUp();
-				if (fullSeq.includes("<65;")) scrollLineDown();
+			const consumeMouseSequence = (sequence: string): boolean => {
+				if (!isMouseSequence(sequence)) return false;
+				if (sequence.includes("<64;")) scrollLineUp();
+				if (sequence.includes("<65;")) scrollLineDown();
+				flushMouseBuffer();
+				return true;
+			};
 
-				flushMouseBuffer();
-				return true;
-			}
-			if (isMouseSequenceFragment(k)) {
-				mouseBufferRef.current += k;
-				// Reset the timeout — if no more data arrives, drop the buffer.
-				if (mouseBufferTimerRef.current) {
-					clearTimeout(mouseBufferTimerRef.current);
+			// A bare printable character must never be buffered. Only an established
+			// escape-prefixed SGR sequence may consume later coordinate chunks.
+			if (mouseBufferRef.current.length > 0) {
+				const sequence = mouseBufferRef.current + k;
+				if (consumeMouseSequence(sequence)) return true;
+				if (isMouseSequenceFragment(sequence)) {
+					mouseBufferRef.current = sequence;
+					if (mouseBufferTimerRef.current) clearTimeout(mouseBufferTimerRef.current);
+					mouseBufferTimerRef.current = setTimeout(flushMouseBuffer, MOUSE_BUFFER_TIMEOUT_MS);
+					return true;
 				}
-				mouseBufferTimerRef.current = setTimeout(
-					flushMouseBuffer,
-					MOUSE_BUFFER_TIMEOUT_MS,
-				);
-				return true;
-			}
-			// Complete mouse sequence in one chunk.
-			if (isMouseSequence(k)) {
-				if (k.includes("<64;")) scrollLineUp();
-				if (k.includes("<65;")) scrollLineDown();
 				flushMouseBuffer();
+				return false;
+			}
+
+			if (consumeMouseSequence(k)) return true;
+			if (isMouseSequenceFragment(k)) {
+				mouseBufferRef.current = k;
+				mouseBufferTimerRef.current = setTimeout(flushMouseBuffer, MOUSE_BUFFER_TIMEOUT_MS);
 				return true;
 			}
 			return false;
@@ -267,26 +318,28 @@ export function useChatInput(props: UseChatInputProps) {
 	useInput(
 		(k, key) => {
 			const input = inputRef.current;
-			const cursorPos = cursorPosRef.current;
-			const selectionStart = selectionStartRef.current;
-			const selectionEnd = selectionEndRef.current;
-			const history = historyRef.current;
-			const historyIndex = historyIndexRef.current;
+			const cursorPos = clampCursor(input, cursorPosRef.current);
+			const rawSelectionStart = selectionStartRef.current;
+			const rawSelectionEnd = selectionEndRef.current;
+			const selectionStart =
+				rawSelectionStart === null ? null : clampCursor(input, rawSelectionStart);
+			const selectionEnd =
+				rawSelectionEnd === null ? null : clampCursor(input, rawSelectionEnd);
+			const history = sanitizeHistory(historyRef.current);
+			const rawHistoryIndex = historyIndexRef.current;
+			const historyIndex =
+				Number.isInteger(rawHistoryIndex) &&
+				rawHistoryIndex >= 0 &&
+				rawHistoryIndex < history.length
+					? rawHistoryIndex
+					: -1;
 			const loading = loadingRef.current;
 
-			if (
-				k?.startsWith("\x1b[<64;") ||
-				k?.startsWith("[<64;") ||
-				k?.startsWith("<64;")
-			) {
+			if (k?.startsWith("\x1b[<64;")) {
 				scrollLineUp();
 				return;
 			}
-			if (
-				k?.startsWith("\x1b[<65;") ||
-				k?.startsWith("[<65;") ||
-				k?.startsWith("<65;")
-			) {
+			if (k?.startsWith("\x1b[<65;")) {
 				scrollLineDown();
 				return;
 			}
@@ -311,17 +364,22 @@ export function useChatInput(props: UseChatInputProps) {
 				showConfigEditorRef.current ||
 				showProfilerRef.current ||
 				pendingQuestionRef.current ||
+				pendingPermissionRef.current ||
 				showSessionListRef.current
 			) {
 				return;
 			}
 
-			
 			if (showCommandPaletteRef.current) {
-				if (key.upArrow || key.downArrow || key.return || key.escape || (key.ctrl && k === 'c')) {
-					return;
-				}
-				if (inputRef.current.length === 0 && (k === 'j' || k === 'k')) {
+				// The palette owns only non-printable navigation and command activation.
+				// Query characters, including j/k, always remain ChatBar input.
+				if (
+					key.upArrow ||
+					key.downArrow ||
+					key.return ||
+					key.escape ||
+					(key.ctrl && k === "c")
+				) {
 					return;
 				}
 			}
@@ -428,11 +486,10 @@ export function useChatInput(props: UseChatInputProps) {
 					deleteSelection();
 					return;
 				}
-				if (cursorPos > 0) {
-					setInput(
-						(i: string) => i.slice(0, cursorPos - 1) + i.slice(cursorPos),
-					);
-					setCursorPos((p: number) => Math.max(0, p - 1));
+				const start = previousCharacterStart(input, cursorPos);
+				if (start < cursorPos) {
+					setInput(input.slice(0, start) + input.slice(cursorPos));
+					setCursorPos(start);
 				}
 				return;
 			}
@@ -444,9 +501,7 @@ export function useChatInput(props: UseChatInputProps) {
 					return;
 				}
 				if (cursorPos < input.length) {
-					setInput(
-						(i: string) => i.slice(0, cursorPos) + i.slice(cursorPos + 1),
-					);
+					setInput(input.slice(0, cursorPos) + input.slice(nextCharacterEnd(input, cursorPos)));
 				}
 				return;
 			}
@@ -564,7 +619,9 @@ export function useChatInput(props: UseChatInputProps) {
 					100,
 				);
 				setHistory(newHistory);
-				void saveHistory(newHistory);
+				void Promise.resolve(saveHistory(newHistory)).catch((error) => {
+					logger.error("Failed to save chat input history:", error);
+				});
 				setHistoryIndex(-1);
 				void send(text);
 				return;
@@ -837,14 +894,7 @@ export function useChatInput(props: UseChatInputProps) {
 				// This covers individual characters, partial sequences, and glued sequences
 				// produced by rapid mouse scrolling or dragging in SGR tracking mode.
 				if (
-					isMouseSequence(k) ||
-					k === "[" ||
-					k === "<" ||
-					k === "[[ " ||
-					/^(?:\d+;)+\d+[Mm]?$/.test(k) ||
-					/(?:\d+;\d+(?:;\d+)?[Mm])+/.test(k) ||
-					k.includes("[<") ||
-					k.includes("[M")
+					isMouseSequence(k) || k.startsWith("\x1b[<") || k.startsWith("\x1b[M")
 				) {
 					return;
 				}
@@ -869,7 +919,7 @@ export function useChatInput(props: UseChatInputProps) {
 						(prev: string) =>
 							prev.slice(0, insertAt) + sanitized + prev.slice(insertAt),
 					);
-					setCursorPos((p: number) => p + sanitized.length);
+					setCursorPos(insertAt + sanitized.length);
 					setHistoryIndex(-1);
 				}
 			}
@@ -879,6 +929,7 @@ export function useChatInput(props: UseChatInputProps) {
 				!showConfigEditor &&
 				!showProfiler &&
 				!pendingQuestion &&
+				!pendingPermission &&
 				!showSessionList,
 		},
 	);

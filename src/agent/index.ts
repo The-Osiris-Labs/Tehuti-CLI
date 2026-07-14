@@ -152,6 +152,10 @@ function syncMCPToolRegistry(): void {
 	}
 }
 
+	// Wire the tool refresh callback so that mid-session ToolListChangedNotification
+	// triggers a lightweight re-registration of the changed server's tools.
+	mcpManager.onToolRefresh(syncMCPToolRegistry);
+
 export function initializeAgent(): void {
 	loadCacheFromDisk();
 	// Bootstrap environment memory asynchronously; failure is non-fatal.

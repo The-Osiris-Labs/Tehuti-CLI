@@ -37,10 +37,12 @@ describe("truncate", () => {
 		expect(out).toMatch(/\x1b\[0m…/);
 	});
 
-	it("handles emoji and other astral characters", () => {
-		const input = "𓁹𓂀𓆣𓊖𓋹𓂝𓃀𓆗"; // 8 hieroglyphs, each width 1 in this font
+	it("keeps a complete ANSI-styled ZWJ emoji before the ellipsis", () => {
+		const input = "\x1b[31m👩‍💻abc\x1b[0m";
 		const out = truncate(input, 3);
 		expect(stringWidth(out)).toBeLessThanOrEqual(3);
+		expect(out).toContain("👩‍💻");
+		expect(out).toMatch(/\x1b\[0m…/);
 	});
 
 	it("uses sensible default when no maxLength is given", () => {

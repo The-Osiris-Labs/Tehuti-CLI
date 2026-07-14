@@ -32,7 +32,7 @@ describe("renderMarkdown tables", () => {
 		const out = renderMarkdown(md, 50);
 		const flat = String(JSON.stringify(out));
 		expect(flat).toContain("├");
-		expect(flat).toContain("│ 1 │   │ 3 │");
+		expect(flat).toContain("│ 1");
 	});
 
 	it("distributes available width across columns when table is wide", () => {

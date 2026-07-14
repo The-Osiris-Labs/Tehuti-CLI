@@ -36,7 +36,7 @@ export const activateSkillTool = createTool({
 	category: "system",
 	execute: async (args, _ctx) => {
 		const { skillId } = args as { skillId: string };
-		const success = skillsManager.activateSkill(skillId);
+		const success = await skillsManager.activateSkill(skillId);
 
 		if (success) {
 			return {
@@ -64,7 +64,7 @@ export const deactivateSkillTool = createTool({
 	category: "system",
 	execute: async (args, _ctx) => {
 		const { skillId } = args as { skillId: string };
-		const success = skillsManager.deactivateSkill(skillId);
+		const success = await skillsManager.deactivateSkill(skillId);
 
 		if (success) {
 			return {

@@ -353,8 +353,7 @@ export class APIResponseCache {
 		for (const file of jsonFiles) {
 			const filePath = join(this.cacheDirectory, file);
 			try {
-				const content = await readFile(filePath, "utf8");
-				const entry = JSON.parse(content) as APIResponseCacheEntry;
+				JSON.parse(await readFile(filePath, "utf8"));
 				const fileStat = await stat(filePath);
 				entries.push({
 					path: filePath,

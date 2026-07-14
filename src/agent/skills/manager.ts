@@ -245,22 +245,44 @@ When working with Git:
 		return this.skills.get(id);
 	}
 
-	public activateSkill(id: string): boolean {
+	public async activateSkill(id: string): Promise<boolean> {
 		const skill = this.skills.get(id);
-		if (skill) {
-			skill.active = true;
-			return true;
+		if (!skill) return false;
+		skill.active = true;
+		// Persist activation for user skills (those stored as JSON files)
+		if (skill.author !== "Tehuti") {
+			try {
+				const filePath = join(this.skillsDirectory, `${skill.id}.json`);
+				await writeFile(
+					filePath,
+					JSON.stringify(skill, null, 2),
+					"utf-8",
+				);
+			} catch (err) {
+				debug.log("agent", `Failed to persist skill activation: ${err}`);
+			}
 		}
-		return false;
+		return true;
 	}
 
-	public deactivateSkill(id: string): boolean {
+	public async deactivateSkill(id: string): Promise<boolean> {
 		const skill = this.skills.get(id);
-		if (skill) {
-			skill.active = false;
-			return true;
+		if (!skill) return false;
+		skill.active = false;
+		// Persist deactivation for user skills
+		if (skill.author !== "Tehuti") {
+			try {
+				const filePath = join(this.skillsDirectory, `${skill.id}.json`);
+				await writeFile(
+					filePath,
+					JSON.stringify(skill, null, 2),
+					"utf-8",
+				);
+			} catch (err) {
+				debug.log("agent", `Failed to persist skill deactivation: ${err}`);
+			}
 		}
-		return false;
+		return true;
 	}
 
 	public findRelevantSkills(query: string): Skill[] {

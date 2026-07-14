@@ -1,180 +1,193 @@
+import { Text } from "ink";
+import { render } from "ink-testing-library";
+import React, { useState } from "react";
 import { describe, expect, it } from "vitest";
+import {
+	type UseChatViewportOptions,
+	type UseChatViewportReturn,
+	useChatViewport,
+} from "../ui/hooks/useChatViewport.js";
 
-describe("TUI Viewport Height and Scroll Bounds Verification", () => {
-	it("should verify chatViewportHeight calculations at scrollOffset=0 vs scrollOffset>0", () => {
-		const terminalHeight = 24;
-		const headerHeight = 3;
-		const inputHeight = 3;
-		const warningsHeight = 0;
-		const suggestionsCount = 0;
+type Message = { id: number; role: "user"; content: string };
 
-		const showWelcome = true;
-		const messages = [{ id: 1, role: "user", content: "hello" }];
-
-		// Scenario 1: scrollOffset = 0
-		const scrollOffset1 = 0;
-		const shouldShowHeader1 =
-			showWelcome && scrollOffset1 === 0 && messages.length > 0;
-		expect(shouldShowHeader1).toBe(true);
-
-		const headerScrollHeight1 = shouldShowHeader1 ? 14 : 0;
-		expect(headerScrollHeight1).toBe(14);
-
-		const paletteHeight1 = 0;
-
-		const chatViewportHeight1 = Math.max(
-			3,
-			terminalHeight -
-				headerHeight -
-				inputHeight -
-				4 -
-				headerScrollHeight1 -
-				warningsHeight -
-				suggestionsCount -
-				paletteHeight1,
-		);
-
-		expect(chatViewportHeight1).toBe(3);
-
-		// Scenario 2: User scrolls by 1 line (scrollOffset = 1)
-		const scrollOffset2 = 1;
-		const shouldShowHeader2 =
-			showWelcome && scrollOffset2 === 0 && messages.length > 0;
-		expect(shouldShowHeader2).toBe(false);
-
-		const headerScrollHeight2 = shouldShowHeader2 ? 14 : 0;
-		expect(headerScrollHeight2).toBe(0);
-
-		const chatViewportHeight2 = Math.max(
-			3,
-			terminalHeight -
-				headerHeight -
-				inputHeight -
-				4 -
-				headerScrollHeight2 -
-				warningsHeight -
-				suggestionsCount -
-				paletteHeight1,
-		);
-
-		expect(chatViewportHeight2).toBe(14);
-
-		const totalMessageLines = 12;
-
-		const maxOff1 = Math.max(0, totalMessageLines - chatViewportHeight1);
-		expect(maxOff1).toBe(9);
-
-		const maxOff2 = Math.max(0, totalMessageLines - chatViewportHeight2);
-		expect(maxOff2).toBe(0);
-
-		const boundScrollOffset = Math.min(scrollOffset2, maxOff2);
-		expect(boundScrollOffset).toBe(0);
-
-		console.log("Empirical Verification Successful:");
-		console.log(`- Viewport Height (offset=0): ${chatViewportHeight1}`);
-		console.log(`- Viewport Height (offset=1): ${chatViewportHeight2}`);
-		console.log(
-			`- Layout shift size: ${chatViewportHeight2 - chatViewportHeight1} lines`,
-		);
-		console.log(
-			`- Scrolling snapped back to 0? ${boundScrollOffset === 0 ? "YES (Scroll Locked)" : "NO"}`,
-		);
+const waitForViewport = () =>
+	new Promise<void>((resolve) => {
+		// Ink's test renderer schedules updates asynchronously.
+		setTimeout(resolve, 25);
 	});
 
-	it("should verify that unhandled keys clear text selection", () => {
-		let selectionStart: number | null = 5;
-		let _selectionEnd: number | null = 10;
+function messages(count: number, content = "message"): Message[] {
+	return Array.from({ length: count }, (_, id) => ({
+		id,
+		role: "user" as const,
+		content,
+	}));
+}
 
-		const key = { ctrl: true, meta: false, shift: false };
-		const k = "g";
-
-		let selectionCleared = false;
-		if (!key.shift && selectionStart !== null) {
-			selectionStart = null;
-			_selectionEnd = null;
-			selectionCleared = true;
-		}
-
-		let keyHandled = false;
-		if (key.ctrl && k === "c") {
-			keyHandled = true;
-		} else if (key.ctrl && k === "x") {
-			keyHandled = true;
-		}
-
-		expect(selectionCleared).toBe(true);
-		expect(keyHandled).toBe(false);
-		console.log(
-			`- Selection cleared on unhandled key? ${selectionCleared ? "YES" : "NO"}`,
-		);
+function ViewportProbe({
+	messages: nextMessages,
+	capture,
+	overrides,
+}: {
+	messages: Message[];
+	capture: { current?: UseChatViewportReturn };
+	overrides?: Partial<UseChatViewportOptions>;
+}) {
+	const [scrollOffset, setScrollOffset] = useState(0);
+	const viewport = useChatViewport({
+		messages: nextMessages,
+		terminalHeight: 30,
+		terminalWidth: 80,
+		headerHeight: 3,
+		promptOverlayHeight: 4,
+		warningsHeight: 0,
+		paletteHeight: 0,
+		loadingOverlayHeight: 0,
+		thinkingOverlayHeight: 0,
+		errorOverlayHeight: 0,
+		input: "",
+		showWelcome: false,
+		scrollOffset,
+		setScrollOffset,
+		...overrides,
 	});
 
-	it("should verify that loading and thinking heights are not accounted for in chatViewportHeight", () => {
-		// Mock logic: check if chatViewportHeight subtraction includes loading or thinking heights
-		const terminalHeight = 24;
-		const headerHeight = 3;
-		const inputHeight = 3;
-		const warningsHeight = 0;
-		const suggestionsCount = 0;
-		const paletteHeight = 0;
-		const headerScrollHeight = 0;
+	capture.current = viewport;
 
-		// chatViewportHeight calculation as implemented
-		const chatViewportHeight = Math.max(
-			3,
-			terminalHeight -
-				headerHeight -
-				inputHeight -
-				4 -
-				headerScrollHeight -
-				warningsHeight -
-				suggestionsCount -
-				paletteHeight,
-		);
+	return React.createElement(
+		Text,
+		null,
+		`${viewport.scrollOffset}:${viewport.chatViewportHeight}:${viewport.newMessageCount}`,
+	);
+}
 
-		// The actual layout renders a 5-line loading progress bar and a 2-line thinking indicator
-		const loadingAreaHeight = 5;
-		const thinkingAreaHeight = 2;
+function probe(
+	nextMessages: Message[],
+	overrides?: Partial<UseChatViewportOptions>,
+) {
+	const capture: { current?: UseChatViewportReturn } = {};
+	const tree = (currentMessages: Message[]) =>
+		React.createElement(ViewportProbe, {
+			messages: currentMessages,
+			capture,
+			overrides,
+		});
+	const instance = render(tree(nextMessages));
+	return { capture, instance, tree };
+}
 
-		// The actual height available to the scrollable message list shrinks when loading/thinking are active
-		const actualAvailableHeight =
-			chatViewportHeight - loadingAreaHeight - thinkingAreaHeight;
+describe("useChatViewport", () => {
+	it("navigates line, page, top, and bottom using the latest external offset", async () => {
+		const harness = probe(messages(80));
+		await waitForViewport();
 
-		expect(chatViewportHeight).toBe(14);
-		expect(actualAvailableHeight).toBe(7); // Viewport shrinks to 7, but logic believes it is 14!
+		harness.capture.current?.scrollLineUp();
+		harness.capture.current?.scrollLineUp();
+		await waitForViewport();
+		expect(harness.capture.current?.scrollOffset).toBe(2);
 
-		console.log("Loading & Thinking Height Verification:");
-		console.log(`- Calculated chatViewportHeight: ${chatViewportHeight}`);
-		expect(chatViewportHeight).not.toBe(actualAvailableHeight);
-		console.log(
-			`- Mismatch size: ${chatViewportHeight - actualAvailableHeight} lines`,
-		);
+		const viewportHeight = harness.capture.current?.chatViewportHeight ?? 0;
+		harness.capture.current?.scrollPageUp();
+		await waitForViewport();
+		expect(harness.capture.current?.scrollOffset).toBe(2 + viewportHeight);
+
+		harness.capture.current?.scrollToTop();
+		await waitForViewport();
+		const topOffset = harness.capture.current?.scrollOffset ?? 0;
+		expect(topOffset).toBeGreaterThan(2 + viewportHeight);
+
+		harness.capture.current?.scrollToBottom();
+		await waitForViewport();
+		expect(harness.capture.current?.scrollOffset).toBe(0);
+		expect(harness.capture.current?.isAtBottom).toBe(true);
+		harness.instance.unmount();
 	});
 
-	it("should verify adaptive status bar content across idle, working, and scrolled-up states", () => {
-		const totalMessageLines = 30;
-		const chatViewportHeight = 15;
+	it("keeps a valid scroll offset when content shrinks", async () => {
+		const harness = probe(messages(80, "a long enough message to create a useful scroll range"));
+		await waitForViewport();
+		harness.capture.current?.scrollToTop();
+		await waitForViewport();
+		const beforeResize = harness.capture.current?.scrollOffset ?? 0;
 
-		// State 1: Scrolled Up (scrollOffset = 5)
-		const scrollOffset1 = 5;
-		const scrollPercent = Math.min(
-			100,
-			Math.round(
-				(scrollOffset1 / Math.max(1, totalMessageLines - chatViewportHeight)) *
-					100,
-			),
+		harness.instance.rerender(harness.tree(messages(1)));
+		await waitForViewport();
+		const afterResize = harness.capture.current?.scrollOffset ?? 0;
+		expect(afterResize).toBeGreaterThanOrEqual(0);
+		expect(afterResize).toBeLessThan(beforeResize);
+		harness.instance.unmount();
+	});
+
+	it("accounts for the input, loading, and thinking overlays without using scroll state", async () => {
+		const base = probe(messages(80));
+		const overlays = probe(messages(80), {
+			promptOverlayHeight: 6,
+			loadingOverlayHeight: 5,
+			thinkingOverlayHeight: 2,
+		});
+		await waitForViewport();
+
+		expect(overlays.capture.current?.chatViewportHeight).toBe(
+			(base.capture.current?.chatViewportHeight ?? 0) - 9,
 		);
-		expect(scrollPercent).toBe(33);
+		base.instance.unmount();
+		overlays.instance.unmount();
+	});
 
-		// State 2: Idle at bottom (scrollOffset = 0, loading = false)
-		const scrollOffset2 = 0;
-		const loading2 = false;
-		const isIdleState = scrollOffset2 === 0 && !loading2;
-		expect(isIdleState).toBe(true);
+	it("does not change viewport height when the scroll badge becomes visible", async () => {
+		const harness = probe(messages(80));
+		await waitForViewport();
+		const bottomHeight = harness.capture.current?.chatViewportHeight;
 
-		// State 3: Working at bottom (scrollOffset = 0, loading = true)
-		const loading3 = true;
-		const isWorkingState = scrollOffset2 === 0 && loading3;
-		expect(isWorkingState).toBe(true);
+		harness.capture.current?.scrollLineUp();
+		await waitForViewport();
+		expect(harness.capture.current?.chatViewportHeight).toBe(bottomHeight);
+		harness.instance.unmount();
+	});
+
+	it("keeps an intentional upward scroll and counts later messages", async () => {
+		const initialMessages = messages(80);
+		const harness = probe(initialMessages);
+		await waitForViewport();
+
+		harness.capture.current?.scrollLineUp();
+		await waitForViewport();
+		const intentionalOffset = harness.capture.current?.scrollOffset;
+
+		harness.instance.rerender(
+			harness.tree([
+				...initialMessages,
+				{ id: 80, role: "user", content: "new arrival" },
+			]),
+		);
+		await waitForViewport();
+		expect(harness.capture.current?.scrollOffset).toBe(intentionalOffset);
+		expect(harness.capture.current?.newMessageCount).toBe(1);
+		expect(harness.capture.current?.isAtBottom).toBe(false);
+		harness.instance.unmount();
+	});
+
+	it("clears the new-message badge when scrolling back to the bottom", async () => {
+		const initialMessages = messages(80);
+		const harness = probe(initialMessages);
+		await waitForViewport();
+		harness.capture.current?.scrollLineUp();
+		await waitForViewport();
+
+		harness.instance.rerender(
+			harness.tree([
+				...initialMessages,
+				{ id: 80, role: "user", content: "new arrival" },
+			]),
+		);
+		await waitForViewport();
+		expect(harness.capture.current?.newMessageCount).toBe(1);
+
+		harness.capture.current?.scrollToBottom();
+		await waitForViewport();
+		expect(harness.capture.current?.scrollOffset).toBe(0);
+		expect(harness.capture.current?.newMessageCount).toBe(0);
+		expect(harness.capture.current?.isAtBottom).toBe(true);
+		harness.instance.unmount();
 	});
 });

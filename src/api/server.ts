@@ -5,7 +5,7 @@
  * Provides RESTful endpoints for agent operations, sessions, and configuration.
  */
 
-import { type Server, createServer } from "node:http";
+import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { logger } from "../utils/logger.js";

@@ -58,7 +58,7 @@ function makeMessage(id: number, outputSize = 50000): UiMessage {
 
 describe("chat UI memory compaction", () => {
 	it("bounds retained messages and compacts old tool payloads", () => {
-		const messages = Array.from({ length: 220 }, (_, index) =>
+		const messages = Array.from({ length: 520 }, (_, index) =>
 			makeMessage(index),
 		);
 
@@ -67,7 +67,7 @@ describe("chat UI memory compaction", () => {
 		const compacted = compactMessagesForUi(messages);
 
 		expect(compacted).toHaveLength(UI_MAX_MESSAGES);
-		expect(compacted[0].id).toBe(100);
+		expect(compacted[0].id).toBe(20);
 
 		const oldMessage = compacted[0];
 		expect(oldMessage.toolCalls?.[0].result).toEqual("[Compacted]");
@@ -87,11 +87,10 @@ describe("chat UI memory compaction", () => {
 	});
 
 	it("truncates huge string and nested tool outputs", () => {
-		const compacted = compactToolResultForUi(makeLargeToolResult(50000)) as {
+		const compacted = compactToolResultForUi(makeLargeToolResult(70000)) as {
 			output: string;
 			nested: { output: string };
 		};
-
 		expect(compacted.output.length).toBeLessThan(UI_MAX_TOOL_OUTPUT_CHARS + 80);
 		expect(compacted.output).toContain("truncated for UI memory");
 		expect(compacted.nested.output.length).toBeLessThan(

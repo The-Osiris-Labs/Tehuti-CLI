@@ -1,19 +1,11 @@
 import { Box, Text } from "ink";
-// @ts-expect-error TS6133/TS6192: Unused variable
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { agentEventBus } from "../../../agent/events.js";
 import { BRANDING } from "../../../branding/index.js";
 
 const PURPLE = BRANDING.colors?.purple || "#A855F7";
 const GREEN = BRANDING.colors?.green || "#22C55E";
 
-/**
- * Detect if user prefers reduced motion (accessibility).
- * Falls back to env var check for terminals.
- */
-function shouldReduceMotion(): boolean {
-	return process.env.TEHUTI_REDUCE_MOTION === "1";
-}
 
 export interface MemoryEvent {
 	type: string;
@@ -29,11 +21,9 @@ export interface MemoryIndicatorProps {
 
 export function MemoryIndicator({
 	successDuration = 3000,
-	transitionFrames = 3,
 }: MemoryIndicatorProps) {
 	const [activeEvent, setActiveEvent] = useState<MemoryEvent | null>(null);
-	const [opacity, setOpacity] = useState<0 | 1>(0);
-	const reduceMotion = shouldReduceMotion();
+	const [, setOpacity] = useState<0 | 1>(0);
 	const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -78,7 +68,6 @@ export function MemoryIndicator({
 	const isSuccess = activeEvent.type === "success" || activeEvent.type === "idle";
 	const isLearning = activeEvent.type === "learning" || activeEvent.type === "start";
 
-	// Icon with accessibility context
 	const icon = isError
 		? "𓁹" // warning eye
 		: isSuccess
@@ -89,16 +78,8 @@ export function MemoryIndicator({
 
 	const color = isError ? BRANDING.colors.red : isSuccess ? GREEN : PURPLE;
 
-	// Accessibility: announce to screen readers
-	const ariaLabel = `Memory: ${activeEvent.message}`;
-
 	return (
-		<Box
-			marginBottom={1}
-			marginLeft={2}
-			accessibilityLabel={ariaLabel}
-			accessibilityRole="status"
-		>
+		<Box marginBottom={1} marginLeft={2}>
 			<Text color={color}>
 				{icon}{" "}
 				{activeEvent.message}

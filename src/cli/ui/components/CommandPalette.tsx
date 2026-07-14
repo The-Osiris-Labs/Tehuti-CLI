@@ -6,12 +6,10 @@ import {
 import { Box, Text, useInput, useStdout } from "ink";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BRANDING, DECORATIVE } from "../../../branding/index.js";
-import { globalConfig } from "../../../config/index.js";
 import { getAllProviders } from "../../../config/providers.js";
-import { debug } from "../../../utils/debug.js";
 import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
-import { useVimInput } from "../hooks/useVimInput.js";
+import { addRecentCommand, getRecentCommands } from "../commandPaletteRecent.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
 
 const GOLD = BRANDING.colors.gold;
@@ -40,6 +38,14 @@ export interface CommandItem {
 	action?: () => void | Promise<void>;
 	submenu?: () => Promise<CommandItem[]> | CommandItem[];
 }
+
+const CATEGORY_ORDER: CommandItem["category"][] = [
+	"submenu",
+	"recent",
+	"session",
+	"model",
+	"help",
+];
 
 interface CommandPaletteProps {
 	commands: CommandItem[];
@@ -301,34 +307,17 @@ export function CommandPalette({
 		return results.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 	}, [currentCommands, query]);
 
-	// @ts-expect-error TS6133/TS6192: Unused variable
-	const _groupedCommands = useMemo(() => {
-		const groups: Record<string, typeof filteredCommands> = {};
-		for (const cmd of filteredCommands) {
-			const cat = cmd.category;
-			if (!groups[cat]) groups[cat] = [];
-			groups[cat].push(cmd);
+	// Group before virtualizing so a window is always a stable slice of the
+	// complete category order rather than a post-window reordering.
+	const groupedCommands = useMemo(() => {
+		const groups = new Map<CommandItem["category"], typeof filteredCommands>();
+		for (const command of filteredCommands) {
+			const group = groups.get(command.category) ?? [];
+			group.push(command);
+			groups.set(command.category, group);
 		}
-		return groups;
+		return CATEGORY_ORDER.flatMap((category) => groups.get(category) ?? []);
 	}, [filteredCommands]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: setSelectedIndex from useVirtualScroll has stable identity across renders
-	useEffect(() => {
-		if (visible) {
-			const initQ = initialQuery || "";
-			// Only reset if we are opening fresh
-			if (menuStack.length === 0 && !query) {
-				if (onQueryChange) onQueryChange(initQ);
-			}
-			setSelectedIndex(0);
-			setError(null);
-		} else {
-			// Reset on close
-			setMenuStack([]);
-			if (onQueryChange) onQueryChange("");
-			setError(null);
-		}
-	}, [visible, initialQuery, menuStack.length, query]);
 
 	const MAX_DISPLAY = 9;
 
@@ -340,16 +329,39 @@ export function CommandPalette({
 		getVisibleItems,
 		setSelectedIndex,
 	} = useVirtualScroll({
-		totalItems: filteredCommands.length,
+		totalItems: groupedCommands.length,
 		maxVisibleWindow: MAX_DISPLAY,
 	});
 
-	const [prevFilteredCommands, setPrevFilteredCommands] =
-		useState(filteredCommands);
-	if (filteredCommands !== prevFilteredCommands) {
+	const commandSetKey = useMemo(
+		() => currentCommands.map((command) => command.id).join("\u0000"),
+		[currentCommands],
+	);
+
+	// Query ownership stays with ChatBar. This component only owns which
+	// matching command is selected, and resets that selection after its inputs
+	// change rather than scheduling state while rendering.
+	useEffect(() => {
 		setSelectedIndex(0);
-		setPrevFilteredCommands(filteredCommands);
-	}
+	}, [commandSetKey, query, setSelectedIndex]);
+
+	const wasVisible = useRef(false);
+	useEffect(() => {
+		if (visible && !wasVisible.current) {
+			setMenuStack([]);
+			setIsLoading(false);
+			setError(null);
+			setSelectedIndex(0);
+		}
+		if (!visible && wasVisible.current) {
+			setMenuStack([]);
+			setIsLoading(false);
+			setError(null);
+			setSelectedIndex(0);
+			onQueryChange?.("");
+		}
+		wasVisible.current = visible;
+	}, [onQueryChange, setSelectedIndex, visible]);
 
 	const handleExecute = async (selected: CommandItem) => {
 		if (selected.submenu) {
@@ -376,12 +388,6 @@ export function CommandPalette({
 		}
 	};
 
-	useVimInput({
-		isActive: visible && query.length === 0 && !isLoading,
-		onUp: moveUp,
-		onDown: moveDown,
-	});
-
 	useInput(
 		(char, key) => {
 			if (isMouseSequence(char)) return;
@@ -390,9 +396,10 @@ export function CommandPalette({
 			if (key.backspace || key.delete) {
 				if (query.length === 0 && menuStack.length > 0) {
 					setMenuStack((prev) => prev.slice(0, -1));
+					onQueryChange?.("");
 					setError(null);
 				}
-				// We do NOT modify query here, because ChatBar handles the actual string deletion
+				// ChatBar owns text mutation, including deleting a search character.
 				return;
 			}
 
@@ -409,22 +416,19 @@ export function CommandPalette({
 			}
 
 			if (isEnterKey(char, key)) {
-				if (filteredCommands.length > 0) {
-					const selected =
-						filteredCommands[selectedIndex] || filteredCommands[0];
-					if (selected) {
-						void handleExecute(selected);
-					}
+				const selected = groupedCommands[selectedIndex] ?? groupedCommands[0];
+				if (selected) {
+					void handleExecute(selected);
 				}
 				return;
 			}
 
-			if (key.upArrow) {
+			if (query.length === 0 && (key.upArrow || char === "k")) {
 				moveUp();
 				return;
 			}
 
-			if (key.downArrow) {
+			if (query.length === 0 && (key.downArrow || char === "j")) {
 				moveDown();
 				return;
 			}
@@ -436,25 +440,14 @@ export function CommandPalette({
 
 
 
-	const displayCommands = getVisibleItems(filteredCommands);
-	const hasMore = filteredCommands.length > MAX_DISPLAY;
+	const displayCommands = getVisibleItems(groupedCommands);
+	const hasMore = groupedCommands.length > MAX_DISPLAY;
 
-	const groupedDisplayCommands = {
-		submenu: displayCommands.filter((c) => c.category === "submenu"),
-		recent: displayCommands.filter((c) => c.category === "recent"),
-		session: displayCommands.filter((c) => c.category === "session"),
-		model: displayCommands.filter((c) => c.category === "model"),
-		help: displayCommands.filter((c) => c.category === "help"),
-	};
-
-	const orderedGroups = [
-		["submenu", groupedDisplayCommands.submenu],
-		["recent", groupedDisplayCommands.recent],
-		["session", groupedDisplayCommands.session],
-		["model", groupedDisplayCommands.model],
-		["help", groupedDisplayCommands.help],
-	].filter(([, cmds]) => (cmds as any[]).length > 0) as Array<
-		[string, typeof displayCommands]
+	const orderedGroups = CATEGORY_ORDER.map((category) => [
+		category,
+		displayCommands.filter((command) => command.category === category),
+	] as const).filter(([, commands]) => commands.length > 0) as Array<
+		[CommandItem["category"], typeof displayCommands]
 	>;
 
 	const breadcrumbs = menuStack.map((m) => m.title).join(" > ");
@@ -519,7 +512,7 @@ export function CommandPalette({
 											isRecent ? `── RECENT ` : `── ${category.toUpperCase()} `,
 										),
 										...items.map((cmd) => {
-											const cmdIndex = filteredCommands.findIndex(
+											const cmdIndex = groupedCommands.findIndex(
 												(c) => c.id === cmd.id,
 											);
 											const isSelected = cmdIndex === selectedIndex;
@@ -543,31 +536,12 @@ export function CommandPalette({
 											color: GRAY,
 											dimColor: true,
 										},
-										`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${filteredCommands.length} — refine your filter`,
+										`  … showing ${windowStart + 1}-${windowStart + displayCommands.length} of ${groupedCommands.length} — refine your filter`,
 									)
 							)
 			)}
 		</Box>
 	);
-}
-
-function getRecentCommands(): string[] {
-	try {
-		return globalConfig.get("recentCommands") || [];
-	} catch {
-		return [];
-	}
-}
-
-function addRecentCommand(commandId: string): void {
-	try {
-		const recent = getRecentCommands();
-		const filtered = recent.filter((id) => id !== commandId);
-		const updated = [commandId, ...filtered].slice(0, 5);
-		globalConfig.set("recentCommands", updated);
-	} catch (err) {
-		debug.log("chat", `Failed to add recent command: ${err}`);
-	}
 }
 
 export function createCommands(options: {

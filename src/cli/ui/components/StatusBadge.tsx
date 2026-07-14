@@ -1,4 +1,3 @@
-// @ts-expect-error TS6133/TS6192: Unused variable
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -47,10 +46,7 @@ export interface StatusBadgeProps {
 	 * Show a subtle background pill around the label for emphasis.
 	 */
 	emphasize?: boolean;
-	/**
-	 * Enable smooth transitions between states (default: true)
-	 */
-	animate?: boolean;
+
 	/**
 	 * Reduce motion for accessibility (default: false, respects env var)
 	 */
@@ -98,23 +94,6 @@ const DEFAULT_LABELS: Record<StatusKind, string> = {
 	thinking: "Thinking",
 };
 
-// Accessibility role mapping for screen readers
-const ARIA_ROLES: Record<StatusKind, string> = {
-	success: "status",
-	error: "alert",
-	warning: "status",
-	info: "status",
-	pending: "status",
-	running: "status",
-	idle: "status",
-	killed: "alert",
-	cached: "status",
-	readonly: "status",
-	mutating: "status",
-	verified: "status",
-	speculative: "status",
-	thinking: "status",
-};
 
 /**
  * StatusBadge — a single source of truth for status display across the TUI.
@@ -122,18 +101,13 @@ const ARIA_ROLES: Record<StatusKind, string> = {
  * Replaces ad-hoc emoji (`⏳`, `✅`, `❌`) and `ink-spinner` usages with
  * brand-consistent hieroglyphs and a uniform color palette. Optionally
  * animates a 150ms spinner for `running`/`pending`/`thinking` kinds.
- * 
- * Accessibility:
- * - ARIA roles for screen readers (alert for errors, status for others)
- * - Accessibility labels for non-visual consumption
- * - Respects reduce motion preferences
+ * Respects reduce motion preferences.
  */
 export function StatusBadge({
 	kind,
 	label,
 	compact = false,
 	emphasize = false,
-	animate = true,
 	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
 }: StatusBadgeProps): React.ReactElement {
 	const { glyph, color, spin } = ICONS[kind];
@@ -156,16 +130,10 @@ export function StatusBadge({
 		? (kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading)[frame]
 		: glyph;
 	const text = label ?? DEFAULT_LABELS[kind];
-	const ariaRole = ARIA_ROLES[kind];
-	const ariaLabel = `${text} status`;
 
 	if (compact) {
 		return (
-			<Text 
-				color={color} 
-				accessibilityLabel={ariaLabel}
-				accessibilityRole={ariaRole}
-			>
+			<Text color={color}>
 				{animatedGlyph}
 			</Text>
 		);
@@ -173,23 +141,14 @@ export function StatusBadge({
 
 	if (emphasize) {
 		return (
-			<Text 
-				color={color} 
-				inverse
-				accessibilityLabel={ariaLabel}
-				accessibilityRole={ariaRole}
-			>
+			<Text color={color} inverse>
 				{` ${animatedGlyph} ${text} `}
 			</Text>
 		);
 	}
 
 	return (
-		<Box 
-			flexDirection="row" 
-			accessibilityLabel={ariaLabel}
-			accessibilityRole={ariaRole}
-		>
+		<Box flexDirection="row">
 			<Text color={color}>{animatedGlyph}</Text>
 			<Text color={color} dimColor={kind === "idle" || kind === "killed"}>
 				{` ${text}`}

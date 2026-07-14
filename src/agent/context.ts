@@ -120,7 +120,7 @@ export function compactContext(
 		maxContext ??
 		ctx.modelContextLength ??
 		ctx.config.kilocode?.contextManagement?.maxContextLength ??
-		128000;
+		1000000;
 	const target =
 		targetTokens ?? Math.floor(effectiveMaxContext * COMPACT_THRESHOLD);
 	const currentTokens = estimateTokens(ctx.messages);
@@ -189,7 +189,7 @@ export function warnOnContextLimit(ctx: AgentContext): boolean {
 	const maxContext =
 		ctx.modelContextLength ??
 		ctx.config.kilocode?.contextManagement?.maxContextLength ??
-		128000;
+		1000000;
 	const tokens = estimateTokens(ctx.messages);
 	const ratio = tokens / maxContext;
 

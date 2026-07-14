@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { version } from "../../../package.json";
 import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
 import clipboardy from "clipboardy";
@@ -3876,6 +3877,7 @@ function ChatUI({
 							React.createElement(TehutiHeader, {
 								model: ctxModel,
 								provider: normalizedProvider,
+								version,
 								hasUpdate,
 								onModelClick: handleHeaderModelClick,
 								onConfigClick: handleHeaderConfigClick,
@@ -3912,6 +3914,7 @@ function ChatUI({
 										compact: true,
 										model: ctxModel,
 										provider: normalizedProvider,
+										version,
 										hasUpdate,
 										onModelClick: handleHeaderModelClick,
 										onConfigClick: handleHeaderConfigClick,

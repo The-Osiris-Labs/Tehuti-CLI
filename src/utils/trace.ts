@@ -93,6 +93,8 @@ export type TraceKind =
 	| "session.delete"
 	| "session.cleanup"
 	| "session.prune"
+	| "session.resume"
+	| "session.close"
 	// Memory
 	| "memory.read"
 	| "memory.write"
@@ -114,6 +116,8 @@ export type TraceKind =
 	| "user.input"
 	| "user.interrupt"
 	| "user.command"
+	| "user.palette_command"
+	| "ui.error"
 	// Prefetch
 	| "prefetch.predict"
 	| "prefetch.hit"
@@ -152,13 +156,17 @@ export interface TraceEvent {
 
 /** In-memory ring buffer size. */
 const TRACE_RING_SIZE = 10_000;
-/** Flush threshold: events. */
-const TRACE_FLUSH_EVENTS = 64;
-/** Flush threshold: ms. */
-const TRACE_FLUSH_MS = 1_000;
 
 /** Max size of any single string in `data` to bound memory. */
 const TRACE_MAX_FIELD = 8 * 1024;
+const SENSITIVE_KEY_PATTERN =
+	/(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth(?:orization)?|password|secret|cookie|credential)/i;
+const SENSITIVE_VALUE_PATTERN =
+	/(?:\bsk-[A-Za-z0-9_-]{8,}|\b(?:Bearer|Token)\s+[A-Za-z0-9._~+\/-]{8,})/i;
+
+function redactString(value: string): string {
+	return SENSITIVE_VALUE_PATTERN.test(value) ? "[REDACTED]" : value;
+}
 
 function clampString(value: string, max: number): string {
 	if (value.length <= max) return value;
@@ -171,8 +179,10 @@ function clampData(
 	if (!data) return undefined;
 	const out: Record<string, unknown> = {};
 	for (const [k, v] of Object.entries(data)) {
-		if (typeof v === "string") {
-			out[k] = clampString(v, TRACE_MAX_FIELD);
+		if (SENSITIVE_KEY_PATTERN.test(k)) {
+			out[k] = "[REDACTED]";
+		} else if (typeof v === "string") {
+			out[k] = clampString(redactString(v), TRACE_MAX_FIELD);
 		} else if (typeof v === "number" || typeof v === "boolean" || v == null) {
 			out[k] = v;
 		} else if (v instanceof Error) {
@@ -201,21 +211,24 @@ function clampData(
 	return out;
 }
 
+type TraceEventInput = Omit<
+	TraceEvent,
+	"ts" | "iso" | "actor" | "sessionId"
+> & {
+	actor?: string;
+	sessionId?: string | null;
+};
+
 class TraceCollector {
 	private buffer: Array<TraceEvent | undefined> = [];
 	private nextIndex = 0;
 	private size = 0;
 	private fd: number | null = null;
 	private logPath: string | null = null;
-	private dirty = 0;
-	private lastFlush = Date.now();
 	private currentSessionId: string | null = null;
 	private currentActor = "main";
 	private closed = false;
 	private enabled = true;
-	private writeQueue: string[] = [];
-	private writing = false;
-	private flushScheduled = false;
 
 	/**
 	 * Configure the on-disk log file. Safe to call multiple times.
@@ -234,8 +247,6 @@ class TraceCollector {
 			this.fd = fs.openSync(logPath, "a");
 			this.logPath = logPath;
 			this.closed = false;
-			this.writeQueue = [];
-			this.dirty = 0;
 		} catch (err) {
 			debug.log(
 				"agent",
@@ -277,7 +288,7 @@ class TraceCollector {
 	/**
 	 * Emit a trace event. Fire-and-forget; never throws.
 	 */
-	emit(partial: Omit<TraceEvent, "ts" | "iso" | "actor" | "sessionId">): void {
+	emit(partial: TraceEventInput): void {
 		if (!this.enabled) return;
 		if (this.closed) return;
 		const ts = Date.now();
@@ -287,8 +298,8 @@ class TraceCollector {
 			level: partial.level,
 			kind: partial.kind,
 			summary: clampString(partial.summary, 200),
-			actor: this.currentActor,
-			sessionId: this.currentSessionId,
+			actor: partial.actor ?? this.currentActor,
+			sessionId: partial.sessionId ?? this.currentSessionId,
 			parentId: partial.parentId ?? null,
 			data: clampData(partial.data),
 			durationMs: partial.durationMs,
@@ -304,15 +315,13 @@ class TraceCollector {
 		}
 		this.nextIndex = (this.nextIndex + 1) % TRACE_RING_SIZE;
 
-		// 2) On-disk log (queued, drained asynchronously)
+		// 2) On-disk log. Synchronous append means a normal process exit cannot
+		// strand events in an in-memory batch. O_APPEND keeps each write atomic.
 		if (this.fd != null) {
-			this.writeQueue.push(`${JSON.stringify(event)}\n`);
-			this.dirty++;
-			if (
-				this.dirty >= TRACE_FLUSH_EVENTS ||
-				ts - this.lastFlush >= TRACE_FLUSH_MS
-			) {
-				this.scheduleFlush();
+			try {
+				fs.writeSync(this.fd, `${JSON.stringify(event)}\n`);
+			} catch (err) {
+				debug.log("agent", `TraceCollector: write failed: ${err}`);
 			}
 		}
 
@@ -322,38 +331,14 @@ class TraceCollector {
 		}
 	}
 
-	private scheduleFlush(): void {
-		if (this.flushScheduled || this.writing) return;
-		this.flushScheduled = true;
-		setImmediate(() => {
-			this.flushScheduled = false;
-			this.flush();
-		});
-	}
-
-	private flush(): void {
-		if (this.fd == null || this.writeQueue.length === 0) {
-			this.dirty = 0;
-			this.lastFlush = Date.now();
-			return;
-		}
-		const batch = this.writeQueue.join("");
-		this.writeQueue = [];
-		this.dirty = 0;
-		this.lastFlush = Date.now();
-		this.writing = true;
-		try {
-			fs.writeSync(this.fd, batch);
-		} catch (err) {
-			debug.log("agent", `TraceCollector: write failed: ${err}`);
-		} finally {
-			this.writing = false;
-		}
-	}
-
 	/** Force a synchronous flush. Call on process exit / before snapshot. */
 	flushSync(): void {
-		this.flush();
+		if (this.fd == null) return;
+		try {
+			fs.fsyncSync(this.fd);
+		} catch (err) {
+			debug.log("agent", `TraceCollector: fsync failed: ${err}`);
+		}
 	}
 
 	/** Close the log file. Idempotent. */
@@ -461,6 +446,8 @@ export function traceEmit(
 		parentId: opts.parentId ?? null,
 		subagentId: opts.subagentId,
 		fromSubagent: opts.fromSubagent,
+		actor: opts.actor,
+		sessionId: opts.sessionId,
 	});
 }
 
@@ -500,6 +487,39 @@ export function traceTimer(
 			fromSubagent: extra.fromSubagent,
 		});
 	};
+}
+
+/**
+ * Read persisted events in append order. Corrupt or partial JSONL lines are
+ * ignored so a bad line can never prevent trace queries or application startup.
+ */
+export async function readPersistedTrace(
+	logPath = defaultTraceLogPath(),
+): Promise<TraceEvent[]> {
+	try {
+		const content = await fs.promises.readFile(logPath, "utf8");
+		const events: TraceEvent[] = [];
+		for (const line of content.split("\n")) {
+			if (!line.trim()) continue;
+			try {
+				const event = JSON.parse(line) as Partial<TraceEvent>;
+				if (
+					typeof event.ts === "number" &&
+					typeof event.kind === "string" &&
+					typeof event.actor === "string"
+				) {
+					events.push(event as TraceEvent);
+				}
+			} catch {
+				// A malformed line must not make a durable journal unreadable.
+			}
+		}
+		return events;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		debug.log("agent", `TraceCollector: failed to read log ${logPath}: ${err}`);
+		return [];
+	}
 }
 
 /**

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	defaultTraceLogPath,
 	initTrace,
+	readPersistedTrace,
 	trace,
 	traceEmit,
 	traceTimer,
@@ -211,5 +212,70 @@ describe("initTrace()", () => {
 		const logPath = trace.getLogPath();
 		expect(logPath).toBe(defaultTraceLogPath());
 		trace.close();
+	});
+});
+
+describe("durable interaction journal", () => {
+	it("persists ordered, session-correlated lifecycle events and tolerates malformed lines", async () => {
+		const logPath = path.join(testDir, "absent-trace.jsonl");
+		trace.close();
+		fs.rmSync(logPath, { force: true });
+		process.env.TEHUTI_TRACE_LOG = logPath;
+		try {
+			initTrace();
+			expect(fs.existsSync(logPath)).toBe(true);
+
+			trace.setSession("session-journal-test");
+			trace.setActor("chat-ui");
+			traceEmit("session.create", "Created session");
+			traceEmit("user.input", "Submitted user input", {
+				data: { text: "Ship the journal", apiKey: "super-secret-token" },
+			});
+			traceEmit("user.command", "Submitted slash command", {
+				data: { command: "/save" },
+			});
+			traceEmit("model.request", "Model request started", {
+				actor: "agent-runner",
+				data: { provider: "opencode", model: "deepseek-v4-flash" },
+			});
+			traceEmit("model.response", "Model request completed", {
+				actor: "agent-runner",
+				durationMs: 12,
+				data: { totalTokens: 42 },
+			});
+			traceEmit("tool.start", "Tool started: read_file", {
+				actor: "tool-processor",
+				correlationId: "tool-1",
+				data: { tool: "read_file" },
+			});
+			traceEmit("tool.success", "Tool completed: read_file", {
+				actor: "tool-processor",
+				correlationId: "tool-1",
+				durationMs: 4,
+				data: { tool: "read_file", outputBytes: 9000 },
+			});
+			traceEmit("lifecycle.error", "Visible error", {
+				level: "error",
+				data: { message: "network unavailable" },
+			});
+			fs.appendFileSync(logPath, "not valid json\n");
+
+			const persisted = await readPersistedTrace(logPath);
+			expect(persisted.map((event) => event.kind)).toEqual([
+				"session.create",
+				"user.input",
+				"user.command",
+				"model.request",
+				"model.response",
+				"tool.start",
+				"tool.success",
+				"lifecycle.error",
+			]);
+			expect(persisted.every((event) => event.sessionId === "session-journal-test")).toBe(true);
+			expect(persisted.every((event) => event.actor.length > 0 && event.ts > 0)).toBe(true);
+			expect(JSON.stringify(persisted)).not.toContain("super-secret-token");
+		} finally {
+			delete process.env.TEHUTI_TRACE_LOG;
+		}
 	});
 });

@@ -1,5 +1,4 @@
 import { Box, Text } from "ink";
-// @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useEffect, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 
@@ -31,8 +30,7 @@ export interface ProgressBarProps {
 	phase?: "running" | "success" | "error" | "warning";
 	/** Accessibility: reduce motion mode (default: false, respects env var) */
 	reduceMotion?: boolean;
-	/** Accessibility: custom label for screen readers */
-	ariaLabel?: string;
+
 }
 
 /**
@@ -48,7 +46,6 @@ export interface ProgressBarProps {
  *   - Phase coloring (success/error/warning).
  *   - Optional label + percent display above the bar.
  *   - Smooth numeric clamping.
- *   - Accessibility: ARIA progressbar role with value/label
  *   - Respects reduce motion preferences
  */
 export const ProgressBar = ({
@@ -58,7 +55,6 @@ export const ProgressBar = ({
 	showPercent = true,
 	phase = "running",
 	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
-	ariaLabel,
 }: ProgressBarProps): React.ReactElement => {
 	const safeWidth = Math.max(8, Math.min(200, Math.round(width)));
 
@@ -131,19 +127,9 @@ export const ProgressBar = ({
 
 	const percentText = active ? `${Math.round(clamped)}%` : "…";
 
-	// Accessibility: build descriptive label
-	const accessibleLabel = ariaLabel || label || "Progress";
-	const accessibleValue = active ? `${Math.round(clamped)} percent` : "indeterminate";
-
 	return React.createElement(
 		Box,
-		{ 
-			flexDirection: "column", 
-			marginY: 0.5,
-			accessibilityLabel: `${accessibleLabel}: ${accessibleValue}`,
-			accessibilityRole: "progressbar",
-			accessibilityValue: active ? Math.round(clamped) : undefined,
-		},
+		{ flexDirection: "column", marginY: 0.5 },
 		(label || showPercent) &&
 			React.createElement(
 				Box,

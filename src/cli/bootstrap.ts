@@ -23,6 +23,7 @@ import { debug } from "../utils/debug.js";
 import { setupErrorHandlers } from "../utils/errors.js";
 import { setDebugMode } from "../utils/logger.js";
 import { getTelemetry } from "../utils/telemetry.js";
+import { initializePlugins } from "../plugins/index.js";
 
 const CONFIG_PATH = path.join(os.homedir(), ".tehuti.json");
 
@@ -127,6 +128,23 @@ export async function bootstrapCLI(
 	cfg.provider = provider;
 	configureHooks(cfg);
 	initializeAgent();
+
+	// Initialize plugin system (non-fatal on failure)
+	try {
+		const registry = initializePlugins(
+			"1.2.1",
+			process.cwd(),
+			"default",
+		);
+		await registry.discoverAndLoad();
+		for (const plugin of registry.getAllPlugins()) {
+			if (plugin.phase === "load") {
+				await registry.activate(plugin.manifest.name);
+			}
+		}
+	} catch (err) {
+		debug.log("plugins", `Plugin init failed: ${err}`);
+	}
 
 	const diffPreview = opts.diff
 		? { showPreview: true, autoConfirm: false }

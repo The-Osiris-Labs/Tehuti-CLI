@@ -2,7 +2,7 @@ import { debug } from "../../utils/debug.js";
 import { registerCleanupHandler } from "../../utils/errors.js";
 import {
 	startBackgroundConsolidation,
-	stopBackgroundConsolidation,
+	shutdownConsolidation,
 } from "./consolidation.js";
 import db from "./db.js";
 import { vectorStore } from "./vector-store.js";
@@ -55,8 +55,8 @@ export async function initMemory(
 	if (!cleanupRegistered) {
 		cleanupRegistered = true;
 		registerCleanupHandler(async () => {
-			debug.log("memory", "Stopping memory consolidation timer");
-			stopBackgroundConsolidation();
+			debug.log("memory", "Shutting down memory consolidation timer");
+			await shutdownConsolidation();
 			try {
 				db.close();
 			} catch (_err) {

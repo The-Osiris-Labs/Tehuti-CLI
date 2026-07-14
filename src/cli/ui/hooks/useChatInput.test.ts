@@ -3,6 +3,12 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type UseChatInputProps, useChatInput } from "./useChatInput.js";
 
+const loggerState = vi.hoisted(() => ({ error: vi.fn() }));
+
+vi.mock("../../../utils/logger.js", () => ({
+	logger: { error: loggerState.error },
+}));
+
 // Mock the 'ink' module to capture the useInput callback
 vi.mock("ink", async () => {
 	const actual = await vi.importActual("ink");
@@ -102,6 +108,37 @@ describe("useChatInput hook", () => {
 		const updater = lastCall[0];
 		expect(typeof updater).toBe("string");
 		expect(updater).toBe("hello/");
+		unmount();
+	});
+
+	it("keeps printable palette query text ChatBar-owned while palette navigation keys leave input unchanged", () => {
+		props.input = "";
+		props.cursorPos = 0;
+		props.showCommandPalette = true;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("j", {});
+		expect(props.setInput).toHaveBeenCalledWith("j");
+
+		props.setInput.mockClear();
+		props.setCursorPos.mockClear();
+		triggerInput("", { downArrow: true });
+		triggerInput("\n", { return: true });
+		triggerInput("", { escape: true });
+		expect(props.setInput).not.toHaveBeenCalled();
+		expect(props.setCursorPos).not.toHaveBeenCalled();
+		unmount();
+	});
+
+	it("does not leak permission confirmation keys into the chat draft", () => {
+		props.pendingPermission = { request: "approval-required" };
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("y", {});
+		triggerInput("n", {});
+
+		expect(props.setInput).not.toHaveBeenCalled();
+		expect(props.setCursorPos).not.toHaveBeenCalled();
 		unmount();
 	});
 
@@ -254,6 +291,86 @@ describe("useChatInput hook", () => {
 		expect(props.setCursorPos).toHaveBeenCalledWith(
 			"line1\nline2\nline3".length,
 		);
+		unmount();
+	});
+
+	it("preserves a 1,000+ character multiline paste delivered in chunks", () => {
+		props.input = "prefix:";
+		props.cursorPos = 7;
+		const payload = `${"line\n".repeat(250)}done`;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput(`\x1b[200~${payload.slice(0, 400)}`, {});
+		triggerInput(payload.slice(400, 900), {});
+		triggerInput(`${payload.slice(900)}\x1b[201~`, {});
+
+		expect(payload.length).toBeGreaterThan(1000);
+		expect(props.setInput).toHaveBeenLastCalledWith(`prefix:${payload}`);
+		expect(props.setCursorPos).toHaveBeenLastCalledWith(7 + payload.length);
+		unmount();
+	});
+
+	it("reports a history persistence failure without delaying local submission", async () => {
+		props.input = "save me";
+		props.cursorPos = 7;
+		props.saveHistory = vi.fn(() => Promise.reject(new Error("disk unavailable")));
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("\n", { return: true });
+		expect(props.setHistory).toHaveBeenCalledWith(["save me", "history-1", "history-2"]);
+		expect(props.send).toHaveBeenCalledWith("save me");
+		await Promise.resolve();
+		expect(loggerState.error).toHaveBeenCalledWith(
+			"Failed to save chat input history:",
+			expect.any(Error),
+		);
+		unmount();
+	});
+
+	it("skips malformed and duplicate history entries during navigation", () => {
+		props.input = "draft";
+		props.cursorPos = 5;
+		props.history = [null as any, "", "first", "first", 42 as any, "second"];
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("", { upArrow: true });
+		expect(props.setInput).toHaveBeenCalledWith("first");
+		expect(props.setHistoryIndex).toHaveBeenCalledWith(0);
+		unmount();
+	});
+
+	it("deletes a complete multibyte character and leaves the cursor at a valid boundary", () => {
+		props.input = "A😀B";
+		props.cursorPos = 3;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("\x7f", { backspace: true });
+		expect(props.setInput).toHaveBeenCalledWith("AB");
+		expect(props.setCursorPos).toHaveBeenCalledWith(1);
+		unmount();
+	});
+
+	it("clamps an out-of-range selection before deleting it", () => {
+		props.input = "A😀B";
+		props.cursorPos = 99;
+		props.selectionStart = 99;
+		props.selectionEnd = 100;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("\x7f", { backspace: true });
+		expect(props.setInput).toHaveBeenCalledWith("A😀B");
+		expect(props.setCursorPos).toHaveBeenCalledWith("A😀B".length);
+		unmount();
+	});
+
+	it("clamps an out-of-bounds cursor before inserting text", () => {
+		props.input = "A😀B";
+		props.cursorPos = 99;
+		const { unmount } = render(React.createElement(HookWrapper, { props }));
+
+		triggerInput("!", {});
+		expect(props.setInput).toHaveBeenCalledWith("A😀B!");
+		expect(props.setCursorPos).toHaveBeenCalledWith("A😀B!".length);
 		unmount();
 	});
 
@@ -439,6 +556,28 @@ describe("useChatInput hook", () => {
 			const { unmount } = render(React.createElement(HookWrapper, { props }));
 			triggerInput("\n", { return: true, shift: false });
 			expect(props.send).not.toHaveBeenCalled();
+			unmount();
+		});
+	});
+
+	describe("printable punctuation versus SGR mouse input", () => {
+		it.each([
+			["<", "hello world<"],
+			["[", "hello world["],
+			["foo<Bar", "hello worldfoo<Bar"],
+			["arr[0]", "hello worldarr[0]"],
+		])( "inserts ordinary code text immediately: %s", (typed, expected) => {
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput(typed, {});
+			expect(props.setInput).toHaveBeenCalledWith(expected);
+			unmount();
+		});
+
+		it("consumes only a complete escape-prefixed SGR wheel report", () => {
+			const { unmount } = render(React.createElement(HookWrapper, { props }));
+			triggerInput("\x1b[<64;35;72M", {});
+			expect(props.scrollLineUp).toHaveBeenCalledTimes(1);
+			expect(props.setInput).not.toHaveBeenCalled();
 			unmount();
 		});
 	});

@@ -6,53 +6,41 @@ import {
 } from "./mouse.js";
 
 describe("Mouse Sequence Filter Utility", () => {
-	it("should detect complete SGR mouse sequences", () => {
+	it("detects complete escape-prefixed SGR and X10 mouse sequences", () => {
 		expect(isMouseSequence("\x1b[<35;72;37M")).toBe(true);
 		expect(isMouseSequence("\x1b[<0;10;20m")).toBe(true);
-	});
-
-	it("should detect standard X10 mouse sequences", () => {
 		expect(isMouseSequence("\x1b[Mabc")).toBe(true);
 	});
 
-	it("should detect split or fragmented mouse coordinates", () => {
-		expect(isMouseSequence("<35;72;37M")).toBe(true);
-		expect(isMouseSequence("35;72;37M")).toBe(true);
-		expect(isMouseSequence("35;72;37m")).toBe(true);
+	it("never classifies ordinary source-code text as mouse protocol", () => {
+		for (const input of [
+			"<",
+			"[",
+			"<35;72;37M",
+			"35;72;37M",
+			"35;72;37m",
+			"foo<Bar",
+			"arr[0]",
+			"M",
+			"m",
+			"/help",
+		]) {
+			expect(isMouseSequence(input)).toBe(false);
+		}
 	});
 
-	it("should detect split SGR fragments produced by chunked stdin reads", () => {
-		expect(isMouseSequence("<")).toBe(true);
-		expect(isMouseSequence("<35")).toBe(true);
-		expect(isMouseSequence("35;72")).toBe(true);
-		expect(isMouseSequence("35;72;37")).toBe(true);
-		expect(isMouseSequence("37M")).toBe(true);
-		expect(isMouseSequence("37m")).toBe(true);
+	it("buffers only escape-prefixed SGR fragments", () => {
+		expect(isMouseSequenceFragment("\x1b[")).toBe(true);
+		expect(isMouseSequenceFragment("\x1b[<")).toBe(true);
+		expect(isMouseSequenceFragment("\x1b[<35")).toBe(true);
+		expect(isMouseSequenceFragment("\x1b[<35;72")).toBe(true);
+
+		for (const input of ["<", "[", "<35", "35;72", "37", "hello"]) {
+			expect(isMouseSequenceFragment(input)).toBe(false);
+		}
 	});
 
-	it("should not falsely match normal text keys or words", () => {
-		expect(isMouseSequence("hello")).toBe(false);
-		expect(isMouseSequence("a")).toBe(false);
-		expect(isMouseSequence("/help")).toBe(false);
-		expect(isMouseSequence("<hello>")).toBe(false);
-		expect(isMouseSequence("35")).toBe(false);
-		expect(isMouseSequence("")).toBe(false);
-	});
-
-	it("should NOT treat bare M/m as mouse sequences (those are literal letters)", () => {
-		expect(isMouseSequence("M")).toBe(false);
-		expect(isMouseSequence("m")).toBe(false);
-	});
-
-	it("isMouseSequenceFragment flags partials that should be buffered", () => {
-		expect(isMouseSequenceFragment("<")).toBe(true);
-		expect(isMouseSequenceFragment("<35")).toBe(true);
-		expect(isMouseSequenceFragment("35;72")).toBe(true);
-		expect(isMouseSequenceFragment("37")).toBe(false);
-		expect(isMouseSequenceFragment("hello")).toBe(false);
-	});
-
-	it("isMouseSequenceTail flags a chunk that completes a buffered fragment", () => {
+	it("recognizes coordinate tails only for an already-confirmed mouse prefix", () => {
 		expect(isMouseSequenceTail("37M")).toBe(true);
 		expect(isMouseSequenceTail("37m")).toBe(true);
 		expect(isMouseSequenceTail("35;72;37")).toBe(true);

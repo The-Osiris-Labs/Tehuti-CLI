@@ -713,7 +713,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	baseUrl: undefined,
 	provider: "opencode",
 	maxTokens: 32000,
-	maxIterations: 50,
+	maxIterations: 150,
 	temperature: 0.7,
 	extendedThinking: false,
 	requestTimeout: 120000,
@@ -747,7 +747,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		},
 		contextManagement: {
 			autoSummarize: true,
-			maxContextLength: 200000,
+			maxContextLength: 1000000,
 		},
 	},
 	grepai: {
@@ -804,7 +804,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		consolidationIntervalMs: 15 * 60 * 1000,
 	},
 	modelCapabilities: {
-		contextLength: 200000,
+		contextLength: 1000000,
 		maxOutputTokens: 32000,
 		supportsVision: true,
 		supportsTools: true,

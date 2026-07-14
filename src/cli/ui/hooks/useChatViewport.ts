@@ -1,20 +1,20 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeMessageLines } from "../../../terminal/output.js";
 
-/**
- * Options for the chat viewport hook.
- */
+/** Options for the chat viewport hook. */
 export interface UseChatViewportOptions {
 	messages: any[];
 	terminalHeight: number;
 	terminalWidth: number;
 	headerHeight: number;
+	/** Height occupied below history by the active input or prompt. */
 	promptOverlayHeight: number;
 	warningsHeight: number;
 	paletteHeight: number;
 	loadingOverlayHeight: number;
 	thinkingOverlayHeight: number;
 	errorOverlayHeight: number;
+	dashboardOverlayHeight?: number;
 	input: string;
 	showWelcome: boolean;
 	/** External scroll offset state (from parent). If omitted, the hook creates its own. */
@@ -24,9 +24,9 @@ export interface UseChatViewportOptions {
 }
 
 export interface UseChatViewportReturn {
-	/** Visible messages for the current viewport window. */
+	/** Visible messages for the current render window. */
 	visibleMessages: any[];
-	/** Deferred (lower-priority) version for React 18. */
+	/** Kept as a compatibility alias; scrolling is intentionally synchronous. */
 	deferredVisibleMessages: any[];
 	/** Current scroll offset (in lines, 0 = at bottom). */
 	scrollOffset: number;
@@ -34,11 +34,11 @@ export interface UseChatViewportReturn {
 	totalMessageLines: number;
 	/** Available content width. */
 	contentMaxWidth: number;
-	/** Viewport height (terminal minus overlays). */
+	/** Viewport height (terminal minus fixed overlays). */
 	chatViewportHeight: number;
-	/** Whether the user has scrolled to (or past) the bottom. */
+	/** Whether the user has scrolled to the bottom. */
 	isAtBottom: boolean;
-	/** Count of new messages since the user last scrolled to bottom. */
+	/** Count of messages received while the user is scrolled up. */
 	newMessageCount: number;
 
 	scrollToBottom: () => void;
@@ -51,10 +51,10 @@ export interface UseChatViewportReturn {
 }
 
 /**
- * Manages the line-budgeted chat viewport with tail-follow scrolling,
- * new-message badge tracking, and scroll-anchor behavior.
- *
- * Extracted from the inline viewport logic in chat.ts (lines ~2253-2567).
+ * Owns the viewport's scroll mechanics: tail following, line/page navigation,
+ * message-arrival badge state, and the virtual render window. The chat keeps
+ * the negative-margin model; this hook only decides its offset and content
+ * slice, never remounts history merely to scroll.
  */
 export function useChatViewport({
 	messages,
@@ -67,7 +67,7 @@ export function useChatViewport({
 	loadingOverlayHeight,
 	thinkingOverlayHeight,
 	errorOverlayHeight,
-	input,
+	dashboardOverlayHeight = 0,
 	showWelcome,
 	scrollOffset: externalScrollOffset,
 	setScrollOffset: externalSetScrollOffset,
@@ -75,51 +75,46 @@ export function useChatViewport({
 	const hasExternalScrollOffset =
 		externalScrollOffset !== undefined && externalSetScrollOffset !== undefined;
 	const [internalScrollOffset, internalSetScrollOffset] = useState(0);
+	const [isAtBottom, setIsAtBottom] = useState(true);
+	const [newMessageCount, setNewMessageCount] = useState(0);
+	const isAtBottomRef = useRef(true);
+	const previousMessageCountRef = useRef(messages.length);
 
-	const scrollOffset = hasExternalScrollOffset ? externalScrollOffset! : internalScrollOffset;
+	const scrollOffset = hasExternalScrollOffset
+		? externalScrollOffset!
+		: internalScrollOffset;
+
+	// Forward functional actions to the external React setter unchanged. Resolving
+	// them against a captured externalScrollOffset drops rapid consecutive scrolls.
 	const setScrollOffset: React.Dispatch<React.SetStateAction<number>> = useCallback(
 		(action) => {
-			const next =
-				typeof action === "function"
-					? action(hasExternalScrollOffset ? externalScrollOffset : internalScrollOffset)
-					: action;
 			if (hasExternalScrollOffset) {
-				externalSetScrollOffset(next as any);
+				externalSetScrollOffset!(action);
+				return;
 			}
-			internalSetScrollOffset(next);
+			internalSetScrollOffset(action);
 		},
-		// We intentionally omit externalScrollOffset / externalSetScrollOffset here
-		// to avoid recreating the callback on every render — values are read from
-		// the closure at call time.
-		[internalSetScrollOffset, hasExternalScrollOffset], // eslint-disable-line react-hooks/exhaustive-deps
+		[externalSetScrollOffset, hasExternalScrollOffset],
 	);
-	const messagesEndRef = useRef<boolean>(true);
-	const messagesRef = useRef<typeof messages>([]);
-	const newMessageCountRef = useRef<number>(0);
-	const [newMessageCount, setNewMessageCount] = useState(0);
-	const scrollAnchorRef = useRef<number>(0);
 
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
-
 	const chatViewportHeight = Math.max(
 		3,
 		terminalHeight -
 			headerHeight -
 			promptOverlayHeight -
-			(scrollOffset > 0 ? 3 : 0) - // Scroll banner
-			(input.startsWith("/") && input.length > 1 ? 1 : 0) - // Suggestions row
 			warningsHeight -
 			paletteHeight -
 			loadingOverlayHeight -
 			thinkingOverlayHeight -
-			errorOverlayHeight,
+			errorOverlayHeight -
+			dashboardOverlayHeight,
 	);
 
-	// Total estimated lines for all messages.
 	const totalMessageLines = useMemo(() => {
 		let lines = 0;
-		for (const msg of messages) {
-			lines += computeMessageLines(msg, contentMaxWidth);
+		for (const message of messages) {
+			lines += computeMessageLines(message, contentMaxWidth);
 		}
 		if (showWelcome) {
 			lines += messages.length > 0 ? 3 : 12;
@@ -127,191 +122,159 @@ export function useChatViewport({
 		return lines;
 	}, [messages, contentMaxWidth, showWelcome]);
 
-	// Keep scroll offset bound to total lines
+	const maxScrollOffset = useMemo(
+		() =>
+			Math.max(
+				0,
+				totalMessageLines - chatViewportHeight + 20,
+			),
+		[totalMessageLines, chatViewportHeight],
+	);
+
+	const clearNewMessageBadge = useCallback(() => {
+		setNewMessageCount(0);
+	}, []);
+
+	const followTail = useCallback(() => {
+		isAtBottomRef.current = true;
+		setIsAtBottom(true);
+		clearNewMessageBadge();
+	}, [clearNewMessageBadge]);
+
+	const suspendTailFollow = useCallback(() => {
+		if (!isAtBottomRef.current) return;
+		isAtBottomRef.current = false;
+		setIsAtBottom(false);
+	}, []);
+
+	// Keep an intentional upward offset valid after a resize/content compaction;
+	// tail-follow always wins at the bottom.
 	useEffect(() => {
-		if (messagesEndRef.current) {
-			setScrollOffset(0);
-		} else {
-			setScrollOffset((prev) => {
-				const safeMaxOff = Math.max(
-					0,
-					Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
-				);
-				return Math.min(prev, safeMaxOff);
-			});
+		setScrollOffset((previous) =>
+			isAtBottomRef.current ? 0 : Math.min(Math.max(0, previous), maxScrollOffset),
+		);
+	}, [maxScrollOffset, setScrollOffset]);
+
+	// Count actual message arrivals independently from line reflows. This avoids
+	// resetting an intentional scroll merely because streaming changed height.
+	useEffect(() => {
+		const previousCount = previousMessageCountRef.current;
+		const arrivals = Math.max(0, messages.length - previousCount);
+		previousMessageCountRef.current = messages.length;
+
+		if (isAtBottomRef.current) {
+			clearNewMessageBadge();
+			return;
 		}
-	}, [totalMessageLines, chatViewportHeight]);
+		if (arrivals > 0) {
+			setNewMessageCount((count) => count + arrivals);
+		}
+	}, [messages.length, clearNewMessageBadge]);
 
-	// Track the previous messages length for new-message badge
-	messagesRef.current = messages;
-
-	// For performance, we only render the messages that intersect the viewport plus a buffer.
-	// The line estimate is intentionally cheap (no markdown rendering) to avoid hanging
-	// the UI when long final responses are streamed.
+	// Preserve the virtualized render window. Negative margin controls position;
+	// this slice only caps the number of Ink trees mounted for long histories.
 	const visibleMessages = useMemo(() => {
 		const linesNeeded = chatViewportHeight + scrollOffset + 20;
-		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
-		const estimateMsgLines = (msg: any) => {
-			let l = 1;
+		const averageCharsPerLine = Math.max(20, contentMaxWidth - 4);
+		const estimateMessageLines = (message: any) => {
+			let lines = 1;
 			const blocks =
-				msg.blocks && msg.blocks.length > 0
-					? msg.blocks
-					: Array.isArray(msg.content)
-						? msg.content
+				message.blocks && message.blocks.length > 0
+					? message.blocks
+					: Array.isArray(message.content)
+						? message.content
 						: [];
 
-			if (blocks && blocks.length > 0) {
+			if (blocks.length > 0) {
 				for (const block of blocks) {
-					// Infer block type from shape when `.type` is missing.
 					const blockType =
 						block.type || (block.text !== undefined ? "text" : undefined);
-
-					if (blockType === "text") {
-						let textContent = "";
-						if (Array.isArray(block.content)) {
-							textContent = block.content
-								.map(
-									(c: any) =>
-										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
-								)
-								.join("");
-						} else {
-							textContent = String(block.content || block.text || "");
-						}
-						l +=
-							Math.max(1, Math.ceil(textContent.length / avgCharsPerLine)) +
-							(textContent.match(/\n/g) || []).length;
-					} else if (blockType === "reasoning") {
-						let reasoningContent = "";
-						if (Array.isArray(block.content)) {
-							reasoningContent = block.content
-								.map(
-									(c: any) =>
-										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
-								)
-								.join("");
-						} else {
-							reasoningContent = String(block.content || block.text || "");
-						}
-						l +=
-							2 +
+					if (blockType === "text" || blockType === "reasoning") {
+						const text = Array.isArray(block.content)
+							? block.content
+									.map((part: any) =>
+										part.text ||
+										(typeof part === "string" ? part : JSON.stringify(part)),
+									)
+									.join("")
+							: String(block.content || block.text || "");
+						const width =
+							blockType === "reasoning"
+								? Math.max(10, contentMaxWidth - 5)
+								: averageCharsPerLine;
+						lines +=
+							(blockType === "reasoning" ? 2 : 0) +
 							Math.max(
-								1,
-								Math.ceil(
-									reasoningContent.length / Math.max(10, contentMaxWidth - 5),
-								),
+								Math.ceil(text.length / width),
+								(text.match(/\n/g) || []).length + 1,
 							);
 					} else if (blockType === "tool") {
-						l += 8;
+						lines += 14;
 					}
 				}
-			} else if (typeof msg.content === "string") {
-				const text = msg.content;
-				l +=
-					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
-					(text.match(/\n/g) || []).length;
+			} else if (typeof message.content === "string") {
+				lines +=
+					Math.max(
+						Math.ceil(message.content.length / averageCharsPerLine),
+						(message.content.match(/\n/g) || []).length + 1,
+					);
 			}
 
-			if (msg.toolCalls && msg.toolCalls.length > 0) {
-				const hasToolBlock = blocks?.some((b: any) => b.type === "tool");
-				if (!hasToolBlock) {
-					l += msg.toolCalls.length * 8;
-				}
+			if (message.toolCalls?.length > 0 && !blocks.some((block: any) => block.type === "tool")) {
+				lines += message.toolCalls.length * 14;
 			}
-
-			return l + 1;
+			return lines + 1;
 		};
+
 		let accumulatedLines = 0;
 		let sliceIndex = messages.length;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			accumulatedLines += estimateMsgLines(messages[i]);
-			sliceIndex = i;
+		for (let index = messages.length - 1; index >= 0; index--) {
+			accumulatedLines += estimateMessageLines(messages[index]);
+			sliceIndex = index;
 			if (accumulatedLines >= linesNeeded) break;
 		}
 		return messages.slice(Math.max(0, sliceIndex - 10));
 	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
 
-	const deferredVisibleMessages = useDeferredValue(visibleMessages);
-
-	// Scroll actions
 	const scrollToBottom = useCallback(() => {
-		messagesEndRef.current = true;
+		followTail();
 		setScrollOffset(0);
-	}, [setScrollOffset]);
+	}, [followTail, setScrollOffset]);
 
 	const scrollToTop = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
-		);
-		setScrollOffset(safeMaxOff);
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
+		suspendTailFollow();
+		setScrollOffset(maxScrollOffset);
+	}, [maxScrollOffset, setScrollOffset, suspendTailFollow]);
 
 	const scrollPageUp = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
-		);
-		setScrollOffset((off) => Math.min(safeMaxOff, off + chatViewportHeight));
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
+		suspendTailFollow();
+		setScrollOffset((offset) => Math.min(maxScrollOffset, offset + chatViewportHeight));
+	}, [chatViewportHeight, maxScrollOffset, setScrollOffset, suspendTailFollow]);
 
 	const scrollPageDown = useCallback(() => {
-		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - chatViewportHeight);
-			if (newOff <= 0) messagesEndRef.current = true;
-			return newOff;
+		setScrollOffset((offset) => {
+			const nextOffset = Math.max(0, offset - chatViewportHeight);
+			if (nextOffset === 0) followTail();
+			return nextOffset;
 		});
-	}, [chatViewportHeight, setScrollOffset]);
+	}, [chatViewportHeight, followTail, setScrollOffset]);
 
 	const scrollLineUp = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
-		);
-		setScrollOffset((off) => Math.min(safeMaxOff, off + 1));
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
+		suspendTailFollow();
+		setScrollOffset((offset) => Math.min(maxScrollOffset, offset + 1));
+	}, [maxScrollOffset, setScrollOffset, suspendTailFollow]);
 
 	const scrollLineDown = useCallback(() => {
-		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - 1);
-			if (newOff <= 0) messagesEndRef.current = true;
-			return newOff;
+		setScrollOffset((offset) => {
+			const nextOffset = Math.max(0, offset - 1);
+			if (nextOffset === 0) followTail();
+			return nextOffset;
 		});
-	}, [setScrollOffset]);
-
-	const isAtBottom = messagesEndRef.current;
-
-	// Track new message count badge
-	useEffect(() => {
-		if (messagesEndRef.current) {
-			scrollToBottom();
-			// User scrolled to (or recently arrived at) the bottom — reset
-			// both the anchor and the badge.
-			if (newMessageCountRef.current !== 0 || scrollAnchorRef.current !== 0) {
-				newMessageCountRef.current = 0;
-				setNewMessageCount(0);
-				scrollAnchorRef.current = 0;
-			}
-		} else {
-			// User is scrolled up. Take the first snapshot of message length
-			// and diff against it in subsequent renders.
-			if (scrollAnchorRef.current === 0) {
-				scrollAnchorRef.current = messagesRef.current.length;
-			}
-			const newArrivals = messagesRef.current.length - scrollAnchorRef.current;
-			if (newArrivals > 0 && newArrivals !== newMessageCountRef.current) {
-				newMessageCountRef.current = newArrivals;
-				setNewMessageCount(newArrivals);
-			}
-		}
-	}, [scrollToBottom, messages.length, scrollOffset]);
+	}, [followTail, setScrollOffset]);
 
 	return {
 		visibleMessages,
-		deferredVisibleMessages,
+		deferredVisibleMessages: visibleMessages,
 		scrollOffset,
 		totalMessageLines,
 		contentMaxWidth,

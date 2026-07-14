@@ -1,5 +1,4 @@
 import { Box, Text, useInput } from "ink";
-// @ts-expect-error TS6133/TS6192: Unused variable
 import React from "react";
 import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
 import {
@@ -22,12 +21,7 @@ export interface PermissionPromptProps {
 	onAnswer: (allowed: boolean) => void;
 }
 
-/**
- * Permission prompt with accessibility improvements:
- * - Clear ARIA labels for screen readers
- * - Keyboard navigation hints
- * - Dangerous operations get "alert" role for immediate attention
- */
+/** Permission prompt with keyboard navigation hints. */
 export function PermissionPrompt({
 	request,
 	isDangerous,
@@ -56,11 +50,6 @@ export function PermissionPrompt({
 	const verb = isDangerous ? "BLOCK" : "ALLOW";
 	const noun = isDangerous ? "DANGEROUS" : "PERMISSION";
 
-	// Accessibility: build descriptive label
-	const ariaLabel = isDangerous
-		? `Dangerous permission required for ${request.toolName}. Default action is to deny.`
-		: `Permission required for ${request.toolName}. Default action is to allow.`;
-
 	return React.createElement(
 		Box,
 		{
@@ -69,8 +58,6 @@ export function PermissionPrompt({
 			paddingX: 1,
 			borderStyle: "round",
 			borderColor: accent,
-			accessibilityLabel: ariaLabel,
-			accessibilityRole: isDangerous ? "alert" : "dialog",
 		},
 		// Header
 		React.createElement(

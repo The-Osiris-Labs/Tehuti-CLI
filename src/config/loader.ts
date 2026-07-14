@@ -61,6 +61,7 @@ function getYamlParser(): ((content: string) => unknown) | null {
 }
 
 const explorer = cosmiconfig(MODULE_NAME, {
+	stopDir: process.cwd(),
 	searchPlaces: [
 		".tehuti.json",
 		".tehuti.yaml",

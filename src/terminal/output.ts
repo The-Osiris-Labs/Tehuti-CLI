@@ -1,4 +1,5 @@
 import pc from "picocolors";
+import sliceAnsi from "slice-ansi";
 import stringWidth from "string-width";
 import {
 	getTerminalWidth,
@@ -245,51 +246,7 @@ export function formatProgress(
 export function truncate(text: string, maxLength?: number): string {
 	const limit = maxLength ?? getTerminalWidth() - 4;
 	if (stringWidth(text) <= limit) return text;
-	return `${sliceAnsi(text, Math.max(0, limit - 1))}…\x1b[0m`;
-}
-
-/**
- * Cut a string at a given visible-column limit, preserving ANSI escape
- * sequences intact. Trailing color codes get a reset appended.
- */
-function sliceAnsi(text: string, limit: number): string {
-	let visible = 0;
-	let out = "";
-	let lastEscapeEnd = 0;
-	let i = 0;
-
-	while (i < text.length) {
-		if (text[i] === "\x1b") {
-			const start = i;
-			i++;
-			while (i < text.length && !/[a-zA-Z]/.test(text[i])) i++;
-			if (i < text.length) i++; // include terminator
-			out += text.slice(start, i);
-			lastEscapeEnd = out.length;
-			continue;
-		}
-
-		// Read one full code point (handles surrogate pairs). stringWidth
-		// returns 0 for a lone surrogate but 1+ for a complete grapheme,
-		// so we MUST check the whole code point at once.
-		const code = text.codePointAt(i);
-		if (code === undefined) break;
-		const ch = String.fromCodePoint(code);
-		const codeUnits = ch.length; // 1 for BMP, 2 for surrogate pair
-		const w = stringWidth(ch);
-		if (visible + w > limit) {
-			// Trim back to last escape boundary and append reset so the
-			// caller's appended "…" doesn't inherit a color.
-			if (lastEscapeEnd < out.length) {
-				out = `${out.slice(0, lastEscapeEnd)}\x1b[0m`;
-			}
-			return out;
-		}
-		visible += w;
-		out += ch;
-		i += codeUnits;
-	}
-	return out;
+	return `${sliceAnsi(text, 0, Math.max(0, limit - 1))}\x1b[0m…`;
 }
 
 function parseContentBlocks(

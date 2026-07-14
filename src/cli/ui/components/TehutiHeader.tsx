@@ -13,6 +13,7 @@ export interface TehutiHeaderProps {
 	compact?: boolean;
 	model?: string;
 	provider?: string;
+	version?: string;
 	daemonStatus?: "connected" | "disconnected" | "none";
 	companionMode?: boolean;
 	isStreaming?: boolean;
@@ -45,11 +46,7 @@ function ClickableBadge({
 	useOnMouseLeave(ref, () => setIsHovered(false));
 
 	return (
-		<Box 
-			ref={ref}
-			accessibilityRole="button"
-			accessibilityLabel={label}
-		>
+		<Box ref={ref}>
 			<Text color={isHovered ? hoverColor : color}>{label}</Text>
 		</Box>
 	);
@@ -59,6 +56,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 	compact = false,
 	model,
 	provider,
+	version,
 	daemonStatus = "none",
 	companionMode = false,
 	isStreaming = false,
@@ -89,15 +87,6 @@ export const TehutiHeader = memo(function TehutiHeader({
 			? GREEN
 			: CORAL;
 
-	// Accessibility: build descriptive status label
-	const statusDescription = isStreaming
-		? "Currently thinking"
-		: companionMode
-			? "Companion mode active"
-			: daemonStatus === "connected"
-				? "Daemon connected"
-				: "Idle";
-
 	if (compact) {
 		return (
 			<Box
@@ -107,7 +96,6 @@ export const TehutiHeader = memo(function TehutiHeader({
 				borderStyle="round"
 				borderColor={GOLD}
 				paddingX={2}
-				accessibilityRole="banner"
 			>
 				<Text color={GOLD} bold>
 					𓆣 TEHUTI{" "}
@@ -132,7 +120,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 					{" "}
 					│{" "}
 				</Text>
-				<Box accessibilityRole="status" accessibilityLabel={statusDescription}>
+				<Box>
 					<Text color={statusColor} bold>
 						{statusLabel}
 					</Text>
@@ -143,7 +131,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 							{" "}
 							│{" "}
 						</Text>
-						<Box accessibilityLabel={`Session: ${sessionName}`}>
+						<Box>
 							<Text color={SAND}>𓏛 {sessionName}</Text>
 						</Box>
 					</>
@@ -161,7 +149,6 @@ export const TehutiHeader = memo(function TehutiHeader({
 			borderColor={GOLD}
 			paddingX={4}
 			paddingY={1}
-			accessibilityRole="banner"
 		>
 			<Gradient colors={[GOLD, CORAL]}>
 				<BigText text="TEHUTI" font="chrome" space={false} />
@@ -202,14 +189,15 @@ export const TehutiHeader = memo(function TehutiHeader({
 						</Box>
 					)}
 				</Box>
+				{version && (
+					<Box marginTop={1}>
+						<Text color="gray" dimColor>
+							v{version}
+						</Text>
+					</Box>
+				)}
 
-				<Box 
-					marginTop={1} 
-					flexDirection="row" 
-					gap={2}
-					accessibilityRole="status"
-					accessibilityLabel={statusDescription}
-				>
+				<Box marginTop={1} flexDirection="row" gap={2}>
 					<Text color={statusColor} bold>
 						{statusLabel}
 					</Text>

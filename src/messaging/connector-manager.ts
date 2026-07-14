@@ -340,6 +340,7 @@ export class ConnectorManager extends EventEmitter {
 					}
 				});
 			}
+			return;
 			if (!res.writableEnded) {
 				res.writeHead(404);
 				res.end();

@@ -4,8 +4,7 @@ import {
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-// @ts-expect-error TS6133/TS6192: Unused variable
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
 import { useVimInput } from "../hooks/useVimInput.js";
@@ -55,8 +54,6 @@ function SessionRow({
 		secondary: GOLD,
 		coral: CORAL,
 		sand: SAND,
-		// @ts-expect-error TS6133/TS6192: Unused variable
-		nile: NILE,
 	} = BRANDING.colors;
 	const dateStr = new Date(session.updatedAt).toLocaleDateString();
 
@@ -66,18 +63,8 @@ function SessionRow({
 	const tokenText = String(session.tokensUsed || 0);
 	const modelText = session.model || "Unknown";
 
-	// Accessibility: build descriptive label for screen readers
-	const ariaLabel = `Session ${nameText}, ${msgText} messages, ${tokenText} tokens, model ${modelText}, last updated ${dateStr}${active ? ", currently selected" : ""}`;
-
 	return (
-		<Box 
-			ref={ref} 
-			paddingX={1} 
-			width="100%" 
-			flexDirection="row"
-			accessibilityLabel={ariaLabel}
-			accessibilityRole="listitem"
-		>
+		<Box ref={ref} paddingX={1} width="100%" flexDirection="row">
 			<Box width={3}>
 				<Text color={active ? GOLD : "gray"}>{active ? "▶" : "│"}</Text>
 			</Box>
@@ -157,9 +144,6 @@ export function SessionList({
 		}
 	});
 
-	// Accessibility: build navigation help
-	const navigationHelp = `Navigate: ↑/↓ or j/k arrows, Enter to select, Esc to close. Showing ${windowStart + 1} to ${Math.min(windowStart + PAGE_SIZE, sessions.length)} of ${sessions.length} sessions.`;
-
 	if (sessions.length === 0) {
 		return (
 			<Box
@@ -169,8 +153,6 @@ export function SessionList({
 				height={terminalHeight}
 				justifyContent="center"
 				alignItems="center"
-				accessibilityRole="dialog"
-				accessibilityLabel="No sessions found"
 			>
 				<Box
 					flexDirection="column"
@@ -202,8 +184,6 @@ export function SessionList({
 			height={terminalHeight}
 			justifyContent="center"
 			alignItems="center"
-			accessibilityRole="dialog"
-			accessibilityLabel={`Session list: ${sessions.length} sessions. ${navigationHelp}`}
 		>
 			<Box
 				flexDirection="column"
@@ -253,7 +233,7 @@ export function SessionList({
 					</Box>
 					<Box width={2} />
 				</Box>
-				<Box accessibilityRole="list">
+				<Box>
 					{visibleSessions.map((session: SessionMetadata, i: number) => {
 						const actualIndex = windowStart + i;
 						return (

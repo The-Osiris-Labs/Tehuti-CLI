@@ -5,6 +5,8 @@
  * Plugins can add tools, commands, hooks, themes, and providers.
  */
 
+import { PluginRegistry } from "./registry.js";
+
 export type {
 	PluginPhase,
 	PluginManifest,

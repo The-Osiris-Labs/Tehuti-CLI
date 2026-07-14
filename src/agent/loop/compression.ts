@@ -18,7 +18,7 @@ export async function manageContextWindow(
 		maxContext ??
 		ctx.modelContextLength ??
 		ctx.config.kilocode?.contextManagement?.maxContextLength ??
-		128000;
+		1000000;
 	// Trigger compression at 85% of max context
 	const triggerThreshold = Math.floor(effectiveMaxContext * 0.85);
 	const targetTokens = Math.floor(effectiveMaxContext * 0.8);

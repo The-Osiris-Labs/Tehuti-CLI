@@ -1,7 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useMemo } from "react";
-// @ts-expect-error TS6133/TS6192: Unused variable
-import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE } from "../../../branding/index.js";
 import { HieroglyphSpinner } from "./HieroglyphSpinner.js";
 
 const GOLD = BRANDING.colors.gold;
@@ -48,8 +47,24 @@ export function ChatBar({
 	tokensUsed = 0,
 	hideInput = false,
 }: ChatBarProps): React.ReactElement {
-	
-	// 2. Render Prompt Line (Input + Selection + Cursor)
+	const safeCursorPos = Math.max(0, Math.min(cursorPos, input.length));
+	const safeSelectionStart =
+		selectionStart === null ? null : Math.max(0, Math.min(selectionStart, input.length));
+	const safeSelectionEnd =
+		selectionEnd === null ? null : Math.max(0, Math.min(selectionEnd, input.length));
+	const lineCount = input.split("\n").length;
+	const beforeCursor = input.slice(0, safeCursorPos);
+	const currentLine = beforeCursor.split("\n").length;
+	const currentColumn = beforeCursor.length - beforeCursor.lastIndexOf("\n");
+	const selectionStatus =
+		safeSelectionStart !== null &&
+		safeSelectionEnd !== null &&
+		safeSelectionStart !== safeSelectionEnd
+			? ` • Sel ${Math.min(safeSelectionStart, safeSelectionEnd)}-${Math.max(safeSelectionStart, safeSelectionEnd)}`
+			: "";
+	const inputStatus = `Ln ${currentLine}/${lineCount} • Col ${currentColumn} • ${lineCount} line${lineCount === 1 ? "" : "s"}${selectionStatus}`;
+
+	// Render Prompt Line (Input + Selection + Cursor)
 	const renderedInputText = useMemo(() => {
 		const historyIndicator =
 			historyIndex >= 0
@@ -61,12 +76,12 @@ export function ChatBar({
 				: null;
 
 		if (
-			selectionStart !== null &&
-			selectionEnd !== null &&
-			selectionStart !== selectionEnd
+			safeSelectionStart !== null &&
+			safeSelectionEnd !== null &&
+			safeSelectionStart !== safeSelectionEnd
 		) {
-			const start = Math.min(selectionStart, selectionEnd);
-			const end = Math.max(selectionStart, selectionEnd);
+			const start = Math.min(safeSelectionStart, safeSelectionEnd);
+			const end = Math.max(safeSelectionStart, safeSelectionEnd);
 			const before = input.slice(0, start);
 			const selected = input.slice(start, end);
 			const after = input.slice(end);
@@ -81,8 +96,8 @@ export function ChatBar({
 			);
 		}
 
-		const before = input.slice(0, cursorPos);
-		const after = input.slice(cursorPos);
+		const before = input.slice(0, safeCursorPos);
+		const after = input.slice(safeCursorPos);
 		const hint =
 			!loading && input.length === 0
 				? React.createElement(
@@ -180,9 +195,18 @@ export function ChatBar({
 					),
 			),
 			React.createElement(
-				Text,
-				{ color: SAND, dimColor: true },
-				"PgUp/PgDn Scroll • Ctrl+P Commands • /help",
+				Box,
+				{ flexDirection: "column", alignItems: "flex-end" },
+				React.createElement(
+					Text,
+					{ color: SAND, dimColor: true },
+					inputStatus,
+				),
+				React.createElement(
+					Text,
+					{ color: SAND, dimColor: true },
+					"PgUp/PgDn Scroll • Ctrl+P Commands • /help",
+				),
 			),
 		),
 
@@ -200,7 +224,16 @@ export function ChatBar({
 				gap: 1,
 			},
 			loading
-				? React.createElement(HieroglyphSpinner, { color: GOLD })
+				? React.createElement(
+						Box,
+						{ flexDirection: "row", gap: 1 },
+						React.createElement(HieroglyphSpinner, { color: GOLD }),
+						React.createElement(
+							Text,
+							{ color: GOLD, bold: true },
+							"Loading • Ctrl+C to interrupt",
+						),
+					)
 				: React.createElement(
 						Text,
 						{ color: CORAL, bold: true },

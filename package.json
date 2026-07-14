@@ -47,11 +47,12 @@
     "url": "https://github.com/The-Osiris-Labs/Tehuti-CLI"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.99",
     "@aiter/core": "^0.1.10",
+    "@github/copilot-sdk": "1.0.6",
     "@ink-tools/ink-mouse": "^2.1.0",
     "@inquirer/prompts": "^8.2.1",
     "@lvce-editor/ripgrep": "^4.1.0",
@@ -76,7 +77,7 @@
     "fs-extra": "^11.3.0",
     "fuse.js": "^7.1.0",
     "handle-cli-error": "^4.0.0",
-    "ink": "^6.7.0",
+    "ink": "^7.1.0",
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^4.0.1",
     "ink-spinner": "^5.0.0",
@@ -92,9 +93,11 @@
     "pdf-parse": "^2.4.5",
     "picocolors": "^1.1.0",
     "react": "^19.0.0",
+    "react-devtools-core": "^6.1.5",
     "serialize-error": "^12.0.0",
     "sharp": "^0.34.5",
     "shiki": "^3.2.1",
+    "slice-ansi": "^9.0.0",
     "string-width": "^8.2.0",
     "supports-color": "^10.2.2",
     "supports-hyperlinks": "^4.4.0",

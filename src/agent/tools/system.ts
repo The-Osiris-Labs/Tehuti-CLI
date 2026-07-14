@@ -77,8 +77,16 @@ const TASK_SCHEMA = z.object({
 		.positive()
 		.optional()
 		.describe("Timeout in milliseconds (default: 60000)"),
-	createdAt: z.string().datetime().describe("ISO 8601 creation timestamp"),
-	updatedAt: z.string().datetime().describe("ISO 8601 update timestamp"),
+	createdAt: z
+		.string()
+		.datetime()
+		.default(() => new Date().toISOString())
+		.describe("ISO 8601 creation timestamp"),
+	updatedAt: z
+		.string()
+		.datetime()
+		.default(() => new Date().toISOString())
+		.describe("ISO 8601 update timestamp"),
 });
 
 const WAIT_FOR_EVENT_SCHEMA = z.object({
@@ -249,22 +257,29 @@ async function spawnTask(
 		timeout = 60000,
 	} = args;
 
+	let timeoutId: NodeJS.Timeout | undefined;
+
+	const subagentPromise = spawnSubagent({
+		type: subagent_type as SubagentType,
+		description,
+		prompt,
+		parentContext,
+		task_id,
+		timeoutMs: timeout,
+	}).finally(() => {
+		clearTimeout(timeoutId);
+	});
+
 	const timeoutPromise = new Promise<never>((_, reject) => {
-		setTimeout(
-			() => reject(new Error(`Task timed out after ${timeout}ms`)),
-			timeout,
-		);
+		timeoutId = setTimeout(() => {
+			reject(new Error(`Task timed out after ${timeout}ms`));
+		}, timeout);
+		timeoutId.unref();
 	});
 
 	try {
 		const task = await Promise.race([
-			spawnSubagent({
-				type: subagent_type as SubagentType,
-				description,
-				prompt,
-				parentContext,
-				task_id,
-			}),
+			subagentPromise,
 			timeoutPromise,
 		]);
 

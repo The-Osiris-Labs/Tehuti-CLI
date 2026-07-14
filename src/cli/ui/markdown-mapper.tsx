@@ -5,14 +5,12 @@ import markedKatex from "marked-katex-extension";
 import React from "react";
 import stringWidth from "string-width";
 import { BRANDING } from "../../branding/index.js";
-import { renderToken as renderAnsiToken } from "../../terminal/markdown.js";
 
 /**
  * Wrap `text` to a target visual width, breaking on whitespace when possible.
  * Preserves explicit \n boundaries. If a single token is wider than `width`,
  * it is hard-broken at the width boundary.
  */
-// @ts-expect-error TS6133/TS6192: Unused variable
 function wrapText(text: string, width: number): string {
 	if (width <= 0) return text;
 	const out: string[] = [];
@@ -287,11 +285,182 @@ export function renderToken(
 		}
 
 		case "table": {
-			const ansiText = renderAnsiToken(token);
+			const header = token.header || [];
+			const tableRows = token.rows || [];
+			const tableAlign = token.align || [];
+
+			const getCellText = (cell: Token | undefined | null): string => {
+				if (!cell) return "";
+				if ("tokens" in cell && Array.isArray(cell.tokens)) {
+					let result = "";
+					for (const t of cell.tokens) {
+						if ("text" in t && typeof t.text === "string") result += t.text;
+						else if ("raw" in t && typeof t.raw === "string") result += t.raw;
+						else if ("tokens" in t && Array.isArray(t.tokens)) {
+							for (const t2 of t.tokens) {
+								if ("text" in t2) result += t2.text || "";
+							}
+						}
+					}
+					return result;
+				}
+				if ("text" in cell && typeof cell.text === "string") return cell.text;
+				if ("raw" in cell && typeof cell.raw === "string") return cell.raw;
+				return "";
+			};
+
+			const maxCols = header.length;
+			if (maxCols === 0) return null;
+
+			// Collect plain text per column
+			const headerTexts = Array.from({ length: maxCols }, (_, i) =>
+				getCellText(header[i]),
+			);
+			const rowTexts = tableRows.map((row: Token[]) =>
+				Array.from({ length: maxCols }, (_, i) => getCellText(row?.[i])),
+			);
+
+			// Compute raw column widths from content
+			const rawWidths: number[] = Array.from({ length: maxCols }, (_, i) => {
+				const allTexts = [headerTexts[i], ...rowTexts.map((r: string) => r[i])];
+				return Math.max(3, ...allTexts.map((t) => stringWidth(t)));
+			});
+
+			// Total overhead: "│ " prefix + " │ " joins + " │" suffix
+			const overhead = maxCols * 2 + 1 + maxCols * 2;
+			const totalWidth = rawWidths.reduce((a, b) => a + b) + overhead;
+
+			let colWidths: number[];
+			if (maxWidth && totalWidth > maxWidth) {
+				const availContent = maxWidth - overhead;
+				const sumRaw = rawWidths.reduce((a, b) => a + b);
+				colWidths = rawWidths.map((w) =>
+					Math.max(3, Math.floor((w / sumRaw) * availContent)),
+				);
+				// Distribute rounding remainder to the widest column
+				const curSum = colWidths.reduce((a, b) => a + b);
+				const diff = availContent - curSum;
+				if (diff > 0) {
+					const maxIdx = colWidths.indexOf(Math.max(...colWidths));
+					colWidths[maxIdx] += diff;
+				}
+			} else {
+				colWidths = [...rawWidths];
+			}
+
+			// Pre-wrap cell text to column widths using the existing wrapText helper
+			const wrapToCol = (text: string, w: number): string[] => {
+				if (w <= 0 || stringWidth(text) <= w) return [text];
+				return wrapText(text, w).split("\n");
+			};
+
+			const wrappedHeaders = headerTexts.map((t, i) =>
+				wrapToCol(t, colWidths[i]),
+			);
+			const wrappedRows = rowTexts.map((row: string[]) =>
+				row.map((t: string, i: number) => wrapToCol(t, colWidths[i])),
+			);
+
+			// Recompute column widths from wrapped lines if unconstrained
+			if (!(maxWidth && totalWidth > maxWidth)) {
+				colWidths = Array.from({ length: maxCols }, (_, i) => {
+					const allLines = [
+						...wrappedHeaders[i],
+					...wrappedRows.flatMap((r: string[]) => r[i]),
+					];
+					return Math.max(3, ...allLines.map((l) => stringWidth(l)));
+				});
+			}
+
+			// Pad a cell line to column width according to alignment
+			const padLine = (
+				text: string,
+				width: number,
+				alignment: string | null,
+			): string => {
+				const vw = stringWidth(text);
+				const pad = width - vw;
+				if (pad <= 0) return text;
+				switch (alignment) {
+					case "right":
+						return " ".repeat(pad) + text;
+					case "center":
+						return (
+							" ".repeat(Math.floor(pad / 2)) +
+							text +
+							" ".repeat(Math.ceil(pad / 2))
+						);
+					default:
+						return text + " ".repeat(pad);
+				}
+			};
+
+			// Compute max visual lines across all cells in a row
+			const maxRowLines = (wrapped: string[][]): number =>
+				Math.max(...wrapped.map((lines) => lines.length), 1);
+
+			// Render a full row (handles multi-line cells via stacked visual lines)
+			const renderTableRow = (
+				wrapped: string[][],
+				isHeader: boolean,
+				rowKey: string,
+			): React.ReactNode => {
+				const lineCount = maxRowLines(wrapped);
+				const visualLines: React.ReactNode[] = [];
+				for (let li = 0; li < lineCount; li++) {
+					const cells: string[] = [];
+					for (let ci = 0; ci < maxCols; ci++) {
+						const lines = wrapped[ci];
+						const text = li < lines.length ? lines[li] : "";
+						cells.push(
+							padLine(text, colWidths[ci], tableAlign[ci] || "left"),
+						);
+					}
+					visualLines.push(
+						React.createElement(
+							Text,
+							{ key: li, ...(isHeader ? { bold: true } : {}) },
+							"│ " + cells.join(" │ ") + " │",
+						),
+					);
+				}
+				return React.createElement(
+					Box,
+					{ key: rowKey, flexDirection: "column" },
+					...visualLines,
+				);
+			};
+
+			// Render a border separator line
+			const borderLine = (
+				start: string,
+				sep: string,
+				end: string,
+				key: string,
+			) =>
+				React.createElement(
+					Text,
+					{ key, dimColor: true, color: GRAY },
+					start +
+						colWidths.map((w) => "─".repeat(w + 2)).join(sep) +
+						end,
+				);
+
+			const children: React.ReactNode[] = [
+				borderLine("╭", "┬", "╮", getKey()),
+				renderTableRow(wrappedHeaders, true, getKey()),
+				borderLine("├", "┼", "┤", getKey()),
+			];
+
+			for (let ri = 0; ri < wrappedRows.length; ri++) {
+				children.push(renderTableRow(wrappedRows[ri], false, getKey()));
+			}
+			children.push(borderLine("╰", "┴", "╯", getKey()));
+
 			return React.createElement(
 				Box,
 				{ key: getKey(), flexDirection: "column", marginY: 1, paddingX: 1 },
-				React.createElement(Text, {}, ansiText),
+				...children,
 			);
 		}
 

@@ -1,5 +1,4 @@
-// @ts-expect-error TS6133/TS6192: Unused variable
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { StatusBadge } from "./StatusBadge.js";
 
@@ -15,7 +14,7 @@ export const StatusIndicator = ({
 	label,
 	animate = true,
 }: StatusIndicatorProps) => {
-	const [visible, setVisible] = useState(!animate);
+	const [, setVisible] = useState(!animate);
 
 	useEffect(() => {
 		if (animate) {
@@ -32,8 +31,6 @@ export const StatusIndicator = ({
 			flexDirection="row"
 			alignItems="center"
 			gap={1}
-			accessibilityLabel={`Status: ${status}${label ? ` - ${label}` : ""}`}
-			accessibilityRole="status"
 		>
 			<StatusBadge compact kind={badgeKind} />
 			{label && (

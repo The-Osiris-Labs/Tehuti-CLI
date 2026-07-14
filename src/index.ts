@@ -3,14 +3,26 @@ import { fileURLToPath } from "node:url";
 import { initializeHttpAgent } from "./api/http-agent.js";
 import { createProgram } from "./cli/index.js";
 import { initHighlighter } from "./terminal/highlighter.js";
+import { isMachineReadableOutput } from "./utils/cli-output.js";
 import {
 	formatError,
+	registerCleanupHandler,
 	restoreTerminal,
 	setupErrorHandlers,
 } from "./utils/errors.js";
+import { initTrace, trace, traceEmit } from "./utils/trace.js";
 import { showUpdateNotification } from "./utils/update-checker.js";
 
 async function main() {
+	// Trace initialization is deliberately first and non-throwing: failure to
+	// open local audit storage must never block the CLI from starting.
+	initTrace();
+	traceEmit("lifecycle.startup", "CLI startup", { actor: "cli" });
+	registerCleanupHandler(() => {
+		traceEmit("lifecycle.shutdown", "CLI shutdown", { actor: "cli" });
+		trace.close();
+	});
+
 	if (process.env.SWARM_RUNNER === "1") {
 		const { startRunner } = await import("./agent/swarm/runner-process.js");
 		startRunner();
@@ -22,7 +34,9 @@ async function main() {
 	);
 	initializeHttpAgent();
 	await initHighlighter();
-	showUpdateNotification();
+	if (!isMachineReadableOutput(process.argv)) {
+		showUpdateNotification();
+	}
 	const program = createProgram();
 	await program.parseAsync(process.argv);
 }

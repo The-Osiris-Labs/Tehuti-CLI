@@ -30,6 +30,17 @@ export function QuestionPrompt({
 	);
 	const [filter, setFilter] = useState("");
 
+	// The selected row is an index into the visible list, never the source array.
+	// Preserve original indices only for multi-select state and final answer mapping.
+	const lcFilter = filter.toLowerCase();
+	const visibleOptions = question.options
+		.map((opt, originalIndex) => ({ opt, originalIndex }))
+		.filter(({ opt }) =>
+			!lcFilter ||
+			opt.label.toLowerCase().includes(lcFilter) ||
+			(opt.description?.toLowerCase().includes(lcFilter) ?? false),
+		);
+
 	useInput((k, key) => {
 		if (isMouseSequence(k)) {
 			return;
@@ -77,7 +88,7 @@ export function QuestionPrompt({
 			return;
 		}
 
-		const totalRows = question.options.length + 1; // +1 for "Type custom answer"
+		const totalRows = visibleOptions.length + 1; // +1 for "Type custom answer"
 
 		if (key.upArrow) {
 			setSelectedIndex((prev) => (prev - 1 + totalRows) % totalRows);
@@ -90,18 +101,22 @@ export function QuestionPrompt({
 		}
 
 		if (key.return) {
-			if (selectedIndex === question.options.length) {
+			if (selectedIndex === visibleOptions.length) {
 				setCustomMode(true);
 				return;
 			}
+
+			const selected = visibleOptions[selectedIndex];
+			if (!selected) return;
+			const optionIndex = selected.originalIndex;
 
 			if (question.multiple) {
 				const answers = Array.from(selectedMultiple).map(
 					(i) => question.options[i].label,
 				);
 				if (answers.length === 0) {
-					if (!selectedMultiple.has(selectedIndex)) {
-						onAnswer([question.options[selectedIndex].label]);
+					if (!selectedMultiple.has(optionIndex)) {
+						onAnswer([selected.opt.label]);
 					} else {
 						onAnswer(answers);
 					}
@@ -109,7 +124,7 @@ export function QuestionPrompt({
 					onAnswer(answers);
 				}
 			} else {
-				onAnswer(question.options[selectedIndex].label);
+				onAnswer(selected.opt.label);
 			}
 			return;
 		}
@@ -127,31 +142,21 @@ export function QuestionPrompt({
 		if (
 			question.multiple &&
 			k === " " &&
-			selectedIndex < question.options.length
+			selectedIndex < visibleOptions.length
 		) {
+			const optionIndex = visibleOptions[selectedIndex]?.originalIndex;
+			if (optionIndex === undefined) return;
 			setSelectedMultiple((prev) => {
 				const next = new Set(prev);
-				if (next.has(selectedIndex)) {
-					next.delete(selectedIndex);
+				if (next.has(optionIndex)) {
+					next.delete(optionIndex);
 				} else {
-					next.add(selectedIndex);
+					next.add(optionIndex);
 				}
 				return next;
 			});
 		}
 	});
-
-	// Live-filter options. When the filter is empty show all options.
-	const lcFilter = filter.toLowerCase();
-	const visibleOptions = question.options
-		.map((opt, originalIndex) => ({ opt, originalIndex }))
-		.filter(({ opt }) => {
-			if (!lcFilter) return true;
-			return (
-				opt.label.toLowerCase().includes(lcFilter) ||
-				(opt.description?.toLowerCase().includes(lcFilter) ?? false)
-			);
-		});
 
 	if (customMode) {
 		return React.createElement(
@@ -254,8 +259,8 @@ export function QuestionPrompt({
 					`${DECORATIVE.eye} Filter: ${filter}`,
 				),
 			),
-		...visibleOptions.map(({ opt, originalIndex }) => {
-			const isSelected = selectedIndex === originalIndex;
+		...visibleOptions.map(({ opt, originalIndex }, visibleIndex) => {
+			const isSelected = selectedIndex === visibleIndex;
 			const isChecked = selectedMultiple.has(originalIndex);
 			return React.createElement(
 				Box,
@@ -293,12 +298,12 @@ export function QuestionPrompt({
 				Text,
 				{
 					color:
-						selectedIndex === question.options.length
+						selectedIndex === visibleOptions.length
 							? COLORS.coral
 							: COLORS.gray,
-					bold: selectedIndex === question.options.length,
+					bold: selectedIndex === visibleOptions.length,
 				},
-				`${selectedIndex === question.options.length ? "▸" : "  "}  ✎  Type custom answer`,
+				`${selectedIndex === visibleOptions.length ? "▸" : "  "}  ✎  Type custom answer`,
 			),
 		),
 		React.createElement(

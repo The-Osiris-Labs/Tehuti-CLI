@@ -1,14 +1,14 @@
 import type { CompactionDigest } from "../../agent/context-compressor.js";
 
-export const UI_MAX_MESSAGES = 120;
-export const UI_KEEP_FULL_RECENT_MESSAGES = 24;
+export const UI_MAX_MESSAGES = 500;
+export const UI_KEEP_FULL_RECENT_MESSAGES = 50;
 export const MAX_COMPACTION_MARKERS = 10;
-export const UI_MAX_TEXT_CHARS = 24000;
-export const UI_MAX_REASONING_CHARS = 8000;
-export const UI_MAX_TOOL_OUTPUT_CHARS = 6000;
+export const UI_MAX_TEXT_CHARS = 240000;
+export const UI_MAX_REASONING_CHARS = 80000;
+export const UI_MAX_TOOL_OUTPUT_CHARS = 60000;
 export const UI_MAX_TOOL_ARRAY_ITEMS = 40;
 export const UI_MAX_TOOL_OBJECT_KEYS = 80;
-export const TOOL_RESULT_PREVIEW_CHARS = 12000;
+export const TOOL_RESULT_PREVIEW_CHARS = 120000;
 
 export type UiBlock =
 	| { type: "text"; content: string }

@@ -68,16 +68,16 @@ describe("Skills Manager", () => {
 			expect(skill).toBeUndefined();
 		});
 
-		it("should activate and deactivate skills", () => {
+		it("should activate and deactivate skills", async () => {
 			// Deactivate JavaScript expert
-			const deactivated = skillsManager.deactivateSkill("javascript-expert");
+			const deactivated = await skillsManager.deactivateSkill("javascript-expert");
 			expect(deactivated).toBe(true);
 
 			let skill = skillsManager.getSkill("javascript-expert");
 			expect(skill?.active).toBe(false);
 
 			// Activate it back
-			const activated = skillsManager.activateSkill("javascript-expert");
+			const activated = await skillsManager.activateSkill("javascript-expert");
 			expect(activated).toBe(true);
 
 			skill = skillsManager.getSkill("javascript-expert");
