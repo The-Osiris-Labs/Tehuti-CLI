@@ -24,6 +24,7 @@ import {
 	addAssistantMessageWithTools,
 	addUserMessage,
 	buildSystemPrompt,
+	estimateTokens,
 	getToolContext,
 	normalizeToolMessageHistory,
 	warnOnContextLimit,
@@ -246,10 +247,12 @@ export async function runAgentLoop(
 				ctx.messages = normalizeToolMessageHistory(ctx.messages);
 
 				const modelId = ctx.config.model;
-				debug.log(
-					"agent",
-					`Available tools: ${tools.map((t) => t.function.name).join(", ")}`,
-				);
+				if (debug.isEnabled()) {
+					debug.log(
+						"agent",
+						`Available tools: ${tools.map((t) => t.function.name).join(", ")}`,
+					);
+				}
 
 				// Use retry wrapper for API calls
 				let state = createStreamingState(modelId);
@@ -384,9 +387,7 @@ export async function runAgentLoop(
 							}
 						}
 						} catch (streamError) {
-							const estimatedPromptTokens = Math.floor(
-								JSON.stringify(ctx.messages).length / 4,
-							);
+							const estimatedPromptTokens = estimateTokens(ctx.messages);
 							const estimatedCompletionTokens = Math.floor(
 								(state.content?.length || 0) / 4,
 							);

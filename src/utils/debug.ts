@@ -19,7 +19,8 @@ type DebugCategory =
 	| "memory"
 	| "daemon"
 	| "plugins"
-	| "sdk";
+	| "sdk"
+	| "self-healing";
 
 class Debugger {
 	private enabled: boolean;

@@ -4,6 +4,8 @@ import { isReasoningModel } from "./model-capabilities.js";
 export interface StreamingState {
 	content: string;
 	thinking: string;
+	contentChunks: string[];
+	thinkingChunks: string[];
 	toolCalls: Map<number, { id: string; name: string; arguments: string }>;
 	finishReason: string | null;
 	usage?: {
@@ -19,9 +21,15 @@ export function createStreamingState(modelId?: string): StreamingState {
 	if (modelId && isReasoningModel(modelId)) {
 		debug.log("streaming", `Reasoning model detected: ${modelId}`);
 	}
+	const contentChunks: string[] = [];
+	const thinkingChunks: string[] = [];
 	return {
-		content: "",
-		thinking: "",
+		get content() { return contentChunks.join(""); },
+		set content(v) { contentChunks.length = 0; contentChunks.push(v); },
+		get thinking() { return thinkingChunks.join(""); },
+		set thinking(v) { thinkingChunks.length = 0; thinkingChunks.push(v); },
+		contentChunks,
+		thinkingChunks,
 		toolCalls: new Map(),
 		finishReason: null,
 	};
@@ -106,13 +114,13 @@ export function processStreamChunk(
 	let newThinking = "";
 
 	if (delta.content) {
-		state.content += delta.content;
+		state.contentChunks.push(delta.content);
 		newContent = delta.content;
 		hasContent = true;
 	}
 
 	if (delta.reasoning) {
-		state.thinking += delta.reasoning;
+		state.thinkingChunks.push(delta.reasoning);
 		newThinking = delta.reasoning;
 		hasThinking = true;
 		if (modelId && isReasoningModel(modelId)) {
@@ -121,7 +129,7 @@ export function processStreamChunk(
 	}
 
 	if (delta.thinking) {
-		state.thinking += delta.thinking;
+		state.thinkingChunks.push(delta.thinking);
 		newThinking = delta.thinking;
 		hasThinking = true;
 	}

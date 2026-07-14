@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { z } from "zod";
 import type {
@@ -180,8 +180,10 @@ async function networkCheck(
  */
 export function pingHost(host: string, timeoutMs = 3000): boolean {
 	try {
-		const out = execSync(
-			`ping -c 1 -W ${Math.max(1, Math.floor(timeoutMs / 1000))} ${host}`,
+		const timeout = Math.max(1, Math.floor(timeoutMs / 1000));
+		const out = execFileSync(
+			"ping",
+			["-c", "1", "-W", String(timeout), host],
 			{
 				stdio: ["ignore", "pipe", "ignore"],
 				timeout: timeoutMs + 1000,

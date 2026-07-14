@@ -162,10 +162,17 @@ function saveTodos(todos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"]): void {
 }
 
 let currentTodos: z.infer<typeof TODO_WRITE_SCHEMA>["todos"] = loadTodos();
-let parentContext: AgentContext | null = null;
-let questionResolver:
-	| ((questions: QuestionData[]) => Promise<string[]>)
-	| null = null;
+/** Per-session parent context — keyed by sessionId to prevent cross-session corruption. */
+const parentContextMap = new Map<string, AgentContext>();
+/** Per-session question resolver — keyed by sessionId. */
+const questionResolverMap = new Map<
+	string,
+	(questions: QuestionData[]) => Promise<string[]>
+>();
+
+function sessionKey(ctx: { sessionId?: string }): string {
+	return ctx.sessionId ?? "default";
+}
 
 export interface QuestionOption {
 	label: string;
@@ -181,19 +188,25 @@ export interface QuestionData {
 }
 
 export function setParentContext(ctx: AgentContext): void {
-	parentContext = ctx;
+	parentContextMap.set(sessionKey(ctx), ctx);
 }
 
 export function setQuestionResolver(
 	resolver: (questions: QuestionData[]) => Promise<string[]>,
+	sessionId?: string,
 ): void {
-	questionResolver = resolver;
+	questionResolverMap.set(sessionId ?? "default", resolver);
 }
 
-export function clearSystemState(): void {
+export function clearSystemState(sessionId?: string): void {
 	currentTodos = loadTodos();
-	parentContext = null;
-	questionResolver = null;
+	if (sessionId) {
+		parentContextMap.delete(sessionId);
+		questionResolverMap.delete(sessionId);
+	} else {
+		parentContextMap.clear();
+		questionResolverMap.clear();
+	}
 }
 
 async function writeTodos(
@@ -342,7 +355,10 @@ async function spawnTask(
 	args: z.infer<typeof TASK_SCHEMA>,
 	_ctx: ToolContext,
 ): Promise<ToolResult> {
-	if (!parentContext) {
+	const parentCtx = parentContextMap.get(
+		_ctx.agentContext?.sessionId ?? "default",
+	);
+	if (!parentCtx) {
 		return {
 			success: false,
 			output: "",
@@ -365,7 +381,7 @@ async function spawnTask(
 		type: subagent_type as SubagentType,
 		description,
 		prompt,
-		parentContext,
+		parentContext: parentCtx,
 		task_id,
 		timeoutMs: timeout,
 	}).finally(() => {
@@ -425,7 +441,10 @@ async function askQuestion(
 	args: z.infer<typeof QUESTION_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
-	if (!questionResolver) {
+	const resolver = questionResolverMap.get(
+		ctx.agentContext?.sessionId ?? "default",
+	);
+	if (!resolver) {
 		return {
 			success: false,
 			output: "",
@@ -464,7 +483,7 @@ async function askQuestion(
 			};
 		}
 
-		const answers = await questionResolver(questionData);
+		const answers = await resolver(questionData);
 
 		if (!answers || answers.length === 0) {
 			return {

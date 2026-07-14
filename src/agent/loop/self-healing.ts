@@ -166,7 +166,7 @@ export class SelfHealingManager {
 						}
 					}
 				}
-			} catch (e) {}
+		} catch (e) { debug.log("self-healing", `Failed to cleanup shadow directories: ${e}`); }
 
 			// Delete ephemeral branches
 			const branchesOut = spawnSync(

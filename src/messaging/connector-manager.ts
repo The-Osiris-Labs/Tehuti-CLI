@@ -252,10 +252,14 @@ export class ConnectorManager extends EventEmitter {
 		const server = this.ensureWebhookServer();
 
 		server.on("request", (req, res) => {
-			if (
-				req.method === "POST" &&
-				req.url === `/telegram/${telegramBotToken}`
-			) {
+			if (req.method === "POST" && req.url?.startsWith(`/telegram/${telegramBotToken}`)) {
+				const url = new URL(req.url, "http://localhost");
+				const secret = url.searchParams.get("secret");
+				if (telegramWebhookSecret && secret !== telegramWebhookSecret) {
+					res.writeHead(403);
+					res.end();
+					return;
+				}
 				let body = "";
 				let bodySize = 0;
 				const MAX_BODY_BYTES = 1024 * 1024; // 1MB limit
@@ -292,10 +296,6 @@ export class ConnectorManager extends EventEmitter {
 				});
 			}
 			return;
-			if (!res.writableEnded) {
-				res.writeHead(404);
-				res.end();
-			}
 		});
 	}
 
@@ -356,7 +356,7 @@ export class ConnectorManager extends EventEmitter {
 					try {
 						const signature = req.headers["x-hub-signature-256"] as string;
 						const expected = `sha256=${crypto.createHmac("sha256", whatsappWebhookSecret).update(body).digest("hex")}`;
-						if (signature !== expected) {
+						if (!crypto.timingSafeEqual(Buffer.from(signature || ""), Buffer.from(expected))) {
 							res.writeHead(403);
 							res.end("Invalid signature");
 							return;

@@ -120,6 +120,11 @@ export class InjectionQueue {
 export let globalAbortController = new AbortController();
 
 export function resetGlobalAbortController() {
+	// Abort the old controller so any in-flight listeners receive the signal
+	// before we swap. Remove all listeners to avoid dangling references.
+	if (!globalAbortController.signal.aborted) {
+		globalAbortController.abort();
+	}
 	globalAbortController = new AbortController();
 }
 

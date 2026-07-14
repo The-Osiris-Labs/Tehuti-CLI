@@ -13,7 +13,7 @@ Tehuti is a **TypeScript-only**, **Node.js 20+** terminal coding agent powered b
 - **Agent loop:** `src/agent/loop/runner.ts` — stream LLM → execute tools → repeat
 - **API:** Custom `fetch` + SSE clients (HTTP/3) in `src/api/` (not Vercel AI SDK)
 - **Default provider:** OpenCode Go (`opencode` → `https://opencode.ai/zen/go/v1`, model `deepseek-v4-flash`)
-- **Tools:** 79 registered native tools + dynamic MCP tools at runtime
+- **Tools:** 86 registered native tools + dynamic MCP tools at runtime
 
 **Not in the shipped path:** ai / @openrouter/ai-sdk-provider / @aiter/core deps (unused in src/). (Note: `rust-core/` is actively compiled to a `.node` binary and dynamically loaded in `src/agent/tools/search.ts` for fast case-sensitive pattern grep).
 
@@ -106,7 +106,7 @@ runAgentLoop (runner.ts)
 
 **Two compression systems:**
 - In-loop: Deterministic array truncation (splicing out oldest messages) via `loop/compression.ts` (~85% threshold)
-- `/compact`: cheap placeholder compaction via `compactContext()` in `context.ts` (no LLM)
+- `/compact`: cheap placeholder compaction via `compactContext()` in `context.ts` (no LLM); keeps last 20 messages
 
 ---
 

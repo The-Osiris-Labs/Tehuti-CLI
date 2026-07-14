@@ -33,7 +33,7 @@ Three pillars: **Agent Core**, **TUI**, and **Tools**.
               |
    +----------v---------+
    |   Tool Registry    |
-   |  79 native + MCP   |
+   |  86 native + MCP   |
    | dynamic at runtime |
    +--------------------+
 ```
@@ -118,7 +118,7 @@ Palette uses Fuse.js fuzzy search. Egyptian palette (gold/obsidian/sand/coral) v
 
 Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`, `web`, `mcp`, `system`, `git`, `search`, `development`.
 
-### Native inventory (79 registered in src/agent/index.ts)
+### Native inventory (86 registered in src/agent/index.ts)
 
 | Category | Count | Examples |
 |----------|------:|----------|
@@ -130,7 +130,7 @@ Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`,
 | Web | 3 | `web_fetch`, `web_search`, `code_search` |
 | Git | 9 | `git_status` … `git_push` |
 | Background | 4 | `start_background`, `list_processes`, … |
-| System | 4 | `todo_write`, `task`, `question`, `wait_for_event` |
+| System | 6 | `todo_write`, `todo_complete`, `todo_delete`, `task`, `question`, `wait_for_event` |
 | Memory | 2 | `store_insight`, `query_memory` |
 | Plan mode | 4 | `write_plan`, `exit_plan_mode`, `list_plans`, `read_plan` |
 | Skills | 6 | `list_skills`, `activate_skill`, `create_reusable_skill` … |
@@ -138,13 +138,14 @@ Zod-validated definitions → JSON Schema for the API. Categories: `fs`, `bash`,
 | Env | 1 | `env_inspect` |
 | Network | 1 | `network_check` |
 | Service | 1 | `service_status` |
-| Swarm | 4 | `delegate_task`, `check_subagent_status`, `abort_subagent`, `send_message_to_subagent` |
+| Swarm | 6 | `delegate_task`, `check_subagent_status`, `await_subagents`, `list_subagents`, `abort_subagent`, `send_message_to_subagent` |
+| LSP | 4 | `lsp_find_references`, `lsp_go_to_definition`, `lsp_rename_symbol`, `lsp_hover` |
 | KiloCode | 3 | `configure_memory_bank`, `clear_memory`, `configure_streaming` |
-| KiloCode Advanced | 3 | `configure_context_management`, `review_code`, `summarize_context` |
+| KiloCode Advanced | 2 | `review_code`, `summarize_context` |
 | Custom Provider | 4 | `configure_custom_provider`, `set_custom_header`, `remove_custom_header`, `get_custom_provider_info` |
-| Collaboration | 3 | `configure_collaboration`, `invite_collaborator`, `leave_collaboration` |
+| Collaboration | 1 | `collaboration` |
 | Shadow Workspace | 1 | `test_speculatively` |
-| **Total native** | **79** | |
+| **Total native** | **86** | |
 
 ### MCP (dynamic)
 

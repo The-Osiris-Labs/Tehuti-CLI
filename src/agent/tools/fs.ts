@@ -107,6 +107,7 @@ function isSensitiveFile(filePath: string): boolean {
 		/\.pfx$/i,
 		/credentials/i,
 		/secrets/i,
+		/\.env$/i,
 		/\.env\./i,
 		/\.npmrc$/i,
 		/\.netrc$/i,
@@ -354,13 +355,6 @@ async function readFile(
 			};
 		}
 
-		if (await isBinaryFile(resolvedPath)) {
-			return {
-				success: false,
-				output: "",
-				error: `Binary file detected. Cannot edit binary files.`,
-			};
-		}
 
 		const content = await fs.readFile(resolvedPath, "utf-8");
 		const fileHash = crypto

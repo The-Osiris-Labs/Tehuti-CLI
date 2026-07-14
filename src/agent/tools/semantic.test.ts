@@ -104,7 +104,7 @@ describe("Semantic Search Tools", () => {
 
 			expect(res.success).toBe(true);
 			const results = JSON.parse(res.output);
-			expect(results).toHaveLength(2);
+			expect(results).toHaveLength(1); // .env is now filtered as sensitive
 			expect(results[0].path).toBe("src/index.ts");
 
 			pathExistsSpy.mockRestore();

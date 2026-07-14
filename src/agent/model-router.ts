@@ -128,12 +128,10 @@ export function classifyTask(
 		}
 	}
 
-	const deepKeywordMatches = DEEP_KEYWORDS.filter((k) =>
-		new RegExp(`\\b${k}\\b`, "i").test(messageLower),
-	);
-	const fastKeywordMatches = FAST_KEYWORDS.filter((k) =>
-		new RegExp(`\\b${k}\\b`, "i").test(messageLower),
-	);
+	const allWords = messageLower.match(/\b\w+\b/g) ?? [];
+	const wordSet = new Set(allWords);
+	const deepKeywordMatches = DEEP_KEYWORDS.filter((k) => wordSet.has(k));
+	const fastKeywordMatches = FAST_KEYWORDS.filter((k) => wordSet.has(k));
 
 	if (deepKeywordMatches.length >= 2) {
 		return {

@@ -12,6 +12,7 @@ import { swarmManager } from "../agent/swarm/manager.js";
 import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
+import { AsyncMutex } from "../utils/mutex.js";
 import { consola } from "../utils/logger.js";
 import { SessionBackup } from "./backup.js";
 
@@ -222,7 +223,8 @@ class SessionManager {
 	private saveTimer: NodeJS.Timeout | null = null;
 	private autoSaveTimer: NodeJS.Timeout | null = null;
 	private backup?: SessionBackup;
-
+	/** Serializes concurrent saveSession calls to prevent corrupted writes. */
+	private readonly saveMutex = new AsyncMutex();
 	constructor() {
 		const baseDir =
 			process.env.TEHUTI_HOME ||
@@ -363,76 +365,78 @@ class SessionManager {
 			return;
 		}
 
-		const sessionDir = path.join(this.sessionsDir, id);
-		await fs.ensureDir(sessionDir);
+		await this.saveMutex.runExclusive(async () => {
+			const sessionDir = path.join(this.sessionsDir, id);
+			await fs.ensureDir(sessionDir);
 
-		const existingMetadata = await this.getSessionMetadata(id);
-		const sessionName =
-			name ??
-			existingMetadata?.name ??
-			this.generateAutoName(ctx.cwd, ctx.config.model, ctx.messages);
+			const existingMetadata = await this.getSessionMetadata(id);
+			const sessionName =
+				name ??
+				existingMetadata?.name ??
+				this.generateAutoName(ctx.cwd, ctx.config.model, ctx.messages);
 
-		const metadata: SessionMetadata = {
-			id,
-			name: sessionName,
-			provider: ctx.config.provider,
-			baseUrl: ctx.config.baseUrl,
-			customProvider: ctx.config.customProvider,
-			createdAt: existingMetadata?.createdAt ?? new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-			cwd: ctx.cwd,
-			model: ctx.config.model,
-			messageCount: ctx.messages.length,
-			toolCalls: ctx.metadata.toolCalls,
-			tokensUsed: ctx.metadata.tokensUsed,
-			lastMessageContent: extractTextContent(
-				ctx.messages,
-			).substring(0, 60),
-		};
-
-		await this.saveSessionMetadata(id, metadata);
-
-		const archive = ctx.appendOnlyLog || ctx.messages;
-		const needsExternalArchive =
-			archive.length > ctx.messages.length ||
-			(ctx.compactionHistory?.length ?? 0) > 0;
-		const sessionData: SessionData = {
-			metadata,
-			messages: ctx.messages,
-			// Keep ordinary sessions backward-compatible. Once compaction creates
-			// a larger audit transcript, move that transcript to archive.json so
-			// repeated checkpoints do not duplicate it inside session.json.
-			appendOnlyLog: needsExternalArchive ? [] : archive,
-			archiveFile: needsExternalArchive ? "archive.json" : undefined,
-			context: {
+			const metadata: SessionMetadata = {
+				id,
+				name: sessionName,
+				provider: ctx.config.provider,
+				baseUrl: ctx.config.baseUrl,
+				customProvider: ctx.config.customProvider,
+				createdAt: existingMetadata?.createdAt ?? new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
 				cwd: ctx.cwd,
-				workingDir: ctx.workingDir,
-				metadata: ctx.metadata,
-				readFilesThisSession: Array.from(ctx.readFilesThisSession || []),
-				compactionHistory: ctx.compactionHistory,
-			},
-			subagentsState: exportState(),
-			swarmState: swarmManager.exportState(),
-		};
+				model: ctx.config.model,
+				messageCount: ctx.messages.length,
+				toolCalls: ctx.metadata.toolCalls,
+				tokensUsed: ctx.metadata.tokensUsed,
+				lastMessageContent: extractTextContent(
+					ctx.messages,
+				).substring(0, 60),
+			};
 
-		// Backup existing session before overwriting
-		try {
-			await this.getBackup().createBackup(id);
-		} catch (err) {
-			debug.log("session", `Backup failed: ${err}`);
-			// Don't fail save if backup fails
-		}
-		const sessionFile = path.join(sessionDir, "session.json");
-		if (sessionData.archiveFile) {
-			const archiveFile = path.join(sessionDir, sessionData.archiveFile);
-			await writeJsonAtomic(archiveFile, archive);
-		}
-		await writeJsonAtomic(sessionFile, sessionData);
+			await this.saveSessionMetadata(id, metadata);
 
-		debug.log(
-			"session",
-			`Saved session: ${id} (${sessionName}, ${ctx.messages.length} messages)`,
-		);
+			const archive = ctx.appendOnlyLog || ctx.messages;
+			const needsExternalArchive =
+				archive.length > ctx.messages.length ||
+				(ctx.compactionHistory?.length ?? 0) > 0;
+			const sessionData: SessionData = {
+				metadata,
+				messages: ctx.messages,
+				// Keep ordinary sessions backward-compatible. Once compaction creates
+				// a larger audit transcript, move that transcript to archive.json so
+				// repeated checkpoints do not duplicate it inside session.json.
+				appendOnlyLog: needsExternalArchive ? [] : archive,
+				archiveFile: needsExternalArchive ? "archive.json" : undefined,
+				context: {
+					cwd: ctx.cwd,
+					workingDir: ctx.workingDir,
+					metadata: ctx.metadata,
+					readFilesThisSession: Array.from(ctx.readFilesThisSession || []),
+					compactionHistory: ctx.compactionHistory,
+				},
+				subagentsState: exportState(),
+				swarmState: swarmManager.exportState(),
+			};
+
+			// Backup existing session before overwriting
+			try {
+				await this.getBackup().createBackup(id);
+			} catch (err) {
+				debug.log("session", `Backup failed: ${err}`);
+				// Don't fail save if backup fails
+			}
+			const sessionFile = path.join(sessionDir, "session.json");
+			if (sessionData.archiveFile) {
+				const archiveFile = path.join(sessionDir, sessionData.archiveFile);
+				await writeJsonAtomic(archiveFile, archive);
+			}
+			await writeJsonAtomic(sessionFile, sessionData);
+
+			debug.log(
+				"session",
+				`Saved session: ${id} (${sessionName}, ${ctx.messages.length} messages)`,
+			);
+		});
 	}
 
 	/**

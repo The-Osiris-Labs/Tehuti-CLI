@@ -123,9 +123,14 @@ export class TaskQueue {
 		const task = this.queue.shift();
 
 		if (task) {
-			await task();
+			try {
+				await task();
+			} finally {
+				this.running--;
+				this.process();
+			}
+		} else {
 			this.running--;
-			this.process();
 		}
 	}
 

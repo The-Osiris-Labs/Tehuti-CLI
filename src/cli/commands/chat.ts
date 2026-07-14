@@ -719,7 +719,7 @@ async function saveHistory(history: string[]): Promise<void> {
 
 // Initialize highlighter early
 initHighlighter().catch((err) => {
-	console.error("Failed to initialize syntax highlighter:", err);
+	debug.log("chat", `Failed to initialize syntax highlighter: ${err}`);
 });
 
 export function parseContentBlocks(
@@ -2668,7 +2668,7 @@ function ChatUI({
 				}
 			} catch (error) {
 				if (error instanceof Error && error.name !== "AbortError") {
-					console.error("Session initialization failed:", error);
+				debug.log("chat", `Session initialization failed: ${error}`);
 				}
 			}
 		}
