@@ -227,7 +227,19 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	epistemicStatus,
 	defaultExpanded = false,
 }: ExpandableToolOutputProps): React.ReactElement {
-	const [expanded, setExpanded] = useState(defaultExpanded);
+	// Compute total line count for auto-collapse (avoid circular dep with summary)
+	const totalLineCount = useMemo(() => {
+		const text = extractResultText(result);
+		const lines = text.split("\n").filter((l) => l.trim().length > 0);
+		return Math.max(1, lines.length);
+	}, [result]);
+
+	const [expanded, setExpanded] = useState(defaultExpanded || totalLineCount <= 8);
+
+	// Auto-collapse: blocks > 8 lines collapsed by default; re-evaluate on new content
+	useEffect(() => {
+		setExpanded(defaultExpanded || totalLineCount <= 8);
+	}, [totalLineCount, defaultExpanded]);
 	const startTimeRef = useRef<number>(Date.now());
 	const [duration, setDuration] = useState<number | null>(null);
 	const [isHovered, setIsHovered] = useState(false);
@@ -383,7 +395,7 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	const visibleLines = useMemo(() => {
 		let lines = summary.rawLines;
 		if (!expanded) {
-			lines = lines.slice(0, 4);
+			lines = lines.slice(0, 8);
 		} else {
 			lines = lines.slice(windowStart, windowEnd);
 		}
@@ -427,14 +439,15 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [highlightedLines, contentWidth]);
 
 	const expandedIcon = expanded ? "▼" : "▶";
+	const collapsedHidden = totalLineCount - 8;
 
 	const footerLabel =
 		status === "pending"
 			? "running..."
-			: expanded && summary.rawLines.length > 40
-				? `Lines ${windowStart + 1}-${windowEnd} of ${summary.lineCount} (hover & use ↑/↓/PgUp/PgDn/Home/End, q to close)`
-				: summary.isTruncated && !expanded
-					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
+			: expanded && totalLineCount > 40
+				? `Lines ${windowStart + 1}-${windowEnd} of ${totalLineCount} (hover & use ↑/↓/PgUp/PgDn/Home/End, q to close)`
+				: !expanded && collapsedHidden > 0
+					? `▼ ${collapsedHidden} more lines`
 					: `completed`;
 
 	const errorBlock = useMemo(() => {

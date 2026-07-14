@@ -23,6 +23,7 @@ export interface TehutiHeaderProps {
 	onConfigClick?: () => void;
 	onCommandClick?: (cmd: string) => void;
 	activeSkills?: number;
+	advisorEnabled?: boolean;
 }
 
 function ClickableBadge({
@@ -66,6 +67,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 	onModelClick,
 	onConfigClick,
 	onCommandClick,
+	advisorEnabled = false,
 	activeSkills,
 }: TehutiHeaderProps) {
 	const ascii = isAsciiMode();
@@ -150,6 +152,17 @@ export const TehutiHeader = memo(function TehutiHeader({
 						</Text>
 					</>
 				)}
+				{advisorEnabled && (
+					<>
+						<Text color={SAND} dimColor>
+							{" "}
+							│{" "}
+						</Text>
+						<Text color="cyan" bold>
+							👁 Advisor
+						</Text>
+					</>
+				)}
 			</Box>
 		);
 	}
@@ -161,7 +174,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 			marginBottom={1}
 			borderStyle="round"
 			borderColor={GOLD}
-			paddingX={4}
+			paddingX={2}
 			paddingY={1}
 		>
 			<Gradient colors={[GOLD, CORAL]}>
@@ -238,6 +251,13 @@ export const TehutiHeader = memo(function TehutiHeader({
 					<Box marginTop={1}>
 						<Text color={SAND} dimColor>
 							🎴 +{activeSkills}
+						</Text>
+					</Box>
+				)}
+				{advisorEnabled && (
+					<Box marginTop={1}>
+						<Text color="cyan" bold>
+							👁 Advisor
 						</Text>
 					</Box>
 				)}

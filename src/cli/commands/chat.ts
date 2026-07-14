@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as crypto from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
@@ -221,7 +222,7 @@ const TOOL_ICONS: Record<string, string> = {
 	code_search: "🔎",
 	// ── Memory / knowledge ──
 	store_insight: "💾",
-	query_memory: "💾",
+	query_memory: "🔍",
 	configure_memory_bank: "🧠",
 	clear_memory: "🧹",
 	// ── Configuration ──
@@ -241,7 +242,7 @@ const TOOL_ICONS: Record<string, string> = {
 	task_done: "✅",
 	plan_mode: "🗺️",
 	create_plan: "🗺️",
-	write_plan: "🗺️",
+	write_plan: "📝",
 	list_plans: "📋",
 	read_plan: "📖",
 	exit_plan_mode: "🚪",
@@ -256,8 +257,10 @@ const TOOL_ICONS: Record<string, string> = {
 	kill_subagent: "💀",
 	abort_subagent: "🛑",
 	send_message_to_subagent: "📨",
+	await_subagents: "⏳",
+	list_subagents: "📋",
 	// ── Background processes ──
-	start_background: "⏳",
+	start_background: "▶️",
 	list_background: "📜",
 	list_processes: "📜",
 	check_background: "📜",
@@ -286,6 +289,7 @@ const TOOL_ICONS: Record<string, string> = {
 	deactivate_skill: "🎴",
 	get_skill: "🎴",
 	find_skills: "🔍",
+	create_reusable_skill: "🎴",
 	// ── Semantic / code analysis ──
 	semantic: "🔬",
 	semantic_init: "🏗️",
@@ -3328,6 +3332,42 @@ function ChatUI({
 				return;
 			}
 
+			if (cmd === "/collab") {
+				const sessionId = crypto.randomUUID();
+				const shortId = sessionId.slice(0, 8);
+				const pw = 66; // interior box width
+				const line = (text: string) => `  │  ${text}${" ".repeat(pw - 2 - text.length)}│`;
+				const box = [
+					`  ┌─ Collaboration ${"─".repeat(pw - 15)}┐`,
+					line(`Session: collab-${shortId}`),
+					line(`Share:  tehuti://collab/${sessionId}`),
+					line(`Status: LAN mode (relay not configured)`),
+					line(`Use /collab-join <id> to join a session`),
+					`  └${"─".repeat(pw)}┘`,
+				].join("\n");
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content: box,
+					},
+				]);
+				// Broadcast collab event via daemon IPC if connected
+				if (companionMode && daemonClientRef.current) {
+					try {
+						daemonClientRef.current.send({
+							type: "collab_start",
+							sessionId,
+							shortId,
+						});
+					} catch {
+						// Daemon may not be ready
+					}
+				}
+				return;
+			}
+
 			setMessages((m) => [
 				...m,
 				{
@@ -3929,7 +3969,7 @@ function ChatUI({
 										),
 										toolArgs: (block as Record<string, unknown>).args,
 										result: block.result,
-										maxWidth: contentMaxWidth - 3,
+										maxWidth: Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2)),
 										status: getToolRenderStatus(block.result),
 									}),
 								),
@@ -3961,20 +4001,45 @@ function ChatUI({
 
 					if (m.toolCalls && m.toolCalls.length > 0) {
 						const toolCount = m.toolCalls.length;
-						// For 2+ tools, lay them out side-by-side in a flex row so the
-						// viewport is not dominated by a vertical stack. For 1 tool,
-						// keep the original full-width layout.
-						const isParallel = toolCount >= 2;
-						const cardWidth = isParallel
-							? Math.max(40, Math.floor((contentMaxWidth - 3) / toolCount) - 2)
-							: contentMaxWidth - 3;
+						const isNarrow = terminalWidth < 80;
+						const isWide = terminalWidth >= 140;
+
+						let cardWidth: number;
+						let flexDir: "row" | "column" = "column";
+						let useWrap = false;
+						let useGap = false;
+
+						if (isNarrow) {
+							// Full-width fallback: single-column full-width layout
+							cardWidth = contentMaxWidth - 3;
+						} else if (toolCount === 1) {
+							// Single card with capped dynamic width
+							cardWidth = Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2));
+						} else {
+							// Multi-card layout
+							if (isWide) {
+								// Multi-column: split into two columns for parallel content
+								const availableWidth = contentMaxWidth - 3;
+								cardWidth = Math.floor((availableWidth - 2) / 2);
+								flexDir = "row";
+								useWrap = true;
+								useGap = true;
+							} else {
+								// Single row: distribute width proportionally
+								const gaps = (toolCount - 1) * 1;
+								cardWidth = Math.max(40, Math.floor((terminalWidth - 4 - gaps) / toolCount));
+								flexDir = "row";
+								useGap = true;
+							}
+						}
+
 						const toolElements = React.createElement(
 							Box,
 							{
-								flexDirection: isParallel ? "row" : "column",
-								flexWrap: isParallel ? "wrap" : undefined,
+								flexDirection: flexDir,
+								flexWrap: useWrap ? "wrap" : undefined,
 								marginTop: 1,
-								gap: isParallel ? 1 : 0,
+								gap: useGap ? 1 : 0,
 								key: `tool-calls-${m.id}`,
 							},
 							...m.toolCalls.map((tc, idx) =>
@@ -4007,7 +4072,7 @@ function ChatUI({
 				React.createElement(Box, { flexDirection: "column", paddingLeft: 2 }, ...content),
 			);
 		});
-	}, [visibleMessages, contentMaxWidth]);
+	}, [visibleMessages, contentMaxWidth, terminalWidth]);
 
 	const scrollPercent = Math.min(
 		100,
@@ -4103,6 +4168,7 @@ function ChatUI({
 								onConfigClick: handleHeaderConfigClick,
 								onCommandClick: handleHeaderCommandClick,
 								activeSkills: activeSkillsCount,
+								advisorEnabled: cfg?.advisorModel?.enabled ?? false,
 							}),
 						React.createElement(
 							Text,
@@ -4175,6 +4241,7 @@ function ChatUI({
 										onConfigClick: handleHeaderConfigClick,
 										onCommandClick: handleHeaderCommandClick,
 										activeSkills: activeSkillsCount,
+										advisorEnabled: cfg?.advisorModel?.enabled ?? false,
 									}),
 								),
 							...messageElements,

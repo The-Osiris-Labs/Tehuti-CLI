@@ -145,6 +145,10 @@ const EDIT_FILE_SCHEMA = z.object({
 		.boolean()
 		.optional()
 		.describe("Replace all occurrences (default: false)"),
+	hashTargets: z.array(z.object({
+		hash: z.string().length(12).describe("First 12 hex chars of SHA256 of target line content"),
+		replacement: z.string().describe("Replacement line content"),
+	})).optional().describe("Content-hash anchored replacements (alternative to line numbers)"),
 });
 
 const CREATE_DIR_SCHEMA = z.object({
@@ -559,6 +563,10 @@ async function writeFile(
 	}
 }
 
+function computeHashline(text: string): string {
+	return crypto.createHash("sha256").update(text, "utf-8").digest("hex").substring(0, 12);
+}
+
 async function editFile(
 	args: z.infer<typeof EDIT_FILE_SCHEMA>,
 	ctx: ToolContext,
@@ -622,6 +630,84 @@ async function editFile(
 				error: `Drift detected: Live file hash (${currentHash}) does not match expected hash (${args.expected_hash}). Please read the file again to get the latest content and hash.`,
 			};
 		}
+
+		// Hashline-based editing (alternative to old_string/new_string)
+		if (args.hashTargets && args.hashTargets.length > 0) {
+			const fileLines = content.split("\n");
+			const replacedLineIndices = new Set<number>();
+			let notFoundHash: string | undefined;
+
+			for (const target of args.hashTargets) {
+				let matched = false;
+				for (let i = 0; i < fileLines.length; i++) {
+					if (replacedLineIndices.has(i)) continue;
+					if (computeHashline(fileLines[i]) === target.hash) {
+						fileLines[i] = target.replacement;
+						replacedLineIndices.add(i);
+						matched = true;
+						break;
+					}
+				}
+				if (!matched) {
+					notFoundHash = target.hash;
+					break;
+				}
+			}
+
+			if (notFoundHash) {
+				return {
+					success: false,
+					output: "",
+					error: `Hashline ${notFoundHash} not found — content may have shifted. Use /read to get fresh content.`,
+				};
+			}
+
+			const newContent = fileLines.join("\n");
+
+			await createBackup(resolvedPath, content);
+
+			const linterResult = await runAciLinter(resolvedPath, newContent);
+			if (!linterResult.success) {
+				return {
+					success: false,
+					output: "",
+					error: `ACI Linter failed (Syntax Error):\n${linterResult.error}\n\nEdit was NOT applied. Please self-correct.`,
+				};
+			}
+
+			if (ctx.diffPreview?.showPreview) {
+				const previewResult = await showDiffPreview(
+					content,
+					newContent,
+					path.basename(resolvedPath),
+					ctx.diffPreview,
+				);
+				if (!previewResult.confirmed) {
+					return {
+						success: false,
+						output: "",
+						error:
+							previewResult.diffOutput === "No changes detected."
+								? "No changes to apply."
+								: "Diff preview rejected by user.",
+					};
+				}
+			}
+
+			await fs.writeFile(resolvedPath, newContent, "utf-8");
+			markFileAsRead(resolvedPath, ctx);
+
+			const statsNote = ctx.diffPreview?.showPreview
+				? ` (${formatDiffStats(newContent)})`
+				: "";
+
+			return {
+				success: true,
+				output: `Successfully applied ${args.hashTargets.length} hashline edit(s) to ${resolvedPath}${statsNote}`,
+				metadata: { path: resolvedPath, replacements: args.hashTargets.length },
+			};
+		}
+
 
 		if (!content.includes(args.old_string)) {
 			const lines = content.split("\n");

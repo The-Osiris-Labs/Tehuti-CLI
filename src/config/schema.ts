@@ -534,6 +534,24 @@ export const HOOKS_CONFIG_SCHEMA = z.object({
 		.describe("Hooks running on system notifications"),
 });
 
+export const ADVISOR_MODEL_SCHEMA = z.object({
+	enabled: z.boolean().default(false),
+	model: z.string().optional(),
+	provider: z.string().optional(),
+	instructions: z
+		.string()
+		.default(
+			"Review the primary agent's output for correctness and safety",
+		),
+}).optional();
+
+export const STREAM_RULE_SCHEMA = z.object({
+	pattern: z.string().describe("Regex pattern to match against streaming output"),
+	remediation: z.string().describe("System instruction to inject when pattern matches"),
+	enabled: z.boolean().default(true),
+	maxRetries: z.number().int().positive().default(3).optional(),
+});
+
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z
 		.string()
@@ -674,6 +692,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 	selfHealing: SELF_HEALING_CONFIG_SCHEMA.optional().default({}),
 	personality: PERSONALITY_CONFIG_SCHEMA.optional().default({}),
 	memory: MEMORY_CONFIG_SCHEMA.optional().default({}),
+	advisorModel: ADVISOR_MODEL_SCHEMA,
 	modelCapabilities: z
 		.object({
 			contextLength: z
@@ -699,6 +718,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 		})
 		.optional()
 		.describe("Overrides for model capabilities"),
+	streamRules: z.array(STREAM_RULE_SCHEMA).default([]).describe("Stream monitoring rules"),
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -812,10 +832,16 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	memory: {
 		consolidationIntervalMs: 15 * 60 * 1000,
 	},
+	advisorModel: {
+		enabled: false,
+		instructions:
+			"Review the primary agent's output for correctness and safety",
+	},
 	modelCapabilities: {
 		contextLength: 1000000,
 		maxOutputTokens: 32000,
 		supportsVision: true,
 		supportsTools: true,
 	},
+	streamRules: [],
 };

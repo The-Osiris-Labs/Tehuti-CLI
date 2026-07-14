@@ -764,6 +764,14 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - Use the \`write\` tool for new files, \`edit\` tool for modifications.
 - Always verify changes by reading the file after writing or editing.
 
+## Hashline Edit Mode
+- **hashTargets** (\`edit\` tool): Content-hash anchored editing for precise single-line replacements.
+- Each line in a file has a unique 12-character SHA256 hash derived from its content.
+- Use \`hashTargets\` when you want to replace specific lines identified by their content hash, regardless of line number.
+- This is more resilient to context shifts — the hash verifies you're editing the exact line you intend.
+- **When to use hashTargets:** You have the hashes from the \`/read\` output header and need to replace specific lines.
+- **When to use old_string/new_string:** For multi-line replacements, structural changes, or when you need surrounding context for uniqueness.
+
 ## Output Format
 - Use markdown formatting for responses.
 - Include code blocks with appropriate language tags.

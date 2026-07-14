@@ -45,6 +45,16 @@ export interface AgentLoopOptions {
 	onProgress?: (progress: number, label: string) => void;
 	onCheckpoint?: (event: string, ctx: AgentContext) => void | Promise<void>;
 	signal?: AbortSignal;
+	/**
+	 * Optional advisor review hook. Called after a successful agent turn
+	 * with the generated content and context so an advisor model can
+	 * review output in the background. Architecture stub — actual review
+	 * loop is future work.
+	 */
+	onAdvisorReview?: (
+		content: string,
+		ctx: AgentContext,
+	) => void | Promise<void>;
 }
 
 export interface AgentLoopResult {
@@ -86,6 +96,7 @@ export async function runAgentLoop(
 		onProgress,
 		onCheckpoint,
 		signal,
+		onAdvisorReview,
 	} = options;
 
 	try {
@@ -343,6 +354,26 @@ export async function runAgentLoop(
 									}
 								}
 							}
+
+							// Check stream rules against accumulated content
+							if (ctx.config.streamRules && ctx.config.streamRules.length > 0) {
+								const content = state.content || "";
+								for (const rule of ctx.config.streamRules) {
+									if (!rule.enabled) continue;
+									try {
+										const re = new RegExp(rule.pattern, "i");
+										if (re.test(content)) {
+											debug.log("agent", `Stream rule triggered: ${rule.pattern}`);
+											getTelemetry().recordRuleTrigger(rule.pattern);
+											client.abort();
+											ctx.injectionQueue.push(rule.remediation);
+											break; // Only trigger one rule per stream
+										}
+									} catch (e) {
+										debug.log("agent", `Invalid stream rule pattern: ${rule.pattern}`);
+									}
+								}
+							}
 						} catch (streamError) {
 							const estimatedPromptTokens = Math.floor(
 								JSON.stringify(ctx.messages).length / 4,
@@ -437,6 +468,12 @@ export async function runAgentLoop(
 
 				if (toolCalls.length === 0) {
 					debug.log("agent", "No tool calls, finishing");
+					// Non-blocking advisor review hook (fire-and-forget)
+					if (onAdvisorReview) {
+						Promise.resolve(onAdvisorReview(totalContent, ctx)).catch(() => {
+							// Advisor review is best-effort; ignore failures
+						});
+					}
 					return {
 						content: totalContent,
 						toolCalls: totalToolCalls,

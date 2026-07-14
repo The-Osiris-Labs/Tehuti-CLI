@@ -1,3 +1,5 @@
+import { debug } from "./debug.js";
+
 export interface ToolExecutionMetric {
 	toolName: string;
 	durationMs: number;
@@ -146,6 +148,10 @@ class TelemetryCollector {
 		this.metrics.cacheMetrics.misses += misses;
 		this.metrics.cacheMetrics.bytesSaved += bytesSaved;
 		this.metrics.totalTokensSaved += Math.floor(bytesSaved / 4);
+	}
+	recordRuleTrigger(pattern: string): void {
+		if (!this.enabled) return;
+		debug.log("agent", `Stream rule triggered: ${pattern}`);
 	}
 
 	recordModelCost(
