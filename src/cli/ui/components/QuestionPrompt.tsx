@@ -201,7 +201,7 @@ export function QuestionPrompt({
 					{ color: COLORS.gold, bold: true },
 					`> ${customInput}`,
 				),
-				React.createElement(Text, { color: COLORS.coral }, "█"),
+				React.createElement(Text, { color: COLORS.gold }, "█"),
 			),
 			React.createElement(
 				Box,

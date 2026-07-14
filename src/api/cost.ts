@@ -172,11 +172,11 @@ export class CostTracker {
 	getSessionSummary(): string {
 		const savings =
 			this.session.totalCacheReadTokens > 0
-				? `\n  𓏛 Cache: ${this.formatCost(this.session.totalCacheReadTokens * 0.000001)} saved (${this.session.totalCacheReadTokens.toLocaleString()} tokens)`
+				? `\n  · Cache: ${this.formatCost(this.session.totalCacheReadTokens * 0.000001)} saved (${this.session.totalCacheReadTokens.toLocaleString()} tokens)`
 				: "";
 
-		return `𓆣 Session Summary:
-  𓊖 Requests: ${this.session.requestCount} 𓍋 Tokens: ${(this.session.totalPromptTokens + this.session.totalCompletionTokens).toLocaleString()} 𓂝 Cost: ${this.formatCost(this.session.totalCost)}${savings}`;
+		return `Session Summary:
+  · Requests: ${this.session.requestCount} · Tokens: ${(this.session.totalPromptTokens + this.session.totalCompletionTokens).toLocaleString()} · Cost: ${this.formatCost(this.session.totalCost)}${savings}`;
 	}
 
 	reset(): void {

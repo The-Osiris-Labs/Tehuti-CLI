@@ -104,3 +104,49 @@ export const HIEROGLYPHS = {
 	tool: "𓏛",
 	error: "𓂀",
 };
+
+// ── ASCII fallbacks for terminals without hieroglyph font support ───────────
+export function isAsciiMode(): boolean {
+	return (
+		process.env.TEHUTI_ASCII_MODE === "1" ||
+		process.env.NO_EMOJI === "1" ||
+		process.env.TERM === "dumb" ||
+		false
+	);
+}
+
+export const ASCII_DECORATIVE = {
+	horizontal: "─",
+	horizontalDouble: "═",
+	vertical: "│",
+	cornerTL: "╭",
+	cornerTR: "╮",
+	cornerBL: "╰",
+	cornerBR: "╯",
+	bullet: "•",
+	arrow: "→",
+	subbullet: "·",
+	separator: "•",
+	ibis: "[T]",
+	eye: "[+]",
+	eyeOfHorus: "[!]",
+	feather: "~>",
+	scroll: "->",
+	ankh: "[OK]",
+	was: "[*]",
+	djed: "[#]",
+	lotus: "( )",
+	carrot: "^",
+	star: "*",
+	sun: "O",
+	ibisBird: "(T)",
+};
+
+export const ASCII_HIEROGLYPHS = {
+	thinking: [".", "..", "...", "....", "....."],
+	loading: ["|", "/", "-", "\\", "|"],
+	success: "[OK]",
+	wisdom: "->",
+	tool: "->",
+	error: "[!]",
+};

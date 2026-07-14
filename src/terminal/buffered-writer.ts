@@ -299,6 +299,7 @@ export class StreamingOutputManager {
 	private readonly BATCH_INTERVAL = 50;
 	private destroyed: boolean = false;
 	private inCodeBlock: boolean = false;
+	private backtickRun: number = 0;
 	private codeBlockBuffer: string = "";
 
 	constructor() {
@@ -337,8 +338,27 @@ export class StreamingOutputManager {
 	}
 
 	private detectsCodeBlockBoundary(token: string): boolean {
-		// Improved code block detection that handles language specifications and partial tokens
-		return /```[a-zA-Z]*/.test(token);
+		// Detect code fence boundaries, handling fences split across tokens.
+		// The LLM may emit ``` and language name (e.g. "ts") in separate tokens.
+		// Accumulate backtick runs across tokens; ≥3 consecutive backticks = fence.
+		let count = 0;
+		for (const ch of token) {
+			if (ch === '`') {
+				count++;
+			} else if (this.backtickRun + count >= 3) {
+				this.backtickRun = 0;
+				return true;
+			} else {
+				this.backtickRun = 0;
+				count = 0;
+			}
+		}
+		this.backtickRun += count;
+		if (this.backtickRun >= 3) {
+			this.backtickRun = 0;
+			return true;
+		}
+		return false;
 	}
 
 	private scheduleBatch(): void {

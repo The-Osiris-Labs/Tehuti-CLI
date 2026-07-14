@@ -447,7 +447,7 @@ function formatToolResult(
 				output = errValue;
 				errorMsg = errValue;
 			} else if (errValue) {
-				output = `${outputValue}\n[Error: ${errValue}]`;
+			output = `${outputValue}\n${chalk.hex(RED)(`[Error: ${errValue}]`)}`;
 				errorMsg = errValue;
 			} else {
 				output = outputValue;
