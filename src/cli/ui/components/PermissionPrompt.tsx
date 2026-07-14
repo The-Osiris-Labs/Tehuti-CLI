@@ -9,10 +9,10 @@ import {
 const COLORS = {
 	gold: BRANDING.colors?.primary || "#F5C518",
 	coral: BRANDING.colors?.coral || "#FF6B35",
-	sand: BRANDING.colors?.sand || "#8B7355",
+	sand: BRANDING.colors?.sand || "#A08860",
 	gray: BRANDING.colors?.gray || "#9CA3AF",
 	green: BRANDING.colors?.green || "#22C55E",
-	red: BRANDING.colors?.red || "#EF4444",
+	red: BRANDING.colors?.red || "#F05050",
 } as const;
 
 export interface PermissionPromptProps {

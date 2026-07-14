@@ -50,7 +50,8 @@ export interface ToolDefinition {
 		| "system"
 		| "git"
 		| "search"
-		| "development";
+		| "development"
+		| "plugin";
 	intent?: "read-only" | "destructive" | "interactive";
 	onRegister?: (manager: ToolRegistryManager) => Promise<void> | void;
 	onUnregister?: (manager: ToolRegistryManager) => Promise<void> | void;

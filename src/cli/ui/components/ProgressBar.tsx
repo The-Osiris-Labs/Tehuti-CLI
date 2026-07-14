@@ -4,7 +4,7 @@ import { BRANDING } from "../../../branding/index.js";
 
 const COLORS = {
 	primary: BRANDING.colors?.primary || "#F5C518",
-	sand: BRANDING.colors?.sand || "#8B7355",
+	sand: BRANDING.colors?.sand || "#A08860",
 	green: BRANDING.colors?.green || "#22C55E",
 	coral: BRANDING.colors?.coral || "#FF6B35",
 	gray: BRANDING.colors?.gray || "#9CA3AF",

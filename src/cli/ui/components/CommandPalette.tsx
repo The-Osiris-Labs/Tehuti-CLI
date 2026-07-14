@@ -560,6 +560,7 @@ export function createCommands(options: {
 	onThinking?: () => void;
 	onPlan?: () => void;
 	onSkills?: () => void;
+	onTools?: () => void;
 	onActivateSkill?: (skillId: string) => void;
 	onDeactivateSkill?: (skillId: string) => void;
 	onGetSkill?: (skillId: string) => void;
@@ -717,6 +718,13 @@ export function createCommands(options: {
 			action: options.onSkills || (() => {}),
 		},
 		{
+			id: "/tools",
+			label: "/tools",
+			description: "List all registered tools (built-in, MCP, and plugin)",
+			category: "session",
+			action: options.onTools || (() => {}),
+		},
+		{
 			id: "/help",
 			label: "/help",
 			description: "Show all commands and keyboard shortcuts",
@@ -771,31 +779,57 @@ export function formatHelpOutput(): string {
 | \`/cost\` | Show tokens and cost |
 | \`/stats\` | Show performance metrics |
 | \`/compact\` | Compact context to free up token space |
+| \`/restart\` | Start a fresh conversation (new session ID) |
 | \`/save [name]\` | Save session |
 | \`/export [format]\` | Export session to Markdown or JSON |
 | \`/load\` | Load session (Interactive Submenu) |
 | \`/sessions\` | List saved sessions |
+| \`/search <q>\` | Search saved sessions |
 | \`/plan\` | Enter plan mode (read-only exploration) |
 | \`/config\` | Open interactive configuration editor |
-| \`/skills\` | List all available skills |
+| \`/copy\` | Copy last assistant response to clipboard |
+| \`/todos\` | Show task list |
+| \`/dashboard\` | Toggle Swarm Observability Dashboard |
 | \`/help\` | Show this command reference |
 | \`/exit\` | Exit Tehuti |
 
-## MODEL
+## MODEL & PROVIDER
 | Command | Description |
 |---|---|
 | \`/model\` | Switch AI model (Interactive Submenu) |
 | \`/provider\` | Switch provider (Interactive Submenu) |
+| \`/providers\` | List all available providers |
+| \`/auth gemini\` | Authenticate Google for Gemini models |
 | \`/thinking\` | Toggle extended thinking mode |
+
+## TOOLS & SKILLS
+| Command | Description |
+|---|---|
+| \`/tools\` | List all available tools (built-in + MCP) |
+| \`/skills\` | List all available skills |
+
+## SYSTEM
+| Command | Description |
+|---|---|
+| \`/update\` | Pull latest updates and rebuild the CLI |
+| \`/reset-key\` | Reset API key (clears config) |
+| \`/mouse\` | Toggle mouse support |
+| \`/profiler\` | Toggle trace profiler |
 
 ## SHORTCUTS
 | Shortcut | Action | Shortcut | Action |
 |---|---|---|---|
-| \`/\` | Open palette | \`⌃L\` | Clear conversation |
+| \`/\` | Open palette | \`⌃P\` | Open command palette |
+| \`⌃L\` | Clear conversation | \`⌃C\` | Interrupt / exit empty |
+| \`↩\` | Send message | \`⇧↩\` | New line (multiline) |
 | \`⌃A\` | Move to start | \`⌃E\` | Move to end |
-| \`⌃U\` | Delete to start | \`⌃W\` | Delete previous word |
-| \`⌃K\` | Delete to end | \`Tab\` | Complete slash command |
-| \`↑ / ↓\` | Prompt history | \`PgUp/Dn\`| Scroll messages |
-| \`⌃↑ / ⌃↓\`| Scroll messages | \`⌃C\` | Exit when input is empty |
+| \`⌃U\` | Delete to start | \`⌃K\` | Delete to end |
+| \`⌃W\` | Delete previous word | \`⌃D\` | Delete character forward |
+| \`⌃T\` | Transpose characters | \`⌃X\` | Cut selection |
+| \`⌃← / ⌃→\`| Word jump | \`⌃⌫ / ⌃⌦\`| Delete word |
+| \`Tab\` | Complete slash command | \`⇧Tab\` | Cycle backward |
+| \`↑ / ↓\` | Prompt history | \`⌃↑ / ⌃↓\`| Scroll line |
+| \`PgUp / PgDn\`| Scroll page | \`Home / End\`| Scroll to top/bottom |
+| \`Esc\` | Clear input | | |
 `;
 }

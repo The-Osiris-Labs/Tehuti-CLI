@@ -5,7 +5,7 @@ import {
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
 import { useRef, useState } from "react";
-import { BRANDING } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
@@ -15,6 +15,7 @@ interface SessionListProps {
 	onLoadSession: (id: string) => void;
 	onClose: () => void;
 }
+const ascii = isAsciiMode();
 
 function SessionRow({
 	session,
@@ -164,7 +165,7 @@ export function SessionList({
 					paddingY={1}
 				>
 					<Text color={BRANDING.colors.gold} bold>
-						𓁹 Saved Sessions
+						{ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye} Saved Sessions
 					</Text>
 					<Text dimColor>No sessions found.</Text>
 				</Box>
@@ -196,7 +197,7 @@ export function SessionList({
 			>
 				<Box paddingX={1} marginBottom={1} marginTop={1}>
 					<Text color={GOLD} bold>
-						𓁹 Saved Sessions
+						{ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye} Saved Sessions
 					</Text>
 				</Box>
 				<Box flexDirection="row" paddingX={1} paddingBottom={1}>

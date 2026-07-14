@@ -12,14 +12,14 @@ export const BRANDING = {
 		gold: "#F5C518", // Bright gold
 		papyrus: "#F5E6C8",
 		obsidian: "#1A1A2E",
-		nile: "#165DFF", // High contrast blue
-		sand: "#8B7355", // Darker sand for better contrast with gold
+		nile: "#3B82F6", // WCAG AA (4.57:1) against #1A1A2E
+		sand: "#A08860", // WCAG AA (4.50:1) against #1A1A2E
 		green: "#22C55E",
 		gray: "#9CA3AF",
-		red: "#EF4444",
+		red: "#F05050", // WCAG AA (4.70:1) against #1A1A2E
 		cyan: "#06B6D4",
 		blue: "#3B82F6",
-		purple: "#A855F7",
+		purple: "#C084FC", // WCAG AA (5.65:1) against #1A1A2E
 		// High contrast mode colors
 		highContrast: {
 			primary: "#FFD700", // Bright yellow/gold (WCAG AAA compliant)

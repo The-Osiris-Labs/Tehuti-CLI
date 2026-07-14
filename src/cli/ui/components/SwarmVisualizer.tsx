@@ -7,13 +7,13 @@ import {
 	type SubagentTask,
 	swarmManager,
 } from "../../../agent/swarm/manager.js";
-import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
 const COLORS = {
 	gold: BRANDING.colors?.primary || "#F5C518",
 	coral: BRANDING.colors?.coral || "#FF6B35",
 	sand: BRANDING.colors?.gray || "#9CA3AF",
-	nile: BRANDING.colors?.nile || "#165DFF",
+	nile: BRANDING.colors?.nile || "#3B82F6",
 	green: BRANDING.colors?.green || "#22C55E",
 } as const;
 
@@ -57,6 +57,7 @@ function formatElapsed(ms: number): string {
 }
 
 export function SwarmVisualizer(): React.ReactElement {
+	const ascii = isAsciiMode();
 	const [agents, setAgents] = useState<SubagentState[]>(() =>
 		swarmManager.listSubagents().map(mapTaskToState),
 	);
@@ -74,7 +75,7 @@ export function SwarmVisualizer(): React.ReactElement {
 		handleUpdate(swarmManager.listSubagents());
 
 		const tick = setInterval(() => {
-			setFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
+		setFrame((f) => (f + 1) % (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading).length);
 			handleUpdate(swarmManager.listSubagents());
 		}, 150);
 
@@ -141,15 +142,15 @@ export function SwarmVisualizer(): React.ReactElement {
 				if (agent.status === "working") {
 					statusBg = "#332200";
 					statusColor = COLORS.gold;
-					statusText = ` ${HIEROGLYPHS.loading[frame]} RUNNING `;
+					statusText = ` ${(ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[frame]} RUNNING `;
 				} else if (agent.status === "idle") {
 					statusBg = "#001500";
 					statusColor = COLORS.green;
-					statusText = ` ${DECORATIVE.ankh} SUCCESS `;
+					statusText = ` ${ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh} SUCCESS `;
 				} else if (agent.status === "error") {
 					statusBg = "#220000";
 					statusColor = COLORS.coral;
-					statusText = ` ${DECORATIVE.eyeOfHorus} ERROR `;
+					statusText = ` ${ascii ? ASCII_DECORATIVE.eyeOfHorus : DECORATIVE.eyeOfHorus} ERROR `;
 				} else {
 					statusBg = "#222222";
 					statusColor = COLORS.sand;
@@ -207,7 +208,7 @@ export function SwarmVisualizer(): React.ReactElement {
 		>
 			<Box marginBottom={1} gap={2}>
 				<Text color={COLORS.nile} bold>
-					{`${DECORATIVE.ibis} SWARM OBSERVABILITY DASHBOARD`}
+					{`${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} SWARM OBSERVABILITY DASHBOARD`}
 				</Text>
 				<Text color={COLORS.sand} dimColor>
 					{`${workingCount} active • ${totalTokens.toLocaleString()} tokens`}

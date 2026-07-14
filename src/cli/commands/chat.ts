@@ -35,13 +35,16 @@ import {
 } from "../../agent/index.js";
 import {
 	clearTodos,
+	getTodos,
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
+import { getAllTools } from "../../agent/tools/registry.js";
+import { getSkillsManager } from "../../agent/skills/manager.js";
 import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { costTracker } from "../../api/index.js";
 import { listModelsForProvider } from "../../api/models.js";
-import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../branding/index.js";
 import {
 	configWarnings,
 	type DEFAULT_CONFIG,
@@ -164,10 +167,11 @@ const GOLD = BRANDING.colors?.primary || "#F5C518";
 const CORAL = BRANDING.colors?.accent || "#FF6B35";
 const GREEN = BRANDING.colors?.green || "#22C55E";
 const GRAY = BRANDING.colors?.gray || "#9CA3AF";
-const RED = BRANDING.colors?.red || "#EF4444";
+const RED = BRANDING.colors?.red || "#F05050";
 const CYAN = BRANDING.colors?.cyan || "#06B6D4";
-const SAND = BRANDING.colors?.sand || "#8B7355";
-const PURPLE = BRANDING.colors?.purple || "#A855F7";
+const SAND = BRANDING.colors?.sand || "#A08860";
+const PURPLE = BRANDING.colors?.purple || "#C084FC";
+const ascii = isAsciiMode();
 
 const TOOL_ICONS: Record<string, string> = {
 	// ── File operations ──
@@ -647,9 +651,8 @@ function getEnhancedToolName(name: string, description?: string): string {
 	const base = description || name || "unknown_tool";
 
 	if (!name) return base;
-
 	if (name === "store_insight" || name === "query_memory") {
-		return `${base} 𓂀 [Deep Memory]`;
+		return `${base} ${ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error} [Deep Memory]`;
 	}
 
 	if (
@@ -657,11 +660,11 @@ function getEnhancedToolName(name: string, description?: string): string {
 		name.includes("sandbox") ||
 		name.includes("speculative")
 	) {
-		return `${base} 𓋹 [Sandbox/ACI]`;
+		return `${base} ${ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh} [Sandbox/ACI]`;
 	}
 
 	if (name.includes("shadow_workspace")) {
-		return `${base} 𓂝 [Shadow Workspace]`;
+		return `${base} ${ascii ? ASCII_DECORATIVE.arrow : DECORATIVE.arrow} [Shadow Workspace]`;
 	}
 
 	return base;
@@ -692,7 +695,7 @@ function renderReasoningBlock(
 	contentMaxWidth: number,
 	key: string,
 ): React.ReactNode {
-	const label = `${DECORATIVE.eye} Reasoning`;
+	const label = `${ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye} Reasoning`;
 	const labelWidth = stringWidth(label);
 	// Top border: "  ┌─[ " (6 chars) + label + " ]" (2 chars) + dashes
 	const topDashLen = Math.max(10, contentMaxWidth - 8 - labelWidth);
@@ -2175,6 +2178,38 @@ function ChatUI({
 						{ id: msgIdRef.current++, role: "system", content: result },
 					]);
 				},
+				onTools: async () => {
+					const builtIn = getAllTools().map((tool) => ({
+						name: tool.name,
+						category: tool.category,
+						intent: tool.intent,
+						readonly: tool.isReadonly,
+					}));
+					const mcp = mcpManager.getAllTools().map(({ serverName, tool }) => ({
+						name: `mcp_${serverName}_${tool.name}`,
+						server: serverName,
+						description: tool.description,
+					}));
+
+					let content = `## Registered Tools\n\n### Built-in (${builtIn.length})\n`;
+					for (const t of builtIn) {
+						const mode = t.intent || (t.readonly ? "read-only" : "destructive");
+						content += `- **${t.name}** — ${t.category} (${mode})\n`;
+					}
+					content += `\n### MCP Tools (${mcp.length})\n`;
+					if (mcp.length === 0) {
+						content += "_None connected._\n";
+					} else {
+						for (const t of mcp) {
+							content += `- **${t.name}** — ${t.server}\n`;
+						}
+					}
+
+					setMessages((m) => [
+						...m,
+						{ id: msgIdRef.current++, role: "system", content },
+					]);
+				},
 				onConfig: handleConfig,
 				onDashboard: () => setShowDashboard((prev) => !prev),
 				getAvailableModels: async () => {
@@ -2277,16 +2312,10 @@ function ChatUI({
 	// Account for command palette height if open
 	const paletteHeight = showCommandPalette ? 16 : 0;
 
-	// Compute height taken by overlays that live outside the scrollable viewport:
-	//   - loading: spinner + label + progress bar (~5 lines)
-	//   - showThinking: bordered spinner + truncated thinking text (~2 lines)
-	//   - error: bordered error banner (~3 lines)
-	//   - swarm dashboard: ~8 lines when showDashboard is on
-	// Without subtracting these, the chat viewport math believes the
-	// message area is taller than it actually is, and the last few lines
-	// get hidden behind the overlay.
-	const loadingOverlayHeight = loading ? 5 : 0;
-	const thinkingOverlayHeight = showThinking ? 2 : 0;
+	// Compute height taken by the error banner that renders inside the
+	// scrollable message area (~3 lines). Without this subtraction the
+	// chat viewport math believes the message area is taller than it
+	// actually is, and the last few lines get hidden behind the banner.
 	const errorOverlayHeight = error ? 3 : 0;
 	// @ts-expect-error TS6133/TS6192: Unused variable
 	const dashboardOverlayHeight = showDashboard ? 8 : 0;
@@ -2315,8 +2344,6 @@ function ChatUI({
 			(input.startsWith("/") && input.length > 1 ? 1 : 0) - // Suggestions row
 			warningsHeight -
 			paletteHeight -
-			loadingOverlayHeight -
-			thinkingOverlayHeight -
 			errorOverlayHeight,
 	);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
@@ -2729,6 +2756,46 @@ function ChatUI({
 				return;
 			}
 
+			if (cmd === "/todos") {
+				const currentTodos = getTodos();
+				if (currentTodos.length === 0) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "No active tasks.\nUse \`/todos clear\` to clear the task list.",
+						},
+					]);
+				} else {
+					const statusEmoji: Record<string, string> = {
+						pending: "○",
+						in_progress: "◉",
+						completed: "✓",
+						cancelled: "✕",
+					};
+					const priorityEmoji: Record<string, string> = {
+						high: "🔴",
+						medium: "🟡",
+						low: "🟢",
+					};
+					const lines = currentTodos.map((todo) => {
+						const status = statusEmoji[todo.status] || "?";
+						const priority = priorityEmoji[todo.priority] || "";
+						return `${status} ${priority} [${todo.id}] ${todo.content}`;
+					});
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `## Tasks (${currentTodos.length})\n\n${lines.join("\n")}\n\nUse \`/todos clear\` to clear.`,
+						},
+					]);
+				}
+				return;
+			}
+
 			if (cmd === "/mouse") {
 				if (onToggleMouse) {
 					onToggleMouse();
@@ -3079,6 +3146,92 @@ function ChatUI({
 						{ id: msgIdRef.current++, role: "system", content: `Model: ${m}` },
 					]);
 				}
+				return;
+			}
+
+			if (cmd === "/tools") {
+				const builtInTools = getAllTools();
+				const mcpTools = mcpManager.getAllTools();
+
+				let content = "## Built-in Tools\n\n";
+				if (builtInTools.length === 0) {
+					content += "No built-in tools registered.\n\n";
+				} else {
+					const categories = new Map<string, string[]>();
+					for (const tool of builtInTools) {
+						const cat = categories.get(tool.category) || [];
+						cat.push(`- **${tool.name}**: ${tool.description}`);
+						categories.set(tool.category, cat);
+					}
+					for (const [category, tools] of categories) {
+						content += `### ${category}\n`;
+						for (const t of tools) {
+							content += `${t}\n`;
+						}
+						content += "\n";
+					}
+				}
+
+				content += `## MCP Tools (${mcpTools.length})\n\n`;
+				if (mcpTools.length === 0) {
+					content += "No MCP tools connected.\n";
+				} else {
+					const serverMap = new Map<string, string[]>();
+					for (const { serverName, tool } of mcpTools) {
+						const tools = serverMap.get(serverName) || [];
+						tools.push(`- **${tool.name}**: ${tool.description || "No description"}`);
+						serverMap.set(serverName, tools);
+					}
+					for (const [server, tools] of serverMap) {
+						content += `### ${server}\n`;
+						for (const t of tools) {
+							content += `${t}\n`;
+						}
+						content += "\n";
+					}
+				}
+
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content,
+					},
+				]);
+				return;
+			}
+
+			if (cmd === "/skills") {
+				const skillsManager = getSkillsManager();
+				const skills = skillsManager.listSkills();
+				const activeSkills = skillsManager.getActiveSkills();
+
+				let content = `## Skills (${skills.length} total, ${activeSkills.length} active)\n\n`;
+				if (skills.length === 0) {
+					content += "No skills available.\n";
+				} else {
+					for (const skill of skills) {
+						const status = skill.active ? "**ACTIVE**" : "inactive";
+						content += `- **${skill.name}** (\`${skill.id}\`) — ${status}\n`;
+						if (skill.description) {
+							content += `  ${skill.description}\n`;
+						}
+						if (skill.author && skill.author !== "Tehuti") {
+							content += `  *Author: ${skill.author}*\n`;
+						}
+						content += "\n";
+					}
+				}
+
+				setMessages((m) => [
+					...m,
+					{
+						id: msgIdRef.current++,
+						role: "system",
+						content,
+					},
+				]);
 				return;
 			}
 
@@ -3526,23 +3679,13 @@ function ChatUI({
 				});
 		}
 	}
-
-	// Note: previously wrapped visibleMessages in useDeferredValue to keep the
-	// UI responsive while the agent streams tokens. That deferred the entire
-	// slice from re-computing on every render, which made pageUp/pageDown feel
-	// "stuck" while loading was true (scrollOffset updated, but the visible
-	// window lagged behind - user saw the SCROLLED UP banner without content
-	// moving). Streaming is already batched upstream, so the deferral is no
-	// longer needed and the visible window can render synchronously.
-	const deferredVisibleMessages = visibleMessages;
-
 	const messageElements = useMemo(() => {
-		return deferredVisibleMessages.map((m) => {
+		return visibleMessages.map((m) => {
 			let header: React.ReactNode;
 			let content: React.ReactNode[];
 
 			if (m.kind === "compaction") {
-				const label = `${DECORATIVE.scroll} Historical digest`;
+				const label = `${ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} Historical digest`;
 				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -3559,7 +3702,7 @@ function ChatUI({
 					),
 				];
 			} else if (m.role === "user") {
-				const label = `${DECORATIVE.feather} You`;
+				const label = `${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} You`;
 				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -3576,7 +3719,7 @@ function ChatUI({
 					),
 				];
 			} else if (m.role === "system") {
-				const label = `${DECORATIVE.scroll} System`;
+				const label = `${ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} System`;
 				const padLen = Math.max(
 					10,
 					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
@@ -3620,7 +3763,7 @@ function ChatUI({
 					];
 				}
 			} else {
-				const label = `${DECORATIVE.ibis} Tehuti`;
+				const label = `${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Tehuti`;
 				const padLen = Math.max(
 					10,
 					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
@@ -3762,32 +3905,13 @@ function ChatUI({
 				{
 					key: m.id,
 					flexDirection: "column",
-					marginBottom: 1,
-					paddingTop: 0,
-					paddingLeft: 1,
-					borderStyle: "single",
-					borderTop: false,
-					borderRight: false,
-					borderBottom: false,
-					borderLeft: true,
-					borderColor:
-						m.role === "assistant" ? GOLD : m.role === "user" ? CORAL : "gray",
-					width: contentMaxWidth,
-					flexShrink: 1,
+					marginBottom: 0.5,
 				},
 				header,
-				React.createElement(
-					Box,
-					{
-						paddingLeft: 0,
-						marginTop: 0,
-						flexDirection: "column",
-					},
-					...content,
-				),
+				React.createElement(Box, { flexDirection: "column", paddingLeft: 2 }, ...content),
 			);
 		});
-	}, [deferredVisibleMessages, contentMaxWidth]);
+	}, [visibleMessages, contentMaxWidth]);
 
 	const scrollPercent = Math.min(
 		100,
@@ -3815,24 +3939,24 @@ function ChatUI({
 			React.createElement(
 				Text,
 				{ bold: true, color: GOLD },
-				`${DECORATIVE.ibis} Tehuti`,
+				`${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Tehuti`,
 			),
 			React.createElement(
 				Text,
 				{ color: SAND },
-				` ${DECORATIVE.separator} ${ctxModel}`,
+				` ${ascii ? ASCII_DECORATIVE.separator : DECORATIVE.separator} ${ctxModel}`,
 			),
 			sessionCost > 0 &&
 				React.createElement(
 					Text,
 					{ color: SAND, dimColor: true },
-					` ${DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
+					` ${ascii ? ASCII_DECORATIVE.separator : DECORATIVE.separator} $${sessionCost.toFixed(4)}`,
 				),
 			React.createElement(Box, { flexGrow: 1 }),
 			React.createElement(
 				Text,
 				{ color: GRAY, dimColor: true },
-				`${DECORATIVE.eye} Ctrl+P ${DECORATIVE.separator} Ctrl+C`,
+				`${ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye} Ctrl+P ${ascii ? ASCII_DECORATIVE.separator : DECORATIVE.separator} Ctrl+C`,
 			),
 		),
 		React.createElement(
@@ -3857,7 +3981,7 @@ function ChatUI({
 					React.createElement(
 						Text,
 						{ color: "yellow", bold: true },
-						`𓂀  Warning: ${warn}`,
+						`${ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error}  Warning: ${warn}`,
 					),
 				),
 			),
@@ -3924,31 +4048,6 @@ function ChatUI({
 							...messageElements,
 						),
 					),
-			showThinking &&
-				React.createElement(
-					Box,
-					{
-						marginBottom: 1,
-						paddingLeft: 2,
-						flexDirection: "row",
-						gap: 1,
-						borderStyle: "single",
-						borderTop: false,
-						borderRight: false,
-						borderBottom: false,
-						borderLeft: true,
-						borderColor: BRANDING.colors.gold,
-					},
-					React.createElement(HieroglyphSpinner, {
-						label: "Reasoning...",
-						color: BRANDING.colors.gold,
-					}),
-					React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						`${thinking}`,
-					),
-				),
 
 			error &&
 				React.createElement(
@@ -3962,38 +4061,63 @@ function ChatUI({
 					React.createElement(
 						Text,
 						{ color: RED },
-						`${DECORATIVE.eyeOfHorus} ${error}`,
+						`${ascii ? ASCII_DECORATIVE.eyeOfHorus : DECORATIVE.eyeOfHorus} ${error}`,
 					),
-				),
-			loading &&
-				React.createElement(
-					Box,
-					{ marginTop: 1, paddingX: 1, flexDirection: "column" },
-					React.createElement(
-						Box,
-						{
-							flexDirection: "row",
-							alignItems: "center",
-							gap: 1,
-							marginBottom: 0.5,
-						},
-						React.createElement(
-							Text,
-							{ color: GOLD },
-							React.createElement(Spinner, { type: "dots" }),
-						),
-						React.createElement(
-							Text,
-							{ color: SAND, dimColor: true },
-							operationLabel,
-						),
-					),
-					React.createElement(ProgressBar, {
-						value: progress,
-						width: Math.min(contentMaxWidth - 10, 40),
-					}),
 				),
 		),
+		showThinking &&
+			React.createElement(
+				Box,
+				{
+					marginBottom: 1,
+					paddingLeft: 2,
+					flexDirection: "row",
+					gap: 1,
+					borderStyle: "single",
+					borderTop: false,
+					borderRight: false,
+					borderBottom: false,
+					borderLeft: true,
+					borderColor: BRANDING.colors.gold,
+				},
+				React.createElement(HieroglyphSpinner, {
+					label: "Reasoning...",
+					color: BRANDING.colors.gold,
+				}),
+				React.createElement(
+					Text,
+					{ color: SAND, dimColor: true },
+					`${thinking}`,
+				),
+			),
+		loading &&
+			React.createElement(
+				Box,
+				{ marginTop: 1, paddingX: 1, flexDirection: "column" },
+				React.createElement(
+					Box,
+					{
+						flexDirection: "row",
+						alignItems: "center",
+						gap: 1,
+						marginBottom: 0.5,
+					},
+					React.createElement(
+						Text,
+						{ color: GOLD },
+						React.createElement(Spinner, { type: "dots" }),
+					),
+					React.createElement(
+						Text,
+						{ color: SAND, dimColor: true },
+						operationLabel,
+					),
+				),
+				React.createElement(ProgressBar, {
+					value: progress,
+					width: Math.min(contentMaxWidth - 10, 40),
+				}),
+			),
 		React.createElement(
 			Box,
 			{
@@ -4187,7 +4311,7 @@ function ChatUI({
 					React.createElement(
 						Text,
 						{ color: "gray", dimColor: true },
-						"𓋹 Companion mode active",
+						`${ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh} Companion mode active`,
 					),
 				)
 			: null,
@@ -4348,7 +4472,7 @@ export function createProgram(): Command {
 								: (content) => {
 										if (content.length > 0) {
 											process.stdout.write(
-												`\r\x1b[K${chalk.hex(GOLD)(HIEROGLYPHS.thinking[0])} ${chalk.hex(PURPLE)(`Thinking...`)}`,
+												`\r\x1b[K${chalk.hex(GOLD)(ascii ? ASCII_HIEROGLYPHS.thinking[0] : HIEROGLYPHS.thinking[0])} ${chalk.hex(PURPLE)(`Thinking...`)}`,
 											);
 										}
 									},
@@ -4425,7 +4549,7 @@ export function createProgram(): Command {
 		.command("update")
 		.description("Update Tehuti CLI to the latest version")
 		.action(async () => {
-			console.log(chalk.hex(GOLD)("  𓆣 Checking for Tehuti updates..."));
+			console.log(chalk.hex(GOLD)(`  ${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Checking for Tehuti updates...`));
 			const result = await applyUpdate();
 			console.log(`\n  ${result}\n`);
 			process.exit(0);
@@ -4464,7 +4588,7 @@ export function createProgram(): Command {
 				const statuses = mcpManager.getAllServerStatuses();
 
 				console.log();
-				console.log(chalk.hex(GOLD)("  𓆣 MCP Servers"));
+				console.log(chalk.hex(GOLD)(`  ${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} MCP Servers`));
 				console.log();
 
 				if (Object.keys(servers).length === 0) {
@@ -4503,7 +4627,7 @@ export function createProgram(): Command {
 			if (action === "tools") {
 				const tools = mcpManager.getAllTools();
 				console.log();
-				console.log(chalk.hex(GOLD)("  𓆣 MCP Tools"));
+				console.log(chalk.hex(GOLD)(`  ${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} MCP Tools`));
 				console.log();
 
 				if (tools.length === 0) {

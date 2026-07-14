@@ -7,9 +7,9 @@ import { isMouseSequence } from "../../../utils/mouse.js";
 const COLORS = {
 	gold: BRANDING.colors?.primary || "#F5C518",
 	coral: BRANDING.colors?.coral || "#FF6B35",
-	sand: BRANDING.colors?.sand || "#8B7355",
+	sand: BRANDING.colors?.sand || "#A08860",
 	gray: BRANDING.colors?.gray || "#9CA3AF",
-	nile: BRANDING.colors?.nile || "#165DFF",
+	nile: BRANDING.colors?.nile || "#3B82F6",
 	green: BRANDING.colors?.green || "#22C55E",
 } as const;
 

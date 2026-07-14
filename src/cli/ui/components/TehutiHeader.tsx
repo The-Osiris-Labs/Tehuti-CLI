@@ -7,7 +7,7 @@ import { Box, Text } from "ink";
 import BigText from "ink-big-text";
 import Gradient from "ink-gradient";
 import { memo, useRef, useState } from "react";
-import { BRANDING } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
 export interface TehutiHeaderProps {
 	compact?: boolean;
@@ -66,6 +66,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 	onConfigClick,
 	onCommandClick,
 }: TehutiHeaderProps) {
+	const ascii = isAsciiMode();
 	const {
 		secondary: GOLD,
 		sand: SAND,
@@ -74,12 +75,12 @@ export const TehutiHeader = memo(function TehutiHeader({
 	} = BRANDING.colors;
 
 	const statusLabel = isStreaming
-		? "𓆗 Thinking..."
+		? `${ascii ? ASCII_HIEROGLYPHS.loading[0] : HIEROGLYPHS.loading[0]} Thinking...`
 		: companionMode
-			? "𓅞 Companion"
+			? `${ascii ? ASCII_DECORATIVE.ibisBird : DECORATIVE.ibisBird} Companion`
 			: daemonStatus === "connected"
-				? "𓋹 Daemon Connected"
-				: "𓁹 Idle";
+				? `${ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh} Daemon Connected`
+				: `${ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye} Idle`;
 
 	const statusColor = isStreaming
 		? GOLD
@@ -98,7 +99,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 				paddingX={2}
 			>
 				<Text color={GOLD} bold>
-					𓆣 TEHUTI{" "}
+					{ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} TEHUTI{" "}
 				</Text>
 				<ClickableBadge
 					label={`Model: ${model || "Unknown"}`}
@@ -132,7 +133,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 							│{" "}
 						</Text>
 						<Box>
-							<Text color={SAND}>𓏛 {sessionName}</Text>
+							<Text color={SAND}>{ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} {sessionName}</Text>
 						</Box>
 					</>
 				)}
@@ -155,11 +156,11 @@ export const TehutiHeader = memo(function TehutiHeader({
 			</Gradient>
 			<Box flexDirection="column" alignItems="center" marginTop={1}>
 				<Box>
-					<Text color={GOLD}>𓆣 </Text>
+					<Text color={GOLD}>{ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} </Text>
 					<Text color={SAND} bold>
 						T H O T H, T O N G U E O F R A
 					</Text>
-					<Text color={GOLD}> 𓆣</Text>
+					<Text color={GOLD}> {ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis}</Text>
 				</Box>
 
 				<Box marginTop={1} flexDirection="row" gap={2}>

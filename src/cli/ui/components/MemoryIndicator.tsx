@@ -1,9 +1,9 @@
 import { Box, Text } from "ink";
 import { useEffect, useRef, useState } from "react";
 import { agentEventBus } from "../../../agent/events.js";
-import { BRANDING } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
 
-const PURPLE = BRANDING.colors?.purple || "#A855F7";
+const PURPLE = BRANDING.colors?.purple || "#C084FC";
 const GREEN = BRANDING.colors?.green || "#22C55E";
 
 
@@ -22,6 +22,7 @@ export interface MemoryIndicatorProps {
 export function MemoryIndicator({
 	successDuration = 3000,
 }: MemoryIndicatorProps) {
+	const ascii = isAsciiMode();
 	const [activeEvent, setActiveEvent] = useState<MemoryEvent | null>(null);
 	const [, setOpacity] = useState<0 | 1>(0);
 	const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,12 +70,12 @@ export function MemoryIndicator({
 	const isLearning = activeEvent.type === "learning" || activeEvent.type === "start";
 
 	const icon = isError
-		? "𓁹" // warning eye
+		? (ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye)
 		: isSuccess
-			? "𓋹" // success/peace
+			? (ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh)
 			: isLearning
-				? "𓏛" // learning/knowledge
-				: "𓂀"; // thinking
+				? (ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll)
+				: (ascii ? ASCII_DECORATIVE.eyeOfHorus : DECORATIVE.eyeOfHorus);
 
 	const color = isError ? BRANDING.colors.red : isSuccess ? GREEN : PURPLE;
 

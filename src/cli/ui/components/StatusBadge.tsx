@@ -1,17 +1,18 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
 const COLORS = {
 	primary: BRANDING.colors?.primary || "#F5C518",
 	green: BRANDING.colors?.green || "#22C55E",
-	red: BRANDING.colors?.red || "#EF4444",
-	sand: BRANDING.colors?.sand || "#8B7355",
+	red: BRANDING.colors?.red || "#F05050",
+	sand: BRANDING.colors?.sand || "#A08860",
 	coral: BRANDING.colors?.coral || "#FF6B35",
-	nile: BRANDING.colors?.nile || "#165DFF",
+	nile: BRANDING.colors?.nile || "#3B82F6",
 	gray: BRANDING.colors?.gray || "#9CA3AF",
 } as const;
+const ascii = isAsciiMode();
 
 export type StatusKind =
 	| "success"
@@ -57,21 +58,21 @@ const ICONS: Record<
 	StatusKind,
 	{ glyph: string; color: string; spin?: boolean }
 > = {
-	success: { glyph: HIEROGLYPHS.success, color: COLORS.green },
-	error: { glyph: HIEROGLYPHS.error, color: COLORS.red },
-	warning: { glyph: "𓁹", color: COLORS.primary }, // eye of Horus variant
+	success: { glyph: ascii ? ASCII_HIEROGLYPHS.success : HIEROGLYPHS.success, color: COLORS.green },
+	error: { glyph: ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error, color: COLORS.red },
+	warning: { glyph: ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye, color: COLORS.primary }, // eye of Horus variant
 	info: { glyph: "ⓘ", color: COLORS.nile },
-	pending: { glyph: HIEROGLYPHS.loading[0], color: COLORS.gray, spin: true },
-	running: { glyph: HIEROGLYPHS.loading[0], color: COLORS.primary, spin: true },
+	pending: { glyph: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[0], color: COLORS.gray, spin: true },
+	running: { glyph: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[0], color: COLORS.primary, spin: true },
 	idle: { glyph: "○", color: COLORS.gray },
 	killed: { glyph: "✕", color: COLORS.coral },
-	cached: { glyph: "𓏛", color: COLORS.sand },
-	readonly: { glyph: "𓁹", color: COLORS.nile },
+	cached: { glyph: ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll, color: COLORS.sand },
+	readonly: { glyph: ascii ? ASCII_DECORATIVE.eye : DECORATIVE.eye, color: COLORS.nile },
 	mutating: { glyph: "⚡", color: COLORS.coral },
-	verified: { glyph: HIEROGLYPHS.success, color: COLORS.green },
-	speculative: { glyph: "𓂀", color: COLORS.primary },
+	verified: { glyph: ascii ? ASCII_HIEROGLYPHS.success : HIEROGLYPHS.success, color: COLORS.green },
+	speculative: { glyph: ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error, color: COLORS.primary },
 	thinking: {
-		glyph: HIEROGLYPHS.thinking[0],
+		glyph: (ascii ? ASCII_HIEROGLYPHS.thinking : HIEROGLYPHS.thinking)[0],
 		color: COLORS.primary,
 		spin: true,
 	},
@@ -119,16 +120,20 @@ export function StatusBadge({
 	useEffect(() => {
 		if (!spin || reduceMotion) return;
 		const frames =
-			kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading;
+			kind === "thinking"
+				? (ascii ? ASCII_HIEROGLYPHS.thinking : HIEROGLYPHS.thinking)
+				: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading);
 		const id = setInterval(() => {
 			setFrame((f: number) => (f + 1) % frames.length);
 		}, 150);
 		return () => clearInterval(id);
 	}, [spin, kind, reduceMotion]);
 
-	const animatedGlyph = spin && !reduceMotion
-		? (kind === "thinking" ? HIEROGLYPHS.thinking : HIEROGLYPHS.loading)[frame]
-		: glyph;
+		const animatedGlyph = spin && !reduceMotion
+			? (kind === "thinking"
+				? (ascii ? ASCII_HIEROGLYPHS.thinking : HIEROGLYPHS.thinking)
+				: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading))[frame]
+			: glyph;
 	const text = label ?? DEFAULT_LABELS[kind];
 
 	if (compact) {

@@ -6,6 +6,7 @@ import {
 import { getProviderInfo } from "../config/providers.js";
 import { hookExecutor, parseHooksConfig } from "../hooks/executor.js";
 import { mcpManager } from "../mcp/client.js";
+import { getPluginRegistry } from "../plugins/index.js";
 import { createMCPToolDefinition } from "../mcp/tool-adapter.js";
 import { debug } from "../utils/debug.js";
 import { loadCacheFromDisk, saveCacheToDisk } from "./cache/index.js";
@@ -28,7 +29,7 @@ import { customProviderTools } from "./tools/custom-provider.js";
 import { envTools } from "./tools/env.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
-import { registerTools, unregisterToolsWhere } from "./tools/index.js";
+import { registerTool, registerTools, unregisterToolsWhere } from "./tools/index.js";
 import { kiloCodeTools } from "./tools/kilocode.js";
 import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
@@ -142,6 +143,35 @@ function syncMCPToolRegistry(): void {
 			registerTools(dynamicTools);
 			debug.log("mcp", `Registered ${dynamicTools.length} dynamic MCP tools`);
 		}
+
+		// Register plugin-contributed tools
+		const pluginRegistry = getPluginRegistry();
+		if (pluginRegistry) {
+			const pluginTools = pluginRegistry.getAllTools();
+			// Remove previously registered plugin tools to avoid stale entries
+			unregisterToolsWhere((tool) => tool.category === "plugin");
+			for (const tool of pluginTools) {
+				registerTool({
+					name: `plugin_${tool.name}`,
+					description: tool.description,
+					parameters: tool.parameters,
+					category: "plugin",
+					isReadonly: true,
+					execute: async (args) => {
+						const result = await pluginRegistry.callTool(tool.name, args);
+						return {
+							success: result.success,
+							output: result.output ?? "",
+							error: result.error,
+							...(result.metadata ? { metadata: result.metadata } : {}),
+						};
+					},
+				});
+			}
+			if (pluginTools.length > 0) {
+				debug.log("plugins", `Registered ${pluginTools.length} plugin tools`);
+			}
+		}
 	} catch (error) {
 		debug.log(
 			"mcp",
@@ -155,6 +185,7 @@ function syncMCPToolRegistry(): void {
 	// Wire the tool refresh callback so that mid-session ToolListChangedNotification
 	// triggers a lightweight re-registration of the changed server's tools.
 	mcpManager.onToolRefresh(syncMCPToolRegistry);
+	syncMCPToolRegistry();
 
 export function initializeAgent(): void {
 	loadCacheFromDisk();

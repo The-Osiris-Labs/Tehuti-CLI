@@ -216,7 +216,7 @@ export function buildPromptMessage(
 	const gold = chalk.hex("#D4AF37");
 	const coral = chalk.hex("#FF6B35");
 	const sand = chalk.hex("#C2B280");
-	const blue = chalk.hex("#165DFF");
+	const blue = chalk.hex("#3B82F6");
 
 	const borderChar = {
 		tl: "╭",

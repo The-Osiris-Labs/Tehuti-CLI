@@ -1,17 +1,18 @@
 import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 import { getTodos } from "../../../agent/tools/system.js";
-import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, HIEROGLYPHS, isAsciiMode, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 import { GlobalInputState } from "../input-state.js";
 
 const COLORS = {
 	primary: BRANDING.colors?.primary || "#F5C518",
-	nile: BRANDING.colors?.nile || "#165DFF",
+	nile: BRANDING.colors?.nile || "#3B82F6",
 	green: BRANDING.colors?.green || "#22C55E",
 	gray: BRANDING.colors?.gray || "#9CA3AF",
-	red: BRANDING.colors?.red || "#EF4444",
-	sand: BRANDING.colors?.sand || "#8B7355",
+	red: BRANDING.colors?.red || "#F05050",
+	sand: BRANDING.colors?.sand || "#A08860",
 } as const;
+const ascii = isAsciiMode();
 
 interface TodoLike {
 	id: string;
@@ -29,11 +30,11 @@ const ICONS: Record<
 > = {
 	pending: { glyph: "○", color: COLORS.gray, spin: false },
 	in_progress: {
-		glyph: HIEROGLYPHS.loading[0],
+		glyph: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[0],
 		color: COLORS.nile,
 		spin: true,
 	},
-	completed: { glyph: HIEROGLYPHS.success, color: COLORS.green, spin: false },
+	completed: { glyph: ascii ? ASCII_HIEROGLYPHS.success : HIEROGLYPHS.success, color: COLORS.green, spin: false },
 	cancelled: { glyph: "✕", color: COLORS.red, spin: false },
 };
 
@@ -55,6 +56,7 @@ function formatAge(updatedAt: string | undefined): string {
 }
 
 export function TodoList(): React.ReactElement | null {
+	const ascii = isAsciiMode();
 	const [todos, setTodos] = useState<TodoLike[]>(
 		() => getTodos() as TodoLike[],
 	);
@@ -69,7 +71,7 @@ export function TodoList(): React.ReactElement | null {
 			if (GlobalInputState.hoveredComponentCount === 0) {
 				setTodos(getTodos() as TodoLike[]);
 			}
-			setFrame((f) => (f + 1) % HIEROGLYPHS.loading.length);
+			setFrame((f) => (f + 1) % (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading).length);
 		}, 1000);
 		return () => clearInterval(interval);
 	}, []);
@@ -93,7 +95,7 @@ export function TodoList(): React.ReactElement | null {
 			React.createElement(
 				Text,
 				{ color: COLORS.primary, bold: true },
-				HIEROGLYPHS.tool,
+				ascii ? ASCII_HIEROGLYPHS.tool : HIEROGLYPHS.tool,
 			),
 			React.createElement(
 				Text,
@@ -111,7 +113,7 @@ export function TodoList(): React.ReactElement | null {
 			{ flexDirection: "column", paddingLeft: 2 },
 			...todos.map((todo) => {
 				const def = ICONS[todo.status] ?? ICONS.pending;
-				const glyph = def.spin ? HIEROGLYPHS.loading[frame] : def.glyph;
+				const glyph = def.spin ? (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[frame] : def.glyph;
 				const color = def.color;
 				const priority = todo.priority ? PRIORITY_COLORS[todo.priority] : null;
 				const ageText = formatAge(todo.updatedAt);

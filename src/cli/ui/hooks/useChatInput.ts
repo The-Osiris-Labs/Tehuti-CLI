@@ -145,6 +145,7 @@ export function useChatInput(props: UseChatInputProps) {
 		pendingPermission,
 		showSessionList,
 		setQueuedMessages,
+		commands,
 	} = props;
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
@@ -168,6 +169,10 @@ export function useChatInput(props: UseChatInputProps) {
 	const mouseBufferTimerRef = React.useRef<ReturnType<
 		typeof setTimeout
 	> | null>(null);
+	// Slash command tab-completion state
+	const completionIndexRef = React.useRef<number>(-1);
+	const completionMatchesRef = React.useRef<string[]>([]);
+	const completionPrefixRef = React.useRef<string>("");
 
 	const setInput = React.useCallback(
 		(newVal: string | ((prev: string) => string)) => {
@@ -873,6 +878,67 @@ export function useChatInput(props: UseChatInputProps) {
 				return;
 			}
 
+			// Tab completion for slash commands
+			if (key.tab || k === "\t") {
+				if (showCommandPaletteRef.current) {
+					return;
+				}
+				const curInput = inputRef.current;
+				if (!curInput.startsWith("/") || curInput.trim() === "/") {
+					completionIndexRef.current = -1;
+					completionMatchesRef.current = [];
+					completionPrefixRef.current = "";
+					return;
+				}
+
+				const prefix = curInput.slice(1).toLowerCase();
+
+				if (
+					completionIndexRef.current === -1 ||
+					completionPrefixRef.current !== prefix
+				) {
+					const allCommands: string[] = [];
+					for (const cmd of commands) {
+						if (cmd && typeof cmd === "object" && "id" in cmd) {
+							const id = cmd.id;
+							if (
+								typeof id === "string" &&
+								id.startsWith("/") &&
+								id.toLowerCase().startsWith("/" + prefix)
+							) {
+								allCommands.push(id);
+							}
+						}
+					}
+					completionMatchesRef.current = allCommands;
+					completionPrefixRef.current = prefix;
+
+					if (allCommands.length === 0) {
+						completionIndexRef.current = -1;
+						return;
+					}
+					completionIndexRef.current = 0;
+				} else {
+					const matches = completionMatchesRef.current;
+					if (matches.length === 0) return;
+
+					if (key.shift) {
+						completionIndexRef.current =
+							(completionIndexRef.current - 1 + matches.length) % matches.length;
+					} else {
+						completionIndexRef.current =
+							(completionIndexRef.current + 1) % matches.length;
+					}
+				}
+
+				const match = completionMatchesRef.current[completionIndexRef.current];
+				if (match) {
+					setInput(match + " ");
+					setCursorPos(match.length + 1);
+				}
+				return;
+			}
+
 			if (key.escape) {
 				setInput("");
 				setCursorPos(0);
@@ -904,6 +970,11 @@ export function useChatInput(props: UseChatInputProps) {
 					showCommandPaletteRef.current = true;
 					setShowCommandPalette(true);
 				}
+
+				// Reset tab-completion state since the user typed something new
+				completionIndexRef.current = -1;
+				completionMatchesRef.current = [];
+				completionPrefixRef.current = "";
 
 				const sanitized = k
 					.replace(/[\x00-\x1F\x7F]/g, "")

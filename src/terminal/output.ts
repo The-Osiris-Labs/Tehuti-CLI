@@ -7,7 +7,6 @@ import {
 	shouldUseHighContrast,
 	shouldUseUnicode,
 } from "./capabilities.js";
-import { renderMarkdownToAnsi } from "./markdown.js";
 
 // High contrast colors (WCAG AA/AAA compliant)
 const HIGH_CONTRAST_GOLD = "\x1b[38;5;220m"; // Bright yellow/gold (WCAG AAA)
@@ -278,8 +277,20 @@ function parseContentBlocks(
 }
 
 function computeMarkdownLines(text: string, width: number): number {
-	const rendered = renderMarkdownToAnsi(text);
-	return wrap(rendered, width).split("\n").length;
+	// Cheap line estimation: split by newlines and estimate character wrapping
+	// without full markdown render. This avoids a double markdown parse (the
+	// actual render in messageElements already parses it) and is acceptable
+	// because this is only used for scroll-height approximation.
+	const lines = text.split("\n");
+	let totalLines = 0;
+	for (const line of lines) {
+		if (line.length === 0) {
+			totalLines += 1;
+		} else {
+			totalLines += Math.max(1, Math.ceil(line.length / width));
+		}
+	}
+	return totalLines;
 }
 
 function computeToolHeight(

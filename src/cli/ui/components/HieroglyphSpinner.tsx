@@ -1,9 +1,11 @@
 import { Box, Text } from "ink";
 // @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useEffect, useState } from "react";
-import { BRANDING, HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
+const ascii = isAsciiMode();
 export interface HieroglyphSpinnerProps {
+
 	glyphs?: readonly string[];
 	label?: string;
 	color?: string;
@@ -11,7 +13,7 @@ export interface HieroglyphSpinnerProps {
 }
 
 export function HieroglyphSpinner({
-	glyphs = HIEROGLYPHS.thinking,
+	glyphs = ascii ? ASCII_HIEROGLYPHS.thinking : HIEROGLYPHS.thinking,
 	label,
 	color = BRANDING.colors.gold,
 	speedMs = 150,
@@ -25,7 +27,7 @@ export function HieroglyphSpinner({
 		return () => clearInterval(interval);
 	}, [glyphs, speedMs]);
 
-	const currentGlyph = glyphs[frame] ?? "𓆣";
+	const currentGlyph = glyphs[frame] ?? (ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis);
 
 	if (!label) {
 		return <Text color={color}>{currentGlyph}</Text>;

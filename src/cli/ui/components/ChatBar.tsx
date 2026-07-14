@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useMemo } from "react";
-import { BRANDING, DECORATIVE } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
 import { HieroglyphSpinner } from "./HieroglyphSpinner.js";
 
 const GOLD = BRANDING.colors.gold;
@@ -47,6 +47,7 @@ export function ChatBar({
 	tokensUsed = 0,
 	hideInput = false,
 }: ChatBarProps): React.ReactElement {
+	const ascii = isAsciiMode();
 	const safeCursorPos = Math.max(0, Math.min(cursorPos, input.length));
 	const safeSelectionStart =
 		selectionStart === null ? null : Math.max(0, Math.min(selectionStart, input.length));
@@ -174,7 +175,7 @@ export function ChatBar({
 				React.createElement(
 					Text,
 					{ color: CYAN, bold: true },
-					`𓆣 ${model.toUpperCase()}`,
+					`${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} ${model.toUpperCase()}`,
 				),
 				React.createElement(
 					Text,
@@ -237,7 +238,7 @@ export function ChatBar({
 				: React.createElement(
 						Text,
 						{ color: CORAL, bold: true },
-						`${DECORATIVE.feather} >`,
+						`${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} >`,
 					),
 			React.createElement(
 				Box,
