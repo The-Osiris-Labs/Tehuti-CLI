@@ -102,10 +102,13 @@ export interface UseChatInputProps {
 	showProfiler?: boolean;
 	pendingQuestion?: any;
 	pendingPermission?: unknown;
-	showSessionList?: boolean;
 	queuedMessages: string[];
 	setQueuedMessages: React.Dispatch<React.SetStateAction<string[]>>;
 	onToggleDashboard?: () => void;
+	showSessionList?: boolean;
+	showSearch?: boolean;
+	onSearchToggle?: () => void;
+	onSearchClose?: () => void;
 }
 
 export function useChatInput(props: UseChatInputProps) {
@@ -148,6 +151,7 @@ export function useChatInput(props: UseChatInputProps) {
 		showSessionList,
 		setQueuedMessages,
 		commands,
+		showSearch,
 	} = props;
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
@@ -156,6 +160,7 @@ export function useChatInput(props: UseChatInputProps) {
 	const pendingQuestionRef = React.useRef(pendingQuestion);
 	const pendingPermissionRef = React.useRef(pendingPermission);
 	const showSessionListRef = React.useRef(showSessionList);
+	const showSearchRef = React.useRef(showSearch);
 
 	const inputRef = React.useRef(input);
 	const cursorPosRef = React.useRef(cursorPos);
@@ -245,6 +250,7 @@ export function useChatInput(props: UseChatInputProps) {
 		pendingQuestionRef.current = pendingQuestion;
 		pendingPermissionRef.current = pendingPermission;
 		showSessionListRef.current = showSessionList;
+		showSearchRef.current = showSearch;
 		inputRef.current = input;
 		cursorPosRef.current = cursorPos;
 		selectionStartRef.current = selectionStart;
@@ -259,6 +265,7 @@ export function useChatInput(props: UseChatInputProps) {
 		pendingQuestion,
 		pendingPermission,
 		showSessionList,
+		showSearch,
 		input,
 		cursorPos,
 		selectionStart,
@@ -363,6 +370,11 @@ export function useChatInput(props: UseChatInputProps) {
 				const newVal = !showCommandPaletteRef.current;
 				showCommandPaletteRef.current = newVal;
 				setShowCommandPalette(newVal);
+				return;
+			}
+
+			if (key.ctrl && k === "f") {
+				props.onSearchToggle?.();
 				return;
 			}
 
@@ -946,6 +958,10 @@ export function useChatInput(props: UseChatInputProps) {
 			}
 
 			if (key.escape) {
+				if (showSearchRef.current) {
+					props.onSearchClose?.();
+					return;
+				}
 				setInput("");
 				setCursorPos(0);
 				setHistoryIndex(-1);

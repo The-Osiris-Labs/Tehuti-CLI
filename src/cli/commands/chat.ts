@@ -9,7 +9,7 @@ import chalk from "chalk";
 import clipboardy from "clipboardy";
 import { Command } from "commander";
 import { consola } from "consola";
-import { Box, render, Text, useApp, useStdout } from "ink";
+import { Box, render, Text, useApp, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import React, {
 	useCallback,
@@ -1153,6 +1153,9 @@ function ChatUI({
 	const newMessageCountRef = useRef<number>(0);
 	const [newMessageCount, setNewMessageCount] = useState(0);
 	const [hasUpdate, setHasUpdate] = useState(false);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [showSearch, setShowSearch] = useState(false);
+	const [searchMatchIndex, setSearchMatchIndex] = useState(0);
 	const [advisories, setAdvisories] = useState<{ id: number; text: string }[]>(
 		[],
 	);
@@ -2705,6 +2708,61 @@ function ChatUI({
 		return messages.slice(Math.max(0, sliceIndex - 10));
 	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
 
+	const useTwoColumns = terminalWidth > 180 && visibleMessages.length > 10;
+	const columnWidth = useTwoColumns
+		? Math.floor((contentMaxWidth - 2) / 2)
+		: contentMaxWidth;
+
+	// Filter visible messages for search
+	const filteredVisibleMessages = useMemo(() => {
+		if (!showSearch || !searchQuery.trim()) return visibleMessages;
+		const q = searchQuery.toLowerCase().trim();
+		return visibleMessages.filter((m) => {
+			if (m.content?.toLowerCase().includes(q)) return true;
+			if (m.blocks) {
+				for (const block of m.blocks) {
+					if (block.type === "text" || block.type === "reasoning") {
+						const text = block.content;
+						if (typeof text === "string" && text.toLowerCase().includes(q))
+							return true;
+					}
+				}
+			}
+			return false;
+		});
+	}, [visibleMessages, searchQuery, showSearch]);
+
+	const searchMatchCount = filteredVisibleMessages.length;
+	const totalVisibleCount = visibleMessages.length;
+
+	// Handle keyboard input for search overlay
+	useInput(
+		(k, key) => {
+			if (!showSearch) return;
+
+			if (key.return) {
+				// Jump to next match — update matchIndex to cycle through matches
+				setSearchMatchIndex(
+					(prev) => (prev + 1) % Math.max(1, searchMatchCount),
+				);
+				return;
+			}
+
+			// Backspace
+			if (key.backspace || k === "\x7f" || k === "\b") {
+				setSearchQuery((q) => q.slice(0, -1));
+				return;
+			}
+
+			// Regular character input
+			if (k && !key.ctrl && !key.meta && k.length === 1 && k >= " ") {
+				setSearchQuery((q) => q + k);
+				return;
+			}
+		},
+		{ isActive: showSearch },
+	);
+
 	const scrollToBottom = useCallback(() => {
 		messagesEndRef.current = true;
 		setScrollOffset(0);
@@ -2818,6 +2876,20 @@ function ChatUI({
 		queuedMessages,
 		setQueuedMessages,
 		onToggleDashboard: () => setShowDashboard((s) => !s),
+		showSearch,
+		onSearchToggle: () =>
+			setShowSearch((s) => {
+				if (!s) {
+					setSearchQuery("");
+					setSearchMatchIndex(0);
+				}
+				return !s;
+			}),
+		onSearchClose: () => {
+			setShowSearch(false);
+			setSearchQuery("");
+			setSearchMatchIndex(0);
+		},
 	});
 
 	useEffect(() => {
@@ -4026,13 +4098,13 @@ function ChatUI({
 		}
 	}
 	const messageElements = useMemo(() => {
-		return visibleMessages.map((m) => {
+		return filteredVisibleMessages.map((m) => {
 			let header: React.ReactNode;
 			let content: React.ReactNode[];
 
 			if (m.kind === "compaction") {
 				const label = `Historical digest`;
-				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
+				const padLen = Math.max(10, columnWidth - 3 - label.length - 2);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
@@ -4044,7 +4116,7 @@ function ChatUI({
 			} else if (m.role === "user") {
 				const label = `${ascii ? "| " : "▎ "}${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} You`;
 				const timeStr = getMessageTimeStr(m);
-				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2 - (timeStr ? 8 : 0));
+				const padLen = Math.max(10, columnWidth - 3 - label.length - 2 - (timeStr ? 8 : 0));
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
@@ -4094,7 +4166,7 @@ function ChatUI({
 						React.createElement(
 							Box,
 							{ key: 0, flexDirection: "column" },
-							...renderMarkdown(m.content, contentMaxWidth - 3, `msg-${m.id}`),
+					...renderMarkdown(m.content, columnWidth - 3, `msg-${m.id}`),
 						),
 					];
 				} else {
@@ -4111,7 +4183,7 @@ function ChatUI({
 				const timeStr = getMessageTimeStr(m);
 				const padLen = Math.max(
 					10,
-					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0) - (timeStr ? 8 : 0),
+					columnWidth - 3 - label.length - 2 - (m.status ? 10 : 0) - (timeStr ? 8 : 0),
 				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -4149,7 +4221,7 @@ function ChatUI({
 								content.push(
 									...renderMarkdown(
 										subBlock.content,
-										contentMaxWidth - 3,
+										columnWidth - 3,
 										`msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`,
 									),
 								);
@@ -4157,7 +4229,7 @@ function ChatUI({
 								content.push(
 									renderReasoningBlock(
 										subBlock.content,
-										contentMaxWidth - 3,
+										columnWidth - 3,
 										`msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
 									),
 								);
@@ -4167,7 +4239,7 @@ function ChatUI({
 						content.push(
 							renderReasoningBlock(
 								block.content,
-								contentMaxWidth - 3,
+								columnWidth - 3,
 								`msg-${m.id}-reasoning-${bIdx}`,
 							),
 						);
@@ -4203,7 +4275,7 @@ function ChatUI({
 						content.push(
 							...renderMarkdown(
 								subBlock.content,
-								contentMaxWidth - 3,
+								columnWidth - 3,
 								`msg-${m.id}-sub-${sbIdx}`,
 							),
 						);
@@ -4211,7 +4283,7 @@ function ChatUI({
 						content.push(
 							renderReasoningBlock(
 								subBlock.content,
-								contentMaxWidth - 3,
+								columnWidth - 3,
 								`msg-${m.id}-reasoning-fallback-${sbIdx}`,
 							),
 						);
@@ -4297,12 +4369,13 @@ function ChatUI({
 					borderStyle: isAssistant ? "round" : undefined,
 					borderColor: isAssistant ? GOLD : undefined,
 					...(msgBorderColor && !isAssistant ? { borderLeft: true, borderColor: msgBorderColor } : {}),
+					...(useTwoColumns ? { width: columnWidth } : {}),
 				},
 				header,
 				React.createElement(Box, { flexDirection: "column", paddingLeft: isAssistant ? 0 : 0.5 }, ...content),
 			);
 		});
-	}, [visibleMessages, contentMaxWidth, terminalWidth]);
+	}, [filteredVisibleMessages, columnWidth, terminalWidth, useTwoColumns]);
 
 	const scrollPercent = Math.min(
 		100,
@@ -4379,6 +4452,45 @@ function ChatUI({
 			showDashboard && React.createElement(SwarmVisualizer, null),
 			React.createElement(MemoryIndicator, null),
 			React.createElement(TodoList, null),
+			showSearch &&
+				React.createElement(
+					Box,
+					{
+						flexDirection: "column",
+						paddingX: 1,
+						paddingY: 0,
+						marginBottom: 1,
+						borderStyle: "single",
+						borderColor: GOLD,
+					},
+					React.createElement(
+						Box,
+						{ flexDirection: "row", alignItems: "center" },
+						React.createElement(
+							Text,
+							{ bold: true, color: GOLD },
+							"\u2315 Search: ",
+						),
+						React.createElement(
+							Text,
+							{ color: SAND },
+							searchQuery +
+								(ascii ? "" : "\u2502"),
+						),
+					),
+					React.createElement(
+						Box,
+						{ marginTop: 0.5 },
+						React.createElement(
+							Text,
+							{ dimColor: true, color: GRAY },
+							`${searchMatchCount} of ${totalVisibleCount} messages match` +
+								(searchMatchCount > 0
+									? `  (match ${searchMatchIndex + 1})  \u2193 Enter next  Esc close`
+									: `  Esc to close`),
+						),
+					),
+				),
 			messages.length === 0
 				? React.createElement(
 						Box,
@@ -4454,7 +4566,11 @@ function ChatUI({
 						},
 						React.createElement(
 							Box,
-							{ flexDirection: "column", marginBottom: -scrollOffset },
+							{
+								flexDirection: useTwoColumns ? "row" : "column",
+								flexWrap: useTwoColumns ? "wrap" : undefined,
+								marginBottom: -scrollOffset,
+							},
 							showWelcome &&
 								React.createElement(
 									Box,

@@ -57,6 +57,11 @@ export interface UseChatViewportReturn {
  * message-arrival badge state, and the virtual render window. The chat keeps
  * the negative-margin model; this hook only decides its offset and content
  * slice, never remounts history merely to scroll.
+ *
+ * Available for a future refactor that swaps the inline viewport logic in
+ * chat.ts. Currently fully implemented, tested, but not imported — import
+ * and pass the returned {@link UseChatViewportReturn} values in place of the
+ * inline scroll/offset state.
  */
 export function useChatViewport({
 	messages,

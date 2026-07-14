@@ -317,6 +317,7 @@ export function compressContext(
 
 export { estimateTokens };
 
+// TODO: Replace these stubs with LLM-based compression
 export function identifyCriticalMessages(
 	messages: StandardMessage[],
 ): number[] {
