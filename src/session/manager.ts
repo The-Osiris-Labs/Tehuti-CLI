@@ -12,6 +12,7 @@ import { swarmManager } from "../agent/swarm/manager.js";
 import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
+import { metrics } from "../utils/metrics.js";
 import { AsyncMutex } from "../utils/mutex.js";
 import { consola } from "../utils/logger.js";
 import { SessionBackup } from "./backup.js";
@@ -431,6 +432,8 @@ class SessionManager {
 				await writeJsonAtomic(archiveFile, archive);
 			}
 			await writeJsonAtomic(sessionFile, sessionData);
+			metrics.counter('session.save');
+			metrics.histogram('session.size', ctx.messages.length);
 
 			debug.log(
 				"session",

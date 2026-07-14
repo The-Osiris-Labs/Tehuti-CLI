@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { StandardTool } from "../../api/base-client.js";
+import type { AgentContext, DiffPreviewOptions } from "../../agent/types.js";
 import { debug } from "../../utils/debug.js";
 
 export interface ToolResult {
@@ -9,12 +10,9 @@ export interface ToolResult {
 	error?: string;
 	metadata?: Record<string, unknown>;
 }
+/** Re-exported from shared types for backward compatibility. */
+export type { DiffPreviewOptions } from "../../agent/types.js";
 
-export interface DiffPreviewOptions {
-	showPreview: boolean;
-	autoConfirm?: boolean;
-	maxDiffLines?: number;
-}
 
 export interface ToolContext {
 	cwd: string;
@@ -25,7 +23,7 @@ export interface ToolContext {
 	diffPreview?: DiffPreviewOptions;
 	cache?: unknown;
 	readFilesThisSession?: Set<string>;
-	agentContext?: any; // Avoiding circular dependency with AgentContext
+	agentContext?: AgentContext;
 }
 
 export interface ToolDefinition {

@@ -290,6 +290,7 @@ const MAX_OUTPUT_SIZE = 50 * 1024 * 1024;
 const MAX_TOTAL_BACKGROUND_MEMORY = 1000 * 1024 * 1024;
 const MAX_BACKGROUND_PROCESSES = 200;
 const MAX_BACKGROUND_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 function getBackgroundMemoryUsage(): number {
 	let total = 0;
@@ -645,7 +646,7 @@ async function executeBash(
 			error: "Unable to resolve working directory",
 		};
 	}
-	const timeoutMs = Math.max(1000, timeout ?? ctx.timeout ?? 120000);
+	const timeoutMs = Math.max(1000, timeout ?? ctx.timeout ?? DEFAULT_TIMEOUT_MS);
 
 	debug.log(
 		"tools",

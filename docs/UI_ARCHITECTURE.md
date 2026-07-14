@@ -76,6 +76,51 @@ together (never split across columns).
 
 ---
 
+## System Overview
+
+### Tool Inventory
+
+The agent runtime exposes **86 native tools** across 17 categories, plus
+dynamic MCP tools from connected servers:
+
+| Category | Count | Tools |
+|----------|-------|-------|
+| Filesystem | 12 | `read`, `write`, `edit`, `create_dir`, `delete_file`, `delete_dir`, `copy`, `move`, `list_dir`, `file_info`, `read_image`, `read_pdf` |
+| Search | 4 | `glob`, `grep`, `find_references`, `go_to_definition` |
+| Bash | 1 | `bash` |
+| Web | 3 | `web_fetch`, `web_search`, `code_search` |
+| System | 6 | `todo_write`, `todo_complete`, `todo_delete`, `task`, `question`, `wait_for_event` |
+| Git | 9 | `git_status`, `git_diff`, `git_log`, `git_add`, `git_commit`, `git_branch`, `git_remote`, `git_pull`, `git_push` |
+| LSP | 4 | `lsp_find_references`, `lsp_go_to_definition`, `lsp_rename_symbol`, `lsp_hover` |
+| Plan Mode | 4 | `write_plan`, `exit_plan_mode`, `list_plans`, `read_plan` |
+| Memory | 2 | `store_insight`, `query_memory` |
+| Background | 4 | `start_background`, `list_processes`, `read_output`, `kill_process` |
+| Swarm | 6 | `delegate_task`, `check_subagent_status`, `await_subagents`, `list_subagents`, `abort_subagent`, `send_message_to_subagent` |
+| Skills | 6 | `list_skills`, `activate_skill`, `deactivate_skill`, `find_skills`, `get_skill`, `create_reusable_skill` |
+| Semantic | 4 | `semantic`, `semantic_init`, `semantic_status`, `semantic_trace` |
+| Custom Provider | 4 | `configure_custom_provider`, `set_custom_header`, `remove_custom_header`, `get_custom_provider_info` |
+| Kilocode | 5 | `review_code`, `summarize_context`, `configure_memory_bank`, `clear_memory`, `configure_streaming` |
+| AST / Diff / DAP | 3 | `parse_ast`, `apply_diff`, `debug` |
+| MCP Integration | 3 | `mcp_get_prompt`, `mcp_list_prompts`, `mcp_pipeline` |
+| Utility | 3 | `env_inspect`, `network_check`, `service_status` |
+| Collaboration | 1 | `collaboration` |
+| Shadow Workspace | 1 | `test_speculatively` |
+| Repo Map | 1 | `repo_map` |
+
+MCP tools are discovered dynamically at runtime via `MCPClientManager`
+(`src/mcp/client.ts`) and wrapped with the `mcp_<server>.<tool>` naming
+convention. Tool count varies per session based on connected MCP servers.
+
+### Test Coverage
+
+| Category | Files | Description |
+|----------|-------|-------------|
+| Unit tests | **847** | `src/**/*.test.ts(x)` — tool logic, config, cache, hooks, rendering |
+| E2E tests | **110** | `tests/e2e/` — baseline, tier1–4, sessions-ui, queue |
+
+
+---
+
 ## Components
 
 All components live in `src/cli/ui/components/`. The barrel export is
@@ -646,6 +691,54 @@ Used for `ink-gradient` in headers:
 
 ---
 
+## Theme System
+
+The theme system is centralized in `src/branding/index.ts` and supports
+runtime configuration, high-contrast mode, and plugin-contributed themes.
+
+### Architecture
+
+```mermaid
+graph TD
+    A[src/branding/index.ts] --> B[BRANDING.colors]
+    A --> C[BRANDING.highContrastColors]
+    A --> D[GRADIENT_STOPS]
+    A --> E[ROLE_COLORS]
+    A --> F[HIEROGLYPHS / ASCII_DECORATIVE]
+    B --> G[Components via BRANDING.colors.*]
+    C --> H{TEHUTI_HIGH_CONTRAST=1?}
+    H -->|yes| I[Use highContrastColors]
+    H -->|no| J[Use default colors]
+    F --> K{TEHUTI_ASCII_MODE=1?}
+    K -->|yes| L[Use ASCII_HIEROGLYPHS]
+    K -->|no| M[Use Unicode HIEROGLYPHS]
+    N[Plugin Theme Contribution] -->|plugin.theme| O[PluginRegistry.themes]
+    O -->|merged at activation| G
+```
+
+### Color Resolution Pipeline
+
+1. **Environment check**: `TEHUTI_HIGH_CONTRAST=1` → swap palette
+2. **ASCII detection**: `TEHUTI_ASCII_MODE=1` / `NO_EMOJI=1` / `TERM=dumb`
+3. **Component access**: `BRANDING.colors.primary` etc. — never hardcode hex
+4. **Plugin overlay**: Plugin themes merged via `PluginRegistry` at activation
+
+### Plugin Theme Interface
+
+Plugins can contribute theme overrides via `PluginTheme`:
+
+```typescript
+interface PluginTheme {
+  name: string;
+  colors?: Partial<typeof BRANDING['colors']>;
+  gradients?: Partial<typeof GRADIENT_STOPS>;
+  hieroglyphs?: Partial<typeof HIEROGLYPHS>;
+}
+```
+
+---
+
+
 ## Keyboard Shortcuts
 
 ### Global
@@ -797,22 +890,178 @@ Syntax highlighting is applied via `highlightToAnsi()`.
 
 Results are cached with content-based keys for reuse across renders.
 
+## Performance Optimizations
+
+### Caching Layers
+
+| Layer | Module | Strategy |
+|-------|--------|----------|
+| LRU Tool Cache | `src/agent/cache/lru-cache.ts` | Size-bounded, TTL-aware, file-mtime invalidation |
+| Persistent Cache | `src/agent/cache/persistent-cache.ts` | Disk-backed across sessions |
+| API Response Cache | `src/api/response-cache.ts` | SHA-256 key from messages + model, disk-backed |
+| Height Cache | `src/cli/ui/terminal/output.ts` | WeakMap + LRU (500 entries), content-based keys |
+| Encoding Cache | `src/agent/context-compressor.ts` | Token count memoization |
+
+### Prefetching
+
+`src/agent/prefetcher.ts` speculatively executes likely-next tools in the
+background. Configurable via `performance.prefetchQueueSize` and
+`performance.prefetchTimeoutMs`. Rules define tool→tool transition patterns
+(e.g., `read` → `grep` on same file).
+
+### Context Compression
+
+`src/agent/context-compressor.ts` maintains a sliding window of active
+messages. Older messages are summarized into a `CompactionDigest` with key
+decisions, actions, and open threads — preserving context while reducing
+token count. Uses `js-tiktoken` (cl100k_base) for accurate counting.
+
+### Concurrency Control
+
+`src/utils/concurrency.ts` provides bounded parallelism:
+- `promiseAllWithConcurrency()` — pool-based parallel execution
+- `promiseAllSettledWithConcurrency()` — fault-tolerant variant
+- `mapWithConcurrency()` — parallel map with ordering preserved
+- `TaskQueue` — persistent queue with retry and backpressure
+
+### Streaming
+
+`src/api/streaming.ts` uses chunked array concatenation for O(1) append
+(avoids repeated string concatenation). Content and thinking streams are
+maintained separately for reasoning models.
+
+### Performance Flow
+
+```mermaid
+graph TD
+    A[Tool Call Request] --> B{Cache Hit?}
+    B -->|yes| C[Return Cached Result]
+    B -->|no| D[Execute Tool]
+    D --> E[LRU Cache Store]
+    E --> F{Prefetch Rules Match?}
+    F -->|yes| G[Prefetch Next Tools]
+    F -->|no| H[Done]
+    G --> I[Background Prefetch Pool]
+    I --> J[Store in Cache]
+
+    K[LLM Context Window] --> L{Token Count > Threshold?}
+    L -->|yes| M[Context Compressor]
+    M --> N[CompactionDigest]
+    N --> O[Reduced Token Count]
+    L -->|no| P[Use Full Context]
+
+    Q[API Request] --> R{Response Cache Hit?}
+    R -->|yes| S[Return Cached Response]
+    R -->|no| T[Stream Response]
+    T --> U[Chunked Concatenation]
+    U --> V[Cache Response]
+```
+
+---
+
+## Security Hardening
+
+### Token Encryption
+
+`src/config/token-encryption.ts` encrypts API tokens at rest using
+AES-256-GCM:
+- **Algorithm**: AES-256-GCM (128-bit IV + 128-bit auth tag)
+- **Key derivation**: PBKDF2 (100,000 iterations) from machine identifiers
+- **Format**: `enc1:<iv>:<authTag>:<ciphertext>` (hex-encoded)
+- **Migration**: Transparent — plaintext tokens returned as-is, encrypted
+  on next save via `encryptOAuthConfig()`
+
+### Permission System
+
+`src/permissions/rules.ts` enforces least-privilege tool execution:
+
+```mermaid
+graph TD
+    A[Tool Execution Request] --> B[PermissionManager.check]
+    B --> C{Category + Operation}
+    C -->|fs.read| D[Safe — auto-allow]
+    C -->|fs.write| E{Permission Rule Match?}
+    C -->|bash.execute| F[Requires Permission]
+    C -->|git.push| G[Requires Permission]
+    C -->|mcp.execute| H[Requires Permission]
+    E -->|match + safe| D
+    E -->|match + unsafe| F
+    E -->|no match| I[Apply Default Rule]
+    I --> J{Prompt User}
+    J -->|y/Y| K[Allow + Cache Decision]
+    J -->|n/N| L[Deny]
+    J -->|Enter| M{Dangerous?}
+    M -->|yes| L
+    M -->|no| K
+```
+
+### Security Features Summary
+
+| Feature | Module | Description |
+|---------|--------|-------------|
+| Token encryption | `config/token-encryption.ts` | AES-256-GCM at rest |
+| Permission rules | `permissions/rules.ts` | Category-based safe/unsafe classification |
+| Permission prompts | `permissions/prompts.ts` | Context-aware prompt generation |
+| Dangerous default | `PermissionPrompt.tsx` | Dangerous prompts default to "no" |
+| Config validation | `config/schema.ts` | Schema-based input validation |
+| Sandbox limits | `agent/tools/bash.ts` | Command allowlist/denylist |
+| External FS guard | `agent/tools/fs.ts` | Read-external boundary enforcement |
+| Structured logging | `utils/structured-logger.ts` | Audit trail for tool executions |
+| Feature flags | `utils/feature-flags.ts` | Gradual rollout with A/B testing |
+
+### Security Flow
+
+```mermaid
+graph TD
+    A[User Input] --> B[Permission Manager]
+    B --> C{Is Tool Safe?}
+    C -->|yes| D[Execute Immediately]
+    C -->|no| E[Prompt User]
+    E --> F{User Response}
+    F -->|allow| G[Execute + Cache Decision]
+    F -->|deny| H[Block + Log]
+    D --> I[Tool Execution]
+    G --> I
+    I --> J[Structured Logger]
+    J --> K[Trace Event]
+    K --> L[~/.tehuti/trace.jsonl]
+
+    M[API Token] --> N{Is Encrypted?}
+    N -->|no| O[encryptToken - AES-256-GCM]
+    O --> P[Store enc1: prefix]
+    N -->|yes| Q[decryptToken]
+    Q --> R[Use plaintext]
+
+    S[Config Load] --> T[schema.ts validation]
+    T --> U{Valid?}
+    U -->|yes| V[Apply Config]
+    U -->|no| W[ConfigError + Suggestions]
+```
+
+
 ---
 
 ## Accessibility
 
+All accessibility utilities live in `src/cli/ui/accessibility.ts`.
+
 ### Reduced Motion
 
-Controlled by `TEHUTI_REDUCE_MOTION=1` or `NO_ANIMATION=1`. Checked in:
-- `HieroglyphSpinner` — stops animation
-- `ProgressBar` — freezes indeterminate animation
-- `StatusBadge` — stops spinning icons
-- `MemoryIndicator` — single-frame transitions
+Controlled by `TEHUTI_REDUCE_MOTION=1` or `NO_ANIMATION=1`. Checked via
+`respectReducedMotion()`. Components that animate:
+
+| Component | Animation | Reduced Motion Behavior |
+|-----------|-----------|------------------------|
+| `HieroglyphSpinner` | Glyph cycling | Freezes on first glyph |
+| `ProgressBar` | Indeterminate fill | Static bar, no pulse |
+| `StatusBadge` | Spinning icon | Static icon |
+| `MemoryIndicator` | Fade-in/toast | Single-frame appear/disappear |
 
 ### High Contrast Mode
 
 Controlled by `TEHUTI_HIGH_CONTRAST=1`. Switches the entire color palette to
-brighter variants with higher WCAG contrast ratios against `#1A1A2E`.
+brighter variants with higher WCAG contrast ratios against `#1A1A2E`. See
+the [Theme System](#theme-system) section for the full high-contrast palette.
 
 ### Color Detection
 
@@ -820,12 +1069,39 @@ brighter variants with higher WCAG contrast ratios against `#1A1A2E`.
 `shouldUseHighContrast()` checks `TEHUTI_HIGH_CONTRAST`. All color functions
 in `output.ts` and `markdown.ts` are no-ops when colors are disabled.
 
+### Screen Reader Support
+
+- `announceToScreenReader()` — emits attention signals for terminal screen
+  readers via ANSI escape sequences
+- All status changes emit semantic labels via `StatusBadge` kind values
+- `ExpandableToolOutput` announces expand/collapse state changes
+
+### Keyboard Navigation Hints
+
+`KEYBOARD_HINTS` in `accessibility.ts` provides standardized hint strings
+for TUI prompts. `keyboardHintLine()` joins hints with bullet separators:
+
+| Key | Hint |
+|-----|------|
+| `↑↓` | Navigate |
+| `Enter` | Select |
+| `Esc` | Close |
+| `Tab` | Switch mode |
+| `?` | Help |
+
 ### Mouse Support
 
 Mouse events via `@ink-tools/ink-mouse` (`MouseProvider`, `useOnClick`,
 `useOnMouseEnter`, `useOnMouseLeave`). Disable via `TEHUTI_DISABLE_MOUSE=1`
 or `NO_MOUSE=1`. Mouse sequences are buffered in `useChatInput` with a 50ms
 timeout for fragmented SGR sequences.
+
+### WCAG Compliance
+
+The accessibility module provides `getContrastRatio(fg, bg)` and
+`meetsContrastAA(fg, bg, threshold)` utilities for validating color
+combinations against WCAG 2.1 AA (4.5:1) and AAA (7:1) thresholds.
+All brand colors are pre-validated in the palette documentation.
 
 ---
 
@@ -895,8 +1171,165 @@ timeout for fragmented SGR sequences.
 | `chat-memory.ts` | `UiMessage`/`UiBlock` types, compaction formatting, truncation constants |
 | `commandPaletteRecent.ts` | Recent command persistence |
 | `input-state.ts` | `GlobalInputState` (hovered component count) |
-| `accessibility.ts` | `respectReducedMotion()`, contrast ratio utilities |
+| `accessibility.ts` | `respectReducedMotion()`, contrast ratio, screen reader, keyboard hints |
+| `markdown-mapper.tsx` | `renderMarkdown()` — Ink-compatible markdown AST renderer |
 | `utils/custom-provider.ts` | `normalizeCustomProvider()`, `RuntimeCustomProvider` type |
+
+### Utilities (`src/utils/`)
+
+| File | Purpose |
+|------|---------|
+| `metrics.ts` | OpenTelemetry-compatible metrics collector (counters, gauges, histograms) |
+| `structured-logger.ts` | `StructuredLogger` — component-scoped log entries with ring buffer |
+| `errors.ts` | `TehutiError` hierarchy: `ConfigError`, `APIError`, `PermissionError`, `ToolError` |
+| `concurrency.ts` | `promiseAllWithConcurrency()`, `TaskQueue`, bounded parallelism primitives |
+| `feature-flags.ts` | `FeatureFlagManager` — runtime flags, A/B testing, segment targeting |
+| `trace.ts` | Per-second trace collector — ring buffer + JSONL persistence |
+| `telemetry.ts` | Anonymous usage telemetry reporting |
+| `media.ts` | `renderMediaToTerminal()` — image rendering for terminal display |
+| `mouse.ts` | Mouse event parsing and SGR sequence buffering |
+| `cli-output.ts` | Non-TUI formatted output helpers |
+| `autocomplete.ts` | Tab-completion engine for commands and file paths |
+| `verbose.ts` | Verbose/debug output gating |
+| `dry-run.ts` | Dry-run mode — simulates mutations without executing |
+| `debug.ts` | Debug logging with `TEHUTI_DEBUG` gate |
+
+### Config (`src/config/`)
+
+| File | Purpose |
+|------|---------|
+| `schema.ts` | Config schema definitions with validation |
+| `loader.ts` | Config loading, merging, and file watching |
+| `migration.ts` | Config version migration between schema versions |
+| `wizard.ts` | Interactive config setup wizard |
+| `device-providers.ts` | Device-specific provider configuration |
+| `token-encryption.ts` | AES-256-GCM token encryption at rest |
+| `providers.ts` | Provider definitions and registry |
+
+### Session (`src/session/`)
+
+| File | Purpose |
+|------|---------|
+| `manager.ts` | Session lifecycle — create, load, save, list, delete |
+| `export.ts` | Session export to Markdown/JSON |
+| `backup.ts` | Session backup and restore |
+| `health.ts` | Session health monitoring and diagnostics |
+
+### Permissions (`src/permissions/`)
+
+| File | Purpose |
+|------|---------|
+| `rules.ts` | `PermissionManager`, category-based safe/unsafe classification |
+| `prompts.ts` | Context-aware permission prompt generation |
+
+### Plugins (`src/plugins/`)
+
+| File | Purpose |
+|------|---------|
+| `registry.ts` | `PluginRegistry` — lifecycle, activation, contribution aggregation |
+| `loader.ts` | Plugin discovery and dynamic import |
+| `types.ts` | Plugin interface definitions (`PluginTool`, `PluginCommand`, `PluginTheme`) |
+
+### SDK (`src/sdk/`)
+
+| File | Purpose |
+|------|---------|
+| `plugin-api.ts` | `PluginContext` — safe API surface for plugin authors |
+| `client.ts` | SDK client for external integrations |
+
+### Messaging (`src/messaging/`)
+
+| File | Purpose |
+|------|---------|
+| `connector-manager.ts` | Multi-channel message connector lifecycle |
+
+### Hooks (`src/hooks/`)
+
+| File | Purpose |
+|------|---------|
+| `executor.ts` | Pre/post-execution hook pipeline for tool calls |
+
+### Provider Sources (`src/provider-sources/`)
+
+| File | Purpose |
+|------|---------|
+| `codex-app-server.ts` | Codex app server provider discovery |
+| `copilot-bridge.ts` | GitHub Copilot bridge provider |
+| `local-probe.ts` | Local model server probing (Ollama, LM Studio) |
+
+### Daemon (`src/daemon/`)
+
+| File | Purpose |
+|------|---------|
+| `server.ts` | Background daemon HTTP server |
+| `state-engine.ts` | Persistent state management for daemon |
+| `client.ts` | Client library for daemon communication |
+
+### Agent Core (`src/agent/`)
+
+| File | Purpose |
+|------|---------|
+| `context-compressor.ts` | Context window compression via sliding-window summarization |
+| `prefetcher.ts` | Speculative tool prefetching based on transition rules |
+| `parallel-executor.ts` | Parallel tool execution with concurrency limits |
+| `model-router.ts` | Model selection and routing logic |
+| `events.ts` | Agent event bus for cross-component communication |
+| `shadow-workspace.ts` | Speculative test execution in isolated workspace |
+
+
+## Test Coverage Map
+
+```mermaid
+graph TD
+    subgraph "Unit Tests (847 files)"
+        A1[src/agent/tools/*.test.ts] -->|17 files| B1[Tool Logic]
+        A2[src/agent/cache/*.test.ts] -->|3 files| B2[Caching]
+        A3[src/agent/memory/*.test.ts] -->|3 files| B3[Memory / Graph]
+        A4[src/agent/swarm/*.test.ts] -->|2 files| B4[Swarm Orchestration]
+        A5[src/agent/loop/*.test.ts] -->|3 files| B5[Agent Loop]
+        A6[src/agent/skills/*.test.ts] -->|2 files| B6[Skills]
+        A7[src/config/*.test.ts] -->|4 files| B7[Config Schema & Migration]
+        A8[src/cli/ui/**/*.test.ts] -->|12 files| B8[UI Components & Hooks]
+        A9[src/utils/*.test.ts] -->|4 files| B9[Utilities]
+        A10[src/api/*.test.ts] -->|1 file| B10[API Response Cache]
+        A11[Other src tests] -->|39 files| B11[Agent, Session, Provider]
+    end
+
+    subgraph "E2E Tests (110 files)"
+        C1[tests/e2e/baseline.test.ts] --> D1[Core Baseline]
+        C2[tests/e2e/tier1.test.ts] --> D2[Tier 1 Features]
+        C3[tests/e2e/tier2.test.ts] --> D3[Tier 2 Features]
+        C4[tests/e2e/tiers3-4.test.ts] --> D4[Tier 3–4 Features]
+        C5[tests/e2e/sessions-ui.test.ts] --> D5[Session Management]
+        C6[tests/e2e/queue.test.ts] --> D6[Message Queue]
+    end
+
+    B1 --> E[Integration Boundary]
+    B2 --> E
+    B7 --> E
+    B8 --> E
+    D1 --> F[End-to-End Flow]
+    D2 --> F
+    D5 --> F
+```
+
+### Coverage by Subsystem
+
+| Subsystem | Unit Files | E2E Files | Key Test Areas |
+|-----------|-----------|-----------|----------------|
+ | Agent Tools | 17 | — | fs, bash, git, web, search, AST, semantic, swarm |
+| Caching | 3 | — | LRU eviction, TTL, persistence, tool cache |
+| Config | 4 | — | Schema validation, migration, device providers |
+| UI Components | 8 | 1 | ChatBar, CommandPalette, StatusBadge, sessions |
+| UI Hooks | 4 | — | useChatInput, useChatViewport, useVirtualScroll |
+| Memory | 3 | — | Vector store, graph, personality |
+| Agent Loop | 3 | — | Retry, compression, tool processing |
+| Session | 2 | 1 | Lifecycle, export, health |
+| API | 1 | — | Response cache, streaming |
+| Provider Sources | 3 | — | Codex, Copilot, local probe |
+| Daemon | 1 | — | Server, state engine |
+| E2E Integration | — | 6 | Baseline, tiers 1–4, sessions, queue |
+
 
 ---
 

@@ -246,6 +246,12 @@ export function isReadOnlyExternalPath(resolvedPath: string): boolean {
 export function validatePathSecurity(resolvedPath: string) {
 	const normalizedPath = path.normalize(resolvedPath);
 
+	// Explicit path traversal check — reject any path containing ".." segments
+	// before other checks, to prevent directory escape attacks.
+	if (resolvedPath.includes("..")) {
+		return { safe: false, reason: "Path traversal detected" };
+	}
+
 	// Sensitive files are ALWAYS rejected, regardless of cwd or allowlist.
 	// Run this check first so the rejection reason is precise (doesn't leak
 	// path-traversal information to a caller probing for sensitive files).

@@ -18,6 +18,7 @@ import {
 	MCPErrorCode,
 	registerCleanupHandler,
 } from "../utils/errors.js";
+import { metrics } from "../utils/metrics.js";
 
 const log = createLogger('mcp');
 
@@ -73,6 +74,8 @@ export interface MCPServerInfo {
 	prompts: MCPPrompt[];
 	capabilities: ServerCapabilities;
 	stderrBuffer?: string[];
+	_stderrListener?: (chunk: Buffer | string) => void;
+	_stderrStream?: NodeJS.ReadableStream & { on: Function; off: Function };
 	samplingDepth: number;
 	samplingRequests: number;
 	samplingResetTime: number;
@@ -163,16 +166,17 @@ export class MCPClientManager {
 				let pid: number | undefined;
 
 				if (server.transport) {
-					// @modelcontextprotocol/sdk StdioClientTransport exposes the child process as _process
+					// StdioClientTransport exposes child process as _process (not on Transport interface)
 					if ("_process" in server.transport) {
-						const proc = (server.transport as any)._process;
-						if (proc && typeof proc.pid === "number") {
-							pid = proc.pid;
+						const proc = server.transport as unknown as { _process?: { pid?: number } };
+						if (proc._process && typeof proc._process.pid === "number") {
+							pid = proc._process.pid;
 						}
 					} else if ("pid" in server.transport) {
-						const p = (server.transport as any).pid;
-						if (p && typeof p === "number") {
-							pid = p;
+						// Some transports expose pid directly
+						const p = server.transport as unknown as { pid?: number };
+						if (p.pid && typeof p.pid === "number") {
+							pid = p.pid;
 						}
 					}
 				}
@@ -240,8 +244,10 @@ export class MCPClientManager {
 						MCPErrorCode.CONFIG_ERROR,
 					);
 				}
+				// SSEClientTransport accepts custom headers via eventSourceInit (not in standard EventSourceInit)
+				const sseOptions = { headers: config.headers } as EventSourceInit & { headers?: Record<string, string> };
 				return new SSEClientTransport(new URL(config.url), {
-					eventSourceInit: { headers: config.headers } as any,
+					eventSourceInit: sseOptions,
 					requestInit: { headers: config.headers },
 				});
 			}
@@ -302,9 +308,10 @@ export class MCPClientManager {
 	private setupTransportHandlers(info: MCPServerInfo): void {
 		if (!info.transport) return;
 
-		// Listen to stderr for stdio transport
-		if ("stderr" in info.transport && (info.transport as any).stderr) {
-			const stderrStream = (info.transport as any).stderr;
+		if ("stderr" in info.transport) {
+			// StdioClientTransport exposes stderr stream (not on Transport interface)
+			const stdioTransport = info.transport as unknown as { stderr?: NodeJS.ReadableStream & { on: Function; off: Function } };
+			const stderrStream = stdioTransport.stderr;
 			info.stderrBuffer = [];
 
 			const onData = (chunk: Buffer | string) => {
@@ -319,11 +326,13 @@ export class MCPClientManager {
 				}
 			};
 
-			stderrStream.on("data", onData);
+		if (stderrStream) {
+				stderrStream.on("data", onData);
 
-			// Store the listener so we can clean it up on close or disconnect
-			(info as any)._stderrListener = onData;
-			(info as any)._stderrStream = stderrStream;
+				// Store the listener so we can clean it up on close or disconnect
+				info._stderrListener = onData;
+				info._stderrStream = stderrStream;
+			}
 		}
 
 		info.transport.onclose = () => {
@@ -333,17 +342,17 @@ export class MCPClientManager {
 			this.updateStatus(info, "disconnected");
 			this.scheduleReconnect(info.name);
 
-			if ((info as any)._stderrStream && (info as any)._stderrListener) {
+			if (info._stderrStream && info._stderrListener) {
 				try {
-					(info as any)._stderrStream.off(
+					info._stderrStream.off(
 						"data",
-						(info as any)._stderrListener,
+						info._stderrListener,
 					);
 				} catch {
 					log.warn(`Failed to remove stderr listener for ${info.name}`);
 				}
-				(info as any)._stderrListener = undefined;
-				(info as any)._stderrStream = undefined;
+				info._stderrListener = undefined;
+				info._stderrStream = undefined;
 			}
 		};
 
@@ -652,6 +661,7 @@ export class MCPClientManager {
 
 			info.connected = true;
 			this.updateStatus(info, "connected");
+			metrics.counter('mcp.connection', { server: name });
 
 			const serverCapabilities = client.getServerCapabilities();
 			info.capabilities = {
@@ -669,7 +679,7 @@ export class MCPClientManager {
 			}
 
 			return info;
-		} catch (error) {
+	} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			log.error(`Failed to connect to ${name}: ${message}`);
 			info.lastError = message;
@@ -682,11 +692,18 @@ export class MCPClientManager {
 				}
 				info.transport = null;
 			}
+			// Automatic reconnection with exponential backoff
+			if (info.reconnectAttempts < (config.reconnect?.maxAttempts ?? 3)) {
+				info.reconnectAttempts++;
+				const delay = 1000 * info.reconnectAttempts;
+				log.info(`[${name}] Scheduling reconnect attempt ${info.reconnectAttempts} in ${delay}ms`);
+				setTimeout(() => this.connectServer(name, config), delay);
+			}
 			throw createMCPError(
 				`Failed to connect to MCP server "${name}": ${message}`,
 				MCPErrorCode.CONNECTION_FAILED,
 			);
-		}
+	}
 	}
 
 	private async discoverCapabilities(info: MCPServerInfo): Promise<void> {
@@ -958,25 +975,28 @@ export class MCPClientManager {
 			}
 		}
 
-		if ((info as any)._stderrStream && (info as any)._stderrListener) {
+		if (info._stderrStream && info._stderrListener) {
 			try {
-				(info as any)._stderrStream.off("data", (info as any)._stderrListener);
+				info._stderrStream.off("data", info._stderrListener);
 			} catch {
 				log.warn(`Failed to remove stderr listener for ${name}`);
 			}
-			(info as any)._stderrListener = undefined;
-			(info as any)._stderrStream = undefined;
+			info._stderrListener = undefined;
+			info._stderrStream = undefined;
 		}
 
+		// HTTPClientTransport exposes terminateSession — not on Transport interface
 		if (
 			info.transport &&
-			"terminateSession" in info.transport &&
-			typeof (info.transport as any).terminateSession === "function"
+			"terminateSession" in info.transport
 		) {
-			try {
-				await (info.transport as any).terminateSession();
-			} catch (error) {
-				log.error(`Error terminating HTTP session for ${name}: ${error instanceof Error ? error.message : String(error)}`);
+			const httpTransport = info.transport as { terminateSession: () => Promise<void> };
+			if (typeof httpTransport.terminateSession === "function") {
+				try {
+					await httpTransport.terminateSession();
+				} catch (error) {
+					log.error(`Error terminating HTTP session for ${name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
 			}
 		}
 
@@ -1122,9 +1142,9 @@ export class MCPClientManager {
 				MCPErrorCode.TOOL_NOT_ALLOWED,
 			);
 		}
-
 		log.info(`Executing tool ${toolName} on ${serverName}`);
 
+		const startTime = Date.now();
 		try {
 			const result = await withTimeout(
 				info.client.callTool({
@@ -1135,6 +1155,7 @@ export class MCPClientManager {
 				`Tool ${toolName} on ${serverName}`,
 			);
 
+			metrics.histogram('mcp.tool.duration', Date.now() - startTime, { tool: toolName });
 			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

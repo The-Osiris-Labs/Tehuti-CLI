@@ -475,42 +475,49 @@ export function wrap(text: string, width?: number): string {
 			continue;
 		}
 
-		let currentLine = "";
-		let currentStripped = "";
+		const lineParts: string[] = [];
+		const strippedParts: string[] = [];
+		let currentWidth = 0;
 
 		const words = splitIntoWords(textLine);
 
 		for (const word of words) {
 			const wordStripped = stripAnsi(word);
 			const wordWidth = stringWidth(wordStripped);
-			const currentWidth = stringWidth(currentStripped);
 
 			if (currentWidth + wordWidth <= w) {
-				currentLine += word;
-				currentStripped += wordStripped;
+				lineParts.push(word);
+				strippedParts.push(wordStripped);
+				currentWidth += wordWidth;
 			} else {
 				if (wordStripped.trim() === "") {
 					// Drop whitespace that would otherwise start a new line
 					continue;
 				}
-				if (currentLine) {
-					lines.push(currentLine.trimEnd());
+				if (lineParts.length > 0) {
+					lines.push(lineParts.join("").trimEnd());
 				}
 				if (wordWidth > w) {
 					const wrappedWord = wrapLongWord(word, wordStripped, w);
 					lines.push(...wrappedWord.slice(0, -1));
 					const lastPart = wrappedWord[wrappedWord.length - 1];
-					currentLine = lastPart;
-					currentStripped = stripAnsi(lastPart);
+					lineParts.length = 0;
+					lineParts.push(lastPart);
+					strippedParts.length = 0;
+					strippedParts.push(stripAnsi(lastPart));
+					currentWidth = stringWidth(stripAnsi(lastPart));
 				} else {
-					currentLine = word;
-					currentStripped = wordStripped;
+					lineParts.length = 0;
+					lineParts.push(word);
+					strippedParts.length = 0;
+					strippedParts.push(wordStripped);
+					currentWidth = wordWidth;
 				}
 			}
 		}
 
-		if (currentLine) {
-			lines.push(currentLine.trimEnd());
+		if (lineParts.length > 0) {
+			lines.push(lineParts.join("").trimEnd());
 		}
 	}
 

@@ -166,6 +166,7 @@ export async function executeToolsParallel(
 	const cache = getToolCache();
 	const telemetry = getTelemetry();
 	const mutex = new AsyncMutex();
+	const toolCallIndexMap = new Map(toolCalls.map((tc, i) => [tc.id, i]));
 	const results: ToolResult[] = new Array(toolCalls.length);
 
 	for (const tc of toolCalls) {
@@ -329,7 +330,7 @@ export async function executeToolsParallel(
 					);
 
 					for (let i = 0; i < chunk.length; i++) {
-						const globalIndex = toolCalls.indexOf(chunk[i]);
+						const globalIndex = toolCallIndexMap.get(chunk[i].id) ?? -1;
 						if (globalIndex >= 0) {
 							results[globalIndex] = chunkResults[i];
 						}
@@ -373,7 +374,7 @@ export async function executeToolsParallel(
 
 					onToolResult?.(tc.id, tc.function.name, result);
 
-					const globalIndex = toolCalls.indexOf(tc);
+					const globalIndex = toolCallIndexMap.get(tc.id) ?? -1;
 					if (globalIndex >= 0) {
 						results[globalIndex] = result;
 					}
@@ -390,7 +391,7 @@ export async function executeToolsParallel(
 					);
 					addToolResult(ctx, tc.id, tc.function.name, formatToolResultForLLM(result));
 					onToolResult?.(tc.id, tc.function.name, result);
-					const globalIndex = toolCalls.indexOf(tc);
+					const globalIndex = toolCallIndexMap.get(tc.id) ?? -1;
 					if (globalIndex >= 0) {
 						results[globalIndex] = result;
 					}

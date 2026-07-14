@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
 	getProviderAuthHeaders,
 	getProviderInfo,
@@ -154,13 +155,35 @@ export async function listModelsForProvider(
 		}
 		if (!res.ok) return [];
 
-		const data = (await res.json()) as any;
-		let rawModels: any[] = [];
-		if (data?.data && Array.isArray(data.data)) rawModels = data.data;
-		else if (Array.isArray(data)) rawModels = data;
+		interface RawModel {
+			id?: string;
+			name?: string;
+			model?: string;
+			slug?: string;
+			context_length?: number;
+			contextLength?: number;
+			context_window?: number;
+			max_completion_tokens?: number;
+			max_tokens?: number;
+			max_output_tokens?: number;
+			top_provider?: { context_length?: number; max_completion_tokens?: number };
+			architecture?: { context_length?: number };
+			pricing?: { prompt?: unknown; input?: unknown; completion?: unknown; output?: unknown; [k: string]: unknown };
+			owned_by?: string;
+			ownedBy?: string;
+			[k: string]: unknown;
+		}
+		const RawModelSchema = z.object({}).passthrough();
+		const ModelListSchema = z.object({
+			data: z.array(RawModelSchema).optional(),
+		}).or(z.array(RawModelSchema));
+		const parsed = ModelListSchema.parse(await res.json());
+		const rawModels: RawModel[] = Array.isArray(parsed)
+			? (parsed as RawModel[])
+			: ((parsed.data ?? []) as RawModel[]);
 
 		const normalized: LiveModelInfo[] = rawModels
-			.map((m: any) => {
+		.map((m: RawModel) => {
 				const id = m.id || m.name || m.model || m.slug || String(m);
 				if (!id || typeof id !== "string") return null;
 
@@ -180,16 +203,17 @@ export async function listModelsForProvider(
 					m.max_output_tokens ??
 					undefined;
 
-				let pricing: any;
-				if (m.pricing) {
+			let pricing: { input?: number; output?: number; [key: string]: unknown } | undefined;
+			if (m.pricing) {
+					const rawPricing = m.pricing as Record<string, unknown>;
 					pricing = {
+						...rawPricing,
 						input: toPerMillion(
-							m.pricing.prompt ?? m.pricing.input ?? m.pricing?.prompt,
+							rawPricing.prompt ?? rawPricing.input ?? rawPricing?.prompt,
 						),
 						output: toPerMillion(
-							m.pricing.completion ?? m.pricing.output ?? m.pricing?.completion,
+							rawPricing.completion ?? rawPricing.output ?? rawPricing?.completion,
 						),
-						...m.pricing,
 					};
 				}
 
@@ -211,7 +235,7 @@ export async function listModelsForProvider(
 	}
 }
 
-function toPerMillion(val: any): number | undefined {
+function toPerMillion(val: unknown): number | undefined {
 	if (val == null) return undefined;
 	const n = typeof val === "string" ? parseFloat(val) : Number(val);
 	if (!Number.isFinite(n)) return undefined;

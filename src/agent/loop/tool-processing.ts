@@ -2,6 +2,7 @@ import { hookExecutor } from "../../hooks/executor.js";
 import { checkPermission } from "../../permissions/index.js";
 import { debug } from "../../utils/debug.js";
 import { getTelemetry } from "../../utils/telemetry.js";
+import { metrics } from "../../utils/metrics.js";
 import {
 	getToolCache,
 	invalidateOnBash,
@@ -270,6 +271,7 @@ export async function processToolCalls(
 				{ toolName: tc.function.name, args },
 				ctx.config.permissions,
 			);
+			metrics.counter('permissions.check', { allowed: String(permission.allowed) });
 
 			if (!permission.allowed) {
 				blockedCalls.push({
@@ -473,6 +475,7 @@ export async function processToolCalls(
 				{ toolName: tc.function.name, args },
 				ctx.config.permissions,
 			);
+			metrics.counter('permissions.check', { allowed: String(permission.allowed) });
 
 			if (!permission.allowed) {
 				debug.log("agent", `Permission denied for ${tc.function.name}`);

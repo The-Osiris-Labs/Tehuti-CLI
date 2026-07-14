@@ -676,11 +676,14 @@ export async function runAgentLoop(
 							suggestions.push("Run with --debug for more details");
 						}
 					}
+					const errorWithContext = new Error(`Agent loop error at iteration ${iteration}: ${error.message}`);
+					errorWithContext.stack = error.stack;
 					agentError = new AgentError(
-						error.message,
+						errorWithContext.message,
 						iteration === 1 ? "initialization" : "execution",
 						suggestions,
 					);
+					agentError.stack = errorWithContext.stack;
 				} else {
 					agentError = new AgentError(
 						String(error),

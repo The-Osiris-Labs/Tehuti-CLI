@@ -143,6 +143,18 @@ async function resolveAndValidateUrl(
 				reason: `URL scheme '${parsed.protocol}' is not allowed. Only http and https are permitted.`,
 			};
 		}
+		// Explicit early rejection of localhost and loopback addresses
+		if (
+			hostname === "localhost" ||
+			hostname === "127.0.0.1" ||
+			hostname === "::1"
+		) {
+			return {
+				allowed: false,
+				reason: `Internal URLs are blocked: ${hostname}`,
+			};
+		}
+
 
 		if (BLOCKED_DOMAINS.some((blocked) => hostname.includes(blocked))) {
 			return { allowed: false, reason: `Domain ${hostname} is blocked` };

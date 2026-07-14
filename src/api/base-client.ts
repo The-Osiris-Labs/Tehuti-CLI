@@ -878,9 +878,13 @@ export abstract class BaseAPIClient {
 			{ maxRetries: this.maxRetries },
 		);
 
-		const data = (await response.json()) as any;
-		const list = (data?.data || data || []).sort((a: any, b: any) =>
-			(a.id || "").localeCompare(b.id || ""),
+		const ModelItemSchema = z.object({ id: z.string() }).passthrough();
+		const ResponseSchema = z.object({
+			data: z.array(ModelItemSchema).optional(),
+		}).or(z.array(ModelItemSchema));
+		const parsed = ResponseSchema.parse(await response.json());
+		const list = (Array.isArray(parsed) ? parsed : parsed.data ?? []).sort(
+			(a, b) => (a.id || "").localeCompare(b.id || ""),
 		);
 		return list;
 	}

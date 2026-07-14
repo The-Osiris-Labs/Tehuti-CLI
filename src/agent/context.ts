@@ -11,7 +11,6 @@ import { TehutiDaemonClient } from "../daemon/client.js";
 import { getCapabilities } from "../terminal/capabilities.js";
 import { debug } from "../utils/debug.js";
 import {
-	type CompactionDigest,
 	compressContext,
 	estimateTokens as tiktokenEstimateTokens,
 } from "./context-compressor.js";
@@ -20,7 +19,7 @@ import { getSystemPromptMemory } from "./memory/graph.js";
 import { initMemory } from "./memory/index.js";
 import { getPersonalityPromptBlock } from "./memory/personality.js";
 import { getSkillsManager } from "./skills/manager.js";
-import type { DiffPreviewOptions } from "./tools/registry.js";
+import type { AgentContext, DiffPreviewOptions } from "./types.js";
 
 const PROJECT_INSTRUCTION_FILES = [
 	"CLAUDE.md",
@@ -309,82 +308,8 @@ export function normalizeToolMessageHistory(
 		});
 }
 
-/**
- * Agent execution context containing all state for an agent session.
- * 
- * This is the central state object passed throughout the agent system. It contains:
- * - Current working directory and session metadata
- * - Message history (both model-facing and append-only archive)
- * - Configuration and provider settings
- * - Memory and personality context (loaded asynchronously)
- * - Session metadata (token usage, cost, tool calls, etc.)
- * 
- * The context is created once per session via `createAgentContext()` and passed
- * to all agent functions. It's mutable (messages array is updated during the loop)
- * but the metadata is append-only for accurate session tracking.
- * 
- * @property cwd - Current working directory (resolved from sessionId or parameter)
- * @property workingDir - Working directory for file operations (usually same as cwd)
- * @property messages - Model-facing message history (compacted when large)
- * @property appendOnlyLog - Full transcript (never deleted, used for archive)
- * @property compactionHistory - Array of digests from past compactions
- * @property config - Tehuti configuration (provider, model, API keys, etc.)
- * @property projectInstructions - Content from CLAUDE.md/TEHUTI.md/AGENTS.md
- * @property systemMemoryPromise - Async-loaded memory graph context
- * @property diffPreview - Optional diff preview settings for file edits
- * @property companionMode - Whether running in companion (daemon-connected) mode
- * @property sessionId - Unique session identifier (for resume/continuity)
- * @property personalityBlockPromise - Async-loaded personality/preferences
- * @property readFilesThisSession - Set of files read this session (for context)
- * @property isSleeping - Whether agent is in sleep/idle state
- * @property injectionQueue - Queue for system message injections
- * @property modelContextLength - Live-resolved model context length (from API)
- * @property metadata - Session statistics (tokens, cost, tool calls, files, commands)
- * 
- * @example
- * ```typescript
- * const ctx = await createAgentContext(process.cwd(), config);
- * 
- * // Access session metadata
- * console.log(`Session started: ${ctx.metadata.startTime}`);
- * console.log(`Tool calls: ${ctx.metadata.toolCalls}`);
- * console.log(`Tokens used: ${ctx.metadata.tokensUsed}`);
- * 
- * // Modify messages (mutable)
- * ctx.messages.push({ role: 'user', content: 'Hello' });
- * ```
- */
-export interface AgentContext {
-	cwd: string;
-	workingDir: string;
-	messages: StandardMessage[];
-	appendOnlyLog: StandardMessage[];
-	/** Deterministic summaries of ranges removed from the model-facing context. */
-	compactionHistory: CompactionDigest[];
-	config: TehutiConfig;
-	projectInstructions?: string;
-	systemMemoryPromise?: Promise<string>;
-	diffPreview?: DiffPreviewOptions;
-	companionMode?: boolean;
-	sessionId?: string;
-	personalityBlockPromise?: Promise<string>;
-	readFilesThisSession: Set<string>;
-	isSleeping?: boolean;
-	injectionQueue: InjectionQueue;
-	/** Live model context length resolved from provider API (overrides config fallback) */
-	modelContextLength?: number;
-	metadata: {
-		startTime: Date;
-		sessionCost?: number;
-		toolCalls: number;
-		tokensUsed: number;
-		cacheReadTokens: number;
-		cacheWriteTokens: number;
-		filesRead: string[];
-		filesWritten: string[];
-		commandsRun: string[];
-	};
-}
+/** Re-exported from shared types for backward compatibility. */
+export type { AgentContext } from "./types.js";
 
 async function loadProjectInstructions(
 	cwd: string,
@@ -902,40 +827,36 @@ export function trackToolCall(ctx: AgentContext, toolName: string): void {
 	debug.log("context", `Tool call #${ctx.metadata.toolCalls}: ${toolName}`);
 }
 
-export function trackFileRead(ctx: AgentContext, filePath: string): void {
-	if (!ctx.metadata.filesRead.includes(filePath)) {
-		ctx.metadata.filesRead.push(filePath);
-		ctx.readFilesThisSession.add(filePath);
+function trackFileOperation(
+	ctx: AgentContext,
+	filePath: string,
+	operation: "read" | "write",
+): void {
+	const files = operation === "read" ? ctx.metadata.filesRead : ctx.metadata.filesWritten;
+	if (files.includes(filePath)) {
+		return;
+	}
+	files.push(filePath);
+	ctx.readFilesThisSession.add(filePath);
 
-		if (ctx.sessionId) {
-			import("./memory/personality.js")
-				.then(({ setUserPreference }) => {
-					setUserPreference(
-						`recent_files_${ctx.sessionId}`,
-						JSON.stringify(Array.from(ctx.readFilesThisSession)),
-					);
-				})
-				.catch(() => {});
-		}
+	if (ctx.sessionId) {
+		import("./memory/personality.js")
+			.then(({ setUserPreference }) => {
+				setUserPreference(
+					`recent_files_${ctx.sessionId}`,
+					JSON.stringify(Array.from(ctx.readFilesThisSession)),
+				);
+			})
+			.catch(() => {});
 	}
 }
 
-export function trackFileWritten(ctx: AgentContext, filePath: string): void {
-	if (!ctx.metadata.filesWritten.includes(filePath)) {
-		ctx.metadata.filesWritten.push(filePath);
-		ctx.readFilesThisSession.add(filePath);
+export function trackFileRead(ctx: AgentContext, filePath: string): void {
+	trackFileOperation(ctx, filePath, "read");
+}
 
-		if (ctx.sessionId) {
-			import("./memory/personality.js")
-				.then(({ setUserPreference }) => {
-					setUserPreference(
-						`recent_files_${ctx.sessionId}`,
-						JSON.stringify(Array.from(ctx.readFilesThisSession)),
-					);
-				})
-				.catch(() => {});
-		}
-	}
+export function trackFileWritten(ctx: AgentContext, filePath: string): void {
+	trackFileOperation(ctx, filePath, "write");
 }
 
 export function trackCommand(ctx: AgentContext, command: string): void {
