@@ -72,8 +72,9 @@ function highlightSyntax(code: string, language?: string): string {
 }
 
 // Cache for renderMarkdown to avoid re-parsing markdown for unchanged content
-// on every render flush (the key is text + width since strings are valid Map keys).
+// on every render flush (bounded at CACHE_MAX entries).
 const markdownCache = new Map<string, React.ReactNode[]>();
+const CACHE_MAX = 200;
 
 export function clearMarkdownCache(): void {
 	markdownCache.clear();
@@ -84,7 +85,7 @@ export function renderMarkdown(
 	maxWidth?: number,
 	keyPrefix: string = "md",
 ): React.ReactNode[] {
-	const cacheKey = `${text}|${maxWidth ?? 0}|${keyPrefix}`;
+	const cacheKey = `${keyPrefix}|${maxWidth}|${text.length}|${text.slice(0, 50)}`;
 	const cached = markdownCache.get(cacheKey);
 	if (cached) {
 		return cached;
@@ -105,8 +106,11 @@ export function renderMarkdown(
 			}
 		}
 	}
-
 	markdownCache.set(cacheKey, elements);
+	if (markdownCache.size > CACHE_MAX) {
+		const firstKey = markdownCache.keys().next().value;
+		if (firstKey !== undefined) markdownCache.delete(firstKey);
+	}
 	return elements;
 }
 

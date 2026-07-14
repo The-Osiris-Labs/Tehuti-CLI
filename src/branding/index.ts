@@ -1,7 +1,6 @@
 export const BRANDING = {
 	name: "Tehuti",
-	tagline: "Scribe of Code Transformations",
-	version: "0.1.0",
+	version: "1.2.1",
 	colors: {
 		// High contrast palette for accessibility
 		primary: "#F5C518", // Bright gold (WCAG AA compliant on dark backgrounds)

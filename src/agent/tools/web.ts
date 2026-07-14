@@ -207,7 +207,7 @@ async function webFetch(
 		while (true) {
 			response = await fetch(currentUrl, {
 				headers: {
-					"User-Agent": "Tehuti-CLI/0.1.0 (https://tehuti.dev)",
+					"User-Agent": "Tehuti-CLI/1.2.1 (https://tehuti.dev)",
 					Accept:
 						format === "html" ? "text/html" : "text/html,application/xhtml+xml",
 				},

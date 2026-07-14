@@ -19,8 +19,9 @@ export interface SubagentTask {
 	abortController?: AbortController;
 	context?: AgentContext;
 	error?: string;
+	/** Post-completion verification results (e.g., grep patterns found, files written) */
+	verification?: Array<{ check: string; passed: boolean; detail: string }>;
 }
-
 export interface SubagentOptions {
 	type: SubagentType;
 	description: string;
@@ -28,6 +29,12 @@ export interface SubagentOptions {
 	parentContext: AgentContext;
 	task_id?: string;
 	timeoutMs?: number;
+	/** Post-completion verification checks to run against the subagent's output/task result */
+	verify?: Array<{
+		description: string;
+		/** Pattern to grep in result content (or file path if starts with 'file:') */
+		pattern: string;
+	}>;
 }
 
 const SYSTEM_PROMPTS: Record<SubagentType, string> = {
@@ -149,6 +156,48 @@ ${options.prompt}
 			task.error =
 				result.error ?? result.finishReason ?? "loop reported failure";
 		}
+
+		// Run post-completion verification checks
+		if (options.verify && options.verify.length > 0) {
+			const verification: SubagentTask["verification"] = [];
+			const content = result.content || "";
+			for (const check of options.verify) {
+				if (check.pattern.startsWith("file:")) {
+					const filePath = check.pattern.slice(5);
+					try {
+						const { accessSync } = await import("node:fs");
+						accessSync(filePath);
+						verification.push({
+							check: check.description,
+							passed: true,
+							detail: `File exists: ${filePath}`,
+						});
+					} catch {
+						verification.push({
+							check: check.description,
+							passed: false,
+							detail: `File not found: ${filePath}`,
+						});
+					}
+				} else {
+					const found = content.includes(check.pattern);
+					verification.push({
+						check: check.description,
+						passed: found,
+						detail: found
+							? `Pattern found (${content.indexOf(check.pattern)})`
+							: `Pattern not found: ${check.pattern}`,
+					});
+				}
+			}
+			task.verification = verification;
+			const allPassed = verification.every((v) => v.passed);
+			if (result.success && !allPassed) {
+				task.status = "failed";
+				task.error = `Verification failed: ${verification.filter((v) => !v.passed).map((v) => v.check).join(", ")}`;
+			}
+		}
+
 		task.endTime = new Date();
 
 		return task;

@@ -645,7 +645,7 @@ export class MCPClientManager {
 			const capabilities: Record<string, unknown> = {};
 
 			const client = new Client(
-				{ name: "tehuti-cli", version: "0.1.0" },
+				{ name: "tehuti-cli", version: "1.2.1" },
 				{ capabilities },
 			);
 

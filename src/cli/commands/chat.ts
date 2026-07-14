@@ -39,7 +39,7 @@ import {
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
-import { getAllTools } from "../../agent/tools/registry.js";
+import { getAllTools, getToolDefinitions } from "../../agent/tools/registry.js";
 import { getSkillsManager } from "../../agent/skills/manager.js";
 import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { costTracker } from "../../api/index.js";
@@ -2369,7 +2369,7 @@ function ChatUI({
 			setScrollOffset((prev) => {
 				const safeMaxOff = Math.max(
 					0,
-					Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+					totalMessageLines - chatViewportHeight + 20,
 				);
 				return Math.min(prev, safeMaxOff);
 			});
@@ -2603,7 +2603,7 @@ function ChatUI({
 		messagesEndRef.current = false;
 		const safeMaxOff = Math.max(
 			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+			totalMessageLines - chatViewportHeight + 20,
 		);
 		setScrollOffset(safeMaxOff);
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
@@ -2612,7 +2612,7 @@ function ChatUI({
 		messagesEndRef.current = false;
 		const safeMaxOff = Math.max(
 			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+			totalMessageLines - chatViewportHeight + 20,
 		);
 		setScrollOffset((off) => Math.min(safeMaxOff, off + chatViewportHeight));
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
@@ -2629,7 +2629,7 @@ function ChatUI({
 		messagesEndRef.current = false;
 		const safeMaxOff = Math.max(
 			0,
-			Math.ceil(totalMessageLines * 3.0) + 100 - chatViewportHeight,
+			totalMessageLines - chatViewportHeight + 20,
 		);
 		setScrollOffset((off) => Math.min(safeMaxOff, off + 1)); // Scroll by 1 line
 	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
@@ -2790,6 +2790,72 @@ function ChatUI({
 							id: msgIdRef.current++,
 							role: "system",
 							content: `## Tasks (${currentTodos.length})\n\n${lines.join("\n")}\n\nUse \`/todos clear\` to clear.`,
+						},
+					]);
+				}
+				return;
+			}
+
+			if (cmd === "/tools") {
+				const tools = getAllTools();
+				if (tools.length === 0) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "No tools registered.",
+						},
+					]);
+				} else {
+					const categories = new Map<string, string[]>();
+					for (const tool of tools) {
+						const cat = tool.category || "other";
+						if (!categories.has(cat)) categories.set(cat, []);
+						categories.get(cat)!.push(`\`${tool.name}\``);
+					}
+					const lines: string[] = ["## Available Tools\n"];
+					for (const [cat, names] of categories) {
+						lines.push(`### ${cat}`);
+						for (const name of names) {
+							lines.push(`- ${name}`);
+						}
+						lines.push("");
+					}
+					const toolDefCount = getToolDefinitions().length;
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `**Tools: ${toolDefCount} tool definitions, ${tools.length} registered tools.**\n\n${lines.join("\n")}`,
+						},
+					]);
+				}
+				return;
+			}
+
+			if (cmd === "/skills") {
+				const skills = getSkillsManager().listSkills();
+				if (skills.length === 0) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "No skills loaded.",
+						},
+					]);
+				} else {
+					const lines = skills.map(
+						(s) => `- **${s.name}**: ${s.description}`,
+					);
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `## Skills (${skills.length})\n\n${lines.join("\n")}`,
 						},
 					]);
 				}
@@ -4236,8 +4302,7 @@ function ChatUI({
 							: resolveRuntimeApiKey(resolvedProvider);
 					const resolvedCustomSource =
 						resolvedProvider === "custom"
-							? runtimeCustomProvider ||
-								normalizeCustomProvider(cfg.customProvider)
+							? normalizeCustomProvider(cfg.customProvider)
 							: undefined;
 					const resolvedState = resolveRuntimeProviderState(resolvedProvider, {
 						baseUrl: rawBaseUrl,
@@ -4367,7 +4432,7 @@ export function createProgram(): Command {
 	program
 		.name("tehuti")
 		.description("Tehuti CLI - Coding assistant powered by OpenCode Go")
-		.version("0.1.0", "-v, --version")
+		.version(version, "-v, --version")
 		.option("-m, --model <model>", "Override model")
 		.option(
 			"-p, --provider <provider>",
