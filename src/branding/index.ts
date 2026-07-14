@@ -111,9 +111,10 @@ export const HIEROGLYPHS = {
 };
 
 // ── ASCII fallbacks for terminals without hieroglyph font support ───────────
-export function isAsciiMode(): boolean {
+export function isAsciiMode(config?: { branding?: { glyphMode?: string } }): boolean {
 	return (
 		process.env.TEHUTI_ASCII_MODE === "1" ||
+		config?.branding?.glyphMode === "ascii" ||
 		process.env.NO_EMOJI === "1" ||
 		process.env.TERM === "dumb" ||
 		false

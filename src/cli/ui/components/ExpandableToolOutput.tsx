@@ -17,11 +17,13 @@ import {
 	ANSI_STRIP_REGEX,
 	sliceAnsi,
 } from "../../../utils/ansi.js";
+import chalk from "chalk";
 
 const disableMouse = process.env.NO_MOUSE || process.env.TEHUTI_DISABLE_MOUSE;
 
 interface ExpandableToolOutputProps {
 	toolName: string;
+	toolArgs?: unknown;
 	result: unknown;
 	maxWidth: number;
 	status?: "pending" | "success" | "error";
@@ -133,9 +135,69 @@ export function summarizeToolOutput(
 function stripAnsi(str: string): string {
 	return str.replace(ANSI_STRIP_REGEX, "");
 }
+const FILE_OPS: Record<string, true> = {
+	write: true,
+	write_file: true,
+	edit: true,
+	edit_file: true,
+	apply_diff: true,
+	apply_patch: true,
+};
+
+interface DiffCounts {
+	added: number;
+	removed: number;
+}
+
+function countDiffLines(text: string): DiffCounts | null {
+	const lines = text.split("\n");
+	let added = 0;
+	let removed = 0;
+	for (const raw of lines) {
+		const line = raw.trimEnd();
+		if (line.startsWith("+") && !line.startsWith("+++")) added++;
+		else if (line.startsWith("-") && !line.startsWith("---")) removed++;
+	}
+	return added > 0 || removed > 0 ? { added, removed } : null;
+}
+
+function formatDiffAnsi(line: string): string {
+	const trimmed = line.trimStart();
+	if (trimmed.startsWith("@@")) return chalk.cyan(line);
+	if (trimmed.startsWith("+") && !trimmed.startsWith("+++")) return chalk.green(line);
+	if (trimmed.startsWith("-") && !trimmed.startsWith("---")) return chalk.red(line);
+	return line;
+}
+
+function extractResultText(result: unknown): string {
+	if (typeof result === "string") return result;
+	if (result && typeof result === "object") {
+		const obj = result as Record<string, unknown>;
+		if (typeof obj.output === "string") return obj.output;
+		if (typeof obj.content === "string") return obj.content;
+		if (typeof obj.error === "string") return obj.error;
+		return safeStringify(result);
+	}
+	return safeStringify(result);
+}
+
+function extractFilePath(args: unknown): string | null {
+	if (!args || typeof args !== "object") return null;
+	const obj = args as Record<string, unknown>;
+	return (
+		(obj.file_path as string | undefined) ??
+		(obj.file as string | undefined) ??
+		(obj.path as string | undefined) ??
+		(obj.destination as string | undefined) ??
+		null
+	);
+}
+
+
 
 export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	toolName,
+	toolArgs,
 	result,
 	maxWidth,
 	status,
@@ -192,6 +254,21 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			setDuration(finalDuration);
 		}
 	}, [status]);
+
+	// ── File operation display ──
+	const cleanName = toolName.toLowerCase();
+	const isFileOp = FILE_OPS[cleanName] === true;
+	const fileIcon = isFileOp
+		? cleanName === "apply_diff" || cleanName === "apply_patch"
+			? "\u{1FA79}"
+			: "\u270F\uFE0F"
+		: "";
+	const filePath = isFileOp && toolArgs
+		? extractFilePath(toolArgs)
+		: null;
+	const diffStats: DiffCounts | null = isFileOp && result
+		? countDiffLines(extractResultText(result))
+		: null;
 
 	const { summary, borderTextColor } = useMemo(() => {
 		const sum = summarizeToolOutput(result, maxWidth, expanded ? 10000 : 12);
@@ -292,11 +369,14 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 	}, [summary.rawLines, windowStart, windowEnd, expanded]);
 
 	const highlightedLines = useMemo(() => {
+		if (isFileOp) {
+			return visibleLines.map((line) => formatDiffAnsi(line));
+		}
 		const text = visibleLines.join("\n");
 		if (!language) return visibleLines;
 		const ansi = highlightToAnsi(text, language);
 		return ansi.split("\n");
-	}, [visibleLines, language]);
+	}, [visibleLines, language, isFileOp]);
 
 	const blockWidth = Math.max(10, maxWidth - 6);
 	const contentWidth = Math.max(2, blockWidth - 4); // '│ ' + ' │' takes 4 chars
@@ -332,7 +412,29 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 					? `${summary.lineCount} lines total, ${summary.hiddenLineCount} hidden`
 					: `completed`;
 
-	const displayContent = renderedBlock;
+	const errorBlock = useMemo(() => {
+		if (status !== "error") return null;
+		const label = " FAILED ";
+		const labelWidth = stringWidth(label);
+		const sideLen = Math.max(0, Math.floor((contentWidth * 2 + 2 - labelWidth) / 2));
+		const errTop = `╭${"─".repeat(sideLen)}${label}${"─".repeat(sideLen)}╮`;
+		const errBot = `╰${"─".repeat(contentWidth * 2 + 2)}╯`;
+		const lines = highlightedLines.map((line: string) => {
+			const visualLen = stringWidth(stripAnsi(line));
+			let padded: string;
+			if (visualLen > contentWidth) {
+				const sliced = sliceAnsi(line, contentWidth - 3);
+				const slicedLen = stringWidth(stripAnsi(sliced));
+				padded = `${sliced}...${" ".repeat(Math.max(0, contentWidth - slicedLen - 3))}`;
+			} else {
+				padded = `${line}${" ".repeat(Math.max(0, contentWidth - visualLen))}`;
+			}
+			return `│ ${padded} │`;
+		});
+		return [errTop, ...lines, errBot].join("\n");
+	}, [status, highlightedLines, contentWidth]);
+
+	const displayContent = errorBlock ?? renderedBlock;
 
 	return (
 		<Box
@@ -342,10 +444,10 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			marginBottom={1}
 			paddingLeft={1}
 			borderStyle="single"
-			borderLeft={true}
-			borderTop={false}
-			borderRight={false}
-			borderBottom={false}
+			borderLeft={status !== "error"}
+			borderTop={status === "error"}
+			borderRight={status === "error"}
+			borderBottom={status === "error"}
 			borderColor={borderTextColor}
 			width={maxWidth}
 			overflow="hidden"
@@ -354,9 +456,16 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 				<Box flexDirection="row" gap={1} alignItems="center">
 					<Text color={borderTextColor}>{expandedIcon}</Text>
 					<StatusBadge compact kind={badgeKind} />
+					{fileIcon && <Text>{fileIcon}</Text>}
 					<Text bold color={headerColor}>
 						{truncatedToolName}
 					</Text>
+					{filePath && <Text dimColor>{filePath}</Text>}
+					{diffStats && (
+						<Text dimColor>
+							(+{diffStats.added}/-{diffStats.removed})
+						</Text>
+					)}
 					{isCached && (
 						<StatusBadge compact={false} emphasize={true} kind="cached" />
 					)}

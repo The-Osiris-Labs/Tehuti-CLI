@@ -16,6 +16,10 @@ const TODO_WRITE_SCHEMA = z.object({
 		.array(
 			z.object({
 				id: z.string().describe("Unique identifier for the todo item"),
+				parentId: z
+					.string()
+					.optional()
+					.describe("Parent task ID for hierarchical nesting"),
 				content: z.string().describe("Brief description of the task"),
 				status: z
 					.enum(["pending", "in_progress", "completed", "cancelled"])
@@ -210,6 +214,26 @@ async function writeTodos(
 	currentTodos = args.todos;
 	saveTodos(currentTodos);
 
+	type TodoItem = (typeof args.todos)[number];
+	interface TreeNode extends TodoItem {
+		children: TreeNode[];
+	}
+
+	// Build tree from flat list
+	const nodeMap = new Map<string, TreeNode>();
+	const roots: TreeNode[] = [];
+	for (const todo of args.todos) {
+		nodeMap.set(todo.id, { ...todo, children: [] });
+	}
+	for (const todo of args.todos) {
+		const node = nodeMap.get(todo.id)!;
+		if (todo.parentId && nodeMap.has(todo.parentId)) {
+			nodeMap.get(todo.parentId)!.children.push(node);
+		} else {
+			roots.push(node);
+		}
+	}
+
 	const statusEmoji = {
 		pending: "⏳",
 		in_progress: "🔄",
@@ -223,11 +247,28 @@ async function writeTodos(
 		low: "🟢",
 	};
 
-	const lines = args.todos.map((todo) => {
-		const status = statusEmoji[todo.status];
-		const priority = priorityEmoji[todo.priority];
-		return `${status} ${priority} [${todo.id}] ${todo.content}`;
-	});
+	function formatTreeNode(
+		node: TreeNode,
+		prefix: string,
+		isLast: boolean,
+	): string[] {
+		const connector = isLast ? "└─ " : "├─ ";
+		const status = statusEmoji[node.status];
+		const priority = priorityEmoji[node.priority];
+		const line = `${prefix}${connector}${status} ${priority} [${node.id}] ${node.content}`;
+		const childLines: string[] = [];
+		for (let i = 0; i < node.children.length; i++) {
+			const childPrefix = prefix + (isLast ? "   " : "│  ");
+			childLines.push(
+				...formatTreeNode(node.children[i], childPrefix, i === node.children.length - 1),
+			);
+		}
+		return [line, ...childLines];
+	}
+
+	const lines = roots.flatMap((node, i) =>
+		formatTreeNode(node, "", i === roots.length - 1),
+	);
 
 	return {
 		success: true,

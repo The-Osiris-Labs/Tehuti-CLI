@@ -18,8 +18,9 @@ export type UiBlock =
 			id: string;
 			name: string;
 			description: string;
+			args?: unknown;
 			result: unknown;
-	  };
+	  }
 
 export type UiMessage = {
 	id: number;
@@ -27,14 +28,14 @@ export type UiMessage = {
 	content: string;
 	kind?: "compaction";
 	compaction?: CompactionDigest;
-	status?: "success" | "error" | "loading";
-	toolCalls?: Array<{
-		id: string;
-		name: string;
-		description: string;
-		result: unknown;
-		isExpanded: boolean;
-	}>;
+		toolCalls?: Array<{
+			id: string;
+			name: string;
+			description: string;
+			args?: unknown;
+			result: unknown;
+			isExpanded: boolean;
+		}>;
 	blocks?: UiBlock[];
 };
 

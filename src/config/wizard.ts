@@ -303,6 +303,29 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		theme: egyptianTheme,
 	});
 
+	console.log();
+	console.log(c.cyan("  [Glyph Mode]"));
+
+	const glyphMode = await select<"nerd" | "unicode" | "ascii">({
+		message: "Choose how glyphs and symbols should render in your terminal:",
+		default: "nerd",
+		theme: egyptianTheme,
+		choices: [
+			{
+				name: `Nerd Font        (rich icons, best if Nerd Font is installed)`,
+				value: "nerd",
+			},
+			{
+				name: `Unicode    ☰ ⎇ ✕ ✓ ✓ ☑   (good fallback for any terminal)`,
+				value: "unicode",
+			},
+			{
+				name: `ASCII      [T] [*] [!] [OK]  (minimum, best for basic terminals)`,
+				value: "ascii",
+			},
+		],
+	});
+
 	const localConfigPath = path.join(process.cwd(), ".tehuti.json");
 	let configTarget = "global configuration";
 
@@ -346,6 +369,9 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 						...existingConfig,
 						provider,
 						apiKey: apiKey || existingConfig.apiKey || null,
+						branding: {
+							glyphMode,
+						},
 						baseUrl: baseUrl || existingConfig.baseUrl || null,
 						model,
 						initialized: true,
@@ -363,6 +389,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 				apiKey: apiKey || null,
 				baseUrl: baseUrl || null,
 				model,
+				branding: { glyphMode },
 			});
 		} else {
 			saveGlobalConfig({
@@ -370,6 +397,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 				apiKey: apiKey || null,
 				baseUrl: baseUrl || null,
 				model,
+				branding: { glyphMode },
 			});
 		}
 	} else {
@@ -378,6 +406,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 			apiKey: apiKey || null,
 			baseUrl: baseUrl || null,
 			model,
+			branding: { glyphMode },
 		});
 	}
 
@@ -388,6 +417,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	);
 	console.log(c.dim(`  Provider: ${info?.name ?? provider}`));
 	console.log(c.dim(`  Model: ${model}`));
+	console.log(c.dim(`  Glyph Mode: ${glyphMode}`));
 	console.log();
 
 	return {
@@ -395,7 +425,12 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		provider: provider as any,
 		apiKey,
 		baseUrl,
-		model,
+		branding: {
+			name: "Tehuti",
+			tagline: "Scribe of Code Transformations",
+			symbol: "𓆣",
+			glyphMode,
+		},
 		mcp: {
 			enabled: enableMCP,
 			servers: {},

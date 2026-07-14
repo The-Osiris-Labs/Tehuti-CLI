@@ -189,6 +189,10 @@ export const BRANDING_CONFIG_SCHEMA = z.object({
 		})
 		.optional()
 		.describe("Custom terminal colors"),
+	glyphMode: z
+		.enum(["nerd", "unicode", "ascii"])
+		.default("unicode")
+		.describe("Glyph rendering mode for UI elements"),
 });
 
 export const MODEL_SELECTION_SCHEMA = z
@@ -731,7 +735,12 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		servers: {},
 	},
 	oauth: {},
-	branding: undefined,
+	branding: {
+		name: "Tehuti",
+		tagline: "Scribe of Code Transformations",
+		symbol: "𓆣",
+		glyphMode: "unicode",
+	},
 	debug: false,
 	telemetry: false,
 	hooks: {},

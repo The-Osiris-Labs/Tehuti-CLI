@@ -11,30 +11,25 @@ const COLORS = {
 	gray: BRANDING.colors.gray,
 	red: BRANDING.colors.red,
 	sand: BRANDING.colors.sand,
+	gold: BRANDING.colors.gold,
 } as const;
-const ascii = isAsciiMode();
 
 interface TodoLike {
 	id: string;
+	parentId?: string;
 	content: string;
 	status: "pending" | "in_progress" | "completed" | "cancelled";
 	priority?: "high" | "medium" | "low";
 	updatedAt?: string;
 }
 
-// Brand-aligned icons. The original used mixed emoji (`⏳`, `✅`, `🔄`,
-// `❌`) which clash with the hieroglyphic theme of the rest of the UI.
 const ICONS: Record<
 	TodoLike["status"],
 	{ glyph: string; color: string; spin: boolean }
 > = {
-	pending: { glyph: "○", color: COLORS.gray, spin: false },
-	in_progress: {
-		glyph: (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[0],
-		color: COLORS.nile,
-		spin: true,
-	},
-	completed: { glyph: ascii ? ASCII_HIEROGLYPHS.success : HIEROGLYPHS.success, color: COLORS.green, spin: false },
+	pending: { glyph: "☐", color: COLORS.gray, spin: false },
+	in_progress: { glyph: "☐", color: COLORS.gold, spin: false },
+	completed: { glyph: "✓", color: COLORS.green, spin: false },
 	cancelled: { glyph: "✕", color: COLORS.red, spin: false },
 };
 
@@ -55,6 +50,27 @@ function formatAge(updatedAt: string | undefined): string {
 	return " [just now]";
 }
 
+interface TreeNode extends TodoLike {
+	children: TreeNode[];
+}
+
+function buildTree(todos: TodoLike[]): TreeNode[] {
+	const nodeMap = new Map<string, TreeNode>();
+	for (const todo of todos) {
+		nodeMap.set(todo.id, { ...todo, children: [] });
+	}
+	const roots: TreeNode[] = [];
+	for (const todo of todos) {
+		const node = nodeMap.get(todo.id)!;
+		if (todo.parentId && nodeMap.has(todo.parentId)) {
+			nodeMap.get(todo.parentId)!.children.push(node);
+		} else {
+			roots.push(node);
+		}
+	}
+	return roots;
+}
+
 export function TodoList(): React.ReactElement | null {
 	const ascii = isAsciiMode();
 	const [todos, setTodos] = useState<TodoLike[]>(
@@ -64,8 +80,6 @@ export function TodoList(): React.ReactElement | null {
 
 	// Data polling: every 1s, but only when no component is being hovered
 	// (to avoid UI thrash while the user is interacting with another panel).
-	// The same tick drives the in-progress spinner so we don't multiply
-	// interval timers.
 	useEffect(() => {
 		const interval = setInterval(() => {
 			if (GlobalInputState.hoveredComponentCount === 0) {
@@ -78,6 +92,74 @@ export function TodoList(): React.ReactElement | null {
 
 	if (!todos || todos.length === 0) {
 		return null;
+	}
+
+	const tree = buildTree(todos);
+
+	function renderTreeNodes(
+		nodes: TreeNode[],
+		prefix: string,
+	): React.ReactElement[] {
+		return nodes.flatMap((node, index) => {
+			const isLast = index === nodes.length - 1;
+			const connector = isLast ? "└─ " : "├─ ";
+			const def = ICONS[node.status] ?? ICONS.pending;
+			const glyph = def.spin
+				? (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[frame]
+				: def.glyph;
+			const color = def.color;
+			const priority = node.priority
+				? PRIORITY_COLORS[node.priority]
+				: null;
+			const ageText = formatAge(node.updatedAt);
+
+			const elements: React.ReactElement[] = [
+				React.createElement(
+					Box,
+					{ key: node.id, flexDirection: "row", gap: 1 },
+					React.createElement(
+						Text,
+						{ color: COLORS.gray, dimColor: true },
+						prefix + connector,
+					),
+					React.createElement(Text, { color }, glyph),
+					React.createElement(
+						Text,
+						{ color: COLORS.gray, dimColor: true },
+						`[${node.id}]`,
+					),
+					priority &&
+						React.createElement(
+							Text,
+							{ color: priority, bold: true },
+							"●",
+						),
+					React.createElement(
+						Text,
+						{
+							color,
+							strikethrough: node.status === "completed",
+						},
+						node.content,
+					),
+					ageText &&
+						React.createElement(
+							Text,
+							{ color: COLORS.gray, dimColor: true },
+							ageText,
+						),
+				),
+			];
+
+			if (node.children.length > 0) {
+				const childPrefix = prefix + (isLast ? "   " : "│  ");
+				elements.push(
+					...renderTreeNodes(node.children, childPrefix),
+				);
+			}
+
+			return elements;
+		});
 	}
 
 	return React.createElement(
@@ -111,40 +193,7 @@ export function TodoList(): React.ReactElement | null {
 		React.createElement(
 			Box,
 			{ flexDirection: "column", paddingLeft: 2 },
-			...todos.map((todo) => {
-				const def = ICONS[todo.status] ?? ICONS.pending;
-				const glyph = def.spin ? (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[frame] : def.glyph;
-				const color = def.color;
-				const priority = todo.priority ? PRIORITY_COLORS[todo.priority] : null;
-				const ageText = formatAge(todo.updatedAt);
-
-				return React.createElement(
-					Box,
-					{ key: todo.id, flexDirection: "row", gap: 1 },
-					React.createElement(Text, { color }, glyph),
-					React.createElement(
-						Text,
-						{ color: COLORS.gray, dimColor: true },
-						`[${todo.id}]`,
-					),
-					priority &&
-						React.createElement(Text, { color: priority, bold: true }, "●"),
-					React.createElement(
-						Text,
-						{
-							color,
-							strikethrough: todo.status === "completed",
-						},
-						todo.content,
-					),
-					ageText &&
-						React.createElement(
-							Text,
-							{ color: COLORS.gray, dimColor: true },
-							ageText,
-						),
-				);
-			}),
+			...renderTreeNodes(tree, ""),
 		),
 	);
 }

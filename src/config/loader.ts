@@ -36,6 +36,7 @@ const globalConfig = new Conf<{
 	initialized?: boolean;
 	recentCommands?: string[];
 	oauth?: Record<string, any>;
+	branding?: { glyphMode?: string };
 }>({
 	projectName: MODULE_NAME,
 	...(CONFIG_CWD ? { cwd: CONFIG_CWD } : {}),
@@ -45,7 +46,6 @@ const globalConfig = new Conf<{
 		recentCommands: [],
 	},
 });
-
 const _require = createRequire(import.meta.url);
 
 let yamlParser: ((content: string) => unknown) | null = null;
@@ -336,6 +336,7 @@ export function saveGlobalConfig(updates: {
 	temperature?: number | null;
 	maxTokens?: number | null;
 	oauth?: Record<string, any> | null;
+	branding?: { glyphMode?: string } | null;
 }): void {
 	if ("apiKey" in updates) {
 		if (updates.apiKey) {
@@ -397,6 +398,13 @@ export function saveGlobalConfig(updates: {
 			globalConfig.set("oauth", encryptedOauth);
 		} else {
 			globalConfig.delete("oauth");
+		}
+	}
+	if ("branding" in updates) {
+		if (updates.branding) {
+			globalConfig.set("branding", updates.branding);
+		} else {
+			globalConfig.delete("branding");
 		}
 	}
 	globalConfig.set("initialized", true);

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { version } from "../../../package.json";
 import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import chalk from "chalk";
@@ -331,37 +332,34 @@ type ChatCommandOptions = {
 	continue?: boolean;
 	[key: string]: unknown;
 };
-
 function formatToolCall(toolName: string, args: unknown): string {
 	const icon =
 		TOOL_ICONS[toolName] ||
 		TOOL_ICONS[toolName.replace(/_background$|_file$|_tool$/, "")] ||
 		TOOL_ICONS.default;
 
+	const extractPath = (a: unknown): string => {
+		if (!a || typeof a !== "object") return "";
+		const o = a as Record<string, unknown>;
+		return String(
+			(o.file_path ?? o.file ?? o.path ?? o.destination ?? "") as string,
+		);
+	};
+
 	switch (toolName) {
 		case "read":
 		case "read_file": {
-			const filePath =
-				typeof args === "object" && args !== null && "file_path" in args
-					? (args as Record<string, unknown>).file_path
-					: "";
-			return `${icon} Reading: ${filePath}`;
+			const filePath = extractPath(args);
+			return `${icon} ${toolName}  ${filePath}`;
 		}
 		case "write":
-		case "write_file": {
-			const filePath =
-				typeof args === "object" && args !== null && "file_path" in args
-					? (args as Record<string, unknown>).file_path
-					: "";
-			return `${icon} Writing: ${filePath}`;
-		}
+		case "write_file":
 		case "edit":
-		case "edit_file": {
-			const filePath =
-				typeof args === "object" && args !== null && "file_path" in args
-					? (args as Record<string, unknown>).file_path
-					: "";
-			return `${icon} Editing: ${filePath}`;
+		case "edit_file":
+		case "apply_diff":
+		case "apply_patch": {
+			const filePath = extractPath(args);
+			return `${icon} ${toolName}  ${filePath}`;
 		}
 		case "bash": {
 			const command =
@@ -1924,11 +1922,17 @@ function ChatUI({
 											debug.log("chat", `Failed to parse tool result JSON: ${err}`);
 										}
 									}
-
+									let parsedArgs: unknown = undefined;
+									try {
+										parsedArgs = JSON.parse(tc.function.arguments);
+									} catch {
+										// not JSON, leave undefined
+									}
 									const toolData = {
 										id: tc.id,
 										name: tc.function.name,
 										description: tc.function.arguments,
+										args: parsedArgs,
 										result: parsedResult,
 										isExpanded: false,
 									};
@@ -2346,6 +2350,24 @@ function ChatUI({
 			paletteHeight -
 			errorOverlayHeight,
 	);
+
+	const gitInfo = useMemo(() => {
+		try {
+			const branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", { encoding: "utf8", timeout: 2000 }).trim();
+			const changes = execSync("git status --porcelain 2>/dev/null | wc -l", { encoding: "utf8", timeout: 2000 }).trim();
+			return { branch, changes: changes === "0" ? "" : `+${changes}` };
+		} catch {
+			return { branch: "", changes: "" };
+		}
+	}, []);
+
+	const contextInfo = useMemo(() => {
+		const ctx = ctxRef.current;
+		if (!ctx) return { pct: 0, total: 0, limit: 0 };
+		const total = estimateTokens(ctx.messages);
+		const limit = ctx.modelContextLength ?? 1_000_000;
+		return { pct: Math.round((total / limit) * 1000) / 10, total, limit };
+	}, [ctxRef]);
 	const contentMaxWidth = Math.max(40, terminalWidth - 4);
 
 	// We can now use computeMessageLines directly since it caches results,
@@ -3402,12 +3424,13 @@ function ChatUI({
 							if (msg.id !== assistantMsgId) return msg;
 							const blocks = msg.blocks ? [...msg.blocks] : [];
 							blocks.push({
-								type: "tool",
+								type: "tool" as const,
 								id,
 								name,
 								description: toolDesc,
+								args,
 								result: null,
-							});
+							} as UiBlock);
 							return { ...msg, toolCalls: [...toolCallsInfo], blocks };
 						}),
 					);
@@ -3899,6 +3922,7 @@ function ChatUI({
 											block.name || "",
 											block.description || "",
 										),
+										toolArgs: (block as Record<string, unknown>).args,
 										result: block.result,
 										maxWidth: contentMaxWidth - 3,
 										status: getToolRenderStatus(block.result),
@@ -3955,6 +3979,7 @@ function ChatUI({
 										tc.name || "",
 										tc.description || "",
 									),
+									toolArgs: (tc as Record<string, unknown>).args,
 									result: tc.result,
 									maxWidth: cardWidth,
 									status: getToolRenderStatus(tc.result),
@@ -4217,6 +4242,33 @@ function ChatUI({
 					value: progress,
 					width: Math.min(contentMaxWidth - 10, 40),
 				}),
+			),
+		messages.length > 0 &&
+			React.createElement(
+				Box,
+				{ flexDirection: "row", paddingX: 1, width: contentMaxWidth, minHeight: 1 },
+				React.createElement(
+					Text,
+					{ color: SAND },
+					"π ",
+					ctxModel,
+					"  ",
+					React.createElement(Text, { dimColor: true }, `@${normalizedProvider}`),
+					...(gitInfo.branch
+						? [
+								"  ",
+								React.createElement(Text, { dimColor: true }, `⎇ ${gitInfo.branch}${gitInfo.changes}`),
+							]
+						: []),
+					"  ",
+					React.createElement(Text, { dimColor: true }, `·`),
+					"  ",
+					React.createElement(Text, { dimColor: true }, `${contextInfo.pct}%`),
+					"/",
+					React.createElement(Text, { dimColor: true }, `${Math.round(contextInfo.limit / 1000)}K`),
+					"  ",
+					React.createElement(Text, { dimColor: true }, `$${sessionCost.toFixed(4)}`),
+				),
 			),
 		React.createElement(
 			Box,
