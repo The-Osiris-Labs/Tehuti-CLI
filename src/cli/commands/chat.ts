@@ -1246,7 +1246,7 @@ function ChatUI({
 			const ctx = ctxRef.current;
 			if (sid && ctx) {
 				sessionManager.saveSession(sid, ctx).catch((err: unknown) => {
-					debug.log("chat", "Periodic auto-save failed:", err);
+					console.warn("Auto-save failed:", err);
 				});
 			}
 		}, AUTO_SAVE_INTERVAL_MS);
@@ -1426,7 +1426,7 @@ function ChatUI({
 			try {
 				await sessionManager.saveSession(sessionId, ctxRef.current);
 			} catch (err) {
-				debug.log("chat", "Session save during restart failed:", err);
+				console.warn("Session save during restart failed:", err);
 			}
 		}
 
@@ -3741,7 +3741,7 @@ function ChatUI({
 			void sessionManager
 				.saveSession(sessionId, ctxRef.current)
 				.catch((err) => {
-					debug.log("chat", "Auto-save failed:", err);
+					console.warn("Auto-save failed:", err);
 				});
 		}
 	}

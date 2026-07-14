@@ -642,35 +642,38 @@ export async function buildSystemPrompt(
 		.replace("Z", `${_tzSign}${_tzHH}:${_tzMM}`);
 
 	let daemonInfo = "";
-	try {
-		const client = new TehutiDaemonClient();
-		await client.connect();
-		const pong: any = await new Promise((resolve, reject) => {
-			client.onMessage((msg) => {
-				if (msg.type === "pong") resolve(msg);
+	if (ctx.companionMode === true) {
+		try {
+			const client = new TehutiDaemonClient();
+			await client.connect();
+			const { promise: pongPromise, resolve: pongResolve, reject: pongReject } = Promise.withResolvers<{ type: "pong"; pid: number; uptime: number; session_start_time: string }>();
+			client.onMessage((msg: unknown) => {
+				if (msg && typeof msg === "object" && "type" in msg && msg.type === "pong") {
+					pongResolve(msg as { type: "pong"; pid: number; uptime: number; session_start_time: string });
+				}
 			});
 			client.send({ type: "ping" });
-			setTimeout(() => reject(new Error("timeout")), 500);
-		});
-		client.disconnect();
+			setTimeout(() => pongReject(new Error("timeout")), 500);
+			const pong = await pongPromise;
+			client.disconnect();
 
-		const uptimeD = Math.floor(pong.uptime / 86400);
-		const uptimeH = Math.floor((pong.uptime % 86400) / 3600);
-		const uptimeM = Math.floor((pong.uptime % 3600) / 60);
-		const uptimeS = Math.floor(pong.uptime % 60);
+			const uptimeD = Math.floor(pong.uptime / 86400);
+			const uptimeH = Math.floor((pong.uptime % 86400) / 3600);
+			const uptimeM = Math.floor((pong.uptime % 3600) / 60);
+			const uptimeS = Math.floor(pong.uptime % 60);
 
-		const parts = [];
-		if (uptimeD > 0) parts.push(`${uptimeD}d`);
-		if (uptimeH > 0) parts.push(`${uptimeH}h`);
-		if (uptimeM > 0) parts.push(`${uptimeM}m`);
-		parts.push(`${uptimeS}s`);
-		const daemonUptimeFormatted = parts.join(" ");
+			const parts = [];
+			if (uptimeD > 0) parts.push(`${uptimeD}d`);
+			if (uptimeH > 0) parts.push(`${uptimeH}h`);
+			if (uptimeM > 0) parts.push(`${uptimeM}m`);
+			parts.push(`${uptimeS}s`);
+			const daemonUptimeFormatted = parts.join(" ");
 
-		daemonInfo = `\n## Companion Daemon Status\n- Daemon Uptime: ${daemonUptimeFormatted}\n- Session Start Time: ${pong.session_start_time || "Unknown"}\n`;
-	} catch (e) {
-		// daemon not running or unresponsive, skip
+			daemonInfo = `\n## Companion Daemon Status\n- Daemon Uptime: ${daemonUptimeFormatted}\n- Session Start Time: ${pong.session_start_time || "Unknown"}\n`;
+		} catch (e) {
+			// daemon not running or unresponsive, skip
+		}
 	}
-
 	return `You are Tehuti, the Scribe of Code Transformations - an AI coding assistant.
 
 ## Identity
@@ -783,8 +786,12 @@ function getTimestampPrefix(): string {
 }
 
 export function addUserMessage(ctx: AgentContext, content: string): void {
+	if (!content || content.trim().length === 0) {
+		debug.log("context", "Skipping empty user message");
+		return;
+	}
 	const timePrefix = getTimestampPrefix();
-	const finalContent = content ? `${timePrefix}${content}` : timePrefix.trim();
+	const finalContent = `${timePrefix}${content}`;
 	const msg: StandardMessage = {
 		role: "user",
 		content: finalContent,

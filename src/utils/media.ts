@@ -12,6 +12,25 @@ if (ffmpegStatic) {
 	ffmpeg.setFfmpegPath(ffmpegStatic);
 }
 
+
+/**
+ * Check whether the terminal supports a graphics protocol (Sixel, Kitty, or
+ * iTerm2). Returns false for basic terminals like ghostty, alacritty, or
+ * the system Terminal.app, so callers can provide a textual fallback.
+ */
+function hasGraphicsProtocol(): boolean {
+	const term = process.env.TERM ?? "";
+	const termProgram = process.env.TERM_PROGRAM ?? "";
+	const colorterm = process.env.COLORTERM ?? "";
+
+	if (term.includes("kitty")) return true;
+	if (termProgram === "iTerm.app") return true;
+	if (colorterm.includes("sixel") || colorterm.includes("6l")) return true;
+	if (/sixel/i.test(term)) return true;
+
+	return false;
+}
+
 export interface MediaRenderOptions {
 	width?: string | number;
 	height?: string | number;
@@ -26,6 +45,9 @@ export async function renderImageToTerminal(
 	filePath: string,
 	options: MediaRenderOptions = {},
 ): Promise<string> {
+	if (!hasGraphicsProtocol()) {
+		return `[Image: ${filePath}]`;
+	}
 	try {
 		return await terminalImage.file(filePath, options);
 	} catch (error) {
@@ -41,6 +63,9 @@ export async function renderVideoThumbnailToTerminal(
 	filePath: string,
 	options: MediaRenderOptions = {},
 ): Promise<string> {
+	if (!hasGraphicsProtocol()) {
+		return `[Video thumbnail: ${filePath}]`;
+	}
 	try {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "tehuti-media-"));
 		const thumbName = "thumbnail.jpg";
@@ -51,10 +76,10 @@ export async function renderVideoThumbnailToTerminal(
 				.on("end", () => resolve())
 				.on("error", (err: Error) => reject(err))
 				.screenshots({
-					timestamps: ["10%"], // Grab a frame at 10% into the video
+					timestamps: ["10%"],
 					filename: thumbName,
 					folder: tempDir,
-					size: "100%", // Keep original resolution before terminal-image scales it
+					size: "100%",
 				});
 		});
 
@@ -63,7 +88,7 @@ export async function renderVideoThumbnailToTerminal(
 		// Cleanup
 		try {
 			await fs.rm(tempDir, { recursive: true, force: true });
-		} catch (_cleanupErr) {
+		} catch {
 			// Ignore cleanup errors
 		}
 

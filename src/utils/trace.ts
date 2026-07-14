@@ -159,6 +159,9 @@ const TRACE_RING_SIZE = 10_000;
 
 /** Max size of any single string in `data` to bound memory. */
 const TRACE_MAX_FIELD = 8 * 1024;
+
+/** Max on-disk JSONL file size before truncation (10 MiB). */
+const MAX_LOG_SIZE = 10 * 1024 * 1024;
 const SENSITIVE_KEY_PATTERN =
 	/(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth(?:orization)?|password|secret|cookie|credential)/i;
 const SENSITIVE_VALUE_PATTERN =
@@ -319,6 +322,17 @@ class TraceCollector {
 		// strand events in an in-memory batch. O_APPEND keeps each write atomic.
 		if (this.fd != null) {
 			try {
+				// Enforce log size limit before appending
+				if (this.logPath) {
+					try {
+						const stat = fs.statSync(this.logPath);
+						if (stat.size > MAX_LOG_SIZE) {
+							fs.truncateSync(this.logPath, Math.floor(MAX_LOG_SIZE / 2));
+						}
+					} catch {
+						// Best-effort; if stat/truncate fails, still try the write
+					}
+				}
 				fs.writeSync(this.fd, `${JSON.stringify(event)}\n`);
 			} catch (err) {
 				debug.log("agent", `TraceCollector: write failed: ${err}`);

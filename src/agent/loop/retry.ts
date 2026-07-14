@@ -6,6 +6,7 @@ export async function withRetry<T>(
 	options: {
 		maxRetries?: number;
 		initialDelayMs?: number;
+		onRetry?: (attempt: number, maxRetries: number, error: string) => void;
 		signal?: AbortSignal;
 	} = {},
 ): Promise<T> {
@@ -45,6 +46,7 @@ export async function withRetry<T>(
 					"agent",
 					`Attempt ${attempt} failed with ${isRateLimit ? "rate limit" : isTimeout ? "timeout" : "server error"}. Retrying in ${delay}ms...`,
 				);
+				options.onRetry?.(attempt, maxRetries, error.message ?? String(error));
 				await new Promise<void>((resolve) => {
 					if (options.signal?.aborted) {
 						resolve();

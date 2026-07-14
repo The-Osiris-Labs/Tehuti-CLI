@@ -362,7 +362,17 @@ export async function runAgentLoop(
 							throw streamError;
 						}
 					},
-					{ signal, maxRetries: 3, initialDelayMs: 2000 },
+					{
+						signal,
+						maxRetries: 3,
+						initialDelayMs: 2000,
+						onRetry: (attempt, maxRetries, _error) => {
+							onProgress?.(
+								attempt / maxRetries,
+								`Retrying (${attempt}/${maxRetries})...`,
+							);
+						},
+					},
 				);
 
 				const midStreamCounts = await Promise.all(midStreamPromises);
