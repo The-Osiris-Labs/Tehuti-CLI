@@ -7,6 +7,7 @@ import {
 	isMouseSequence,
 	isMouseSequenceFragment,
 } from "../../../utils/mouse.js";
+import { BRANDING } from "../../../branding/index.js";
 
 // Maximum time to wait for a mouse sequence fragment to complete before flushing.
 const MOUSE_BUFFER_TIMEOUT_MS = 50;
@@ -543,7 +544,7 @@ export function useChatInput(props: UseChatInputProps) {
 							}
 						}
 						console.log();
-						console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
+						console.log(chalk.hex(BRANDING.colors.primary)(costTracker.getSessionSummary()));
 						onExit();
 						exit();
 					};
@@ -751,7 +752,7 @@ export function useChatInput(props: UseChatInputProps) {
 							}
 						}
 						console.log();
-						console.log(chalk.hex("#F5C518")(costTracker.getSessionSummary()));
+						console.log(chalk.hex(BRANDING.colors.primary)(costTracker.getSessionSummary()));
 						onExit();
 						exit();
 					};

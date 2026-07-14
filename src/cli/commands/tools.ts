@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { Command } from "commander";
+import { BRANDING } from "../../branding/index.js";
 import "../../agent/index.js";
 import { getAllTools } from "../../agent/tools/registry.js";
 import { mcpManager } from "../../mcp/index.js";
@@ -34,7 +35,7 @@ export function toolsCommand(): Command {
 			}
 
 			console.log();
-			console.log(chalk.hex("#F5C518")("  𓆣 Tehuti tools"));
+			console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Tehuti tools"));
 			console.log();
 			console.log(chalk.bold(`  Built-in (${builtIn.length})`));
 			for (const tool of builtIn) {

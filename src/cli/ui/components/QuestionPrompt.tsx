@@ -5,12 +5,12 @@ import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 
 const COLORS = {
-	gold: BRANDING.colors?.primary || "#F5C518",
-	coral: BRANDING.colors?.coral || "#FF6B35",
-	sand: BRANDING.colors?.sand || "#A08860",
-	gray: BRANDING.colors?.gray || "#9CA3AF",
-	nile: BRANDING.colors?.nile || "#3B82F6",
-	green: BRANDING.colors?.green || "#22C55E",
+	gold: BRANDING.colors.primary,
+	coral: BRANDING.colors.coral,
+	sand: BRANDING.colors.sand,
+	gray: BRANDING.colors.gray,
+	nile: BRANDING.colors.nile,
+	green: BRANDING.colors.green,
 } as const;
 
 export function QuestionPrompt({

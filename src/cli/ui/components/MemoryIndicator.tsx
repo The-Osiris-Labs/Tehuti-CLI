@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { agentEventBus } from "../../../agent/events.js";
 import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
 
-const PURPLE = BRANDING.colors?.purple || "#C084FC";
-const GREEN = BRANDING.colors?.green || "#22C55E";
+const PURPLE = BRANDING.colors.purple;
+const GREEN = BRANDING.colors.green;
 
 
 export interface MemoryEvent {

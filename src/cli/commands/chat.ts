@@ -163,14 +163,14 @@ async function flushPendingSession(): Promise<void> {
 		debug.log("chat", "Final flush failed:", err);
 	}
 }
-const GOLD = BRANDING.colors?.primary || "#F5C518";
-const CORAL = BRANDING.colors?.accent || "#FF6B35";
-const GREEN = BRANDING.colors?.green || "#22C55E";
-const GRAY = BRANDING.colors?.gray || "#9CA3AF";
-const RED = BRANDING.colors?.red || "#F05050";
-const CYAN = BRANDING.colors?.cyan || "#06B6D4";
-const SAND = BRANDING.colors?.sand || "#A08860";
-const PURPLE = BRANDING.colors?.purple || "#C084FC";
+const GOLD = BRANDING.colors.primary;
+const CORAL = BRANDING.colors.accent;
+const GREEN = BRANDING.colors.green;
+const GRAY = BRANDING.colors.gray;
+const RED = BRANDING.colors.red;
+const CYAN = BRANDING.colors.cyan;
+const SAND = BRANDING.colors.sand;
+const PURPLE = BRANDING.colors.purple;
 const ascii = isAsciiMode();
 
 const TOOL_ICONS: Record<string, string> = {
@@ -4073,12 +4073,46 @@ function ChatUI({
 								onConfigClick: handleHeaderConfigClick,
 								onCommandClick: handleHeaderCommandClick,
 							}),
-						!showWelcome &&
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							"Type a message to begin",
+						),
+						React.createElement(
+							Box,
+							{
+								flexDirection: "column",
+								marginTop: 1,
+								alignItems: "center",
+							},
 							React.createElement(
 								Text,
-								{ color: SAND, dimColor: true },
-								"Type a message to begin",
+								null,
+								"  ",
+								React.createElement(Text, { color: SAND }, "Ctrl+P"),
+								React.createElement(Text, { dimColor: true }, "  Open command palette    "),
+								React.createElement(Text, { color: SAND }, "/help"),
+								React.createElement(Text, { dimColor: true }, "  Show all commands"),
 							),
+							React.createElement(
+								Text,
+								null,
+								"  ",
+								React.createElement(Text, { color: SAND }, "Ctrl+C"),
+								React.createElement(Text, { dimColor: true }, "  Interrupt or copy       "),
+								React.createElement(Text, { color: SAND }, "\u2191\u2193"),
+								React.createElement(Text, { dimColor: true }, "     History navigation"),
+							),
+							React.createElement(
+								Text,
+								null,
+								"  ",
+								React.createElement(Text, { color: SAND }, "Tab"),
+								React.createElement(Text, { dimColor: true }, "     Complete slash command  "),
+								React.createElement(Text, { color: SAND }, "Esc"),
+								React.createElement(Text, { dimColor: true }, "    Cancel input"),
+							),
+						),
 					)
 				: React.createElement(
 						Box,

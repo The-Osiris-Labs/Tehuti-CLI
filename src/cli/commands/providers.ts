@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { Command } from "commander";
+import { BRANDING } from "../../branding/index.js";
 import {
 	type DeviceProviderCandidate,
 	discoverDeviceProviders,
@@ -92,7 +93,7 @@ export function providersCommand(): Command {
 			}
 
 			console.log();
-			console.log(chalk.hex("#F5C518")("  𓆣 Device provider runtimes"));
+			console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Device provider runtimes"));
 			console.log(
 				chalk.gray(
 					"  Passive discovery only: Tehuti does not inspect credentials, keychains, environment files, or vendor configuration.",
@@ -128,7 +129,7 @@ export function providersCommand(): Command {
 						console.log(JSON.stringify(result, null, 2));
 					} else {
 						console.log();
-						console.log(chalk.hex("#F5C518")("  𓆣 Provider probe"));
+						console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Provider probe"));
 						console.log(formatCodexAppServerProbe(result));
 						console.log();
 					}
@@ -142,7 +143,7 @@ export function providersCommand(): Command {
 						console.log(JSON.stringify(result, null, 2));
 					} else {
 						console.log();
-						console.log(chalk.hex("#F5C518")("  𓆣 Provider probe"));
+						console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Provider probe"));
 						console.log(formatCopilotBridgeProbe(result));
 						console.log();
 					}
@@ -155,7 +156,7 @@ export function providersCommand(): Command {
 					console.log(JSON.stringify(result, null, 2));
 				} else {
 					console.log();
-					console.log(chalk.hex("#F5C518")("  𓆣 Provider probe"));
+					console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Provider probe"));
 					console.log(formatLocalProviderProbe(result));
 					console.log();
 				}

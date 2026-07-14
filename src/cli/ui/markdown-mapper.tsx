@@ -58,11 +58,11 @@ import { MediaViewer } from "./components/MediaViewer.js";
 
 marked.use(markedKatex({ throwOnError: false }));
 
-const GOLD = BRANDING.colors?.primary || "#F5C518";
-const CORAL = BRANDING.colors?.accent || "#FF6B35";
-const GREEN = BRANDING.colors?.green || "#22C55E";
-const GRAY = BRANDING.colors?.gray || "#9CA3AF";
-const CYAN = BRANDING.colors?.cyan || "#06B6D4";
+const GOLD = BRANDING.colors.primary;
+const CORAL = BRANDING.colors.accent;
+const GREEN = BRANDING.colors.green;
+const GRAY = BRANDING.colors.gray;
+const CYAN = BRANDING.colors.cyan;
 
 function highlightSyntax(code: string, language?: string): string {
 	if (isHighlighterReady()) {
@@ -601,7 +601,7 @@ export function renderInlineToken(
 		case "codespan": {
 			return React.createElement(
 				Text,
-				{ key: getKey(), color: CYAN, backgroundColor: "#1e293b" },
+				{ key: getKey(), color: CYAN, backgroundColor: BRANDING.colors.codeBg },
 				` ${token.text} `,
 			);
 		}

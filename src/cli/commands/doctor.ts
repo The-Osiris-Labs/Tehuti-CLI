@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
+import { BRANDING } from "../../branding/index.js";
 import "../../agent/index.js";
 import { getSkillsManager } from "../../agent/skills/manager.js";
 import { getAllTools } from "../../agent/tools/registry.js";
@@ -221,8 +222,7 @@ export function doctorCommand(): Command {
 		)
 		.option("--network", "Probe the configured provider's /models endpoint")
 		.action(async (options: { network?: boolean }) => {
-			console.log();
-			console.log(chalk.hex("#F5C518")("  𓆣 Tehuti doctor"));
+			console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Tehuti doctor"));
 			console.log();
 
 			const checks = await collectDoctorChecks(options);

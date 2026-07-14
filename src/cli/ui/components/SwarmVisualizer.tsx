@@ -10,11 +10,11 @@ import {
 import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
 const COLORS = {
-	gold: BRANDING.colors?.primary || "#F5C518",
-	coral: BRANDING.colors?.coral || "#FF6B35",
-	sand: BRANDING.colors?.gray || "#9CA3AF",
-	nile: BRANDING.colors?.nile || "#3B82F6",
-	green: BRANDING.colors?.green || "#22C55E",
+	gold: BRANDING.colors.primary,
+	coral: BRANDING.colors.coral,
+	sand: BRANDING.colors.gray,
+	nile: BRANDING.colors.nile,
+	green: BRANDING.colors.green,
 } as const;
 
 export interface SubagentState {
@@ -140,19 +140,19 @@ export function SwarmVisualizer(): React.ReactElement {
 				let statusText = "";
 
 				if (agent.status === "working") {
-					statusBg = "#332200";
+					statusBg = BRANDING.colors.bgWorking;
 					statusColor = COLORS.gold;
 					statusText = ` ${(ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading)[frame]} RUNNING `;
 				} else if (agent.status === "idle") {
-					statusBg = "#001500";
+					statusBg = BRANDING.colors.bgSuccess;
 					statusColor = COLORS.green;
 					statusText = ` ${ascii ? ASCII_DECORATIVE.ankh : DECORATIVE.ankh} SUCCESS `;
 				} else if (agent.status === "error") {
-					statusBg = "#220000";
+					statusBg = BRANDING.colors.bgError;
 					statusColor = COLORS.coral;
 					statusText = ` ${ascii ? ASCII_DECORATIVE.eyeOfHorus : DECORATIVE.eyeOfHorus} ERROR `;
 				} else {
-					statusBg = "#222222";
+					statusBg = BRANDING.colors.bgKilled;
 					statusColor = COLORS.sand;
 					statusText = ` ✕ KILLED `;
 				}

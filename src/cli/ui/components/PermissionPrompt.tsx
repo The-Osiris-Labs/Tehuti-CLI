@@ -7,12 +7,12 @@ import {
 } from "../../../permissions/prompts.js";
 
 const COLORS = {
-	gold: BRANDING.colors?.primary || "#F5C518",
-	coral: BRANDING.colors?.coral || "#FF6B35",
-	sand: BRANDING.colors?.sand || "#A08860",
-	gray: BRANDING.colors?.gray || "#9CA3AF",
-	green: BRANDING.colors?.green || "#22C55E",
-	red: BRANDING.colors?.red || "#F05050",
+	gold: BRANDING.colors.primary,
+	coral: BRANDING.colors.coral,
+	sand: BRANDING.colors.sand,
+	gray: BRANDING.colors.gray,
+	green: BRANDING.colors.green,
+	red: BRANDING.colors.red,
 } as const;
 
 export interface PermissionPromptProps {

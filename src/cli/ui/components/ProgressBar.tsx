@@ -3,11 +3,11 @@ import React, { useEffect, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
 
 const COLORS = {
-	primary: BRANDING.colors?.primary || "#F5C518",
-	sand: BRANDING.colors?.sand || "#A08860",
-	green: BRANDING.colors?.green || "#22C55E",
-	coral: BRANDING.colors?.coral || "#FF6B35",
-	gray: BRANDING.colors?.gray || "#9CA3AF",
+	primary: BRANDING.colors.primary,
+	sand: BRANDING.colors.sand,
+	green: BRANDING.colors.green,
+	coral: BRANDING.colors.coral,
+	gray: BRANDING.colors.gray,
 } as const;
 
 export interface ProgressBarProps {

@@ -19,6 +19,12 @@ export const BRANDING = {
 		cyan: "#06B6D4",
 		blue: "#3B82F6",
 		purple: "#C084FC", // WCAG AA (5.65:1) against #1A1A2E
+		codeBg: "#1e293b",
+		promptSand: "#C2B280",
+		bgWorking: "#332200",
+		bgSuccess: "#001500",
+		bgError: "#220000",
+		bgKilled: "#222222",
 		// High contrast mode colors
 		highContrast: {
 			primary: "#FFD700", // Bright yellow/gold (WCAG AAA compliant)

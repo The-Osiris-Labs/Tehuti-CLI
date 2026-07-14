@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 
 const COLORS = {
-	primary: BRANDING.colors?.primary || "#F5C518",
-	green: BRANDING.colors?.green || "#22C55E",
-	red: BRANDING.colors?.red || "#F05050",
-	sand: BRANDING.colors?.sand || "#A08860",
-	coral: BRANDING.colors?.coral || "#FF6B35",
-	nile: BRANDING.colors?.nile || "#3B82F6",
-	gray: BRANDING.colors?.gray || "#9CA3AF",
+	primary: BRANDING.colors.primary,
+	green: BRANDING.colors.green,
+	red: BRANDING.colors.red,
+	sand: BRANDING.colors.sand,
+	coral: BRANDING.colors.coral,
+	nile: BRANDING.colors.nile,
+	gray: BRANDING.colors.gray,
 } as const;
 const ascii = isAsciiMode();
 

@@ -5,12 +5,12 @@ import { BRANDING, HIEROGLYPHS, isAsciiMode, ASCII_HIEROGLYPHS } from "../../../
 import { GlobalInputState } from "../input-state.js";
 
 const COLORS = {
-	primary: BRANDING.colors?.primary || "#F5C518",
-	nile: BRANDING.colors?.nile || "#3B82F6",
-	green: BRANDING.colors?.green || "#22C55E",
-	gray: BRANDING.colors?.gray || "#9CA3AF",
-	red: BRANDING.colors?.red || "#F05050",
-	sand: BRANDING.colors?.sand || "#A08860",
+	primary: BRANDING.colors.primary,
+	nile: BRANDING.colors.nile,
+	green: BRANDING.colors.green,
+	gray: BRANDING.colors.gray,
+	red: BRANDING.colors.red,
+	sand: BRANDING.colors.sand,
 } as const;
 const ascii = isAsciiMode();
 

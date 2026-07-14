@@ -1,5 +1,6 @@
 import { Mutex } from "async-mutex";
 import chalk from "chalk";
+import { BRANDING } from "../branding/index.js";
 import { getTool } from "../agent/tools/registry.js";
 import type { PermissionsConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
@@ -213,10 +214,10 @@ export function buildPromptMessage(
 	args: unknown,
 	isDangerous: boolean,
 ): string {
-	const gold = chalk.hex("#D4AF37");
-	const coral = chalk.hex("#FF6B35");
-	const sand = chalk.hex("#C2B280");
-	const blue = chalk.hex("#3B82F6");
+	const gold = chalk.hex(BRANDING.colors.secondary);
+	const coral = chalk.hex(BRANDING.colors.coral);
+	const sand = chalk.hex(BRANDING.colors.promptSand);
+	const blue = chalk.hex(BRANDING.colors.nile);
 
 	const borderChar = {
 		tl: "╭",

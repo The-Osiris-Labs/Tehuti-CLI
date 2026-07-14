@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { Command } from "commander";
+import { BRANDING } from "../../branding/index.js";
 import { getSkillsManager } from "../../agent/skills/manager.js";
 
 export function skillsCommand(): Command {
@@ -31,7 +32,7 @@ export function skillsCommand(): Command {
 			}
 
 			console.log();
-			console.log(chalk.hex("#F5C518")("  𓆣 Tehuti skills"));
+			console.log(chalk.hex(BRANDING.colors.primary)("  𓆣 Tehuti skills"));
 			console.log();
 			if (skills.length === 0) {
 				console.log(chalk.gray("  No skills installed."));
