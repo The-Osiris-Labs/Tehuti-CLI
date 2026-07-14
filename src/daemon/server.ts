@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import type { ConnectorConfig } from "../messaging/connector-manager.js";
 import { sweepCacheDir } from "../agent/cache/persistent-cache.js";
 import { sweepResponseCache } from "../api/response-cache.js";
@@ -19,11 +20,22 @@ export class TehutiDaemonServer extends EventEmitter {
 	private logRotationInterval: ReturnType<typeof setInterval> | undefined;
 	private readonly daemonStartTime: string;
 	private readonly messagingConfig?: ConnectorConfig;
+	private readonly ipcToken: string;
+	private readonly ipcTokenPath: string;
 
 	constructor(messagingConfig?: ConnectorConfig) {
 		super();
 		this.messagingConfig = messagingConfig;
 		this.daemonStartTime = new Date().toISOString();
+		this.ipcToken = crypto.randomBytes(32).toString("hex");
+		this.ipcTokenPath = path.join(os.homedir(), ".tehuti", ".ipc_token");
+		try {
+			fs.mkdirSync(path.dirname(this.ipcTokenPath), { recursive: true });
+			fs.writeFileSync(this.ipcTokenPath, this.ipcToken, { mode: 0o600 });
+			console.log(`IPC Token written to ${this.ipcTokenPath}`);
+		} catch (err) {
+			console.warn("Failed to write IPC token file:", err);
+		}
 		this.server = net.createServer((socket: net.Socket) => {
 			this.activeSockets.add(socket);
 			this.emit("connection", socket);
@@ -33,6 +45,7 @@ export class TehutiDaemonServer extends EventEmitter {
 				socket.destroy(new Error("Idle Timeout")),
 			);
 			let buffer = "";
+			let authenticated = false;
 
 			socket.on("data", (chunk: string) => {
 				buffer += chunk;
@@ -64,6 +77,29 @@ export class TehutiDaemonServer extends EventEmitter {
 							);
 							// Not JSON, just emit as normal data
 							this.emit("data", socket, Buffer.from(line));
+							continue;
+						}
+
+						// IPC authentication: first message must be { type: "auth", token: "..." }
+						if (!authenticated) {
+							if (typeof msg === "object" && msg !== null && msg.type === "auth") {
+								if (msg.token === this.ipcToken) {
+									authenticated = true;
+									if (!socket.destroyed) {
+										socket.write(`${JSON.stringify({ type: "auth_ok" })}\n`);
+									}
+								} else {
+									if (!socket.destroyed) {
+										socket.write(`${JSON.stringify({ type: "auth_error", error: "Invalid token" })}\n`);
+										socket.destroy();
+									}
+								}
+							} else {
+								if (!socket.destroyed) {
+									socket.write(`${JSON.stringify({ type: "auth_required", error: "Send { type: 'auth', token: '...' } first" })}\n`);
+									socket.destroy();
+								}
+							}
 							continue;
 						}
 
@@ -331,4 +367,8 @@ export class TehutiDaemonServer extends EventEmitter {
 			this.emit("close");
 		});
 	}
+	public getIpcToken(): string {
+		return this.ipcToken;
+	}
+
 }

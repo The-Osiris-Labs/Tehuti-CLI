@@ -123,27 +123,59 @@ export function stableStringify(val: unknown): string {
  * console.log(`Hit rate: ${stats.hits / (stats.hits + stats.misses)}`);
  * ```
  */
+class LRUNode<T> {
+	constructor(
+		public key: string,
+		public value: T,
+		public prev: LRUNode<T> | null = null,
+		public next: LRUNode<T> | null = null,
+	) {}
+}
+
 export class LRUCache<T = unknown> {
 	private cache = new Map<string, CacheEntry<T>>();
-	private accessOrder: string[] = [];
+	private nodeMap = new Map<string, LRUNode<T>>();
 	private currentSize = 0;
 	private readonly config: Required<CacheConfig>;
 	private stats = { hits: 0, misses: 0, evictions: 0 };
 
+	// Doubly-linked list: head.next = most recent, tail.prev = least recent
+	private head = new LRUNode<T>("__head__", null as unknown as T);
+	private tail = new LRUNode<T>("__tail__", null as unknown as T);
+
 	constructor(config: CacheConfig = {}) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
+		this.head.next = this.tail;
+		this.tail.prev = this.head;
 	}
 
-/**
- * Estimates the size of a value in bytes (approximate).
- * 
- * Uses JSON.stringify for objects/arrays, char count for strings.
- * Multiplies by 2 to account for UTF-16 encoding overhead.
- * 
- * @param value - Value to estimate size for
- * @returns Estimated size in bytes
- * @private
- */
+	/** Remove a node from its current position in the linked list. */
+	private removeNode(node: LRUNode<T>): void {
+		if (node.prev) node.prev.next = node.next;
+		if (node.next) node.next.prev = node.prev;
+		node.prev = null;
+		node.next = null;
+	}
+
+	/** Move a node to the front (most recently used position). */
+	private touchNode(node: LRUNode<T>): void {
+		this.removeNode(node);
+		node.next = this.head.next;
+		node.prev = this.head;
+		if (this.head.next) this.head.next.prev = node;
+		this.head.next = node;
+	}
+
+	/**
+	 * Estimates the size of a value in bytes (approximate).
+	 * 
+	 * Uses JSON.stringify for objects/arrays, char count for strings.
+	 * Multiplies by 2 to account for UTF-16 encoding overhead.
+	 * 
+	 * @param value - Value to estimate size for
+	 * @returns Estimated size in bytes
+	 * @private
+	 */
 	private estimateSize(value: T): number {
 		if (typeof value === "string") {
 			return value.length * 2;
@@ -178,30 +210,32 @@ export class LRUCache<T = unknown> {
 		return Date.now() - entry.timestamp > this.config.defaultTtl;
 	}
 
+	/** Evict the least recently used entries until within limits. */
 	private evictLRU(): void {
 		while (
 			(this.currentSize > this.config.maxSize ||
 				this.cache.size >= this.config.maxEntries) &&
-			this.accessOrder.length > 0
+			this.tail.prev !== this.head
 		) {
-			const oldestKey = this.accessOrder.shift();
-			if (oldestKey) {
-				const entry = this.cache.get(oldestKey);
-				if (entry) {
-					this.currentSize -= entry.size;
-					this.cache.delete(oldestKey);
-					this.stats.evictions++;
-				}
+			const lru = this.tail.prev!;
+			const entry = this.cache.get(lru.key);
+			if (entry) {
+				this.currentSize -= entry.size;
+				this.cache.delete(lru.key);
+				this.stats.evictions++;
 			}
+			this.removeNode(lru);
+			this.nodeMap.delete(lru.key);
 		}
 	}
 
-	private touch(key: string): void {
-		const index = this.accessOrder.indexOf(key);
-		if (index > -1) {
-			this.accessOrder.splice(index, 1);
+	/** Remove a key from the linked list and node map. */
+	private unlinkKey(key: string): void {
+		const node = this.nodeMap.get(key);
+		if (node) {
+			this.removeNode(node);
+			this.nodeMap.delete(key);
 		}
-		this.accessOrder.push(key);
 	}
 
 	get(tool: string, args: unknown): T | null {
@@ -216,16 +250,15 @@ export class LRUCache<T = unknown> {
 		if (this.isExpired(entry)) {
 			this.cache.delete(key);
 			this.currentSize -= entry.size;
-			const index = this.accessOrder.indexOf(key);
-			if (index > -1) {
-				this.accessOrder.splice(index, 1);
-			}
+			this.unlinkKey(key);
 			this.stats.misses++;
 			return null;
 		}
 
+		const node = this.nodeMap.get(key);
+		if (node) this.touchNode(node);
+
 		entry.hitCount++;
-		this.touch(key);
 		this.stats.hits++;
 		return entry.result;
 	}
@@ -242,12 +275,13 @@ export class LRUCache<T = unknown> {
 		const existingEntry = this.cache.get(key);
 		if (existingEntry) {
 			this.currentSize -= existingEntry.size;
+			this.unlinkKey(key);
 		}
 
 		while (
 			(this.currentSize + size > this.config.maxSize ||
 				this.cache.size >= this.config.maxEntries) &&
-			this.accessOrder.length > 0
+			this.tail.prev !== this.head
 		) {
 			this.evictLRU();
 		}
@@ -264,7 +298,10 @@ export class LRUCache<T = unknown> {
 
 		this.cache.set(key, entry);
 		this.currentSize += size;
-		this.touch(key);
+
+		const node = new LRUNode<T>(key, result);
+		this.nodeMap.set(key, node);
+		this.touchNode(node);
 	}
 
 	has(tool: string, args: unknown): boolean {
@@ -280,10 +317,7 @@ export class LRUCache<T = unknown> {
 		if (entry) {
 			this.currentSize -= entry.size;
 			this.cache.delete(key);
-			const index = this.accessOrder.indexOf(key);
-			if (index > -1) {
-				this.accessOrder.splice(index, 1);
-			}
+			this.unlinkKey(key);
 			return true;
 		}
 		return false;
@@ -291,19 +325,21 @@ export class LRUCache<T = unknown> {
 
 	deleteByPattern(pattern: string): number {
 		let deleted = 0;
+		const keysToDelete: string[] = [];
 
 		for (const key of this.cache.keys()) {
 			if (key.includes(pattern)) {
-				const entry = this.cache.get(key);
-				if (entry) {
-					this.currentSize -= entry.size;
-					this.cache.delete(key);
-					const index = this.accessOrder.indexOf(key);
-					if (index > -1) {
-						this.accessOrder.splice(index, 1);
-					}
-					deleted++;
-				}
+				keysToDelete.push(key);
+			}
+		}
+
+		for (const key of keysToDelete) {
+			const entry = this.cache.get(key);
+			if (entry) {
+				this.currentSize -= entry.size;
+				this.cache.delete(key);
+				this.unlinkKey(key);
+				deleted++;
 			}
 		}
 
@@ -312,19 +348,21 @@ export class LRUCache<T = unknown> {
 
 	deleteByPrefix(prefix: string): number {
 		let deleted = 0;
+		const keysToDelete: string[] = [];
 
 		for (const key of this.cache.keys()) {
 			if (key.startsWith(prefix)) {
-				const entry = this.cache.get(key);
-				if (entry) {
-					this.currentSize -= entry.size;
-					this.cache.delete(key);
-					const index = this.accessOrder.indexOf(key);
-					if (index > -1) {
-						this.accessOrder.splice(index, 1);
-					}
-					deleted++;
-				}
+				keysToDelete.push(key);
+			}
+		}
+
+		for (const key of keysToDelete) {
+			const entry = this.cache.get(key);
+			if (entry) {
+				this.currentSize -= entry.size;
+				this.cache.delete(key);
+				this.unlinkKey(key);
+				deleted++;
 			}
 		}
 
@@ -333,7 +371,9 @@ export class LRUCache<T = unknown> {
 
 	clear(): void {
 		this.cache.clear();
-		this.accessOrder = [];
+		this.nodeMap.clear();
+		this.head.next = this.tail;
+		this.tail.prev = this.head;
 		this.currentSize = 0;
 	}
 
@@ -356,3 +396,4 @@ export class LRUCache<T = unknown> {
 		return Array.from(this.cache.values());
 	}
 }
+

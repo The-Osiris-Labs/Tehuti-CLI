@@ -306,9 +306,12 @@ export abstract class BaseAPIClient {
 					);
 				}
 			} else if (Array.isArray(content)) {
-				const totalLength = content
-					.filter((c): c is TextBlock => c.type === "text")
-					.reduce((sum, c) => sum + (c.text?.length ?? 0), 0);
+				const totalLength = content.reduce((sum, c) => {
+					if (c.type === "text") {
+						return sum + ((c as TextBlock).text?.length ?? 0);
+					}
+					return sum;
+				}, 0);
 				if (totalLength > MAX_MESSAGE_LENGTH) {
 					throw new APIError(
 						`Message content at index ${i} exceeds maximum length`,

@@ -27,7 +27,10 @@ describe("TehutiDaemonServer Hardening", () => {
 		(daemon as any).server.emit("connection", mockSocket);
 
 		// Emit CRLF JSON message
-		mockSocket.emit("data", '{"type":"test","crlf":true}\r\n');
+	// Authenticate first (required by hardened daemon)
+	mockSocket.emit("data", JSON.stringify({ type: "auth", token: daemon.getIpcToken() }) + "\n");
+	// Emit CRLF JSON message
+	mockSocket.emit("data", '{"type":"test","crlf":true}\r\n');
 		// Emit LF JSON message
 		mockSocket.emit("data", '{"type":"test","crlf":false}\n');
 		// Emit mixed chunks with CRLF

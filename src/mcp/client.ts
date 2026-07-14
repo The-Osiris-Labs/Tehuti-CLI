@@ -12,12 +12,14 @@ import {
 	ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MCPServerConfig, TehutiConfig } from "../config/schema.js";
-import { debug } from "../utils/debug.js";
+import { createLogger } from '../utils/structured-logger.js';
 import {
 	createMCPError,
 	MCPErrorCode,
 	registerCleanupHandler,
 } from "../utils/errors.js";
+
+const log = createLogger('mcp');
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -179,7 +181,7 @@ export class MCPClientManager {
 					try {
 						process.kill(pid, "SIGTERM");
 					} catch {
-						debug.log("mcp", `Failed to kill MCP process ${pid} on exit (already dead)`);
+						log.warn(`Failed to kill MCP process ${pid} on exit (already dead)`);
 					}
 				}
 			}
@@ -307,7 +309,7 @@ export class MCPClientManager {
 
 			const onData = (chunk: Buffer | string) => {
 				const data = chunk.toString();
-				debug.log("mcp", `[${info.name}] stderr: ${data.trim()}`);
+				log.debug(`[${info.name}] stderr: ${data.trim()}`);
 				if (!info.stderrBuffer) {
 					info.stderrBuffer = [];
 				}
@@ -325,7 +327,7 @@ export class MCPClientManager {
 		}
 
 		info.transport.onclose = () => {
-			debug.log("mcp", `[${info.name}] Connection closed`);
+			log.info(`[${info.name}] Connection closed`);
 			this.stopHealthCheck(info.name);
 			info.connected = false;
 			this.updateStatus(info, "disconnected");
@@ -338,7 +340,7 @@ export class MCPClientManager {
 						(info as any)._stderrListener,
 					);
 				} catch {
-					debug.log("mcp", `Failed to remove stderr listener for ${info.name}`);
+					log.warn(`Failed to remove stderr listener for ${info.name}`);
 				}
 				(info as any)._stderrListener = undefined;
 				(info as any)._stderrStream = undefined;
@@ -346,7 +348,7 @@ export class MCPClientManager {
 		};
 
 		info.transport.onerror = (error: Error) => {
-			debug.log("mcp", `[${info.name}] Transport error:`, error);
+			log.error(`[${info.name}] Transport error: ${error.message}`);
 			info.lastError = error.message;
 			this.updateStatus(info, "error");
 		};
@@ -356,12 +358,12 @@ export class MCPClientManager {
 		if (!info.client) return;
 
 		info.client.onerror = (error: Error) => {
-			debug.log("mcp", `[${info.name}] Client error:`, error);
+			log.error(`[${info.name}] Client error: ${error.message}`);
 			info.lastError = error.message;
 		};
 
 		info.client.onclose = () => {
-			debug.log("mcp", `[${info.name}] Client closed`);
+			log.info(`[${info.name}] Client closed`);
 			this.stopHealthCheck(info.name);
 			info.connected = false;
 			this.updateStatus(info, "disconnected");
@@ -458,7 +460,7 @@ export class MCPClientManager {
 		} = info.config.reconnect;
 
 		if (info.reconnectAttempts >= maxAttempts) {
-			debug.log("mcp", `[${serverName}] Max reconnect attempts reached`);
+			log.warn(`[${serverName}] Max reconnect attempts reached`);
 			this.updateStatus(info, "error");
 			return;
 		}
@@ -471,10 +473,7 @@ export class MCPClientManager {
 				? delayMs * 2 ** (info.reconnectAttempts - 1)
 				: delayMs * info.reconnectAttempts;
 
-		debug.log(
-			"mcp",
-			`[${serverName}] Reconnecting in ${delay}ms (attempt ${info.reconnectAttempts}/${maxAttempts})`,
-		);
+		log.info(`[${serverName}] Reconnecting in ${delay}ms (attempt ${info.reconnectAttempts}/${maxAttempts})`);
 
 		const timeout = setTimeout(async () => {
 			this.reconnectTimeouts.delete(serverName);
@@ -495,7 +494,7 @@ export class MCPClientManager {
 					refreshedInfo.reconnectAttempts = 0;
 				}
 			} catch (error) {
-				debug.log("mcp", `[${serverName}] Reconnect failed:`, error);
+				log.error(`[${serverName}] Reconnect failed: ${error instanceof Error ? error.message : String(error)}`);
 				this.scheduleReconnect(serverName);
 			}
 		}, delay);
@@ -539,11 +538,7 @@ export class MCPClientManager {
 				subscription.callback(content);
 			}
 		} catch (error) {
-			debug.log(
-				"mcp",
-				`[${serverName}] Failed to refresh resource ${uri}:`,
-				error,
-			);
+			log.error(`[${serverName}] Failed to refresh resource ${uri}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -565,11 +560,7 @@ export class MCPClientManager {
 				try {
 					await info.client.subscribeResource({ uri: subscription.uri });
 				} catch (error) {
-					debug.log(
-						"mcp",
-						`[${serverName}] Failed to restore subscription ${subscription.uri}:`,
-						error,
-					);
+					log.warn(`[${serverName}] Failed to restore subscription ${subscription.uri}: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}
 		}
@@ -599,7 +590,7 @@ export class MCPClientManager {
 		name: string,
 		config: MCPServerConfig,
 	): Promise<MCPServerInfo> {
-		debug.log("mcp", `Connecting to MCP server: ${name}`);
+		log.info(`Connecting to MCP server: ${name}`);
 
 		const existing = this.servers.get(name);
 		if (existing?.connected) {
@@ -680,14 +671,14 @@ export class MCPClientManager {
 			return info;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			debug.log("mcp", `Failed to connect to ${name}: ${message}`);
+			log.error(`Failed to connect to ${name}: ${message}`);
 			info.lastError = message;
 			this.stopHealthCheck(name);
 			this.updateStatus(info, "error");
 			// Clean up orphaned transport to prevent child process / socket leaks
 			if (info.transport) {
 				try { await info.transport.close(); } catch {
-					debug.log("mcp", `Failed to close transport for ${name} during error recovery`);
+					log.warn(`Failed to close transport for ${name} during error recovery`);
 				}
 				info.transport = null;
 			}
@@ -716,12 +707,9 @@ export class MCPClientManager {
 						inputSchema: t.inputSchema as Record<string, unknown>,
 					})),
 				);
-				debug.log(
-					"mcp",
-					`Discovered ${info.tools.length} tools from ${info.name}`,
-				);
+				log.info(`Discovered ${info.tools.length} tools from ${info.name}`);
 			} catch (error) {
-				debug.log("mcp", `No tools from ${info.name}: ${error}`);
+				log.debug(`No tools from ${info.name}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 
@@ -740,12 +728,9 @@ export class MCPClientManager {
 						mimeType: r.mimeType,
 					}),
 				);
-				debug.log(
-					"mcp",
-					`Discovered ${info.resources.length} resources from ${info.name}`,
-				);
+				log.info(`Discovered ${info.resources.length} resources from ${info.name}`);
 			} catch (error) {
-				debug.log("mcp", `No resources from ${info.name}: ${error}`);
+				log.debug(`No resources from ${info.name}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 
@@ -761,12 +746,9 @@ export class MCPClientManager {
 					description: p.description,
 					arguments: p.arguments,
 				}));
-				debug.log(
-					"mcp",
-					`Discovered ${info.prompts.length} prompts from ${info.name}`,
-				);
+				log.info(`Discovered ${info.prompts.length} prompts from ${info.name}`);
 			} catch (error) {
-				debug.log("mcp", `No prompts from ${info.name}: ${error}`);
+				log.debug(`No prompts from ${info.name}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 	}
@@ -812,7 +794,7 @@ export class MCPClientManager {
 					this.updateStatus(server, "connected");
 					this.healthCheckCallback?.(serverName, true);
 				} catch (error) {
-					debug.log("mcp", `[${serverName}] Health check failed:`, error);
+					log.error(`[${serverName}] Health check failed: ${error instanceof Error ? error.message : String(error)}`);
 					this.updateStatus(server, "unhealthy");
 					this.healthCheckCallback?.(serverName, false);
 				}
@@ -854,7 +836,7 @@ export class MCPClientManager {
 			this.toolRefreshCallback?.(serverName, info.tools);
 			return info.tools;
 		} catch (error) {
-			debug.log("mcp", `[${serverName}] Failed to refresh tools:`, error);
+			log.error(`[${serverName}] Failed to refresh tools: ${error instanceof Error ? error.message : String(error)}`);
 			return info.tools;
 		}
 	}
@@ -879,7 +861,7 @@ export class MCPClientManager {
 			);
 			return info.resources;
 		} catch (error) {
-			debug.log("mcp", `[${serverName}] Failed to refresh resources:`, error);
+			log.error(`[${serverName}] Failed to refresh resources: ${error instanceof Error ? error.message : String(error)}`);
 			return info.resources;
 		}
 	}
@@ -901,7 +883,7 @@ export class MCPClientManager {
 			}));
 			return info.prompts;
 		} catch (error) {
-			debug.log("mcp", `[${serverName}] Failed to refresh prompts:`, error);
+			log.error(`[${serverName}] Failed to refresh prompts: ${error instanceof Error ? error.message : String(error)}`);
 			return info.prompts;
 		}
 	}
@@ -954,7 +936,7 @@ export class MCPClientManager {
 				try {
 					await info.client.unsubscribeResource({ uri });
 				} catch {
-					debug.log("mcp", `Failed to unsubscribe resource ${uri} from ${serverName}`);
+					log.warn(`Failed to unsubscribe resource ${uri} from ${serverName}`);
 				}
 			}
 		} else {
@@ -980,7 +962,7 @@ export class MCPClientManager {
 			try {
 				(info as any)._stderrStream.off("data", (info as any)._stderrListener);
 			} catch {
-				debug.log("mcp", `Failed to remove stderr listener for ${name}`);
+				log.warn(`Failed to remove stderr listener for ${name}`);
 			}
 			(info as any)._stderrListener = undefined;
 			(info as any)._stderrStream = undefined;
@@ -994,10 +976,7 @@ export class MCPClientManager {
 			try {
 				await (info.transport as any).terminateSession();
 			} catch (error) {
-				debug.log(
-					"mcp",
-					`Error terminating HTTP session for ${name}: ${error}`,
-				);
+				log.error(`Error terminating HTTP session for ${name}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 
@@ -1011,7 +990,7 @@ export class MCPClientManager {
 			try {
 				await info.client.close();
 			} catch (error) {
-				debug.log("mcp", `Error closing ${name}: ${error}`);
+				log.error(`Error closing ${name}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 
@@ -1022,12 +1001,12 @@ export class MCPClientManager {
 		this.updateStatus(info, "disconnected");
 		this.servers.delete(name);
 		this.intentionalDisconnects.delete(name);
-		debug.log("mcp", `Disconnected from ${name}`);
+		log.info(`Disconnected from ${name}`);
 	}
 
 	async connectAll(config: TehutiConfig): Promise<Map<string, MCPServerInfo>> {
 		if (!config.mcp?.enabled) {
-			debug.log("mcp", "MCP disabled in config");
+			log.info("MCP disabled in config");
 			return this.servers;
 		}
 
@@ -1036,7 +1015,7 @@ export class MCPClientManager {
 
 		for (const [name, serverConfig] of Object.entries(servers)) {
 			if (serverConfig.disabled) {
-				debug.log("mcp", `Skipping disabled server: ${name}`);
+				log.debug(`Skipping disabled server: ${name}`);
 				continue;
 			}
 
@@ -1044,7 +1023,7 @@ export class MCPClientManager {
 				this.connectServer(name, serverConfig)
 					.then(() => {})
 					.catch((error) => {
-						debug.log("mcp", `Failed to connect to ${name}: ${error}`);
+						log.error(`Failed to connect to ${name}: ${error instanceof Error ? error.message : String(error)}`);
 					}),
 			);
 		}
@@ -1144,7 +1123,7 @@ export class MCPClientManager {
 			);
 		}
 
-		debug.log("mcp", `Executing tool ${toolName} on ${serverName}`);
+		log.info(`Executing tool ${toolName} on ${serverName}`);
 
 		try {
 			const result = await withTimeout(
@@ -1224,7 +1203,7 @@ export class MCPClientManager {
 			);
 		}
 
-		debug.log("mcp", `Getting prompt ${promptName} from ${serverName}`);
+		log.info(`Getting prompt ${promptName} from ${serverName}`);
 
 		try {
 			const result = await withTimeout(
@@ -1249,3 +1228,4 @@ export class MCPClientManager {
 
 export const mcpManager = new MCPClientManager();
 export default mcpManager;
+

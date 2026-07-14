@@ -57,7 +57,7 @@ export async function createBackup(
 		const files = await fs.readdir(dir);
 
 		const escapedBasename = basename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const bakPattern = new RegExp(`^${escapedBasename}\\.\\d+\\.bak$`);
+		const bakPattern = new RegExp(`^${escapedBasename}\\.\\d+\\.\\w+\\.bak$`);
 		const bakFiles = files.filter((f) => bakPattern.test(f));
 
 		const MAX_BACKUPS = 5;
@@ -151,7 +151,7 @@ const WRITE_FILE_SCHEMA = z.object({
 
 const EDIT_FILE_SCHEMA = z.object({
 	file_path: z.string().describe("The absolute path to the file to edit"),
-	old_string: z.string().describe("The text to find and replace"),
+	old_string: z.string().min(1, 'old_string cannot be empty').describe("The text to find and replace"),
 	new_string: z.string().describe("The text to replace with"),
 	expected_hash: z
 		.string()

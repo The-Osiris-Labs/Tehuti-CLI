@@ -41,6 +41,66 @@ import { withRetry } from "./retry.js";
 import { SelfHealingManager } from "./self-healing.js";
 import { processToolCalls } from "./tool-processing.js";
 const log = createLogger("agent-loop");
+/**
+ * Structured error suggestions keyed by Node.js error code or API error pattern.
+ * Each entry maps to actionable suggestions shown to the user.
+ */
+const ERROR_SUGGESTIONS: Record<string, string[]> = {
+	ECONNRESET: [
+		"Connection was reset by the server — it may be overloaded.",
+		"Try again in a few seconds.",
+	],
+	ETIMEDOUT: [
+		"Connection timed out — the server may be slow to respond.",
+		"Try a faster model or increase --timeout.",
+	],
+	ENOTFOUND: [
+		"DNS lookup failed — check your internet connection.",
+		"Verify the API endpoint is correct.",
+	],
+	EACCES: [
+		"Permission denied — check file permissions.",
+		"Run with appropriate privileges if needed.",
+	],
+	ENOENT: [
+		"File not found — verify the path exists.",
+		"Check for typos in the file name or directory.",
+	],
+	EPIPE: [
+		"Broken pipe — the remote end closed the connection.",
+		"Try again in a few seconds.",
+	],
+	"429": [
+		"Rate limited by the API provider.",
+		"Wait a few minutes before retrying.",
+		"Try a different model with --model <model-id>.",
+	],
+	"rate limit": [
+		"Rate limited by the API provider.",
+		"Wait a few minutes before retrying.",
+		"Try a different model with --model <model-id>.",
+	],
+	context_length_exceeded: [
+		"Context too long for this model.",
+		"Use /compact to compress the conversation.",
+		"Try a model with a larger context window.",
+	],
+	invalid_api_key: [
+		"Invalid API key.",
+		'Run "tehuti init" to reconfigure your API key.',
+		"Check ~/.tehuti.json or OPENROUTER_API_KEY environment variable.",
+	],
+	"401": [
+		"Authentication failed — invalid or expired API key.",
+		'Run "tehuti init" to reconfigure your API key.',
+	],
+	timeout: [
+		"Request timed out.",
+		"Try increasing --timeout to a larger value.",
+		"Use a faster model with --model <model-id>.",
+		"Check your internet connection.",
+	],
+};
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -193,7 +253,13 @@ export async function runAgentLoop(
 			}
 
 			// Create per-iteration timeout to prevent hung iterations
-			const iterationSignal = AbortSignal.timeout(120_000);
+			// Use manual AbortController + setTimeout to avoid AbortSignal.timeout timer leak
+			const iterationController = new AbortController();
+			const timer = setTimeout(() => {
+				iterationController.abort(new DOMException('Iteration timeout after 120s', 'TimeoutError'));
+			}, 120_000);
+			iterationController.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+			const iterationSignal = iterationController.signal;
 			const combinedSignal = signal
 				? AbortSignal.any([signal, iterationSignal])
 				: iterationSignal;
@@ -482,6 +548,7 @@ export async function runAgentLoop(
 							// Advisor review is best-effort; ignore failures
 						});
 					}
+					clearTimeout(timer);
 					return {
 						content: totalContent,
 						toolCalls: totalToolCalls,
@@ -553,6 +620,7 @@ export async function runAgentLoop(
 				// Iteration timeout — skip this iteration, don't crash the loop
 				if (iterationSignal.aborted) {
 					debug.log("agent", `Iteration ${iteration} timed out after 120s, skipping to next iteration`);
+					clearTimeout(timer);
 					continue;
 				}
 
@@ -560,6 +628,7 @@ export async function runAgentLoop(
 					signal?.aborted ||
 					(error instanceof Error && error.message.includes("aborted"))
 				) {
+					clearTimeout(timer);
 					return {
 						content: totalContent,
 						toolCalls: totalToolCalls,
@@ -575,49 +644,38 @@ export async function runAgentLoop(
 					agentError = error;
 				} else if (error instanceof Error) {
 					const suggestions: string[] = [];
-					if (error.message.includes('ECONNRESET') || error.message.includes('EPIPE')) {
-						suggestions.push('Network connection lost. Check your internet connection.');
-						suggestions.push('The API server may be temporarily unavailable.');
+					const msg = error.message || "";
+					const errCode = (error as NodeJS.ErrnoException).code;
+
+					// 1. Check Node.js system error code first (most specific)
+					if (errCode && errCode in ERROR_SUGGESTIONS) {
+						suggestions.push(...ERROR_SUGGESTIONS[errCode]);
 					}
-					if (error.message.includes('429') || error.message.includes('rate limit')) {
-						suggestions.push('Rate limited. Wait a few minutes before retrying.');
-					}
-					if (error.message.includes('context_length_exceeded')) {
-						suggestions.push('Context too long. Use /compact to compress.');
-					}
-					if (error.message.includes('invalid_api_key') || error.message.includes('401')) {
-						suggestions.push('Invalid API key. Run "tehuti init" to reconfigure.');
-					}
+
+					// 2. Check error message against all patterns
 					if (suggestions.length === 0) {
-						if (error.message.includes("API") || error.message.includes("key")) {
+						const lowerMsg = msg.toLowerCase();
+						for (const [pattern, patternSuggestions] of Object.entries(ERROR_SUGGESTIONS)) {
+							if (lowerMsg.includes(pattern.toLowerCase())) {
+								suggestions.push(...patternSuggestions);
+								break;
+							}
+						}
+					}
+
+					// 3. Fallback for unmatched errors
+					if (suggestions.length === 0) {
+						if (msg.includes("API") || msg.includes("key")) {
 							suggestions.push(
 								"Check your API key in ~/.tehuti.json or OPENROUTER_API_KEY environment variable",
 							);
 							suggestions.push("Run 'tehuti init' to reconfigure your API key");
-						} else if (
-							error.message.includes("timeout") ||
-							error.message.includes("Timeout")
-						) {
-							suggestions.push("Try increasing --timeout to a larger value");
-							suggestions.push("Use a faster model with --model <model-id>");
-							suggestions.push("Check your internet connection");
-						} else if (
-							error.message.includes("rate limit") ||
-							error.message.includes("429")
-						) {
-							suggestions.push("Wait a few minutes before making more requests");
-							suggestions.push("Try a different model with --model <model-id>");
-						} else if (error.message.includes("context")) {
-							suggestions.push("Try a model with larger context window");
-							suggestions.push("Simplify your prompt to reduce context length");
-							suggestions.push("Use /compact command to compress context");
 						} else {
 							suggestions.push("Check your internet connection");
 							suggestions.push("Try again later");
 							suggestions.push("Run with --debug for more details");
 						}
 					}
-
 					agentError = new AgentError(
 						error.message,
 						iteration === 1 ? "initialization" : "execution",
@@ -640,6 +698,7 @@ export async function runAgentLoop(
 					formatError(agentError),
 				);
 
+				clearTimeout(timer);
 				return {
 					content: totalContent,
 					toolCalls: totalToolCalls,

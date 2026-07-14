@@ -23,7 +23,7 @@ export interface VectorStore {
 export class BM25VectorStore implements VectorStore {
 	private documents: Map<
 		string,
-		{ tokens: string[]; metadata: Record<string, any> }
+		{ tokens: string[]; metadata: Record<string, any>; tf: Map<string, number> }
 	> = new Map();
 	private documentCount = 0;
 	// document frequency per term
@@ -79,7 +79,13 @@ export class BM25VectorStore implements VectorStore {
 		const tokens = this.tokenize(text);
 		if (tokens.length === 0) return;
 
-		this.documents.set(id, { tokens, metadata });
+		// Pre-compute term frequency map
+		const tf = new Map<string, number>();
+		for (const token of tokens) {
+			tf.set(token, (tf.get(token) ?? 0) + 1);
+		}
+
+		this.documents.set(id, { tokens, metadata, tf });
 		this.documentCount++;
 		this.totalTokens += tokens.length;
 		this.avgdl = this.totalTokens / this.documentCount;
@@ -139,16 +145,9 @@ export class BM25VectorStore implements VectorStore {
 		for (const [id, doc] of this.documents.entries()) {
 			let score = 0;
 			const docLength = doc.tokens.length;
-
-			// Count term frequencies in this document
-			const tf = new Map<string, number>();
-			for (const token of doc.tokens) {
-				tf.set(token, (tf.get(token) || 0) + 1);
-			}
-
 			// Calculate BM25 score
 			for (const token of queryTokens) {
-				const termFreq = tf.get(token) || 0;
+				const termFreq = doc.tf.get(token) || 0;
 				if (termFreq === 0) continue;
 
 				const docFreq = this.df.get(token) || 0;

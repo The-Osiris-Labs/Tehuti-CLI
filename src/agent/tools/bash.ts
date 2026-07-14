@@ -3,7 +3,28 @@ import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
 import { debug } from "../../utils/debug.js";
-import type { ToolContext, ToolDefinition, ToolResult } from "./registry.js";
+import { type ToolContext, type ToolDefinition, type ToolResult } from "./registry.js";
+
+// Environment variables that must never be forwarded to spawned child processes
+const SENSITIVE_ENV_VARS = [
+	"TEHUTI_API_KEY",
+	"OPENROUTER_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"GITHUB_TOKEN",
+	"GH_TOKEN",
+];
+
+function getSanitizedEnv(extra?: Record<string, string>): Record<string, string | undefined> {
+	const env: Record<string, string | undefined> = { ...process.env };
+	for (const key of SENSITIVE_ENV_VARS) {
+		delete env[key];
+	}
+	if (extra) {
+		Object.assign(env, extra);
+	}
+	return env;
+}
 
 let isDockerAvailable = false;
 try {
@@ -322,7 +343,7 @@ function startBackgroundProcess(
 		try {
 			proc = spawn(cmd, args, {
 				cwd,
-				env: { ...process.env, ...ctx.env },
+				env: getSanitizedEnv(ctx.env),
 				detached: true,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
@@ -641,7 +662,7 @@ async function executeBash(
 		try {
 			proc = spawn(cmd, args, {
 				cwd,
-				env: { ...process.env, ...ctx.env },
+				env: getSanitizedEnv(ctx.env),
 				detached: true,
 			});
 		} catch (error) {
