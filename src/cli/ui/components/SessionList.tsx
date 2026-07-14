@@ -64,6 +64,12 @@ function SessionRow({
 	const tokenText = String(session.tokensUsed || 0);
 	const modelText = session.model || "Unknown";
 	const cwdText = session.cwd || "~";
+	const lastMsg = session.lastMessageContent || "";
+	const lastMessagePreview = lastMsg.length > 40
+		? `"${lastMsg.substring(0, 40)}..."`
+		: lastMsg
+			? `"${lastMsg}"`
+			: "";
 
 	return (
 		<Box ref={ref} paddingX={1} width="100%" flexDirection="row">
@@ -92,6 +98,11 @@ function SessionRow({
 			<Box flexGrow={1} flexBasis={0} paddingRight={1}>
 				<Text color={active ? "white" : "gray"} wrap="truncate-end">
 					{cwdText}
+				</Text>
+			</Box>
+			<Box width={28} paddingRight={1}>
+				<Text color={active ? "white" : "gray"} wrap="truncate-end">
+					{lastMessagePreview}
 				</Text>
 			</Box>
 			<Box width={12}>
@@ -236,6 +247,11 @@ export function SessionList({
 					<Box flexGrow={1} flexBasis={0} paddingRight={1}>
 						<Text color="gray" bold>
 							CWD
+						</Text>
+					</Box>
+					<Box width={28} paddingRight={1}>
+						<Text color="gray" bold>
+							LAST MSG
 						</Text>
 					</Box>
 					<Box width={12}>

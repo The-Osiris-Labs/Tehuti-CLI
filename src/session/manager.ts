@@ -22,6 +22,25 @@ function isValidSessionId(id: string): boolean {
 }
 
 /**
+ * Safely extract the last user message text from a messages array.
+ * Handles both string and ContentBlock[] content formats.
+ */
+function extractTextContent(messages: StandardMessage[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg.role !== "user") continue;
+		if (typeof msg.content === "string") return msg.content;
+		if (Array.isArray(msg.content)) {
+			return msg.content
+				.map((b) => (typeof b === "object" && "text" in b ? b.text : ""))
+				.join(" ")
+				.trim();
+		}
+	}
+	return "";
+}
+
+/**
  * Write a JSON file atomically with an fsync barrier. This protects against
  * power-loss / SIGKILL leaving the on-disk file in a half-written state: the
  * data is fsync'd to the journal BEFORE the temp file is renamed, so the
@@ -123,6 +142,7 @@ export interface SessionMetadata {
 	cwd: string;
 	model: string;
 	messageCount: number;
+	lastMessageContent?: string;
 	toolCalls: number;
 	tokensUsed: number;
 }
@@ -313,6 +333,7 @@ class SessionManager {
 			messageCount: 0,
 			toolCalls: 0,
 			tokensUsed: 0,
+			lastMessageContent: "",
 		};
 
 		await this.saveSessionMetadata(id, metadata);
@@ -354,6 +375,9 @@ class SessionManager {
 			messageCount: ctx.messages.length,
 			toolCalls: ctx.metadata.toolCalls,
 			tokensUsed: ctx.metadata.tokensUsed,
+			lastMessageContent: extractTextContent(
+				ctx.messages,
+			).substring(0, 60),
 		};
 
 		await this.saveSessionMetadata(id, metadata);

@@ -4,20 +4,24 @@ import {
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BRANDING, DECORATIVE } from "../../../branding/index.js";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import chalk from "chalk";
+import {
+	BRANDING,
+	DECORATIVE,
+	ROLE_COLORS,
+	isAsciiMode,
+	ASCII_DECORATIVE,
+} from "../../../branding/index.js";
 import { getAllProviders } from "../../../config/providers.js";
 import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { addRecentCommand, getRecentCommands } from "../commandPaletteRecent.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
-
 const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
 const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
-// @ts-expect-error TS6133/TS6192: Unused variable
-const _RED = BRANDING.colors.red;
 
 /** High-contrast mode detection for terminal accessibility */
 const HIGH_CONTRAST = process.env.TEHUTI_HIGH_CONTRAST === "1" || process.env.NO_COLOR === undefined;
@@ -238,21 +242,35 @@ export function CommandPalette({
 	>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [_error, setError] = useState<string | null>(null);
+	// Fuzzy match result cache keyed on cmd.id + query for fast repeated lookups
+	const fuzzyCacheRef = useRef<Record<string, { score: number; indices: number[] }>>({});
+	const getCachedFuzzy = useCallback(
+		(text: string, cmdId: string, q: string) => {
+			const key = `${cmdId}::${q}`;
+			const cached = fuzzyCacheRef.current[key];
+			if (cached) return cached;
+			const result = fuzzyMatch(text, q);
+			fuzzyCacheRef.current[key] = result;
+			return result;
+		},
+		[fuzzyMatch],
+	);
+	useEffect(() => {
+		// Resize handling for CommandPalette — currently empty but
+		// registered to keep the pattern available for future use.
+		if (!stdout) return;
+		return () => {};
+	}, [stdout]);
 
 	const currentCommands =
 		menuStack.length > 0 ? menuStack[menuStack.length - 1].commands : commands;
 
-		useEffect(() => {
-			// Resize handling for CommandPalette — currently empty but
-			// registered to keep the pattern available for future use.
-			if (!stdout) return;
-			return () => {};
-		}, [stdout]);
-
 	const filteredCommands = useMemo(() => {
-		if (!query.trim()) {
+		const q = query;
+		if (!q.trim()) {
 			return currentCommands.map((cmd) => ({
 				...cmd,
+				matchScore: -1,
 				matchIndices: [] as number[],
 				matchField: "label",
 			}));
@@ -260,11 +278,11 @@ export function CommandPalette({
 
 		const results = currentCommands
 			.map((cmd) => {
-				const labelMatch = fuzzyMatch(cmd.label, query);
-				const descMatch = fuzzyMatch(cmd.description, query);
-				const idMatch = fuzzyMatch(cmd.id, query);
+				const labelMatch = getCachedFuzzy(cmd.label, cmd.id, q);
+				const descMatch = getCachedFuzzy(cmd.description, cmd.id, q);
+				const idMatch = getCachedFuzzy(cmd.id, cmd.id, q);
 				const aliasesMatches = (cmd.aliases || []).map((alias) =>
-					fuzzyMatch(alias, query),
+					getCachedFuzzy(alias, cmd.id, q),
 				);
 				const bestAliasMatch = aliasesMatches.reduce(
 					(best, curr) => (curr.score > best.score ? curr : best),
@@ -305,8 +323,7 @@ export function CommandPalette({
 			.filter((cmd) => (cmd.matchScore ?? -1) >= 0);
 
 		return results.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
-	}, [currentCommands, query]);
-
+	}, [currentCommands, query, getCachedFuzzy]);
 	// Group before virtualizing so a window is always a stable slice of the
 	// complete category order rather than a post-window reordering.
 	const groupedCommands = useMemo(() => {
@@ -505,11 +522,22 @@ export function CommandPalette({
 								{ flexDirection: "column" },
 								orderedGroups.map(([category, items]) => {
 									const isRecent = category === "recent";
+									// Color by category
+									const categoryColor =
+										category === "session"
+											? ROLE_COLORS.info
+											: category === "model"
+												? ROLE_COLORS.user
+												: category === "help"
+													? ROLE_COLORS.success
+													: category === "recent"
+														? ROLE_COLORS.warning
+														: ROLE_COLORS.system;
 									return React.createElement(Box, { key: `group-${category}`, flexDirection: "column" }, [
 										React.createElement(
 											Text,
-											{ key: `header-${category}`, dimColor: true },
-											isRecent ? `── RECENT ` : `── ${category.toUpperCase()} `,
+											{ key: `header-${category}`, color: categoryColor, dimColor: true },
+											`── ${isRecent ? "RECENT" : category.toUpperCase()} ──`,
 										),
 										...items.map((cmd) => {
 											const cmdIndex = groupedCommands.findIndex(
@@ -768,68 +796,154 @@ export function createCommands(options: {
 	];
 }
 
+/** Icon mapping for help command categories */
+const HELP_CATEGORY_ICONS: Record<string, string> = {
+	session: "\u{1F4CB}",
+	model: "\u{1F916}",
+	help: "\u2753",
+};
+
+const HELP_COMMAND_ICONS: Record<string, string> = {
+	"/update": "\u{1F504}",
+	"/config": "\u2699\uFE0F",
+	"/clear": "\u{1F9F9}",
+	"/cost": "\u{1F4B0}",
+	"/stats": "\u{1F4CA}",
+	"/compact": "\u{1F9F9}",
+	"/restart": "\u{1F504}",
+	"/save": "\u{1F4BE}",
+	"/export": "\u{1F4E4}",
+	"/load": "\u{1F4C2}",
+	"/sessions": "\u{1F4C1}",
+	"/model": "\u{1F4E1}",
+	"/provider": "\u{1F504}",
+	"/thinking": "\u{1F9E0}",
+	"/plan": "\u{1F5FA}\uFE0F",
+	"/skills": "\u{1F3B4}",
+	"/tools": "\u{1F6E0}\uFE0F",
+	"/help": "\u2753",
+	"/dashboard": "\u{1F4CA}",
+	"/exit": "\u{1F6AA}",
+};
+
+// Commands for help display, grouped by category — covers all registered slash commands
+const HELP_COMMANDS: Array<{
+	id: string;
+	label: string;
+	category: string;
+	description: string;
+	shortcut?: string;
+	aliases?: string[];
+}> = [
+	// Session
+	{ id: "/clear", label: "/clear", category: "session", description: "Clear conversation history and reset context", shortcut: "Ctrl+L", aliases: ["/cls", "/c"] },
+	{ id: "/compact", label: "/compact", category: "session", description: "Compact context to free up token space" },
+	{ id: "/config", label: "/config", category: "session", description: "Open interactive configuration editor" },
+	{ id: "/copy", label: "/copy", category: "session", description: "Copy last assistant response to clipboard" },
+	{ id: "/cost", label: "/cost", category: "session", description: "Show session cost, token usage, and cache savings" },
+	{ id: "/dashboard", label: "/dashboard", category: "session", description: "Toggle Swarm Observability Dashboard" },
+	{ id: "/exit", label: "/exit", category: "session", description: "Exit Tehuti CLI", aliases: ["/quit", "/q"] },
+	{ id: "/export", label: "/export", category: "session", description: "Export session to Markdown or JSON" },
+	{ id: "/help", label: "/help", category: "help", description: "Show all commands and keyboard shortcuts", aliases: ["/h"] },
+	{ id: "/load", label: "/load", category: "session", description: "Load a saved session" },
+	{ id: "/plan", label: "/plan", category: "session", description: "Enter plan mode (read-only exploration)" },
+	{ id: "/restart", label: "/restart", category: "session", description: "Save session and start a fresh conversation" },
+	{ id: "/save", label: "/save", category: "session", description: "Save current session for later" },
+	{ id: "/sessions", label: "/sessions", category: "session", description: "List all saved sessions" },
+	{ id: "/skills", label: "/skills", category: "session", description: "List all available skills" },
+	{ id: "/stats", label: "/stats", category: "session", description: "Show performance metrics and optimization statistics" },
+	{ id: "/tools", label: "/tools", category: "session", description: "List all registered tools (built-in, MCP, and plugin)" },
+	{ id: "/update", label: "/update", category: "session", description: "Pull latest updates and rebuild the CLI" },
+	// Model & Provider
+	{ id: "/model", label: "/model", category: "model", description: "Switch to a different AI model" },
+	{ id: "/provider", label: "/provider", category: "model", description: "Switch AI provider (openrouter/kilocode/custom)" },
+	{ id: "/thinking", label: "/thinking", category: "model", description: "Toggle extended thinking mode for complex reasoning" },
+];
+
 export function formatHelpOutput(): string {
-	return `
-# 𓆣 TEHUTI ─ Scribe of Code Transformations
+	const sections = new Map<string, typeof HELP_COMMANDS>();
+	for (const cmd of HELP_COMMANDS) {
+		const list = sections.get(cmd.category) ?? [];
+		list.push(cmd);
+		sections.set(cmd.category, list);
+	}
 
-## SESSION
-| Command | Description |
-|---|---|
-| \`/clear\` | Clear conversation |
-| \`/cost\` | Show tokens and cost |
-| \`/stats\` | Show performance metrics |
-| \`/compact\` | Compact context to free up token space |
-| \`/restart\` | Start a fresh conversation (new session ID) |
-| \`/save [name]\` | Save session |
-| \`/export [format]\` | Export session to Markdown or JSON |
-| \`/load\` | Load session (Interactive Submenu) |
-| \`/sessions\` | List saved sessions |
-| \`/search <q>\` | Search saved sessions |
-| \`/plan\` | Enter plan mode (read-only exploration) |
-| \`/config\` | Open interactive configuration editor |
-| \`/copy\` | Copy last assistant response to clipboard |
-| \`/todos\` | Show task list |
-| \`/dashboard\` | Toggle Swarm Observability Dashboard |
-| \`/help\` | Show this command reference |
-| \`/exit\` | Exit Tehuti |
+	const sectionOrder = ["session", "model", "help"];
+	const sectionLabels: Record<string, string> = {
+		session: "SESSION",
+		model: "MODEL & PROVIDER",
+		help: "HELP",
+	};
+	const sectionColors: Record<string, string> = {
+		session: ROLE_COLORS.info,
+		model: ROLE_COLORS.user,
+		help: ROLE_COLORS.success,
+	};
 
-## MODEL & PROVIDER
-| Command | Description |
-|---|---|
-| \`/model\` | Switch AI model (Interactive Submenu) |
-| \`/provider\` | Switch provider (Interactive Submenu) |
-| \`/providers\` | List all available providers |
-| \`/auth gemini\` | Authenticate Google for Gemini models |
-| \`/thinking\` | Toggle extended thinking mode |
+	const ascii = isAsciiMode();
+	const ibis = ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis;
 
-## TOOLS & SKILLS
-| Command | Description |
-|---|---|
-| \`/tools\` | List all available tools (built-in + MCP) |
-| \`/skills\` | List all available skills |
+	let output = "";
 
-## SYSTEM
-| Command | Description |
-|---|---|
-| \`/update\` | Pull latest updates and rebuild the CLI |
-| \`/reset-key\` | Reset API key (clears config) |
-| \`/mouse\` | Toggle mouse support |
-| \`/profiler\` | Toggle trace profiler |
+	// Header
+	output += chalk.hex(ROLE_COLORS.assistant).bold(`  ${ibis} TEHUTI — Scribe of Code Transformations\n\n`);
 
-## SHORTCUTS
-| Shortcut | Action | Shortcut | Action |
-|---|---|---|---|
-| \`/\` | Open palette | \`⌃P\` | Open command palette |
-| \`⌃L\` | Clear conversation | \`⌃C\` | Interrupt / exit empty |
-| \`↩\` | Send message | \`⇧↩\` | New line (multiline) |
-| \`⌃A\` | Move to start | \`⌃E\` | Move to end |
-| \`⌃U\` | Delete to start | \`⌃K\` | Delete to end |
-| \`⌃W\` | Delete previous word | \`⌃D\` | Delete character forward |
-| \`⌃T\` | Transpose characters | \`⌃X\` | Cut selection |
-| \`⌃← / ⌃→\`| Word jump | \`⌃⌫ / ⌃⌦\`| Delete word |
-| \`Tab\` | Complete slash command | \`⇧Tab\` | Cycle backward |
-| \`↑ / ↓\` | Prompt history | \`⌃↑ / ⌃↓\`| Scroll line |
-| \`PgUp / PgDn\`| Scroll page | \`Home / End\`| Scroll to top/bottom |
-| \`Esc\` | Clear input | | |
-`;
+	for (const cat of sectionOrder) {
+		const commands = sections.get(cat);
+		if (!commands || commands.length === 0) continue;
+
+		const label = sectionLabels[cat] ?? cat.toUpperCase();
+		const color = sectionColors[cat] ?? ROLE_COLORS.system;
+		const icon = HELP_CATEGORY_ICONS[cat] ?? "";
+
+		output += chalk.hex(color)(`  ${icon} ${label}\n`);
+
+		for (const cmd of commands) {
+			const cmdIcon = HELP_COMMAND_ICONS[cmd.id] ?? "\u{1F539}";
+			const aliasText = cmd.aliases && cmd.aliases.length > 0
+				? ` (${cmd.aliases.join(", ")})`
+				: "";
+			const shortcut = cmd.shortcut
+				? ` [${cmd.shortcut}]`
+				: "";
+			output += `  ${cmdIcon} ${cmd.label}${aliasText}${shortcut}\n`;
+			output += `    ${cmd.description}\n`;
+		}
+
+		output += "\n";
+	}
+
+	// Keyboard Shortcuts section
+	output += `  \u{2328} KEYBOARD SHORTCUTS\n`;
+	const shortcuts: Array<[string, string]> = [
+		["/", "Open palette"],
+		["Ctrl+P", "Open command palette"],
+		["Ctrl+L", "Clear conversation"],
+		["Ctrl+C", "Interrupt / exit empty"],
+		["Enter", "Send message"],
+		["Shift+Enter", "New line (multiline)"],
+		["Ctrl+A", "Move to start"],
+		["Ctrl+E", "Move to end"],
+		["Ctrl+U", "Delete to start"],
+		["Ctrl+K", "Delete to end"],
+		["Ctrl+W", "Delete previous word"],
+		["Ctrl+D", "Delete character forward"],
+		["Ctrl+T", "Transpose characters"],
+		["Ctrl+X", "Cut selection"],
+		["Ctrl+Left/Right", "Word jump"],
+		["Ctrl+Backspace/Del", "Delete word"],
+		["Tab", "Complete slash command"],
+		["Shift+Tab", "Cycle backward"],
+		["Up/Down", "Prompt history"],
+		["Ctrl+Up/Down", "Scroll line"],
+		["PgUp/PgDn", "Scroll page"],
+		["Home/End", "Scroll to top/bottom"],
+		["Esc", "Clear input"],
+	];
+	for (const [key, action] of shortcuts) {
+		output += `  \u{25B6} ${key}\n`;
+		output += `    ${action}\n`;
+	}
+
+	return output;
 }

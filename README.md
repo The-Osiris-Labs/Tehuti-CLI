@@ -18,6 +18,40 @@ Named after Thoth (Tehuti), the Egyptian deity of wisdom and writing, the CLI co
 
 ---
 
+## What's New
+
+### Persistent HUD Status Bar
+Always-visible status bar at the bottom of the terminal showing active model, current git branch and status, context usage percentage, running cost estimate, active subagent count, and session duration.
+
+### Tree-Structured TodoList
+Hierarchical todo management with arbitrary nesting. Subtasks collapse under their parent with completion roll-up and progress tracking.
+
+### Inline Diff Viewer
+Color-coded unified diffs rendered inline with full ANSI terminal colors. Added, removed, and modified lines are visually distinct without leaving the conversation flow.
+
+### Hashline Edits
+Content-hash anchored editing: each file is addressed by its content hash instead of a fragile line number, making edits resilient to concurrent changes and reordering.
+
+### Stream Rules
+Regex-based output monitors that scan model responses in real-time and auto-correct maladaptive or disallowed patterns before they reach the terminal.
+
+### Glyph Mode Selection
+Choose between Nerd Font (icon-rich), Unicode (emoji/fallback), and ASCII (max-compatibility) rendering modes. Toggleable at runtime with immediate visual feedback.
+
+### Role-Colored Message Cards
+Messages are rendered as distinct cards with role-colored left borders (user, assistant, system, tool). Improves scanability during long conversations.
+
+### Multi-Column Layout
+Wide-terminal aware layout engine that expands into two or more columns when viewport width permits, maximizing information density.
+
+### Ctrl+F Message Search
+Interactive search overlay triggered with Ctrl+F. Real-time filtering with match highlighting and keyboard navigation between results.
+
+### Tab Completion with Inline Display
+Context-aware tab completion in the input bar, rendering available completions inline as an overlay without disturbing the prompt.
+
+---
+
 ## 🚀 Latest: v1.2.1
 The current release introduces operator-facing tooling and a real-world leak fix on top of the v1.2.0 compaction-digest overhaul.
 

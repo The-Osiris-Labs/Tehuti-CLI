@@ -121,7 +121,8 @@ describe("CommandPalette helpers", () => {
 	it("documents only the shortcuts that the input loop actually supports", () => {
 		const help = formatHelpOutput();
 		expect(help).toContain("/provider");
-		expect(help).toContain("`/` | Open palette");
+		expect(help).toContain("▶ /");
+		expect(help).toContain("Open palette");
 		expect(help).not.toContain("Copy selected");
 		expect(help).not.toContain("Paste");
 		expect(help).not.toContain("Swap characters");

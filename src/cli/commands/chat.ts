@@ -1157,7 +1157,9 @@ function ChatUI({
 	const [showSearch, setShowSearch] = useState(false);
 	const [searchMatchIndex, setSearchMatchIndex] = useState(0);
 	const [sendError, setSendError] = useState<string | null>(null);
-	const sendErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const sendErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const [lastError, setLastError] = useState<string | null>(null);
+	const lastErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const [advisories, setAdvisories] = useState<{ id: number; text: string }[]>(
 		[],
 	);
@@ -4072,8 +4074,11 @@ function ChatUI({
 				),
 			);
 			setSendError(errorContent);
-			if (sendErrorTimerRef.current) clearTimeout(sendErrorTimerRef.current);
-			sendErrorTimerRef.current = setTimeout(() => setSendError(null), 3000);
+			setLastError(errorContent);
+			clearTimeout(sendErrorTimerRef.current);
+			clearTimeout(lastErrorTimerRef.current);
+			sendErrorTimerRef.current = setTimeout(() => setSendError(null), 15000);
+			lastErrorTimerRef.current = setTimeout(() => setLastError(null), 15000);
 			streamingMsgIdRef.current = null;
 			streamingContentRef.current = "";
 			streamingStartRef.current = null;
@@ -4674,6 +4679,16 @@ function ChatUI({
 					React.createElement(Text, { dimColor: true }, `·`),
 					"  ",
 					React.createElement(Text, { dimColor: true }, sessionDuration || "0s"),
+					...(lastError
+						? [
+								"  ",
+								React.createElement(
+									Text,
+									{ color: RED },
+									`${ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error} Error`,
+								),
+							]
+						: []),
 				),
 			),
 		React.createElement(

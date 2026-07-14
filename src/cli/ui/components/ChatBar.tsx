@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import React, { useMemo } from "react";
-import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 import { HieroglyphSpinner } from "./HieroglyphSpinner.js";
 
 const GOLD = BRANDING.colors.gold;
@@ -8,6 +8,7 @@ const CORAL = BRANDING.colors.coral;
 const SAND = BRANDING.colors.sand;
 const CYAN = BRANDING.colors.cyan;
 const GREEN = BRANDING.colors.green;
+const RED = BRANDING.colors.red;
 
 export interface ChatBarProps {
 	input: string;
@@ -216,12 +217,22 @@ export function ChatBar({
 			),
 		),
 
-		// Error indicator (auto-dismissed by parent timer)
+		// Error indicator — 𓂀 Error in RED with auto-dismiss by parent
 		sendError &&
 			React.createElement(
-				Text,
-				{ color: CORAL, dimColor: true },
-				`! ${sendError}`,
+				Box,
+				{
+					flexDirection: "row",
+					marginBottom: 1,
+					paddingX: 1,
+					borderStyle: "round",
+					borderColor: RED,
+				},
+				React.createElement(
+					Text,
+					{ color: RED, bold: true },
+					`${ascii ? ASCII_HIEROGLYPHS.error : HIEROGLYPHS.error} Error: ${sendError}`,
+				),
 			),
 
 		// Main Framed Chat Input Row
