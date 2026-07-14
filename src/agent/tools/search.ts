@@ -336,7 +336,7 @@ async function globFiles(
 	}
 }
 
-async function grepFiles(
+export async function grepFiles(
 	args: z.infer<typeof GREP_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
@@ -561,7 +561,7 @@ async function grepFiles(
 	}
 }
 
-async function findReferences(
+export async function findReferences(
 	args: z.infer<typeof FIND_REFERENCES_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {
@@ -606,7 +606,7 @@ async function findReferences(
 	);
 }
 
-async function goToDefinition(
+export async function goToDefinition(
 	args: z.infer<typeof GO_TO_DEFINITION_SCHEMA>,
 	ctx: ToolContext,
 ): Promise<ToolResult> {

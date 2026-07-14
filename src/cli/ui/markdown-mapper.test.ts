@@ -45,3 +45,13 @@ describe("renderMarkdown tables", () => {
 		expect(flat).toContain("col2");
 	});
 });
+
+describe("renderMarkdown inline diff", () => {
+	it("renders diff-style code blocks with correct markers", () => {
+		const md = "```diff\n- old line\n+ new line\n```";
+		const out = renderMarkdown(md, 60);
+		const flat = String(JSON.stringify(out));
+		expect(flat).toContain("-");
+		expect(flat).toContain("+");
+	});
+});

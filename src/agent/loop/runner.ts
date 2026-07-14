@@ -356,14 +356,18 @@ export async function runAgentLoop(
 								}
 							}
 
-							// Check stream rules against accumulated content
-							if (ctx.config.streamRules && ctx.config.streamRules.length > 0) {
-								const content = state.content || "";
+						// Check stream rules against accumulated content
+						if (ctx.config.streamRules && ctx.config.streamRules.length > 0) {
+							const content = state.content || "";
+							// Minimum content length check to avoid firing on short/loud disclaimers
+							if (content.length >= 100) {
+								// Only check the first 200 characters — refusals happen at the start
+								const checkContent = content.length > 200 ? content.substring(0, 200) : content;
 								for (const rule of ctx.config.streamRules) {
 									if (!rule.enabled) continue;
 									try {
 										const re = new RegExp(rule.pattern, "i");
-										if (re.test(content)) {
+										if (re.test(checkContent)) {
 											debug.log("agent", `Stream rule triggered: ${rule.pattern}`);
 											getTelemetry().recordRuleTrigger(rule.pattern);
 											client.abort();
@@ -375,6 +379,7 @@ export async function runAgentLoop(
 									}
 								}
 							}
+						}
 						} catch (streamError) {
 							const estimatedPromptTokens = Math.floor(
 								JSON.stringify(ctx.messages).length / 4,
@@ -653,6 +658,11 @@ export async function runAgentLoop(
 		resetPrefetcher();
 	}
 }
+/** Sliding window of advisor review timestamps (ms) for rate limiting */
+const advisorReviewTimestamps: number[] = [];
+/** Cumulative advisor review cost estimate across the session */
+let advisorCumulativeCost = 0;
+
 /**
  * Fire a best-effort review to the advisor model.
  * Returns advice text if the advisor has concerns, null otherwise.
@@ -664,6 +674,28 @@ async function reviewWithAdvisor(
 ): Promise<string | null> {
 	const advisorCfg = ctx.config.advisorModel;
 	if (!advisorCfg?.enabled) return null;
+
+	const maxReviews = advisorCfg.maxReviewsPerMinute ?? 3;
+	const costLimit = advisorCfg.costLimit ?? 0.50;
+	const now = Date.now();
+	const windowStart = now - 60_000;
+
+	// Prune timestamps outside the sliding window
+	while (advisorReviewTimestamps.length > 0 && advisorReviewTimestamps[0] < windowStart) {
+		advisorReviewTimestamps.shift();
+	}
+
+	// Rate limit check
+	if (advisorReviewTimestamps.length >= maxReviews) {
+		debug.log("agent", `Advisor review skipped: rate limit (${maxReviews}/min) reached`);
+		return null;
+	}
+
+	// Cost limit check
+	if (advisorCumulativeCost >= costLimit) {
+		debug.log("agent", `Advisor review skipped: cost limit ($${costLimit.toFixed(2)}) exceeded`);
+		return null;
+	}
 
 	try {
 		const advisorConfig = {
@@ -696,6 +728,27 @@ async function reviewWithAdvisor(
 			const delta = chunk.choices?.[0]?.delta?.content;
 			if (delta) advice += delta;
 		}
+
+		// Record this review for rate limiting
+		advisorReviewTimestamps.push(now);
+
+		// Estimate cost based on character length (~4 chars per token)
+		const inputText = reviewMessages.map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join(" ");
+		const estimatedInputTokens = Math.ceil(inputText.length / 4);
+		const estimatedOutputTokens = Math.ceil(advice.length / 4);
+		const costBreakdown = costTracker.calculateCost(modelOverride, {
+			promptTokens: estimatedInputTokens,
+			completionTokens: estimatedOutputTokens,
+			totalTokens: estimatedInputTokens + estimatedOutputTokens,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+		});
+		advisorCumulativeCost += costBreakdown.totalCost;
+
+		debug.log(
+			"agent",
+			`Advisor review cost: ${costTracker.formatCost(costBreakdown.totalCost)} (cumulative: ${costTracker.formatCost(advisorCumulativeCost)})`,
+		);
 
 		return advice.trim() || null;
 	} catch (err) {

@@ -317,35 +317,3 @@ export function compressContext(
 
 export { estimateTokens };
 
-// TODO: Replace these stubs with LLM-based compression
-export function identifyCriticalMessages(
-	messages: StandardMessage[],
-): number[] {
-	const indices: number[] = [];
-	messages.forEach((m: StandardMessage, i: number) => {
-		if (m.role === "system" || m.role === "user" || m.tool_calls || m.name) {
-			indices.push(i);
-		}
-	});
-	return indices;
-}
-export async function compressContextWithMetrics(
-	messages: StandardMessage[],
-	_summarizer: unknown,
-	_target: number,
-	_opts: unknown,
-) {
-	return { messages, tokensSaved: 0, compressionRatio: 1 };
-}
-export function progressiveCompress(
-	messages: StandardMessage[],
-	_target: number,
-) {
-	return messages;
-}
-export function createContextSummarizer() {
-	return async () => "";
-}
-export function createSmartSummarizer() {
-	return async () => "";
-}

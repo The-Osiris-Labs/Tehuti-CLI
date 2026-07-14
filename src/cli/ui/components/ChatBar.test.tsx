@@ -60,3 +60,20 @@ describe("ChatBar", () => {
 		expect(view.lastFrame()).not.toContain("Sel -4-99");
 	});
 });
+
+it("renders searchBar input text correctly", () => {
+	const view = render(
+		React.createElement(ChatBar, {
+			input: "/search test query",
+			cursorPos: 18,
+			selectionStart: null,
+			selectionEnd: null,
+			loading: false,
+			historyIndex: -1,
+			historyLength: 0,
+			model: "test-model",
+			provider: "test-provider",
+		}),
+	);
+	expect(view.lastFrame()).toContain("/search");
+});

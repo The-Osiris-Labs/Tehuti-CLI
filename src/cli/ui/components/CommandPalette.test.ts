@@ -127,7 +127,17 @@ describe("CommandPalette helpers", () => {
 		expect(help).not.toContain("Paste");
 		expect(help).not.toContain("Swap characters");
 	});
+
+	it("produces structured help with section headers", () => {
+		const help = formatHelpOutput();
+		expect(help).toContain("TEHUTI");
+		expect(help).toContain("SESSION");
+		expect(help).toContain("KEYBOARD SHORTCUTS");
+		expect(help).toContain("/");
+		expect(help).toContain("/help");
+	});
 });
+
 
 describe("CommandPalette interaction", () => {
 	beforeEach(() => {

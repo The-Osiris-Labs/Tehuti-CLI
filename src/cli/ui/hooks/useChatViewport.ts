@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeMessageLines } from "../../../terminal/output.js";
 
 /** Options for the chat viewport hook. */
-export interface UseChatViewportOptions {
-	messages: any[];
+export interface UseChatViewportOptions<TMessage = any> {
+	messages: TMessage[];
 	terminalHeight: number;
 	terminalWidth: number;
 	headerHeight: number;
@@ -22,9 +22,8 @@ export interface UseChatViewportOptions {
 	/** External setScrollOffset (from parent). Must be provided alongside scrollOffset. */
 	setScrollOffset?: React.Dispatch<React.SetStateAction<number>>;
 }
-export interface UseChatViewportReturn {
-	/** Visible messages for the current render window. */
-	visibleMessages: any[];
+export interface UseChatViewportReturn<TMessage = any> {
+	visibleMessages: TMessage[];
 	/*
 	 * The deferredVisibleMessages slot is intentionally removed from this
 	 * return type. It is available for re-addition if a swap-based viewport
@@ -63,7 +62,7 @@ export interface UseChatViewportReturn {
  * and pass the returned {@link UseChatViewportReturn} values in place of the
  * inline scroll/offset state.
  */
-export function useChatViewport({
+export function useChatViewport<TMessage = any>({
 	messages,
 	terminalHeight,
 	terminalWidth,
@@ -78,7 +77,7 @@ export function useChatViewport({
 	showWelcome,
 	scrollOffset: externalScrollOffset,
 	setScrollOffset: externalSetScrollOffset,
-}: UseChatViewportOptions): UseChatViewportReturn {
+}: UseChatViewportOptions<TMessage>): UseChatViewportReturn<TMessage> {
 	const hasExternalScrollOffset =
 		externalScrollOffset !== undefined && externalSetScrollOffset !== undefined;
 	const [internalScrollOffset, internalSetScrollOffset] = useState(0);

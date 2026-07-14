@@ -50,7 +50,7 @@ import { swarmManager } from "../../agent/swarm/manager.js";
 import { updateHttpAgentConfig } from "../../api/http-agent.js";
 import { costTracker } from "../../api/index.js";
 import { listModelsForProvider } from "../../api/models.js";
-import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../branding/index.js";
+import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS, ASCII_TOOL_ICONS, ROLE_COLORS } from "../../branding/index.js";
 import {
 	configWarnings,
 	type DEFAULT_CONFIG,
@@ -78,7 +78,7 @@ import {
 	type StreamingOutputManager,
 } from "../../terminal/buffered-writer.js";
 import { initHighlighter } from "../../terminal/highlighter.js";
-import { computeMessageLines, truncate } from "../../terminal/output.js";
+import { truncate } from "../../terminal/output.js";
 import { debug } from "../../utils/debug.js";
 import {
 	AgentError,
@@ -117,7 +117,6 @@ import {
 	type CommandItem,
 	CommandPalette,
 	createCommands,
-	formatHelpOutput,
 } from "../ui/components/CommandPalette.js";
 import { ConfigEditor } from "../ui/components/ConfigEditor.js";
 import { ExpandableToolOutput } from "../ui/components/ExpandableToolOutput.js";
@@ -135,6 +134,7 @@ import { TodoList } from "../ui/components/TodoList.js";
 import { useChatInput } from "../ui/hooks/useChatInput.js";
 import { useChatState } from "../ui/hooks/useChatState.js";
 import { renderMarkdown } from "../ui/markdown-mapper.js";
+import { useChatViewport } from "../ui/hooks/useChatViewport.js";
 import {
 	normalizeCustomProvider,
 	type RuntimeCustomProvider,
@@ -325,6 +325,137 @@ const TOOL_ICONS: Record<string, string> = {
 	// Fallback
 	default: "🔧",
 };
+/**
+ * Generate dynamic /help content listing all registered tools,
+ * slash commands, and keyboard shortcuts.
+ */
+export function generateHelpContent(): string {
+	const ascii = isAsciiMode();
+	const ibis = ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis;
+	const toolIcons = ascii ? ASCII_TOOL_ICONS : TOOL_ICONS;
+
+	let output = "";
+	output += chalk.hex(ROLE_COLORS.assistant).bold(`  ${ibis} TEHUTI — Scribe of Code Transformations\n\n`);
+
+	// ── Slash commands ──
+	output += chalk.hex(ROLE_COLORS.info)(`  \u{1F4CB} COMMANDS\n`);
+
+	const slashCommands: Array<{
+		cmd: string;
+		desc: string;
+		aliases?: string;
+		shortcut?: string;
+	}> = [
+		{ cmd: "/clear", desc: "Clear conversation history and reset context", shortcut: "Ctrl+L" },
+		{ cmd: "/compact", desc: "Compact context to free up token space" },
+		{ cmd: "/config", desc: "Open interactive configuration editor" },
+		{ cmd: "/copy", desc: "Copy last assistant response to clipboard" },
+		{ cmd: "/cost", desc: "Show session cost, token usage, and cache savings" },
+		{ cmd: "/dashboard", desc: "Toggle Swarm Observability Dashboard" },
+		{ cmd: "/exit", desc: "Exit Tehuti CLI", aliases: "/quit, /q" },
+		{ cmd: "/export", desc: "Export session to Markdown or JSON" },
+		{ cmd: "/help", desc: "Show all commands and keyboard shortcuts", aliases: "/h" },
+		{ cmd: "/load", desc: "Load a saved session" },
+		{ cmd: "/model", desc: "Switch to a different AI model" },
+		{ cmd: "/plan", desc: "Enter plan mode (read-only exploration)" },
+		{ cmd: "/provider", desc: "Switch AI provider (openrouter/kilocode/custom)" },
+		{ cmd: "/restart", desc: "Save session and start a fresh conversation" },
+		{ cmd: "/save", desc: "Save current session for later" },
+		{ cmd: "/sessions", desc: "List all saved sessions" },
+		{ cmd: "/skills", desc: "List all available skills" },
+		{ cmd: "/stats", desc: "Show performance metrics and optimization statistics" },
+		{ cmd: "/thinking", desc: "Toggle extended thinking mode" },
+		{ cmd: "/tools", desc: "List all registered tools (built-in, MCP, and plugin)" },
+		{ cmd: "/update", desc: "Pull latest updates and rebuild the CLI" },
+	];
+
+	for (const sc of slashCommands) {
+		const aliasText = sc.aliases ? ` (${sc.aliases})` : "";
+		const shortcutText = sc.shortcut ? ` [${sc.shortcut}]` : "";
+		output += `  \u{2753} ${sc.cmd}${aliasText}${shortcutText}\n`;
+		output += `    ${sc.desc}\n`;
+	}
+	output += "\n";
+
+	// ── Built-in tools ──
+	const nativeTools = getAllTools();
+	if (nativeTools.length > 0) {
+		output += chalk.hex(ROLE_COLORS.user)(`  \u{1F527} BUILT-IN TOOLS (${nativeTools.length})\n`);
+
+		const categories = new Map<string, string[]>();
+		for (const tool of nativeTools) {
+			const cat = tool.category || "other";
+			if (!categories.has(cat)) categories.set(cat, []);
+			const icon = toolIcons[tool.name] ?? toolIcons.default ?? "\u{1F527}";
+			const intentTag = tool.intent === "destructive" ? " \u{26A0}\uFE0F" : tool.intent === "read-only" ? " \u{1F50D}" : "";
+			categories.get(cat)!.push(`  ${icon} \`${tool.name}\`${intentTag} — ${tool.description || "No description"}`);
+		}
+
+		for (const [cat, tools] of categories) {
+			output += chalk.dim(`  ${cat}\n`);
+			for (const t of tools) {
+				output += `${t}\n`;
+			}
+		}
+		output += "\n";
+	}
+
+	// ── MCP tools ──
+	const mcpTools = mcpManager.getAllTools();
+	if (mcpTools.length > 0) {
+		output += chalk.hex(ROLE_COLORS.user)(`  \u{1F50C} MCP TOOLS (${mcpTools.length})\n`);
+
+		const serverMap = new Map<string, string[]>();
+		for (const { serverName, tool } of mcpTools) {
+			const tools = serverMap.get(serverName) || [];
+			tools.push(`  \u{1F50C} \`mcp_${serverName}.${tool.name}\` — ${tool.description || "No description"}`);
+			serverMap.set(serverName, tools);
+		}
+
+		for (const [server, tools] of serverMap) {
+			output += chalk.dim(`  ${server}\n`);
+			for (const t of tools) {
+				output += `${t}\n`;
+			}
+		}
+		output += "\n";
+	}
+
+	// ── Keyboard shortcuts ──
+	output += chalk.hex(ROLE_COLORS.system)(`  \u{2328} KEYBOARD SHORTCUTS\n`);
+	const shortcuts: Array<[string, string]> = [
+		["/", "Open palette"],
+		["Ctrl+P", "Open command palette"],
+		["Ctrl+L", "Clear conversation"],
+		["Ctrl+C", "Interrupt / exit empty"],
+		["Enter", "Send message"],
+		["Shift+Enter", "New line (multiline)"],
+		["Ctrl+A", "Move to start"],
+		["Ctrl+E", "Move to end"],
+		["Ctrl+U", "Delete to start"],
+		["Ctrl+K", "Delete to end"],
+		["Ctrl+W", "Delete previous word"],
+		["Ctrl+D", "Delete character forward"],
+		["Ctrl+T", "Transpose characters"],
+		["Ctrl+X", "Cut selection"],
+		["Ctrl+Left/Right", "Word jump"],
+		["Ctrl+Backspace/Del", "Delete word"],
+		["Tab", "Complete slash command"],
+		["Shift+Tab", "Cycle backward"],
+		["Up/Down", "Prompt history"],
+		["Ctrl+Up/Down", "Scroll line"],
+		["PgUp/PgDn", "Scroll page"],
+		["Home/End", "Scroll to top/bottom"],
+		["Esc", "Clear input"],
+	];
+	for (const [key, action] of shortcuts) {
+		output += `  \u{25B6} ${key}\n`;
+		output += `    ${action}\n`;
+	}
+
+	return output;
+}
+
 
 type RuntimeProviderState = {
 	provider: string;
@@ -340,10 +471,11 @@ type ChatCommandOptions = {
 	[key: string]: unknown;
 };
 function formatToolCall(toolName: string, args: unknown): string {
+	const toolIcons = isAsciiMode() ? ASCII_TOOL_ICONS : TOOL_ICONS;
 	const icon =
-		TOOL_ICONS[toolName] ||
-		TOOL_ICONS[toolName.replace(/_background$|_file$|_tool$/, "")] ||
-		TOOL_ICONS.default;
+		toolIcons[toolName] ||
+		toolIcons[toolName.replace(/_background$|_file$|_tool$/, "")] ||
+		toolIcons.default;
 
 	const extractPath = (a: unknown): string => {
 		if (!a || typeof a !== "object") return "";
@@ -1145,13 +1277,6 @@ function ChatUI({
 	const { stdout } = useStdout();
 	const ctxRef = useRef<AgentContext | null>(null);
 	const msgIdRef = useRef(0);
-	const messagesRef = useRef<typeof messages>([]);
-	const messagesEndRef = useRef<boolean>(true);
-	// Number of messages that have arrived while the user is scrolled up.
-	// Shown as a "↓ N new" badge above the input bar. Reset to 0 when the
-	// user scrolls back to the bottom.
-	const newMessageCountRef = useRef<number>(0);
-	const [, setNewMessageCount] = useState(0);
 	const [hasUpdate, setHasUpdate] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showSearch, setShowSearch] = useState(false);
@@ -1169,10 +1294,6 @@ function ChatUI({
 		() => getSkillsManager().getActiveSkills().length,
 		[],
 	);
-	// Snapshot of message count when the user last scrolled up. We diff
-	// against the current messages.length so the "N new" badge shows the
-	// count of message *arrivals*, not the total.
-	const scrollAnchorRef = useRef<number>(0);
 	const inputBeforeHistoryRef = useRef<string>("");
 	const batchedTokensRef = useRef<string>("");
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1358,7 +1479,6 @@ function ChatUI({
 	const inputHeight = Math.min(8, 1 + inputLineCount);
 	const warningsHeight = configWarnings.length * 4;
 
-	messagesRef.current = messages;
 
 	useEffect(() => {
 		// Skip compaction during active streaming to avoid visual flicker
@@ -1617,7 +1737,7 @@ function ChatUI({
 			{
 				id: msgIdRef.current++,
 				role: "system",
-				content: formatHelpOutput(),
+				content: generateHelpContent(),
 			},
 		]);
 	}, [setMessages]);
@@ -1671,7 +1791,7 @@ function ChatUI({
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: formatHelpOutput(),
+						content: generateHelpContent(),
 					},
 				]);
 			}
@@ -2399,8 +2519,6 @@ function ChatUI({
 	// chat viewport math believes the message area is taller than it
 	// actually is, and the last few lines get hidden behind the banner.
 	const errorOverlayHeight = error ? 3 : 0;
-	// @ts-expect-error TS6133/TS6192: Unused variable
-	const dashboardOverlayHeight = showDashboard ? 8 : 0;
 
 	const promptOverlayHeight = useMemo(() => {
 		if (pendingPermission) {
@@ -2417,26 +2535,47 @@ function ChatUI({
 		return inputHeight + 4;
 	}, [pendingPermission, pendingQuestion, inputHeight]);
 
-	const chatViewportHeight = Math.max(
-		3,
-		terminalHeight -
-			headerHeight -
-			promptOverlayHeight -
-			(scrollOffset > 0 ? 3 : 0) - // Scroll banner
-			(input.startsWith("/") && input.length > 1 ? 1 : 0) - // Suggestions row
-			warningsHeight -
-			paletteHeight -
-			errorOverlayHeight,
-	);
+	const {
+		visibleMessages,
+		contentMaxWidth,
+		scrollToBottom,
+		scrollToTop,
+		scrollPageUp,
+		scrollPageDown,
+		scrollLineUp,
+		scrollLineDown,
+	} = useChatViewport({
+		messages,
+		terminalHeight,
+		terminalWidth,
+		headerHeight,
+		promptOverlayHeight,
+		warningsHeight,
+		paletteHeight,
+		loadingOverlayHeight: scrollOffset > 0 ? 3 : 0,
+		thinkingOverlayHeight: input.startsWith("/") && input.length > 1 ? 1 : 0,
+		errorOverlayHeight,
+		dashboardOverlayHeight: showDashboard ? 8 : 0,
+		showWelcome,
+		scrollOffset,
+		setScrollOffset,
+		input,
+	});
 
-	const gitInfo = useMemo(() => {
-		try {
-			const branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", { encoding: "utf8", timeout: 2000 }).trim();
-			const changes = execSync("git status --porcelain 2>/dev/null | wc -l", { encoding: "utf8", timeout: 2000 }).trim();
-			return { branch, changes: changes === "0" ? "" : `+${changes}` };
-		} catch {
-			return { branch: "", changes: "" };
-		}
+	const gitInfoRef = useRef<{ branch: string; changes: number } | null>(null);
+	const gitInfoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+	useEffect(() => {
+		const refreshGitInfo = () => {
+			try {
+				const branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", { encoding: "utf8", timeout: 2000 }).trim();
+				const changes = parseInt(execSync("git status --porcelain 2>/dev/null | wc -l", { encoding: "utf8", timeout: 2000 }).trim(), 10);
+				gitInfoRef.current = { branch: branch || "unknown", changes: isNaN(changes) ? 0 : changes };
+			} catch { /* git not available */ }
+		};
+		refreshGitInfo();
+		gitInfoTimerRef.current = setInterval(refreshGitInfo, cfg?.gitInfoCache?.refreshInterval ?? 30000);
+		return () => { if (gitInfoTimerRef.current) clearInterval(gitInfoTimerRef.current); };
 	}, []);
 
 	const contextInfo = useMemo(() => {
@@ -2464,35 +2603,6 @@ function ChatUI({
 		}
 		return `${seconds}s`;
 	}, [ctxRef]);
-	const contentMaxWidth = Math.max(40, terminalWidth - 4);
-
-	// We can now use computeMessageLines directly since it caches results,
-	// preventing the UI from hanging on long responses.
-	const totalMessageLines = useMemo(() => {
-		let lines = 0;
-		for (const msg of messages) {
-			lines += computeMessageLines(msg, contentMaxWidth);
-		}
-		if (showWelcome) {
-			lines += messages.length > 0 ? 3 : 12;
-		}
-		return lines;
-	}, [messages, contentMaxWidth, showWelcome]);
-
-	// Keep scroll offset bound to total lines
-	useEffect(() => {
-		if (messagesEndRef.current) {
-			setScrollOffset(0);
-		} else {
-			setScrollOffset((prev) => {
-				const safeMaxOff = Math.max(
-					0,
-					totalMessageLines - chatViewportHeight + 20,
-				);
-				return Math.min(prev, safeMaxOff);
-			});
-		}
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
 
 	useEffect(() => {
 		setHistory(loadHistory());
@@ -2626,92 +2736,6 @@ function ChatUI({
 		setPendingQuestion(null);
 	}, [pendingQuestion, setPendingQuestion]);
 
-	// For performance, we only render the messages that intersect the viewport plus a buffer.
-	// The line estimate is intentionally cheap (no markdown rendering) to avoid hanging
-	// the UI when long final responses are streamed.
-	const visibleMessages = useMemo(() => {
-		const linesNeeded = chatViewportHeight + scrollOffset + 20;
-		const avgCharsPerLine = Math.max(20, contentMaxWidth - 4);
-		const estimateMsgLines = (msg: any) => {
-			let l = 1;
-			const blocks =
-				msg.blocks && msg.blocks.length > 0
-					? msg.blocks
-					: Array.isArray(msg.content)
-						? msg.content
-						: [];
-
-			if (blocks && blocks.length > 0) {
-				for (const block of blocks) {
-					// Infer block type from shape when `.type` is missing.
-					const blockType =
-						block.type || (block.text !== undefined ? "text" : undefined);
-
-					if (blockType === "text") {
-						let textContent = "";
-						if (Array.isArray(block.content)) {
-							textContent = block.content
-								.map(
-									(c: any) =>
-										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
-								)
-								.join("");
-						} else {
-							textContent = String(block.content || block.text || "");
-						}
-						l +=
-							Math.max(1, Math.ceil(textContent.length / avgCharsPerLine)) +
-							(textContent.match(/\n/g) || []).length;
-					} else if (blockType === "reasoning") {
-						let reasoningContent = "";
-						if (Array.isArray(block.content)) {
-							reasoningContent = block.content
-								.map(
-									(c: any) =>
-										c.text || (typeof c === "string" ? c : JSON.stringify(c)),
-								)
-								.join("");
-						} else {
-							reasoningContent = String(block.content || block.text || "");
-						}
-						l +=
-							2 +
-							Math.max(
-								1,
-								Math.ceil(
-									reasoningContent.length / Math.max(10, contentMaxWidth - 5),
-								),
-							);
-					} else if (blockType === "tool") {
-						l += 8;
-					}
-				}
-			} else if (typeof msg.content === "string") {
-				const text = msg.content;
-				l +=
-					Math.max(1, Math.ceil(text.length / avgCharsPerLine)) +
-					(text.match(/\n/g) || []).length;
-			}
-
-			if (msg.toolCalls && msg.toolCalls.length > 0) {
-				const hasToolBlock = blocks?.some((b: any) => b.type === "tool");
-				if (!hasToolBlock) {
-					l += msg.toolCalls.length * 8;
-				}
-			}
-
-			return l + 1;
-		};
-		let accumulatedLines = 0;
-		let sliceIndex = messages.length;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			accumulatedLines += estimateMsgLines(messages[i]);
-			sliceIndex = i;
-			if (accumulatedLines >= linesNeeded) break;
-		}
-		return messages.slice(Math.max(0, sliceIndex - 10));
-	}, [messages, scrollOffset, chatViewportHeight, contentMaxWidth]);
-
 	const useTwoColumns = terminalWidth > 180 && visibleMessages.length > 10;
 	const columnWidth = useTwoColumns
 		? Math.floor((contentMaxWidth - 2) / 2)
@@ -2739,79 +2763,6 @@ function ChatUI({
 	const searchMatchCount = filteredVisibleMessages.length;
 
 	// Handle keyboard input for search overlay
-
-	const scrollToBottom = useCallback(() => {
-		messagesEndRef.current = true;
-		setScrollOffset(0);
-	}, [setScrollOffset]);
-
-	const scrollToTop = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			totalMessageLines - chatViewportHeight + 20,
-		);
-		setScrollOffset(safeMaxOff);
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
-
-	const scrollPageUp = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			totalMessageLines - chatViewportHeight + 20,
-		);
-		setScrollOffset((off) => Math.min(safeMaxOff, off + chatViewportHeight));
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
-
-	const scrollPageDown = useCallback(() => {
-		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - chatViewportHeight);
-			if (newOff <= 0) messagesEndRef.current = true;
-			return newOff;
-		});
-	}, [chatViewportHeight, setScrollOffset]);
-
-	const scrollLineUp = useCallback(() => {
-		messagesEndRef.current = false;
-		const safeMaxOff = Math.max(
-			0,
-			totalMessageLines - chatViewportHeight + 20,
-		);
-		setScrollOffset((off) => Math.min(safeMaxOff, off + 1)); // Scroll by 1 line
-	}, [totalMessageLines, chatViewportHeight, setScrollOffset]);
-
-	const scrollLineDown = useCallback(() => {
-		setScrollOffset((off) => {
-			const newOff = Math.max(0, off - 1); // Scroll by 1 line
-			if (newOff <= 0) messagesEndRef.current = true;
-			return newOff;
-		});
-	}, [setScrollOffset]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: trigger scroll badge check on message count and scroll offset changes
-	useEffect(() => {
-		if (messagesEndRef.current) {
-			scrollToBottom();
-			// User scrolled to (or recently arrived at) the bottom — reset
-			// both the anchor and the badge.
-			if (newMessageCountRef.current !== 0 || scrollAnchorRef.current !== 0) {
-				newMessageCountRef.current = 0;
-				setNewMessageCount(0);
-				scrollAnchorRef.current = 0;
-			}
-		} else {
-			// User is scrolled up. Take the first snapshot of message length
-			// as the anchor. Subsequent arrivals compute the diff.
-			if (scrollAnchorRef.current === 0) {
-				scrollAnchorRef.current = messagesRef.current.length;
-			}
-			const newArrivals = messagesRef.current.length - scrollAnchorRef.current;
-			if (newArrivals > 0 && newArrivals !== newMessageCountRef.current) {
-				newMessageCountRef.current = newArrivals;
-				setNewMessageCount(newArrivals);
-			}
-		}
-	}, [scrollToBottom, messages.length, scrollOffset]);
 
 	const { completionText } = useChatInput({
 		showProfiler,
@@ -2907,7 +2858,7 @@ function ChatUI({
 	async function send(text: string) {
 		setInput("");
 		setCursorPos(0);
-		messagesEndRef.current = true;
+		scrollToBottom();
 
 		if (text.startsWith("/")) {
 			const cmd = text.toLowerCase().trim();
@@ -3259,7 +3210,7 @@ function ChatUI({
 					{
 						id: msgIdRef.current++,
 						role: "system",
-						content: formatHelpOutput(),
+						content: generateHelpContent(),
 					},
 				]);
 				return;
@@ -4378,13 +4329,43 @@ function ChatUI({
 					borderStyle: isAssistant ? "round" : undefined,
 					borderColor: isAssistant ? GOLD : undefined,
 					...(msgBorderColor && !isAssistant ? { borderLeft: true, borderColor: msgBorderColor } : {}),
-					...(useTwoColumns ? { width: columnWidth } : {}),
 				},
 				header,
 				React.createElement(Box, { flexDirection: "column", paddingLeft: isAssistant ? 0 : 0.5 }, ...content),
 			);
 		});
 	}, [filteredVisibleMessages, columnWidth, terminalWidth, useTwoColumns]);
+
+	const messageColumns = useMemo((): { left: React.ReactNode[]; right: React.ReactNode[] } => {
+		if (!useTwoColumns || filteredVisibleMessages.length === 0) {
+			return { left: messageElements, right: [] };
+		}
+
+		// Group messages into user+assistant pairs (segments) to avoid splitting
+		// a user message and its assistant response across columns.
+		const segments: Array<{ indices: number[] }> = [];
+		let i = 0;
+		while (i < filteredVisibleMessages.length) {
+			const msg = filteredVisibleMessages[i];
+			if (msg.role === "user" && i + 1 < filteredVisibleMessages.length && filteredVisibleMessages[i + 1].role === "assistant") {
+				segments.push({ indices: [i, i + 1] });
+				i += 2;
+			} else {
+				segments.push({ indices: [i] });
+				i += 1;
+			}
+		}
+
+		// Split segments evenly across two columns to balance content
+		const mid = Math.ceil(segments.length / 2);
+		const leftIndices = segments.slice(0, mid).flatMap((s) => s.indices);
+		const rightIndices = segments.slice(mid).flatMap((s) => s.indices);
+
+		return {
+			left: leftIndices.map((idx) => messageElements[idx]),
+			right: rightIndices.map((idx) => messageElements[idx]),
+		};
+	}, [filteredVisibleMessages, messageElements, useTwoColumns]);
 
 	return React.createElement(
 		Box,
@@ -4526,37 +4507,51 @@ function ChatUI({
 							overflow: "hidden",
 							justifyContent: "flex-end",
 						},
-						React.createElement(
+					useTwoColumns
+						? React.createElement(
 							Box,
-							{
-								flexDirection: useTwoColumns ? "row" : "column",
-								flexWrap: useTwoColumns ? "wrap" : undefined,
-								marginBottom: -scrollOffset,
-							},
-							showWelcome &&
-								React.createElement(
-									Box,
-									{
-										flexDirection: "column",
-										alignItems: "center",
-										marginBottom: 1,
-									},
-									React.createElement(TehutiHeader, {
-										compact: true,
-										model: ctxModel,
-										provider: normalizedProvider,
-										version,
-										hasUpdate,
-										onModelClick: handleHeaderModelClick,
-										onConfigClick: handleHeaderConfigClick,
-										onCommandClick: handleHeaderCommandClick,
-										activeSkills: activeSkillsCount,
-										advisorEnabled: cfg?.advisorModel?.enabled ?? false,
-										contextUsage: contextInfo.pct,
-									}),
-								),
-							...messageElements,
-						),
+							{ flexDirection: "row", marginBottom: -scrollOffset },
+							React.createElement(Box, {
+								flexDirection: "column",
+								width: columnWidth,
+								children: messageColumns.left,
+							}),
+							React.createElement(Box, {
+								flexDirection: "column",
+								width: columnWidth,
+								children: messageColumns.right,
+							}),
+						)
+						: React.createElement(Box, {
+							flexDirection: "column",
+							marginBottom: -scrollOffset,
+							children: showWelcome
+								? [
+									React.createElement(
+										Box,
+										{
+											flexDirection: "column",
+											alignItems: "center",
+											marginBottom: 1,
+										},
+										React.createElement(TehutiHeader, {
+											compact: true,
+											model: ctxModel,
+											provider: normalizedProvider,
+											version,
+											hasUpdate,
+											onModelClick: handleHeaderModelClick,
+											onConfigClick: handleHeaderConfigClick,
+											onCommandClick: handleHeaderCommandClick,
+											activeSkills: activeSkillsCount,
+											advisorEnabled: cfg?.advisorModel?.enabled ?? false,
+											contextUsage: contextInfo.pct,
+										}),
+									),
+									...messageElements,
+								]
+								: messageElements,
+						}),
 					),
 
 			error &&
@@ -4645,16 +4640,12 @@ function ChatUI({
 				Box,
 				{ flexDirection: "row", paddingX: 1, width: contentMaxWidth, minHeight: 1 },
 				React.createElement(
-					Text,
-					{ color: SAND },
-					"π ",
-					ctxModel,
-					"  ",
-					React.createElement(Text, { dimColor: true }, `@${normalizedProvider}`),
-					...(gitInfo.branch
+					React.Fragment,
+					null,
+					...(gitInfoRef.current?.branch
 						? [
 								"  ",
-								React.createElement(Text, { dimColor: true }, `⎇ ${gitInfo.branch}${gitInfo.changes}`),
+								React.createElement(Text, { dimColor: true }, `⎇ ${gitInfoRef.current.branch}${gitInfoRef.current.changes > 0 ? `+${gitInfoRef.current.changes}` : ""}`),
 							]
 						: []),
 					"  ",
@@ -4666,7 +4657,6 @@ function ChatUI({
 					"  ",
 					React.createElement(Text, { dimColor: true }, `·`),
 					"  ",
-					React.createElement(Text, { dimColor: true }, `$${sessionCost.toFixed(4)}`),
 					...(activeAgents > 0
 						? [
 								"  ",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	generateHelpContent,
 	getToolRenderStatus,
 	normalizeBlocks,
 	parseContentBlocks,
@@ -94,5 +95,28 @@ describe("Chat Parsing and Normalization", () => {
 				{ type: "text", content: " final" },
 			]);
 		});
+	});
+});
+
+describe("generateHelpContent", () => {
+	it("includes slash commands in the help output", () => {
+		const help = generateHelpContent();
+		expect(help).toContain("/help");
+		expect(help).toContain("/clear");
+		expect(help).toContain("/exit");
+		expect(help).toContain("KEYBOARD SHORTCUTS");
+	});
+
+	it("includes built-in tools section when tools are registered", () => {
+		const help = generateHelpContent();
+		expect(help).toContain("BUILT-IN TOOLS");
+		expect(help).toContain("TEHUTI");
+	});
+
+	it("documents keyboard shortcuts that the input loop supports", () => {
+		const help = generateHelpContent();
+		expect(help).toContain("Open palette");
+		expect(help).not.toContain("Copy selected");
+		expect(help).not.toContain("Paste");
 	});
 });
