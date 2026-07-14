@@ -1151,11 +1151,13 @@ function ChatUI({
 	// Shown as a "↓ N new" badge above the input bar. Reset to 0 when the
 	// user scrolls back to the bottom.
 	const newMessageCountRef = useRef<number>(0);
-	const [newMessageCount, setNewMessageCount] = useState(0);
+	const [, setNewMessageCount] = useState(0);
 	const [hasUpdate, setHasUpdate] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showSearch, setShowSearch] = useState(false);
 	const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+	const [sendError, setSendError] = useState<string | null>(null);
+	const sendErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [advisories, setAdvisories] = useState<{ id: number; text: string }[]>(
 		[],
 	);
@@ -2733,7 +2735,6 @@ function ChatUI({
 	}, [visibleMessages, searchQuery, showSearch]);
 
 	const searchMatchCount = filteredVisibleMessages.length;
-	const totalVisibleCount = visibleMessages.length;
 
 	// Handle keyboard input for search overlay
 
@@ -2810,7 +2811,7 @@ function ChatUI({
 		}
 	}, [scrollToBottom, messages.length, scrollOffset]);
 
-	useChatInput({
+	const { completionText } = useChatInput({
 		showProfiler,
 		input,
 		setInput,
@@ -4070,6 +4071,9 @@ function ChatUI({
 						: msg,
 				),
 			);
+			setSendError(errorContent);
+			if (sendErrorTimerRef.current) clearTimeout(sendErrorTimerRef.current);
+			sendErrorTimerRef.current = setTimeout(() => setSendError(null), 3000);
 			streamingMsgIdRef.current = null;
 			streamingContentRef.current = "";
 			streamingStartRef.current = null;
@@ -4377,14 +4381,6 @@ function ChatUI({
 		});
 	}, [filteredVisibleMessages, columnWidth, terminalWidth, useTwoColumns]);
 
-	const scrollPercent = Math.min(
-		100,
-		Math.round(
-			(scrollOffset / Math.max(1, totalMessageLines - chatViewportHeight)) *
-				100,
-		),
-	);
-
 	return React.createElement(
 		Box,
 		{ flexDirection: "column", width: "100%", height: "100%" },
@@ -4452,45 +4448,6 @@ function ChatUI({
 			showDashboard && React.createElement(SwarmVisualizer, null),
 			React.createElement(MemoryIndicator, null),
 			React.createElement(TodoList, null),
-			showSearch &&
-				React.createElement(
-					Box,
-					{
-						flexDirection: "column",
-						paddingX: 1,
-						paddingY: 0,
-						marginBottom: 1,
-						borderStyle: "single",
-						borderColor: GOLD,
-					},
-					React.createElement(
-						Box,
-						{ flexDirection: "row", alignItems: "center" },
-						React.createElement(
-							Text,
-							{ bold: true, color: GOLD },
-							"\u2315 Search: ",
-						),
-						React.createElement(
-							Text,
-							{ color: SAND },
-							searchQuery +
-								(ascii ? "" : "\u2502"),
-						),
-					),
-					React.createElement(
-						Box,
-						{ marginTop: 0.5 },
-						React.createElement(
-							Text,
-							{ dimColor: true, color: GRAY },
-							`${searchMatchCount} of ${totalVisibleCount} messages match` +
-								(searchMatchCount > 0
-									? `  (match ${searchMatchIndex + 1})  \u2193 Enter next  Esc close`
-									: `  Esc to close`),
-						),
-					),
-				),
 			messages.length === 0
 				? React.createElement(
 						Box,
@@ -4793,9 +4750,6 @@ function ChatUI({
 											loading,
 											historyIndex,
 											historyLength: history.length,
-											scrollOffset,
-											scrollPercent,
-											newMessageCount,
 											model: ctxModel,
 											provider: runtimeProvider,
 											companionMode,
@@ -4804,6 +4758,12 @@ function ChatUI({
 												costTracker.getSessionStats().totalCompletionTokens,
 											sessionCost: costTracker.getSessionStats().totalCost,
 											hideInput: false,
+											showSearch,
+											searchQuery,
+											searchMatchCount,
+											searchMatchIndex,
+											sendError,
+											completionText,
 										}),
 									),
 								),

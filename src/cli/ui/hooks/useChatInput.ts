@@ -109,6 +109,8 @@ export interface UseChatInputProps {
 	showSearch?: boolean;
 	onSearchToggle?: () => void;
 	onSearchClose?: () => void;
+	onSendError?: (error: string) => void;
+	completionText?: string;
 }
 
 export function useChatInput(props: UseChatInputProps) {
@@ -151,7 +153,8 @@ export function useChatInput(props: UseChatInputProps) {
 		showSessionList,
 		setQueuedMessages,
 		commands,
-		showSearch,
+		onSendError,
+		showSearch
 	} = props;
 
 	const showCommandPaletteRef = React.useRef(showCommandPalette);
@@ -180,6 +183,7 @@ export function useChatInput(props: UseChatInputProps) {
 	const completionIndexRef = React.useRef<number>(-1);
 	const completionMatchesRef = React.useRef<string[]>([]);
 	const completionPrefixRef = React.useRef<string>("");
+	const completionTextRef = React.useRef<string>("");
 
 	const setInput = React.useCallback(
 		(newVal: string | ((prev: string) => string)) => {
@@ -641,10 +645,19 @@ export function useChatInput(props: UseChatInputProps) {
 				void Promise.resolve(saveHistory(newHistory)).catch((error) => {
 					logger.error("Failed to save chat input history:", error);
 				});
-				setHistoryIndex(-1);
-				void send(text);
-				return;
-			}
+			setHistoryIndex(-1);
+			completionTextRef.current = "";
+			(async () => {
+				try {
+					await send(text);
+					setInput("");
+					setCursorPos(0);
+				} catch (e) {
+					onSendError?.(e instanceof Error ? e.message : String(e));
+				}
+			})();
+			return;
+		}
 
 			if (key.pageUp) {
 				scrollPageUp();
@@ -906,6 +919,7 @@ export function useChatInput(props: UseChatInputProps) {
 					completionIndexRef.current = -1;
 					completionMatchesRef.current = [];
 					completionPrefixRef.current = "";
+					completionTextRef.current = "";
 					return;
 				}
 
@@ -933,6 +947,7 @@ export function useChatInput(props: UseChatInputProps) {
 
 					if (allCommands.length === 0) {
 						completionIndexRef.current = -1;
+						completionTextRef.current = "";
 						return;
 					}
 					completionIndexRef.current = 0;
@@ -953,6 +968,9 @@ export function useChatInput(props: UseChatInputProps) {
 				if (match) {
 					setInput(match + " ");
 					setCursorPos(match.length + 1);
+					completionTextRef.current = match + " ";
+				} else {
+					completionTextRef.current = "";
 				}
 				return;
 			}
@@ -997,6 +1015,7 @@ export function useChatInput(props: UseChatInputProps) {
 				completionIndexRef.current = -1;
 				completionMatchesRef.current = [];
 				completionPrefixRef.current = "";
+				completionTextRef.current = "";
 
 				const sanitized = k
 					.replace(/[\x00-\x1F\x7F]/g, "")
@@ -1026,4 +1045,5 @@ export function useChatInput(props: UseChatInputProps) {
 				!showSessionList,
 		},
 	);
+	return { completionText: completionTextRef.current };
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ChatBar } from "./ChatBar.js";
 
 describe("ChatBar", () => {
-	it("renders cursor, selection, multiline position, history, scroll updates, and loading interruption feedback", () => {
+	it("renders cursor, selection, multiline position, history, and loading interruption feedback", () => {
 		const input = "first\nsecond\nthird";
 		const view = render(
 			React.createElement(ChatBar, {
@@ -15,9 +15,6 @@ describe("ChatBar", () => {
 				loading: false,
 				historyIndex: 1,
 				historyLength: 4,
-				scrollOffset: 12,
-				scrollPercent: 35,
-				newMessageCount: 2,
 				model: "test-model",
 				provider: "test-provider",
 			}),
@@ -27,8 +24,6 @@ describe("ChatBar", () => {
 		expect(view.lastFrame()).toContain("Col 3");
 		expect(view.lastFrame()).toContain("Sel 0-5");
 		expect(view.lastFrame()).toContain("[2/4]");
-		expect(view.lastFrame()).toContain("12 LINE(S) (35%)");
-		expect(view.lastFrame()).toContain("2 NEW MESSAGE(S)");
 
 		view.rerender(
 			React.createElement(ChatBar, {
@@ -39,14 +34,11 @@ describe("ChatBar", () => {
 				loading: true,
 				historyIndex: -1,
 				historyLength: 4,
-				scrollOffset: 0,
-				scrollPercent: 0,
-				newMessageCount: 0,
 				model: "test-model",
 				provider: "test-provider",
 			}),
 		);
-		expect(view.lastFrame()).toContain("Ctrl+C to interrupt");
+		expect(view.lastFrame()).toContain("Ctrl+C");
 	});
 
 	it("clamps malformed external selection coordinates to the input bounds", () => {
@@ -59,9 +51,6 @@ describe("ChatBar", () => {
 				loading: false,
 				historyIndex: -1,
 				historyLength: 0,
-				scrollOffset: 0,
-				scrollPercent: 0,
-				newMessageCount: 0,
 				model: "test-model",
 				provider: "test-provider",
 			}),

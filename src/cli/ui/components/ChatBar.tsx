@@ -17,18 +17,19 @@ export interface ChatBarProps {
 	loading: boolean;
 	historyIndex: number;
 	historyLength: number;
-	scrollOffset: number;
-	scrollPercent: number;
-	newMessageCount: number;
 	model: string;
 	provider: string;
 	companionMode?: boolean;
 	tokensUsed?: number;
 	sessionCost?: number;
 	hideInput?: boolean;
+	showSearch?: boolean;
+	searchQuery?: string;
+	searchMatchCount?: number;
+	searchMatchIndex?: number;
+	sendError?: string | null;
+	completionText?: string;
 }
-
-
 
 export function ChatBar({
 	input,
@@ -38,14 +39,17 @@ export function ChatBar({
 	loading,
 	historyIndex,
 	historyLength,
-	scrollOffset,
-	scrollPercent,
-	newMessageCount,
 	model,
 	provider,
 	companionMode = false,
 	tokensUsed = 0,
 	hideInput = false,
+	showSearch = false,
+	searchQuery = "",
+	searchMatchCount = 0,
+	searchMatchIndex = 0,
+	sendError = null,
+	completionText = "",
 }: ChatBarProps): React.ReactElement {
 	const ascii = isAsciiMode();
 	const safeCursorPos = Math.max(0, Math.min(cursorPos, input.length));
@@ -61,9 +65,42 @@ export function ChatBar({
 		safeSelectionStart !== null &&
 		safeSelectionEnd !== null &&
 		safeSelectionStart !== safeSelectionEnd
-			? ` • Sel ${Math.min(safeSelectionStart, safeSelectionEnd)}-${Math.max(safeSelectionStart, safeSelectionEnd)}`
+			? ` Sel ${Math.min(safeSelectionStart, safeSelectionEnd)}-${Math.max(safeSelectionStart, safeSelectionEnd)}`
 			: "";
-	const inputStatus = `Ln ${currentLine}/${lineCount} • Col ${currentColumn} • ${lineCount} line${lineCount === 1 ? "" : "s"}${selectionStatus}`;
+	const inputStatus = `Ln ${currentLine}/${lineCount} Col ${currentColumn}${selectionStatus}`;
+
+	// Search bar overlay — replaces the entire chat input
+	if (showSearch) {
+		return React.createElement(
+			Box,
+			{ flexDirection: "column", marginTop: 1 },
+			React.createElement(
+				Box,
+				{
+					flexDirection: "row",
+					borderStyle: "round",
+					borderColor: GOLD,
+					paddingX: 1,
+					alignItems: "center",
+				},
+				React.createElement(Text, { color: GOLD }, "\uD83D\uDD0D "),
+				React.createElement(
+					Box,
+					{ flexGrow: 1 },
+					React.createElement(
+						Text,
+						{ color: SAND },
+						searchQuery + (ascii ? "" : "\u2502"),
+					),
+				),
+				React.createElement(
+					Text,
+					{ dimColor: true, color: SAND },
+					`${searchMatchIndex + 1}/${searchMatchCount}`,
+				),
+			),
+		);
+	}
 
 	// Render Prompt Line (Input + Selection + Cursor)
 	const renderedInputText = useMemo(() => {
@@ -107,14 +144,16 @@ export function ChatBar({
 						"Type a prompt, or press / for slash commands...",
 					)
 				: null;
-
 		return React.createElement(
 			Text,
 			{ wrap: "wrap" },
 			historyIndicator,
 			React.createElement(Text, { color: "white" }, before),
-			loading ? null : React.createElement(Text, { color: GOLD }, "█"),
+			loading ? null : React.createElement(Text, { color: GOLD }, "\u2588"),
 			React.createElement(Text, { color: "white" }, after),
+			completionText && !loading
+				? React.createElement(Text, { color: "gray", dimColor: true }, completionText)
+				: null,
 			hint,
 		);
 	}, [
@@ -125,43 +164,13 @@ export function ChatBar({
 		selectionStart,
 		selectionEnd,
 		loading,
+		completionText,
 	]);
 
 	return React.createElement(
 		Box,
 		{ flexDirection: "column", marginTop: 1 },
-		// Scroll Banner Warning (if scrolled up)
-		scrollOffset > 0 && !hideInput
-			? React.createElement(
-					Box,
-					{
-						flexDirection: "row",
-						borderStyle: "single",
-						borderColor: CORAL,
-						paddingX: 1,
-						marginBottom: 1,
-						justifyContent: "space-between",
-					},
-					React.createElement(
-						Text,
-						{ color: CORAL, bold: true },
-						`↑ SCROLLED UP ${scrollOffset} LINE(S) (${scrollPercent}%)`,
-					),
-					newMessageCount > 0 &&
-						React.createElement(
-							Text,
-							{ color: GOLD, bold: true },
-							`↓ ${newMessageCount} NEW MESSAGE(S)`,
-						),
-					React.createElement(
-						Text,
-						{ color: SAND, dimColor: true },
-						"Press End or PageDown to jump to bottom",
-					),
-				)
-			: null,
-
-		// Top Metadata Header Row (Model, Provider, Keybinding Hints)
+		// Single-line metadata with model, status and shortcut hints
 		React.createElement(
 			Box,
 			{
@@ -186,30 +195,34 @@ export function ChatBar({
 					React.createElement(
 						Text,
 						{ color: GREEN, bold: true },
-						"• COMPANION",
+						"\u2022 COMPANION",
 					),
 				tokensUsed > 0 &&
 					React.createElement(
 						Text,
 						{ color: SAND, dimColor: true },
-						`• ${tokensUsed.toLocaleString()} tok`,
+						`\u2022 ${tokensUsed.toLocaleString()} tok`,
 					),
+				React.createElement(
+					Text,
+					{ color: "gray", dimColor: true },
+					`\u00B7 ${inputStatus}`,
+				),
 			),
 			React.createElement(
-				Box,
-				{ flexDirection: "column", alignItems: "flex-end" },
-				React.createElement(
-					Text,
-					{ color: SAND, dimColor: true },
-					inputStatus,
-				),
-				React.createElement(
-					Text,
-					{ color: SAND, dimColor: true },
-					"PgUp/PgDn Scroll • Ctrl+P Commands • /help",
-				),
+				Text,
+				{ color: SAND, dimColor: true },
+				"PgUp/PgDn Scroll \u2022 Ctrl+P Commands \u2022 /help",
 			),
 		),
+
+		// Error indicator (auto-dismissed by parent timer)
+		sendError &&
+			React.createElement(
+				Text,
+				{ color: CORAL, dimColor: true },
+				`! ${sendError}`,
+			),
 
 		// Main Framed Chat Input Row
 		hideInput
@@ -220,7 +233,7 @@ export function ChatBar({
 				flexDirection: "row",
 				borderStyle: loading ? "double" : "round",
 				borderColor: loading ? GOLD : CYAN,
-				paddingX: 1,
+				paddingX: 0.5,
 				alignItems: "center",
 				gap: 1,
 			},
@@ -232,7 +245,7 @@ export function ChatBar({
 						React.createElement(
 							Text,
 							{ color: GOLD, bold: true },
-							"Loading • Ctrl+C to interrupt",
+							"Ctrl+C",
 						),
 					)
 				: React.createElement(
