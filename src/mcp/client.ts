@@ -642,7 +642,7 @@ export class MCPClientManager {
 			info.transport = transport;
 			this.setupTransportHandlers(info);
 
-			const capabilities: Record<string, unknown> = {};
+			const capabilities: Record<string, unknown> = { sampling: {} };
 
 			const client = new Client(
 				{ name: "tehuti-cli", version: "1.2.1" },

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { statfs } from "node:fs/promises";
 import fs from "fs-extra";
 import type { SessionData } from "./manager.js";
 import { debug } from "../utils/debug.js";
@@ -117,7 +118,7 @@ function readGitInfo(cwd: string): SessionHealth["git"] | undefined {
 export async function checkSessionHealth(
 	data: SessionData,
 	currentCwd: string,
-	options: { allowFallbackCwd?: boolean } = {},
+	options: { allowFallbackCwd?: boolean; sessionDir?: string } = {},
 ): Promise<SessionHealth> {
 	const warnings: string[] = [];
 	const blockers: string[] = [];
@@ -160,6 +161,46 @@ export async function checkSessionHealth(
 				", ",
 			)}), but stdout/stderr pipes cannot be restored after restart.`,
 		);
+	}
+
+	// Check if session file is readable (requires sessionDir option)
+	if (options.sessionDir) {
+		const sessionFile = `${options.sessionDir}/session.json`;
+		try {
+			await fs.access(sessionFile, fs.constants.R_OK);
+		} catch {
+			warnings.push(
+				`Session file is not readable: ${sessionFile}`,
+			);
+		}
+	}
+
+	// Check if session metadata is consistent
+	const expectedMessages =
+		(data.appendOnlyLog?.length ?? 0) > 0
+			? data.appendOnlyLog.length
+			: data.messages.length;
+	if (
+		data.metadata.messageCount !== undefined &&
+		data.metadata.messageCount !== expectedMessages
+	) {
+		warnings.push(
+			`Session metadata messageCount (${data.metadata.messageCount}) does not match actual message count (${expectedMessages}).`,
+		);
+	}
+
+	// Check available disk space (warn if less than 1 MB free)
+	try {
+		const diskStats = await statfs(resumeCwd);
+		const freeBytes = diskStats.bavail * diskStats.bsize;
+		const freeMB = freeBytes / (1024 * 1024);
+		if (freeMB < 1) {
+			warnings.push(
+				`Low disk space on ${resumeCwd}: ${freeMB.toFixed(1)} MB available.`,
+			);
+		}
+	} catch {
+		// statfs can fail on some filesystems; treat as non-critical
 	}
 
 	const status =

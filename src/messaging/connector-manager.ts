@@ -35,10 +35,19 @@ export class ConnectorManager extends EventEmitter {
 	private config: ConnectorConfig;
 	private sessionResolver = new SessionResolver();
 	private webhookServer: http.Server | null = null;
+	private messageCallback?: (event: UnifiedMessageEvent) => void;
 
 	constructor(config: ConnectorConfig) {
 		super();
 		this.config = config;
+	}
+
+	/**
+	 * Registers a callback to be invoked when an incoming message is received.
+	 * The callback fires in addition to the existing EventEmitter 'message' event.
+	 */
+	setMessageCallback(callback: (event: UnifiedMessageEvent) => void): void {
+		this.messageCallback = callback;
 	}
 
 	private ensureWebhookServer(port = 3333): http.Server {
@@ -81,64 +90,6 @@ export class ConnectorManager extends EventEmitter {
 	 */
 	public async initialize(): Promise<void> {
 		await this.start();
-	}
-
-	/**
-	 * Connects to a WebSocket-based service using an exponential backoff strategy
-	 * with jitter to prevent reconnect storms.
-	 *
-	 * NOTE: Currently unused after the messaging refactor. Kept for the next
-	 * iteration of `init*` methods that will replace their "throw new Error" stubs
-	 * with real connection logic.
-	 */
-	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: slated for use by next iteration of init* methods
-	// @ts-expect-error TS6133/TS6192: Unused variable
-	private async connectWithBackoff(
-		platform: string,
-		connectFn: () => Promise<void>,
-		maxRetries = 10,
-	): Promise<void> {
-		let attempt = 0;
-		const baseDelay = 1000; // 1 second
-		const maxDelay = 60000; // 1 minute max backoff
-
-		while (attempt < maxRetries) {
-			try {
-				await connectFn();
-				console.log(`[${platform}] Connected successfully.`);
-				return;
-			} catch (error) {
-				attempt++;
-				const errMessage =
-					error instanceof Error ? error.message : String(error);
-
-				if (attempt >= maxRetries) {
-					console.error(
-						`[${platform}] Exhausted max retries (${maxRetries}): ${errMessage}`,
-					);
-					if (this.listenerCount("error") > 0) {
-						this.emit(
-							"error",
-							new Error(`Max retries reached for ${platform}`),
-						);
-					}
-					return;
-				}
-
-				// Exponential backoff: baseDelay * 2^(attempt - 1)
-				const delay = Math.min(maxDelay, baseDelay * 2 ** (attempt - 1));
-				// Add jitter: random between 0 and 500ms
-				const jitter = Math.random() * 500;
-				const sleepTime = delay + jitter;
-
-				console.warn(
-					`[${platform}] Connection failed: ${errMessage}. ` +
-						`Retrying in ${Math.round(sleepTime)}ms (attempt ${attempt}/${maxRetries})...`,
-				);
-
-				await new Promise((resolve) => setTimeout(resolve, sleepTime));
-			}
-		}
 	}
 
 	private async initSlackSocketMode(attempt = 0): Promise<void> {
@@ -496,6 +447,7 @@ export class ConnectorManager extends EventEmitter {
 		};
 
 		this.emit("message", event);
+		this.messageCallback?.(event);
 	}
 
 	public async sendMessage(

@@ -18,18 +18,12 @@ import { isEnterKey } from "../../../utils/keyboard.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
 import { addRecentCommand, getRecentCommands } from "../commandPaletteRecent.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { HIGH_CONTRAST, keyboardHintLine } from "../accessibility.js";
 const GOLD = BRANDING.colors.gold;
 const CORAL = BRANDING.colors.coral;
 const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
 
-/** High-contrast mode detection for terminal accessibility */
-const HIGH_CONTRAST = process.env.TEHUTI_HIGH_CONTRAST === "1" || process.env.NO_COLOR === undefined;
-
-/** Get accessible color based on high-contrast preference */
-function getAccessibleColor(normalColor: string, highContrastColor: string): string {
-  return HIGH_CONTRAST ? highContrastColor : normalColor;
-}
 
 export interface CommandItem {
 	id: string;
@@ -170,9 +164,9 @@ function CommandItemRow({
   const active = isSelected || isMouseHovered;
 
   // Accessibility: Use high-contrast colors when enabled
-  const labelColor = getAccessibleColor(CORAL, "white");
-  const descColor = getAccessibleColor(GRAY, "white");
-  const shortcutColor = getAccessibleColor(CYAN, "cyan");
+	const labelColor = HIGH_CONTRAST ? "white" : CORAL;
+	const descColor = HIGH_CONTRAST ? "white" : GRAY;
+	const shortcutColor = HIGH_CONTRAST ? "cyan" : CYAN;
 
   const label =
     query.trim() &&
@@ -502,7 +496,7 @@ export function CommandPalette({
 					React.createElement(
 						Text,
 						{ color: GRAY, dimColor: true },
-						isLoading ? "..." : "(↑↓/jk • ⏎ • esc)",
+						isLoading ? "..." : keyboardHintLine("navigate", "confirm", "cancel"),
 					),
 				),
 				

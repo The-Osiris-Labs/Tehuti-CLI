@@ -1,3 +1,4 @@
 export * from "./loader.js";
 export * from "./schema.js";
 export * from "./wizard.js";
+export * from "./migration.js";

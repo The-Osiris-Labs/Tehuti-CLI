@@ -9,7 +9,6 @@ import { loadConfig } from "../../config/index.js";
 import { SOCKET_PATH, TehutiDaemonClient } from "../../daemon/client.js";
 import { installLaunchAgent } from "../../daemon/launch-agent.js";
 import { TehutiDaemonServer } from "../../daemon/server.js";
-import { DaemonStateEngine } from "../../daemon/state-engine.js";
 
 export function daemonCommand(): Command {
 	const daemon = new Command("daemon").description(
@@ -174,12 +173,9 @@ export function daemonCommand(): Command {
 	daemon.command("_run_server", { hidden: true }).action(async () => {
 		try {
 			const cfg = await loadConfig();
-			const server = new TehutiDaemonServer();
+			const server = new TehutiDaemonServer(cfg.messaging);
 			server.start();
 			consola.info(`Daemon server started on ${SOCKET_PATH}`);
-
-			const stateEngine = new DaemonStateEngine(cfg as any);
-			stateEngine.start();
 
 			server.on("message", async (dataOrSocket: any, socketOrData: any) => {
 				const socket: net.Socket =
@@ -268,7 +264,7 @@ export function daemonCommand(): Command {
 			});
 
 			const shutdown = () => {
-				stateEngine.stop();
+				server.stop();
 			};
 			server.on("close", shutdown);
 			process.on("SIGINT", shutdown);

@@ -3,73 +3,6 @@ import { KiloCodeClient } from "../../api/kilocode.js";
 import type { AgentContext } from "../context.js";
 import { createTool, type ToolContext, type ToolResult } from "./registry.js";
 
-/**
- * @status partial — stores context management settings but autoSummarize/maxContextLength are not wired
- *
- * Calls KiloCodeClient.configureContextManagement() which stores the options
- * in `this.options.contextManagement`. However, these stored values are never
- * read by buildRequestBody() or any summarization logic. Only the memoryBank
- * portion of KiloCodeOptions is used. The autoSummarize and maxContextLength
- * settings are accepted and stored but have no effect on behavior.
- */
-export const configureContextManagementTool = createTool({
-	name: "configure_context_management",
-	description:
-		"Configure KiloCode context management options. This controls how conversation context is handled and summarized.",
-	parameters: z.object({
-		autoSummarize: z
-			.boolean()
-			.optional()
-			.describe("Whether to automatically summarize long conversations"),
-		maxContextLength: z
-			.number()
-			.int()
-			.positive()
-			.optional()
-			.describe("Maximum context length before summarization"),
-	}),
-	category: "system",
-	execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
-		const { autoSummarize = true, maxContextLength = 32000 } = args as {
-			autoSummarize?: boolean;
-			maxContextLength?: number;
-		};
-
-		const agentCtx = ctx as unknown as AgentContext;
-		if (agentCtx.config.provider !== "kilocode") {
-			return {
-				success: false,
-				output: "",
-				error: "Context management is only available with KiloCode provider",
-			};
-		}
-
-		try {
-			const client = KiloCodeClient.getInstance(agentCtx.config);
-			client.configureContextManagement({ autoSummarize, maxContextLength });
-
-			return {
-				success: true,
-				output: JSON.stringify({
-					status: "scaffolded",
-					feature: "configure_context_management",
-					message:
-						"Context management settings were recorded in memory, but autoSummarize and maxContextLength runtime enforcement are currently unconfigured/scaffolded for the KiloCode provider.",
-					configured: {
-						autoSummarize,
-						maxContextLength,
-					},
-				}),
-			};
-		} catch (error) {
-			return {
-				success: false,
-				output: "",
-				error: `Failed to configure context management: ${error}`,
-			};
-		}
-	},
-});
 
 /**
  * @status implemented — sends code to KiloCode for review via real API calls
@@ -202,7 +135,6 @@ export const summarizeContextTool = createTool({
 });
 
 export const kilocodeAdvancedTools = [
-	configureContextManagementTool,
 	reviewCodeTool,
 	summarizeContextTool,
 ];

@@ -10,6 +10,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { logger } from "../utils/logger.js";
 import { getTelemetry } from "../utils/telemetry.js";
+import { mcpManager } from "../mcp/client.js";
+import { sessionManager } from "../session/manager.js";
 
 export interface APIServerConfig {
 	port: number;
@@ -241,17 +243,45 @@ class APIServer {
 	 */
 	private registerDefaultRoutes(): void {
 		// Health check
-		this.route("GET", "/health", async () => ({
-			status: 200,
-			body: { status: "ok", timestamp: Date.now() },
-		}));
+		this.route("GET", "/health", async () => {
+			try {
+				const health = {
+					status: 'ok',
+					timestamp: new Date().toISOString(),
+					version: '1.2.1',
+					uptime: process.uptime(),
+					memory: {
+						rss: process.memoryUsage().rss,
+						heapUsed: process.memoryUsage().heapUsed,
+						heapTotal: process.memoryUsage().heapTotal,
+					},
+					mcp: mcpManager.getAllServerStatuses(),
+					session: sessionManager ? 'active' : 'inactive',
+				};
+				return {
+					status: 200,
+					body: health,
+					headers: { 'Content-Type': 'application/json' },
+				};
+			} catch (error) {
+				logger.error('Health check failed', error);
+				return {
+					status: 500,
+					body: {
+						status: 'error',
+						message: 'Health check failed',
+						timestamp: new Date().toISOString(),
+					},
+				};
+			}
+		});
 
 		// API info
 		this.route("GET", "/", async () => ({
 			status: 200,
 			body: {
 				name: "Tehuti API",
-				version: "1.0.0",
+				version: "1.2.1",
 				endpoints: [
 					"GET /health",
 					"GET /session",

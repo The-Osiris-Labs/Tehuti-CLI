@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { StatusBadge } from "./StatusBadge.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 export interface StatusIndicatorProps {
 	status: "success" | "error" | "loading";
@@ -12,7 +13,7 @@ export interface StatusIndicatorProps {
 export const StatusIndicator = ({
 	status,
 	label,
-	animate = true,
+	animate = !respectReducedMotion(),
 }: StatusIndicatorProps) => {
 	const [, setVisible] = useState(!animate);
 

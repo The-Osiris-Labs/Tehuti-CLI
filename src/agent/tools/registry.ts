@@ -53,6 +53,16 @@ export interface ToolDefinition {
 		| "development"
 		| "plugin";
 	intent?: "read-only" | "destructive" | "interactive";
+	/** Estimated execution time in ms (for UI feedback) */
+	estimatedDuration?: number;
+	/** Whether this tool modifies the filesystem */
+	modifiesFs?: boolean;
+	/** Whether this tool requires network access */
+	requiresNetwork?: boolean;
+	/** Tags for tool categorization (e.g., ['git', 'version-control']) */
+	tags?: string[];
+	/** Cost tier: free, low, medium, high (for budget tracking) */
+	costTier?: "free" | "low" | "medium" | "high";
 	onRegister?: (manager: ToolRegistryManager) => Promise<void> | void;
 	onUnregister?: (manager: ToolRegistryManager) => Promise<void> | void;
 }

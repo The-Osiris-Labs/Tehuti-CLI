@@ -120,6 +120,21 @@ export function matchesPattern(value: string, pattern: string): boolean {
 	return value === pattern;
 }
 
+// Default permission rules for high-risk operations that always require prompting.
+const DEFAULT_PERMISSION_RULES: Omit<PermissionRule, "id" | "createdAt">[] = [
+	// Git write operations should always prompt
+	{ pattern: "git_push", action: "prompt", scope: "session" },
+	{ pattern: "git_commit", action: "prompt", scope: "session" },
+	{ pattern: "git_branch", action: "prompt", scope: "session" },
+
+	// Bash with sudo should always prompt
+	{ pattern: "bash(sudo*)", action: "prompt", scope: "session" },
+
+	// Delete operations should always prompt
+	{ pattern: "delete_file", action: "prompt", scope: "session" },
+	{ pattern: "delete_dir", action: "prompt", scope: "session" },
+];
+
 export class PermissionManager {
 	private rules: PermissionRule[] = [];
 	private sessionAllowed: Set<string> = new Set();
@@ -136,11 +151,22 @@ export class PermissionManager {
 			if (stored) {
 				const parsed = JSON.parse(stored);
 				if (Array.isArray(parsed)) {
-					this.rules = parsed;
+					this.rules = [...parsed];
 				}
 			}
 		} catch (err) {
 			debug.log("permissions", `Failed to load permission rules: ${err}`);
+		}
+
+		// Append default restrictive rules after user-defined rules.
+		// User rules are checked first (earlier in the array wins),
+		// so they can override these defaults.
+		for (const rule of DEFAULT_PERMISSION_RULES) {
+			this.rules.push({
+				...rule,
+				id: `default-${rule.pattern}`,
+				createdAt: new Date(0),
+			});
 		}
 	}
 

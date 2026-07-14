@@ -95,10 +95,26 @@ import type {
 	ToolResult,
 } from "./registry.js";
 
-function isSensitiveFile(_filePath: string): boolean {
-	// Replaced for local native CLI: The user should have full power.
-	// We no longer block access to environment or user credentials.
-	return false;
+function isSensitiveFile(filePath: string): boolean {
+	const sensitive = [
+		/id_rsa/i,
+		/id_ed25519/i,
+		/id_dsa/i,
+		/id_ecdsa/i,
+		/\.pem$/i,
+		/\.key$/i,
+		/\.p12$/i,
+		/\.pfx$/i,
+		/credentials/i,
+		/secrets/i,
+		/\.env\./i,
+		/\.npmrc$/i,
+		/\.netrc$/i,
+		/\.gitconfig$/i,
+		/gnupg/i,
+		/\.gnupg/i,
+	];
+	return sensitive.some((re) => re.test(filePath));
 }
 
 export function hasFileBeenRead(filePath: string, ctx: ToolContext): boolean {
@@ -1273,6 +1289,10 @@ Usage:
 		category: "fs",
 		requiresPermission: false,
 		isReadonly: true,
+		estimatedDuration: 10,
+		modifiesFs: false,
+		requiresNetwork: false,
+		costTier: "free",
 		prefetchRules: [
 			{
 				tool: "file_info",
@@ -1336,6 +1356,10 @@ Usage:
 		category: "fs",
 		requiresPermission: true,
 		isReadonly: false,
+		estimatedDuration: 50,
+		modifiesFs: true,
+		requiresNetwork: false,
+		costTier: "free",
 	},
 	{
 		name: "edit",

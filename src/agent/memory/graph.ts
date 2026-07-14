@@ -24,11 +24,6 @@ export interface Edge {
 	weight?: number;
 }
 
-export interface GraphData {
-	nodes: Node[];
-	edges: Edge[];
-}
-
 export async function addNode(
 	id: string,
 	type: string,
@@ -133,7 +128,7 @@ export async function searchGraph(
 	const vectorResults = await vectorStore.search(query, 20);
 	const vectorNodeIds = new Set(vectorResults.map((r: { id: string }) => r.id));
 
-	const allNodesStmt = db.prepare(`SELECT * FROM nodes`);
+	const allNodesStmt = db.prepare(`SELECT * FROM nodes WHERE type != 'env_snapshot' ORDER BY last_accessed DESC LIMIT 1000`);
 	const allNodesRows = allNodesStmt.all() as any[];
 	const nodes = allNodesRows.map(mapRowToNode);
 
@@ -368,6 +363,7 @@ export async function optimizeInsights(
 	const now = Date.now();
 	const DECAY_RATE = 0.005; // 0.5% decay per day (extends to 60+ days)
 	const OBSOLETE_THRESHOLD = 0.1;
+	const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 	for (const node of nodes) {
 		if (node.type === "project_rule" || node.type === "critical_fact") {
@@ -417,91 +413,107 @@ export async function optimizeInsights(
 
 	const delEdgeStmt = db.prepare(`DELETE FROM edges WHERE id = ?`);
 
-	for (let i = 0; i < nodes.length; i++) {
-		if (i > 0 && i % 50 === 0) {
-			await new Promise((resolve) => setImmediate(resolve));
-		}
-		if (toRemove.has(nodes[i].id)) continue;
+	// Group nodes by type to skip cross-type comparisons entirely (O(n²) → O(Σ nₖ²))
+	const nodesByType = new Map<string, typeof nodes>();
+	for (const node of nodes) {
+		const type = node.type;
+		if (!nodesByType.has(type)) nodesByType.set(type, []);
+		nodesByType.get(type)!.push(node);
+	}
 
-		for (let j = i + 1; j < nodes.length; j++) {
-			if (toRemove.has(nodes[j].id)) continue;
-
-			const nodeA = nodes[i];
-			const nodeB = nodes[j];
-
-			if (nodeA.type !== nodeB.type) continue;
-
-			const contentA = nodeA.content.trim().toLowerCase();
-			const contentB = nodeB.content.trim().toLowerCase();
-
-			const isExactMatch = contentA === contentB;
-
-			const tokensA = getTokens(contentA);
-			const tokensB = getTokens(contentB);
-
-			let intersectionSize = 0;
-			for (const t of tokensA) {
-				if (tokensB.has(t)) intersectionSize++;
+	let compareCount = 0;
+	for (const [, typeNodes] of nodesByType) {
+		for (let i = 0; i < typeNodes.length; i++) {
+			if (compareCount++ % 50 === 0) {
+				const { promise, resolve } = Promise.withResolvers<void>();
+				setImmediate(resolve);
+				await promise;
 			}
+			if (toRemove.has(typeNodes[i].id)) continue;
 
-			const unionSize = tokensA.size + tokensB.size - intersectionSize;
-			const similarity = unionSize === 0 ? 0 : intersectionSize / unionSize;
+			for (let j = i + 1; j < typeNodes.length; j++) {
+				if (toRemove.has(typeNodes[j].id)) continue;
 
-			const isLexicalMatch = similarity > 0.85;
+				const nodeA = typeNodes[i];
+				const nodeB = typeNodes[j];
 
-			if (isExactMatch || isLexicalMatch) {
-				toRemove.add(nodeB.id);
+				// Skip nodes created more than 30 days apart
+				const tsA = nodeA.timestamp ?? 0;
+				const tsB = nodeB.timestamp ?? 0;
+				if (Math.abs(tsA - tsB) > THIRTY_DAYS_MS) continue;
 
-				const newPriority = Math.max(nodeA.priority ?? 0, nodeB.priority ?? 0);
-				const newImportance = Math.max(
-					nodeA.importance ?? 0,
-					nodeB.importance ?? 0,
-				);
-				const newAccessCount =
-					(nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
+				const contentA = nodeA.content.trim().toLowerCase();
+				const contentB = nodeB.content.trim().toLowerCase();
 
-				const newMeta = {
-					cwd: nodeA.cwd,
-					priority: newPriority,
-					importance: newImportance,
-					accessCount: newAccessCount,
-				};
+				const isExactMatch = contentA === contentB;
 
-				const executeMerge = db.transaction(() => {
-					updateStmt.run({
-						metadata: JSON.stringify(newMeta),
-						id: nodeA.id,
+				const tokensA = getTokens(contentA);
+				const tokensB = getTokens(contentB);
+
+				let intersectionSize = 0;
+				for (const t of tokensA) {
+					if (tokensB.has(t)) intersectionSize++;
+				}
+
+				const unionSize = tokensA.size + tokensB.size - intersectionSize;
+				const similarity = unionSize === 0 ? 0 : intersectionSize / unionSize;
+
+				const isLexicalMatch = similarity > 0.85;
+
+				if (isExactMatch || isLexicalMatch) {
+					toRemove.add(nodeB.id);
+
+					const newPriority = Math.max(nodeA.priority ?? 0, nodeB.priority ?? 0);
+					const newImportance = Math.max(
+						nodeA.importance ?? 0,
+						nodeB.importance ?? 0,
+					);
+					const newAccessCount =
+						(nodeA.accessCount ?? 1) + (nodeB.accessCount ?? 1);
+
+					const newMeta = {
+						cwd: nodeA.cwd,
+						priority: newPriority,
+						importance: newImportance,
+						accessCount: newAccessCount,
+					};
+
+					const executeMerge = db.transaction(() => {
+						updateStmt.run({
+							metadata: JSON.stringify(newMeta),
+							id: nodeA.id,
+						});
+
+						// Re-route edges from B to A
+						const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
+
+						for (const edge of oldEdges) {
+							const newSource =
+								edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
+							const newTarget =
+								edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
+
+							// Avoid self-loops if the edge was between A and B
+							if (newSource !== newTarget) {
+								const edgeId = `${newSource}->${newTarget}:${edge.relation_type}`;
+								insertEdgeStmt.run({
+									id: edgeId,
+									source: newSource,
+									target: newTarget,
+									relation: edge.relation_type,
+									weight: edge.weight,
+									now: Date.now(),
+								});
+							}
+
+							delEdgeStmt.run(edge.id);
+						}
 					});
 
-					// Re-route edges from B to A
-					const oldEdges = edgesStmt.all(nodeB.id, nodeB.id) as any[];
+					executeMerge();
 
-					for (const edge of oldEdges) {
-						const newSource =
-							edge.source_id === nodeB.id ? nodeA.id : edge.source_id;
-						const newTarget =
-							edge.target_id === nodeB.id ? nodeA.id : edge.target_id;
-
-						// Avoid self-loops if the edge was between A and B
-						if (newSource !== newTarget) {
-							const edgeId = `${newSource}->${newTarget}:${edge.relation_type}`;
-							insertEdgeStmt.run({
-								id: edgeId,
-								source: newSource,
-								target: newTarget,
-								relation: edge.relation_type,
-								weight: edge.weight,
-								now: Date.now(),
-							});
-						}
-
-						delEdgeStmt.run(edge.id);
-					}
-				});
-
-				executeMerge();
-
-				mergedCount++;
+					mergedCount++;
+				}
 			}
 		}
 	}
@@ -568,76 +580,4 @@ export async function optimizeInsights(
 	}
 
 	return { removed: removedCount, merged: mergedCount };
-}
-
-export async function saveGraph(graphData: GraphData): Promise<void> {
-	const insertNodeStmt = db.prepare(`
-		INSERT INTO nodes (id, type, content, metadata, created_at, last_accessed)
-		VALUES (@id, @type, @content, @metadata, @now, @now)
-		ON CONFLICT(id) DO UPDATE SET
-			content = @content,
-			metadata = @metadata,
-			last_accessed = @now
-	`);
-
-	const insertEdgeStmt = db.prepare(`
-		INSERT INTO edges (id, source_id, target_id, relation_type, weight, created_at)
-		VALUES (@id, @source, @target, @relation, @weight, @now)
-		ON CONFLICT(id) DO UPDATE SET weight = @weight
-	`);
-
-	const transaction = db.transaction((data: GraphData) => {
-		const now = Date.now();
-		for (const node of data.nodes) {
-			const resolvedCwd =
-				node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
-			insertNodeStmt.run({
-				id: node.id,
-				type: node.type,
-				content: node.content,
-				metadata: JSON.stringify({
-					cwd: resolvedCwd,
-					priority: node.priority ?? 0,
-					importance: node.importance ?? 0,
-					accessCount: node.accessCount ?? 1,
-				}),
-				now,
-			});
-		}
-		for (const edge of data.edges) {
-			const edgeId = `${edge.source}->${edge.target}:${edge.relation}`;
-			insertEdgeStmt.run({
-				id: edgeId,
-				source: edge.source,
-				target: edge.target,
-				relation: edge.relation,
-				weight: edge.weight ?? 1.0,
-				now,
-			});
-		}
-	});
-
-	transaction(graphData);
-
-	const now = Date.now();
-	let processed = 0;
-	for (const node of graphData.nodes) {
-		const resolvedCwd =
-			node.cwd && node.cwd !== "global" ? path.resolve(node.cwd) : node.cwd;
-		await vectorStore.addEmbedding(node.id, node.content, {
-			type: node.type,
-			cwd: resolvedCwd,
-			priority: node.priority ?? 0,
-			importance: node.importance ?? 0,
-			timestamp: node.timestamp ?? now,
-		});
-		processed++;
-		if (processed % 50 === 0) {
-			await new Promise((resolve) => setImmediate(resolve));
-		}
-	}
-}
-
-export async function loadGraph(): Promise<GraphData> {
-	return { nodes: [], edges: [] };
 }

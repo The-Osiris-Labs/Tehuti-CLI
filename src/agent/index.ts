@@ -29,7 +29,7 @@ import { customProviderTools } from "./tools/custom-provider.js";
 import { envTools } from "./tools/env.js";
 import { allFsTools } from "./tools/fs.js";
 import { gitTools } from "./tools/git.js";
-import { registerTool, registerTools, unregisterToolsWhere } from "./tools/index.js";
+import { registerTool, registerTools, unregisterToolsWhere, type ToolDefinition } from "./tools/index.js";
 import { kiloCodeTools } from "./tools/kilocode.js";
 import { kilocodeAdvancedTools } from "./tools/kilocode-advanced.js";
 import { mcpPromptTools } from "./tools/mcp-prompts.js";
@@ -50,8 +50,31 @@ import { serviceTools } from "./tools/service.js";
 import { swarmTools } from "./tools/swarm.js";
 import { systemTools } from "./tools/system.js";
 import { webTools } from "./tools/web.js";
+import { z } from "zod";
+import { executeMCPPipeline } from "./loop/tool-processing.js";
+
+const mcpPipelineTool: ToolDefinition = {
+	name: "mcp_pipeline",
+	description:
+		"Execute a sequence of MCP tool calls as a pipeline, mapping outputs from one step to the next",
+	parameters: z.object({
+		steps: z.array(
+			z.object({
+				tool: z.string(),
+				args: z.record(z.unknown()),
+				mapping: z.record(z.string()).optional(),
+			}),
+		),
+	}),
+	category: "mcp",
+	requiresPermission: true,
+	execute: async (args, ctx) => {
+		return executeMCPPipeline(args, ctx.agentContext ?? ctx, {}, ctx.signal);
+	},
+};
 
 registerTools([
+	mcpPipelineTool,
 	astTool,
 	applyDiffTool,
 	...allFsTools,

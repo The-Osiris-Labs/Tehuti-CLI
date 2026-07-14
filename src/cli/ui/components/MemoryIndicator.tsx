@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import { useEffect, useRef, useState } from "react";
 import { agentEventBus } from "../../../agent/events.js";
 import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 const PURPLE = BRANDING.colors.purple;
 const GREEN = BRANDING.colors.green;
@@ -37,14 +38,15 @@ export function MemoryIndicator({
 
 			if (event.type === "idle" || event.type === "success") {
 				setActiveEvent(event);
-				// Show instantly (or single-frame transition for reduce motion)
 				setOpacity(1);
-				fadeTimerRef.current = setTimeout(() => {
-					setActiveEvent((current) =>
-						current?.message === event.message ? null : current,
-					);
-					setOpacity(0);
-				}, successDuration);
+				if (!respectReducedMotion()) {
+					fadeTimerRef.current = setTimeout(() => {
+						setActiveEvent((current) =>
+							current?.message === event.message ? null : current,
+						);
+						setOpacity(0);
+					}, successDuration);
+				}
 			} else {
 				setActiveEvent(event);
 				setOpacity(1);

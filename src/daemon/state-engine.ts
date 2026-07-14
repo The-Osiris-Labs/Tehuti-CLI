@@ -5,14 +5,14 @@ import * as cron from "node-cron";
 import type { AgentContext } from "../agent/context.js";
 import { agentEventBus } from "../agent/events.js";
 import { type SubagentTask, swarmManager } from "../agent/swarm/manager.js";
-import { ConnectorManager } from "../messaging/connector-manager.js";
+import { ConnectorManager, type ConnectorConfig, type UnifiedMessageEvent } from "../messaging/connector-manager.js";
 import { debug } from "../utils/debug.js";
 
 export interface StateEngineConfig {
 	watchDirs?: string[];
 	cronSchedules?: Array<{ cron: string; action: () => void | Promise<void> }>;
 	pollIntervalMs?: number;
-	messaging?: any; // From TehutiConfig
+	messaging?: ConnectorConfig; // From TehutiConfig
 }
 
 export class DaemonStateEngine extends EventEmitter {
@@ -32,6 +32,13 @@ export class DaemonStateEngine extends EventEmitter {
 	constructor(private config: StateEngineConfig = {}) {
 		super();
 		this.setupEventBusListeners();
+	}
+	public configure(config: Partial<StateEngineConfig>) {
+		if (this.isRunning) {
+			debug.log("daemon", "Cannot configure state engine while running");
+			return;
+		}
+		this.config = { ...this.config, ...config };
 	}
 
 	private setupEventBusListeners() {
@@ -115,6 +122,10 @@ export class DaemonStateEngine extends EventEmitter {
 				this.connectorManager = new ConnectorManager(this.config.messaging);
 				await this.connectorManager.start();
 				debug.log("daemon", "Messaging ConnectorManager started successfully.");
+				this.connectorManager.on("message", (event: UnifiedMessageEvent) => {
+					debug.log("daemon", `Messaging message from ${event.platform}: ${event.content.substring(0, 100)}`);
+					agentEventBus.emit("wakeup", `[${event.platform}] ${event.senderId}: ${event.content}`);
+				});
 			} catch (err: any) {
 				debug.log(
 					"daemon",
@@ -239,8 +250,7 @@ export class DaemonStateEngine extends EventEmitter {
 					agent.status === "failed" ||
 					agent.status === "killed"
 				) {
-					// We can handle subagent cleanup or notification here
-					// Example: agentEventBus.emit("wakeup", `Subagent ${agent.id} changed status to ${agent.status}`);
+					agentEventBus.emit("wakeup", `Subagent ${agent.id} changed status to ${agent.status}`);
 				}
 			}
 		} catch (error) {

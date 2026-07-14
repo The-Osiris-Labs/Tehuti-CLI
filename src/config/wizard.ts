@@ -26,8 +26,6 @@ const CODE_BG = "\x1b[48;5;236m";
 const IBIS = "\u{131A3}";
 const ANKH = "\u{13269}";
 const EYE = "\u{13075}";
-// @ts-expect-error TS6133/TS6192: Unused variable
-const _SCROLL = "\u{1331B}";
 
 const c = {
 	gold: (text: string) => `${GOLD}${text}${RESET}`,
@@ -49,7 +47,37 @@ const egyptianTheme = {
 	},
 };
 
+/** Detect the best provider from environment variables. */
+function detectProviderFromEnv(): { provider: string; apiKey: string } | null {
+	const checks: Array<{ envVar: string; provider: string }> = [
+		{ envVar: "OPENROUTER_API_KEY", provider: "openrouter" },
+		{ envVar: "ANTHROPIC_API_KEY", provider: "anthropic" },
+		{ envVar: "OPENAI_API_KEY", provider: "openai" },
+		{ envVar: "GEMINI_API_KEY", provider: "google" },
+		{ envVar: "GOOGLE_API_KEY", provider: "google" },
+	];
+	for (const { envVar, provider } of checks) {
+		const value = process.env[envVar]?.trim();
+		if (value) {
+			return { provider, apiKey: value };
+		}
+	}
+	return null;
+}
+
+/** Recommended default model per provider. */
+const RECOMMENDED_MODELS: Record<string, string> = {
+	openrouter: "anthropic/claude-sonnet-4",
+	openai: "gpt-4o",
+	anthropic: "claude-sonnet-4-20250514",
+	google: "gemini-2.5-pro",
+};
+
 const PROVIDER_CHOICES = [
+	{
+		name: "⚡ Quick Start (auto-detect provider from environment variables)",
+		value: "quickstart",
+	},
 	{
 		name: "OpenCode Go (Recommended - abundant context window & up-to-date models)",
 		value: "opencode",
@@ -161,6 +189,10 @@ const SUGGESTED_MODELS: Record<
 > = {
 	openrouter: [
 		{
+			name: "anthropic/claude-sonnet-4  200K ctx  $3.00/M in  vision  ★ recommended",
+			value: "anthropic/claude-sonnet-4",
+		},
+		{
 			name: "google/gemini-2.5-flash  1M ctx  $0.15/M in  reasoning",
 			value: "google/gemini-2.5-flash",
 		},
@@ -186,10 +218,14 @@ const SUGGESTED_MODELS: Record<
 		{ name: "Use whatever model is loaded in LM Studio", value: "default" },
 	],
 	google: [
+		{ name: "gemini-2.5-pro  1M ctx  paid tier  ★ recommended", value: "gemini-2.5-pro" },
 		{ name: "gemini-2.5-flash  1M ctx  free", value: "gemini-2.5-flash" },
-		{ name: "gemini-2.5-pro  1M ctx  paid tier", value: "gemini-2.5-pro" },
 	],
 	anthropic: [
+		{
+			name: "claude-sonnet-4-20250514  200K ctx  $3.00/M in  vision  ★ recommended",
+			value: "claude-sonnet-4-20250514",
+		},
 		{
 			name: "claude-3-5-sonnet-latest  200K ctx  $3.00/M in  vision",
 			value: "claude-3-5-sonnet-latest",
@@ -220,17 +256,54 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 	console.log();
 	await sleep(400);
 
-	const provider = await select({
+	const detected = detectProviderFromEnv();
+	const defaultProvider = detected ? detected.provider : "opencode";
+
+	let provider = await select({
 		message: `Select your AI provider:`,
 		choices: PROVIDER_CHOICES,
-		default: "opencode",
+		default: detected ? "quickstart" : defaultProvider,
 		theme: egyptianTheme,
 	});
 
+	let apiKey: string | undefined;
+	let resolvedModel: string | undefined;
+
+	if (provider === "quickstart") {
+		if (!detected) {
+			console.log(
+				c.coral("  ⚠ No API key detected in environment variables."),
+			);
+			console.log(
+				c.dim("    Set OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY,"),
+			);
+			console.log(c.dim("    or pick a provider manually below.\n"));
+			provider = await select({
+				message: `Select your AI provider:`,
+				choices: PROVIDER_CHOICES.filter((c) => c.value !== "quickstart"),
+				default: "opencode",
+				theme: egyptianTheme,
+			});
+		} else {
+			provider = detected.provider;
+			apiKey = detected.apiKey;
+			resolvedModel = RECOMMENDED_MODELS[provider];
+			const providerName = getProviderInfo(provider)?.name ?? provider;
+			console.log(
+				c.green(`\n  ✓ Quick Start: auto-configured ${providerName}`),
+			);
+			console.log(
+				c.dim(`    API key from environment (ends in ...${apiKey.slice(-4)})`),
+			);
+			if (resolvedModel) {
+				console.log(c.dim(`    Recommended model: ${resolvedModel}`));
+			}
+			console.log();
+		}
+	}
+
 	const info = getProviderInfo(provider);
 	const requiresKey = info ? info.requiresApiKey : true;
-	let apiKey: string | undefined;
-
 	if (provider === "google") {
 		const authMethod = await select({
 			message: `How do you want to authenticate with Google Gemini?`,
@@ -327,53 +400,63 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		});
 	}
 
-	let modelChoices = SUGGESTED_MODELS[provider] || [];
-	if (!modelChoices || modelChoices.length === 0) {
-		modelChoices = [];
-	}
+	let model: string;
 
-	// Attempt to fetch models dynamically
-	console.log(
-		c.dim(`  Fetching available models from ${info?.name ?? provider}...`),
-	);
-	try {
-		const liveModels = await listModelsForProvider(provider, {
-			apiKey,
-			baseUrl,
-		});
-		if (liveModels && liveModels.length > 0) {
-			modelChoices = liveModels.map((m) => ({ name: formatModelLabel(m), value: m.id }));
-		}
-	} catch (_e) {
+	if (resolvedModel) {
+		// Quick Start: use the recommended model directly
+		model = resolvedModel;
 		console.log(
-			c.dim(`  Failed to fetch models dynamically. Using suggested models.`),
+			c.dim(`  Using recommended model: ${model}`),
 		);
-	}
+	} else {
+		let modelChoices = SUGGESTED_MODELS[provider] || [];
+		if (!modelChoices || modelChoices.length === 0) {
+			modelChoices = [];
+		}
 
-	modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
-
-	const selectedModel = await search({
-		message: `Choose a default model (type to search):`,
-		theme: egyptianTheme,
-		source: async (term) => {
-			if (!term) return modelChoices;
-			const termLower = term.toLowerCase();
-			return modelChoices.filter(
-				(c) =>
-					c.name.toLowerCase().includes(termLower) ||
-					c.value.toLowerCase().includes(termLower),
+		// Attempt to fetch models dynamically
+		console.log(
+			c.dim(`  Fetching available models from ${info?.name ?? provider}...`),
+		);
+		try {
+			const liveModels = await listModelsForProvider(provider, {
+				apiKey,
+				baseUrl,
+			});
+			if (liveModels && liveModels.length > 0) {
+				modelChoices = liveModels.map((m) => ({ name: formatModelLabel(m), value: m.id }));
+			}
+		} catch {
+			console.log(
+				c.dim(`  Failed to fetch models dynamically. Using suggested models.`),
 			);
-		},
-	});
+		}
 
-	let model = selectedModel;
-	if (selectedModel === "__custom__") {
-		model = await input({
-			message: "Type your model ID:",
-			validate: (value) =>
-				value.length > 0 ? true : "Model ID cannot be empty",
+		modelChoices.push({ name: "Enter a custom model ID", value: "__custom__" });
+
+		const selectedModel = await search({
+			message: `Choose a default model (type to search):`,
 			theme: egyptianTheme,
+			source: async (term) => {
+				if (!term) return modelChoices;
+				const termLower = term.toLowerCase();
+				return modelChoices.filter(
+					(c) =>
+						c.name.toLowerCase().includes(termLower) ||
+						c.value.toLowerCase().includes(termLower),
+				);
+			},
 		});
+
+		model = selectedModel;
+		if (selectedModel === "__custom__") {
+			model = await input({
+				message: "Type your model ID:",
+				validate: (value) =>
+					value.length > 0 ? true : "Model ID cannot be empty",
+				theme: egyptianTheme,
+			});
+		}
 	}
 
 	showThemePreview(model, provider);

@@ -1,7 +1,9 @@
+import * as fs from "node:fs/promises";
 import chalk from "chalk";
 import { Command } from "commander";
 import { consola } from "consola";
 import { BRANDING, DECORATIVE } from "../../branding/index.js";
+import { exportToJSON, exportToMarkdown } from "../../session/export.js";
 import { sessionManager } from "../../session/manager.js";
 
 /**
@@ -13,7 +15,7 @@ import { sessionManager } from "../../session/manager.js";
  */
 export function sessionCommand(): Command {
 	const session = new Command("session").description(
-		"Manage saved sessions (list, cleanup, prune)",
+		"Manage saved sessions (list, cleanup, prune, export)",
 	);
 
 	// ─────────────────────────────────────────────────────────────────────
@@ -208,6 +210,83 @@ export function sessionCommand(): Command {
 				}
 			}
 		});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// tehuti session export <id>  (--format markdown|json)
+	// ─────────────────────────────────────────────────────────────────────
+	session
+		.command("export")
+		.description("Export a session to markdown or JSON (read-only)")
+		.argument("<id>", "Session ID (full or unique prefix)")
+		.option(
+			"-f, --format <fmt>",
+			"Output format: markdown (default) or json",
+			"markdown",
+		)
+		.option(
+			"-o, --output <path>",
+			"Write to file instead of stdout",
+		)
+		.action(
+			async (
+				idArg: string,
+				opts: { format?: string; output?: string },
+			) => {
+				const format = (opts.format ?? "markdown").toLowerCase();
+				if (format !== "markdown" && format !== "json") {
+					consola.error(
+						`Unknown format "${format}". Use "markdown" or "json".`,
+					);
+					process.exit(1);
+				}
+
+				// Resolve prefix → full id
+				const sessions = await sessionManager.listSessions();
+				const matches = sessions.filter((s) =>
+					s.id.startsWith(idArg),
+				);
+				if (matches.length === 0) {
+					consola.error(`No session found matching "${idArg}".`);
+					process.exit(1);
+				}
+				if (matches.length > 1) {
+					consola.error(
+						`Ambiguous prefix "${idArg}" matches ${matches.length} sessions. Use a longer prefix.`,
+					);
+					process.exit(1);
+				}
+
+				const sessionData = await sessionManager.loadSession(
+					matches[0].id,
+				);
+				if (!sessionData) {
+					consola.error(
+						`Failed to load session "${matches[0].id}".`,
+					);
+					process.exit(1);
+				}
+
+				const messages = sessionData.messages;
+				if (messages.length === 0) {
+					consola.warn("Session contains no messages.");
+					return;
+				}
+
+				const output =
+					format === "json"
+						? exportToJSON(messages)
+						: exportToMarkdown(messages);
+
+				if (opts.output) {
+					await fs.writeFile(opts.output, output, "utf-8");
+					consola.success(
+						`Exported ${messages.length} message(s) to ${opts.output}`,
+					);
+				} else {
+					process.stdout.write(output);
+				}
+			},
+		);
 
 	return session;
 }

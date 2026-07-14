@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 import { BRANDING } from "../../../branding/index.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 const COLORS = {
 	primary: BRANDING.colors.primary,
@@ -54,7 +55,7 @@ export const ProgressBar = ({
 	width = 40,
 	showPercent = true,
 	phase = "running",
-	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
+	reduceMotion = respectReducedMotion(),
 }: ProgressBarProps): React.ReactElement => {
 	const safeWidth = Math.max(8, Math.min(200, Math.round(width)));
 

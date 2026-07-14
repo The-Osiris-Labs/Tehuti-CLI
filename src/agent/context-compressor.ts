@@ -315,5 +315,65 @@ export function compressContext(
 	};
 }
 
+/**
+ * Progressively compresses messages by removing lower-importance messages
+ * until reaching the target token count. System messages are always kept.
+ * If all remaining messages are system messages, returns them safely.
+ */
+export function progressiveCompress(
+	messages: StandardMessage[],
+	targetTokens: number,
+): StandardMessage[] {
+	const currentTokens = estimateTokens(messages);
+	if (currentTokens <= targetTokens) {
+		return messages;
+	}
+
+	// Always keep system messages
+	const systemMessages = messages.filter((m) => m.role === "system");
+	const nonSystemMessages = messages.filter((m) => m.role !== "system");
+
+	// If all messages are system, return them as-is (no infinite loop)
+	if (nonSystemMessages.length === 0) {
+		return messages;
+	}
+
+	// Progressively remove messages from the middle (keep first 2 and last 2 non-system)
+	const result = [...systemMessages];
+	const removable = nonSystemMessages.slice(2, -2);
+	const keepEnd = nonSystemMessages.slice(-2);
+
+	for (const msg of removable) {
+		result.push(msg);
+		if (estimateTokens(result) <= targetTokens) {
+			break;
+		}
+	}
+
+	result.push(...keepEnd);
+	return result;
+}
+
+/**
+ * Returns indices of messages that should never be removed during compression:
+ * system messages, user messages, and assistant messages with tool calls.
+ */
+export function identifyCriticalMessages(
+	messages: StandardMessage[],
+): number[] {
+	const critical: number[] = [];
+	for (let i = 0; i < messages.length; i++) {
+		const msg = messages[i];
+		if (
+			msg.role === "system" ||
+			msg.role === "user" ||
+			(msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0)
+		) {
+			critical.push(i);
+		}
+	}
+	return critical;
+}
+
 export { estimateTokens };
 

@@ -47,24 +47,24 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 		expect(r.safe).toBe(true);
 	});
 
-	it("allows ~/.ssh/id_rsa (sandbox removed)", () => {
+	it("blocks ~/.ssh/id_rsa (sensitive file)", () => {
 		const home = os.homedir();
 		const r = validatePathSecurity(
 			`${home}/.ssh/id_rsa`,
 			"/Users/youssefsala7",
 			{ allowExternalRead: true },
 		);
-		expect(r.safe).toBe(true);
+		expect(r.safe).toBe(false);
 	});
 
-	it("allows ~/.aws/credentials (sandbox removed)", () => {
+	it("blocks ~/.aws/credentials (sensitive file)", () => {
 		const home = os.homedir();
 		const r = validatePathSecurity(
 			`${home}/.aws/credentials`,
 			"/Users/youssefsala7",
 			{ allowExternalRead: true },
 		);
-		expect(r.safe).toBe(true);
+		expect(r.safe).toBe(false);
 	});
 
 	it("allows /var/folders without opt-in (sandbox removed)", () => {
@@ -75,11 +75,11 @@ describe("validatePathSecurity — read-only external allowlist", () => {
 		expect(r.safe).toBe(true);
 	});
 
-	it("allows /root even with allowExternalRead=true (sandbox removed)", () => {
+	it("blocks /root/.ssh/id_rsa even with allowExternalRead=true (sensitive file)", () => {
 		const r = validatePathSecurity("/root/.ssh/id_rsa", "/Users/youssefsala7", {
 			allowExternalRead: true,
 		});
-		expect(r.safe).toBe(true);
+		expect(r.safe).toBe(false);
 	});
 
 	it("still allows paths inside cwd normally", () => {

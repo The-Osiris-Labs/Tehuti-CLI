@@ -152,6 +152,14 @@ export const MIN_TIMEOUT_MS = 5000;
 export const MAX_TIMEOUT_MS = 600000;
 export const MAX_RETRY_DELAY_MS = 60000;
 export const BASE_RETRY_DELAY_MS = 1000;
+interface RetryAfterError extends Error {
+	retryAfter?: number;
+}
+
+function isRetryAfterError(error: Error): error is RetryAfterError {
+	return "retryAfter" in error;
+}
+
 
 export abstract class BaseAPIClient {
 	protected apiKey: string;
@@ -419,9 +427,13 @@ export abstract class BaseAPIClient {
 				}
 
 				const retryAfter = this.calculateRetryDelay(attempt, lastError);
+				const errorType =
+					lastError instanceof APIError
+						? `status=${lastError.status}`
+						: lastError.name;
 				debug.log(
 					"api",
-					`Retryable error, waiting ${retryAfter}ms before retry ${attempt + 1}/${maxRetries}`,
+					`Retry ${attempt + 1}/${maxRetries}: ${errorType} – waiting ${retryAfter}ms`,
 				);
 				await this.sleep(retryAfter);
 			}
@@ -477,15 +489,15 @@ export abstract class BaseAPIClient {
 	}
 
 	private calculateRetryDelay(attempt: number, error: Error): number {
-		if (error && typeof (error as any).retryAfter === "number") {
-			return (error as any).retryAfter;
+		if (isRetryAfterError(error) && typeof error.retryAfter === "number") {
+			return error.retryAfter;
 		}
 		if (error instanceof APIError && error.status === 429) {
 			const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
 			return Math.min(baseDelay, MAX_RETRY_DELAY_MS);
 		}
 		const baseDelay = BASE_RETRY_DELAY_MS * 2 ** attempt;
-		const jitter = Math.random() * 0.1 * baseDelay;
+		const jitter = Math.random() * 1000;
 		return Math.min(baseDelay + jitter, MAX_RETRY_DELAY_MS);
 	}
 
@@ -539,6 +551,23 @@ export abstract class BaseAPIClient {
 					"Try a different model",
 				],
 			);
+		} else if (response.status === 503) {
+			const connectionHeader = response.headers.get("Connection");
+			const isPoolExhausted =
+				connectionHeader === "close" ||
+				sanitizedError.toLowerCase().includes("pool exhausted") ||
+				sanitizedError.toLowerCase().includes("service unavailable");
+			apiError = new APIError(
+				isPoolExhausted
+					? `Service temporarily unavailable (connection pool exhausted): ${sanitizedError}`
+					: `${this.getProviderErrorSubject()} service unavailable (503): ${sanitizedError}`,
+				response.status,
+				[
+					"Wait a moment and retry",
+					"Reduce request concurrency",
+					`Check ${this.getProviderErrorSubject()} service status`,
+				],
+			);
 		} else if (response.status >= 500) {
 			apiError = new APIError(
 				`${this.getProviderErrorSubject()} server error (${response.status}): ${sanitizedError}`,
@@ -565,11 +594,11 @@ export abstract class BaseAPIClient {
 		if (retryAfterHeader) {
 			const parsedSeconds = parseInt(retryAfterHeader, 10);
 			if (!Number.isNaN(parsedSeconds)) {
-				(apiError as any).retryAfter = parsedSeconds * 1000;
+				(apiError as RetryAfterError).retryAfter = parsedSeconds * 1000;
 			} else {
 				const parsedDate = Date.parse(retryAfterHeader);
 				if (!Number.isNaN(parsedDate)) {
-					(apiError as any).retryAfter = Math.max(0, parsedDate - Date.now());
+					(apiError as RetryAfterError).retryAfter = Math.max(0, parsedDate - Date.now());
 				}
 			}
 		}

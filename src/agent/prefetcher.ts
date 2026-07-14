@@ -8,6 +8,28 @@ import {
 import type { ToolContext } from "./tools/registry.js";
 import { executeTool, getTool } from "./tools/registry.js";
 
+/** Minimal shape of performance config accessed through ToolContext.agentContext */
+interface PerfConfig {
+	prefetchQueueSize?: number;
+	prefetchTimeoutMs?: number;
+}
+
+/** Safely extract performance config from agent context without circular imports */
+function extractPerfConfig(agentContext: unknown): PerfConfig | undefined {
+	if (!agentContext || typeof agentContext !== "object") return undefined;
+	const ac = agentContext as Record<string, unknown>;
+	const config = ac.config;
+	if (!config || typeof config !== "object") return undefined;
+	const cfg = config as Record<string, unknown>;
+	const perf = cfg.performance;
+	if (!perf || typeof perf !== "object") return undefined;
+	const p = perf as Record<string, unknown>;
+	return {
+		prefetchQueueSize: typeof p.prefetchQueueSize === "number" ? p.prefetchQueueSize : undefined,
+		prefetchTimeoutMs: typeof p.prefetchTimeoutMs === "number" ? p.prefetchTimeoutMs : undefined,
+	};
+}
+
 export interface PrefetchRule {
 	currentTool: string;
 	nextTools: Array<{
@@ -35,7 +57,8 @@ const EXTRA_PREFETCH_RULES: Record<string, PrefetchRule["nextTools"]> = {
 	],
 };
 
-const MAX_PREFETCH_QUEUE = 10;
+const DEFAULT_MAX_PREFETCH_QUEUE = 10;
+const DEFAULT_PREFETCH_TIMEOUT_MS = 5000;
 
 export class Prefetcher {
 	private pending = new Map<string, Promise<unknown>>();
@@ -64,6 +87,7 @@ export class Prefetcher {
 		args: unknown,
 		ctx: ToolContext,
 		key: string,
+		timeoutMs: number = DEFAULT_PREFETCH_TIMEOUT_MS,
 	): void {
 		debug.log("prefetch", `Queueing prefetch for ${toolName}`, args);
 		const controller = new AbortController();
@@ -74,7 +98,7 @@ export class Prefetcher {
 			timeoutId = setTimeout(() => {
 				controller.abort();
 				resolve(null);
-			}, 5000);
+			}, timeoutMs);
 		});
 
 		const prefetchPromise = Promise.race([
@@ -283,7 +307,11 @@ export class Prefetcher {
 
 		this.recordPattern(toolName, args);
 
-		if (this.pending.size >= MAX_PREFETCH_QUEUE) {
+		const perfConfig = extractPerfConfig(ctx.agentContext);
+		const maxQueueSize = perfConfig?.prefetchQueueSize ?? DEFAULT_MAX_PREFETCH_QUEUE;
+		const prefetchTimeout = perfConfig?.prefetchTimeoutMs ?? DEFAULT_PREFETCH_TIMEOUT_MS;
+
+		if (this.pending.size >= maxQueueSize) {
 			debug.log("prefetch", `Prefetch queue full (size=${this.pending.size})`);
 			return;
 		}
@@ -306,7 +334,7 @@ export class Prefetcher {
 		const currentKey = this.buildKey(toolName, args);
 
 		for (const nextTool of sortedRules) {
-			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
+			if (this.pending.size >= maxQueueSize) break;
 
 			try {
 				if (nextTool.condition && !nextTool.condition(args)) {
@@ -329,7 +357,7 @@ export class Prefetcher {
 						nextToolDef.isReadonly !== false &&
 						!nextToolDef.requiresPermission
 					) {
-						this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key);
+						this.queuePrefetch(nextTool.tool, predictedArgs, ctx, key, prefetchTimeout);
 					}
 				}
 			} catch (error) {
@@ -340,7 +368,7 @@ export class Prefetcher {
 
 		const historyPredictions = this.predictFromHistory();
 		for (const pred of historyPredictions) {
-			if (this.pending.size >= MAX_PREFETCH_QUEUE) break;
+			if (this.pending.size >= maxQueueSize) break;
 
 			const key = this.buildKey(pred.tool, pred.args);
 			// Skip if already pending, already cached, or is the same call we are currently handling
@@ -352,7 +380,7 @@ export class Prefetcher {
 					nextToolDef.isReadonly !== false &&
 					!nextToolDef.requiresPermission
 				) {
-					this.queuePrefetch(pred.tool, pred.args, ctx, key);
+					this.queuePrefetch(pred.tool, pred.args, ctx, key, prefetchTimeout);
 				}
 			}
 		}

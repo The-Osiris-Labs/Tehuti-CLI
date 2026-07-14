@@ -324,14 +324,6 @@ export const COLLABORATION_SCHEMA = z.object({
 
 export const DAEMON_CONFIG_SCHEMA = z.object({
 	enabled: z.boolean().default(false).describe("Enable background daemon"),
-	port: z
-		.number()
-		.int()
-		.positive()
-		.max(65535, { message: "Port must be <= 65535" })
-		.default(9090)
-		.describe("TCP port for the daemon"),
-	socketPath: z.string().optional().describe("Unix socket path for IPC"),
 	restartPolicy: z
 		.enum(["none", "always", "on-failure"])
 		.default("on-failure")
@@ -562,6 +554,63 @@ export const DEFAULT_STREAM_RULES: z.infer<typeof STREAM_RULE_SCHEMA>[] = [
 	{ pattern: "I notice (you|the model) (are|is) repeating", remediation: "Continue with your previous response. Do not repeat yourself.", enabled: true },
 	{ pattern: "^(?!.*[\'\"])(As an AI|I was not programmed|I cannot (assist|help|do|provide|complete) (with|this|that|the))", remediation: "You are Tehuti, a coding assistant. Respond directly without disclaimers.", enabled: true },
 ];
+export const PERFORMANCE_CONFIG_SCHEMA = z.object({
+	maxParallelTools: z
+		.number()
+		.int()
+		.min(1)
+		.max(20)
+		.default(5)
+		.describe("Max parallel tool executions"),
+	prefetchQueueSize: z
+		.number()
+		.int()
+		.min(1)
+		.max(50)
+		.default(10)
+		.describe("Max prefetch queue size"),
+	prefetchTimeoutMs: z
+		.number()
+		.int()
+		.min(1000)
+		.max(30000)
+		.default(5000)
+		.describe("Prefetch timeout in ms"),
+	contextCompressionThreshold: z
+		.number()
+		.min(0.5)
+		.max(0.95)
+		.default(0.85)
+		.describe("Context compression trigger threshold"),
+	contextCompressionTarget: z
+		.number()
+		.min(0.5)
+		.max(0.95)
+		.default(0.80)
+		.describe("Context compression target threshold"),
+	autoSaveIntervalMs: z
+		.number()
+		.int()
+		.min(30000)
+		.max(3600000)
+		.default(300000)
+		.describe("Session auto-save interval in ms"),
+	searchCacheTTL: z
+		.number()
+		.int()
+		.min(10000)
+		.max(600000)
+		.default(60000)
+		.describe("Memory search cache TTL in ms"),
+	searchCacheMaxSize: z
+		.number()
+		.int()
+		.min(100)
+		.max(5000)
+		.default(500)
+		.describe("Memory search cache max entries"),
+}).default({}).describe("Performance tuning options");
+
 
 export const TEHUTI_CONFIG_SCHEMA = z.object({
 	$schema: z
@@ -767,6 +816,7 @@ export const TEHUTI_CONFIG_SCHEMA = z.object({
 		.default({ refreshInterval: 30000 })
 		.describe("Git info caching configuration (prevents blocking execSync on every render)"),
 	streamRules: z.array(STREAM_RULE_SCHEMA).default([]).describe("Stream monitoring rules"),
+	performance: PERFORMANCE_CONFIG_SCHEMA,
 });
 
 export type TehutiConfig = z.infer<typeof TEHUTI_CONFIG_SCHEMA>;
@@ -857,7 +907,6 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	},
 	daemon: {
 		enabled: false,
-		port: 9090,
 		restartPolicy: "on-failure",
 		logLevel: "info",
 	},
@@ -897,4 +946,14 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 	pathModels: [],
 	gitInfoCache: { refreshInterval: 30000 },
 	streamRules: DEFAULT_STREAM_RULES,
+	performance: {
+		maxParallelTools: 5,
+		prefetchQueueSize: 10,
+		prefetchTimeoutMs: 5000,
+		contextCompressionThreshold: 0.85,
+		contextCompressionTarget: 0.80,
+		autoSaveIntervalMs: 300000,
+		searchCacheTTL: 60000,
+		searchCacheMaxSize: 500,
+	},
 };

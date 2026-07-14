@@ -236,7 +236,6 @@ export const ASCII_TOOL_ICONS: Record<string, string> = {
 	// ── Configuration ──
 	config: "[CFG]",
 	configure_streaming: "[STRM]",
-	configure_context_management: "[CTX]",
 	configure_custom_provider: "[PROV]",
 	set_custom_header: "[HDR]",
 	remove_custom_header: "[HDR]",
@@ -330,3 +329,112 @@ export const ASCII_TOOL_ICONS: Record<string, string> = {
 	// Fallback
 	default: "[TOOL]",
 };
+// ── Configurable theme system ───────────────────────────────────────────────
+
+export interface ThemeConfig {
+	colors: {
+		primary: string;
+		secondary: string;
+		user: string;
+		assistant: string;
+		accent: string;
+		background: string;
+		success: string;
+		error: string;
+		warning: string;
+	};
+	symbols: {
+		success: string;
+		error: string;
+		warning: string;
+		info: string;
+		progress: string;
+	};
+}
+
+const DEFAULT_THEME: ThemeConfig = {
+	colors: {
+		primary: BRANDING.colors.primary,
+		secondary: BRANDING.colors.secondary,
+		user: BRANDING.colors.coral,
+		assistant: BRANDING.colors.gold,
+		accent: BRANDING.colors.accent,
+		background: BRANDING.colors.obsidian,
+		success: BRANDING.colors.green,
+		error: BRANDING.colors.red,
+		warning: BRANDING.colors.gold,
+	},
+	symbols: {
+		success: SUCCESS_SYMBOL,
+		error: ERROR_SYMBOL,
+		warning: WARNING_SYMBOL,
+		info: INFO_SYMBOL,
+		progress: PROGRESS_SYMBOL,
+	},
+};
+
+const MINIMAL_THEME: ThemeConfig = {
+	colors: {
+		primary: "#FFFFFF",
+		secondary: "#CCCCCC",
+		user: "#AAAAAA",
+		assistant: "#FFFFFF",
+		accent: "#888888",
+		background: "#000000",
+		success: "#00FF00",
+		error: "#FF0000",
+		warning: "#FFFF00",
+	},
+	symbols: {
+		success: "[OK]",
+		error: "[!]",
+		warning: "[W]",
+		info: "[i]",
+		progress: "[...]",
+	},
+};
+
+const COLORFUL_THEME: ThemeConfig = {
+	colors: {
+		primary: "#FF00FF",
+		secondary: "#00FFFF",
+		user: "#FF69B4",
+		assistant: "#7CFC00",
+		accent: "#FF4500",
+		background: "#1A0A2E",
+		success: "#00FF7F",
+		error: "#FF1493",
+		warning: "#FFD700",
+	},
+	symbols: {
+		success: "\u2714",
+		error: "\u2718",
+		warning: "\u26A0",
+		info: "\u2139",
+		progress: "\u25CB",
+	},
+};
+
+const THEMES: Record<string, ThemeConfig> = {
+	default: DEFAULT_THEME,
+	minimal: MINIMAL_THEME,
+	colorful: COLORFUL_THEME,
+};
+
+/**
+ * Resolve the active theme from config or environment.
+ * Priority: TEHUTI_THEME env > config.branding.theme > 'default'.
+ * Pass a custom ThemeConfig via config.branding.customTheme to override entirely.
+ */
+export function getTheme(
+	config?: { branding?: { theme?: string; customTheme?: ThemeConfig } },
+): ThemeConfig {
+	const custom = config?.branding?.customTheme;
+	if (custom) return custom;
+
+	const name =
+		process.env.TEHUTI_THEME || config?.branding?.theme || "default";
+
+	return THEMES[name] ?? DEFAULT_THEME;
+}
+

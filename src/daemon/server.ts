@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ConnectorConfig } from "../messaging/connector-manager.js";
 import { sweepCacheDir } from "../agent/cache/persistent-cache.js";
 import { sweepResponseCache } from "../api/response-cache.js";
 import { daemonStateEngine } from "./state-engine.js";
@@ -14,12 +15,14 @@ export class TehutiDaemonServer extends EventEmitter {
 	private server: net.Server;
 	private activeSockets: Set<net.Socket> = new Set();
 	private processHandlersSetup = false;
-	private gcInterval?: ReturnType<typeof setInterval>;
-	private logRotationInterval?: ReturnType<typeof setInterval>;
+	private gcInterval: ReturnType<typeof setInterval> | undefined;
+	private logRotationInterval: ReturnType<typeof setInterval> | undefined;
 	private readonly daemonStartTime: string;
+	private readonly messagingConfig?: ConnectorConfig;
 
-	constructor() {
+	constructor(messagingConfig?: ConnectorConfig) {
 		super();
+		this.messagingConfig = messagingConfig;
 		this.daemonStartTime = new Date().toISOString();
 		this.server = net.createServer((socket: net.Socket) => {
 			this.activeSockets.add(socket);
@@ -239,6 +242,9 @@ export class TehutiDaemonServer extends EventEmitter {
 				this.setupProcessHandlers();
 				this.startGarbageCollector();
 				this.startLogRotation();
+				if (this.messagingConfig) {
+					daemonStateEngine.configure({ messaging: this.messagingConfig });
+				}
 				daemonStateEngine.start().catch(console.error);
 			});
 		} catch (err) {

@@ -1,8 +1,9 @@
 import { Box, Text, useInput } from "ink";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { QuestionData } from "../../../agent/tools/system.js";
 import { BRANDING, DECORATIVE, HIEROGLYPHS } from "../../../branding/index.js";
 import { isMouseSequence } from "../../../utils/mouse.js";
+import { announceToScreenReader } from "../accessibility.js";
 
 const COLORS = {
 	gold: BRANDING.colors.primary,
@@ -29,6 +30,10 @@ export function QuestionPrompt({
 		new Set(),
 	);
 	const [filter, setFilter] = useState("");
+	// Announce question for screen readers
+	useEffect(() => {
+		announceToScreenReader(`${question.header}: ${question.question}`);
+	}, [question.header, question.question]);
 
 	// The selected row is an index into the visible list, never the source array.
 	// Preserve original indices only for multi-select state and final answer mapping.

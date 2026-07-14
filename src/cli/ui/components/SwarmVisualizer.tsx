@@ -8,6 +8,7 @@ import {
 	swarmManager,
 } from "../../../agent/swarm/manager.js";
 import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 const COLORS = {
 	gold: BRANDING.colors.primary,
@@ -74,10 +75,13 @@ export function SwarmVisualizer(): React.ReactElement {
 		swarmManager.on("update", handleUpdate);
 		handleUpdate(swarmManager.listSubagents());
 
-		const tick = setInterval(() => {
-		setFrame((f) => (f + 1) % (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading).length);
-			handleUpdate(swarmManager.listSubagents());
-		}, 150);
+	const reduceMotion = respectReducedMotion();
+	const tick = setInterval(() => {
+		if (!reduceMotion) {
+			setFrame((f) => (f + 1) % (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading).length);
+		}
+		handleUpdate(swarmManager.listSubagents());
+	}, 150);
 
 		return () => {
 			swarmManager.off("update", handleUpdate);

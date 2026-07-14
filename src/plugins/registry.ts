@@ -7,6 +7,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { EventEmitter } from "node:events";
 import type {
 	PluginState,
 	PluginTool,
@@ -18,6 +19,7 @@ import type {
 	PluginLogger,
 	PluginToolResult,
 } from "./types.js";
+import type { PluginContext } from "../sdk/plugin-api.js";
 import { PluginLoader } from "./loader.js";
 import { logger } from "../utils/logger.js";
 
@@ -31,6 +33,7 @@ export class PluginRegistry {
 		name: string,
 		args: Record<string, unknown>,
 	) => Promise<PluginToolResult>;
+	private eventEmitter = new EventEmitter();
 
 	constructor(tehutiVersion: string, cwd: string, sessionId: string) {
 		this.tehutiVersion = tehutiVersion;
@@ -108,10 +111,39 @@ export class PluginRegistry {
 				await state.instance.onLoad(api);
 			}
 
-			// Call onActivate if defined
+			// Call onActivate if defined — create a PluginContext from the public API
 			if (state.instance.onActivate) {
-				const api = this.createPluginAPI(pluginName);
-				const contributions = await state.instance.onActivate(api);
+				const pluginConfig =
+					this.configStore.get(pluginName) ||
+					({} as Record<string, unknown>);
+
+				const ctx: PluginContext = {
+					registerTool: (tool) => {
+						const s = this.plugins.get(pluginName);
+						if (s && s.contributions) {
+							s.contributions.tools = s.contributions.tools || [];
+							s.contributions.tools.push(tool as unknown as PluginTool);
+						}
+					},
+					getConfig: () => pluginConfig,
+					log: (level, msg) => {
+						const prefixed = `[${pluginName}] ${msg}`;
+						if (level === "warn") {
+							logger.warn(prefixed);
+						} else if (level === "error") {
+							logger.error(prefixed);
+						} else {
+							logger.info(prefixed);
+						}
+					},
+					emit: (event, data) => this.eventEmitter.emit(event, data),
+					on: (event, handler) =>
+						this.eventEmitter.on(event, handler as (...args: unknown[]) => void),
+				};
+
+				const contributions = await state.instance.onActivate(
+					ctx as unknown as PluginAPI,
+				);
 
 				// Validate contributions
 				const warnings =

@@ -110,6 +110,10 @@ function isDangerousCommand(command: string): {
 		// Destructive SQL
 		{ regex: /\bDROP\s+(TABLE|DATABASE)\s+/i, reason: "Destructive SQL statement detected" },
 		{ regex: /\bDELETE\s+FROM\s+/i, reason: "Destructive SQL DELETE statement detected" },
+		{
+			regex: /\b(DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE|DELETE\s+FROM\s+\w+\s*;)/i,
+			reason: "SQL injection pattern detected (destructive SQL statement)",
+		},
 
 		// eval
 		{ regex: /\beval\s+\S/, reason: "Unrestricted eval execution detected" },
@@ -170,6 +174,38 @@ function isDangerousCommand(command: string): {
 		// These enable arbitrary code injection and obfuscation
 		{ regex: /\$\(/, reason: "Command substitution ($(...)) detected" },
 		{ regex: /`[^`]+`/, reason: "Backtick command substitution detected" },
+
+		// Privilege escalation
+		{ regex: /\bsudo\b/i, reason: "Privilege escalation via sudo detected" },
+		{ regex: /\bsu\s+-/i, reason: "Privilege escalation via su detected" },
+		{
+			regex: /\bchmod\s+[0-7]*7[0-7]*\s+\//i,
+			reason: "Dangerous permissions set on root filesystem (chmod on /)",
+		},
+		{
+			regex: /\bchown\s+.*\//,
+			reason: "Ownership change on root filesystem detected",
+		},
+
+		// Network scanning/attack tools
+		{ regex: /\bnmap\b/i, reason: "Network scanning tool (nmap) detected" },
+		{ regex: /\bncat\b/i, reason: "Network utility (ncat) detected" },
+		{ regex: /\bsocat\b/i, reason: "Network utility (socat) detected" },
+
+		// Package manager removal of critical services
+		{
+			regex: /\bapt\s+(remove|purge)\s+.*\b(nginx|apache|mysql|postgresql|docker)\b/i,
+			reason: "Removal of critical service via apt detected",
+		},
+		{
+			regex: /\byum\s+(remove|erase)\s+.*\b(nginx|apache|mysql|postgresql|docker)\b/i,
+			reason: "Removal of critical service via yum detected",
+		},
+
+		// Disk operations
+		{ regex: /\bmkswap\b/i, reason: "Swap filesystem creation detected" },
+		{ regex: /\bswapon\b/i, reason: "Swap activation detected" },
+		{ regex: /\bff\s+if=/i, reason: "Raw disk write with dd alternative (ff) detected" },
 	];
 
 	for (const { regex, reason } of patterns) {
@@ -801,6 +837,10 @@ Security:
 	category: "bash",
 	requiresPermission: true,
 	isReadonly: false,
+	estimatedDuration: 1000,
+	modifiesFs: true,
+	requiresNetwork: false,
+	costTier: "low",
 };
 
 export {

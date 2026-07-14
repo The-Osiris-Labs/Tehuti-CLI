@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 const COLORS = {
 	primary: BRANDING.colors.primary,
@@ -109,7 +110,7 @@ export function StatusBadge({
 	label,
 	compact = false,
 	emphasize = false,
-	reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1",
+	reduceMotion = respectReducedMotion(),
 }: StatusBadgeProps): React.ReactElement {
 	const { glyph, color, spin } = ICONS[kind];
 	const [frame, setFrame] = useState(0);

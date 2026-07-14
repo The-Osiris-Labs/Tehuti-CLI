@@ -78,6 +78,10 @@ const BLOCKED_DOMAINS = [
 	"instagram.com",
 	"tiktok.com",
 	"pinterest.com",
+	"reddit.com",
+	"linkedin.com",
+	"threads.net",
+	"bsky.app",
 ];
 
 const PRIVATE_IP_RANGES = [
@@ -643,7 +647,11 @@ export const webTools: ToolDefinition[] = [
 		category: "web",
 		requiresPermission: false,
 		isReadonly: true,
-	},
+		estimatedDuration: 2000,
+		modifiesFs: false,
+		requiresNetwork: true,
+		costTier: "low",
+},
 	{
 		name: "web_search",
 		description: `Search the web using Exa AI - performs real-time web searches and can scrape content from specific URLs
@@ -656,7 +664,11 @@ export const webTools: ToolDefinition[] = [
 		category: "web",
 		requiresPermission: false,
 		isReadonly: true,
-	},
+		estimatedDuration: 3000,
+		modifiesFs: false,
+		requiresNetwork: true,
+		costTier: "medium",
+},
 	{
 		name: "code_search",
 		description: `Search and get relevant context for any programming task using Exa Code API

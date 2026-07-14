@@ -7,6 +7,11 @@ export {
 	TehutiAPIError,
 	createTehutiSDK,
 } from "./client.js";
+export type {
+	PluginContext,
+	TehutiPluginAPI,
+	HookHandler,
+} from "./plugin-api.js";
 
 export type {
 	TehutiSDKConfig,

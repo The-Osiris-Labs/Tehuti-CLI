@@ -5,6 +5,7 @@ import {
 	buildPromptMessage,
 	type PermissionRequest,
 } from "../../../permissions/prompts.js";
+import { announceToScreenReader } from "../accessibility.js";
 
 const COLORS = {
 	gold: BRANDING.colors.primary,
@@ -39,6 +40,12 @@ export function PermissionPrompt({
 		}
 	});
 
+	// Announce permission request for screen readers
+	React.useEffect(() => {
+		announceToScreenReader(
+			`${isDangerous ? "Dangerous" : "Permission"} request: ${request.toolName}. Press Enter for ${isDangerous ? "deny" : "approve"}.`,
+		);
+	}, [request.toolName, isDangerous]);
 	const messageLines = buildPromptMessage(
 		request.toolName,
 		request.args,

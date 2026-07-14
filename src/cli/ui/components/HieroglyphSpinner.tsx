@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 // @ts-expect-error TS6133/TS6192: Unused variable
 import React, { useEffect, useState } from "react";
 import { BRANDING, DECORATIVE, HIEROGLYPHS, isAsciiMode, ASCII_DECORATIVE, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
+import { respectReducedMotion } from "../accessibility.js";
 
 const ascii = isAsciiMode();
 export interface HieroglyphSpinnerProps {
@@ -18,7 +19,7 @@ export function HieroglyphSpinner({
 	color = BRANDING.colors.gold,
 	speedMs = 150,
 }: HieroglyphSpinnerProps) {
-	const reduceMotion = process.env.TEHUTI_REDUCE_MOTION === "1";
+	const reduceMotion = respectReducedMotion();
 	const [frame, setFrame] = useState(0);
 
 	useEffect(() => {

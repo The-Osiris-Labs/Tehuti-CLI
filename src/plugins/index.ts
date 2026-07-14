@@ -28,7 +28,7 @@ export type {
 	PluginState,
 } from "./types.js";
 
-export { PluginLoader } from "./loader.js";
+export { PluginLoader, PluginLoadError } from "./loader.js";
 export { PluginRegistry } from "./registry.js";
 
 // Singleton registry instance

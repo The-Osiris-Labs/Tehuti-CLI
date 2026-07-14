@@ -56,17 +56,13 @@ const READ_ONLY_TOOLS = [
 	"semantic",
 	"mcp_list_prompts",
 	"mcp_get_prompt",
-	"mcp_list_tools",
-	"mcp_list_resources",
-	"mcp_read_resource",
-	"mcp_list_resource_templates",
-	"mcp_ping",
 	"todo_write",
 	"task",
 	"write_plan",
 	"exit_plan_mode",
 	"list_plans",
 	"read_plan",
+	"mcp_pipeline",
 ];
 
 export function isToolAllowedInPlanMode(toolName: string): boolean {

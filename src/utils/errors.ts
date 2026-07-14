@@ -98,6 +98,17 @@ export class MCPError extends TehutiError {
 	}
 }
 
+export class NetworkError extends TehutiError {
+	constructor(
+		message: string,
+		public details?: { statusCode?: number; retryAfter?: number },
+		public suggestions?: string[],
+	) {
+		super(message, "NETWORK_ERROR", 8, false, suggestions);
+		this.name = "NetworkError";
+	}
+}
+
 export function createMCPError(
 	message: string,
 	code: MCPErrorCode,

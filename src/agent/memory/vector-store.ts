@@ -35,9 +35,22 @@ export class BM25VectorStore implements VectorStore {
 	// BM25 parameters
 	private k1 = 1.5;
 	private b = 0.75;
+	// Cache for recent search results
+	private searchCache = new Map<string, { results: Array<{ id: string; score: number; metadata: Record<string, any> }>; timestamp: number }>();
+	private searchCacheTTL = 60_000; // 1 minute
+	private searchCacheMaxSize = 500;
 
 	async init(): Promise<void> {
 		// Ready instantly
+	}
+	/** Configure cache parameters from performance config */
+	configure(performanceConfig: { searchCacheTTL?: number; searchCacheMaxSize?: number } | undefined): void {
+		if (performanceConfig?.searchCacheTTL !== undefined) {
+			this.searchCacheTTL = performanceConfig.searchCacheTTL;
+		}
+		if (performanceConfig?.searchCacheMaxSize !== undefined) {
+			this.searchCacheMaxSize = performanceConfig.searchCacheMaxSize;
+		}
 	}
 
 	private tokenize(text: string): string[] {
@@ -61,6 +74,7 @@ export class BM25VectorStore implements VectorStore {
 		if (this.documents.has(id)) {
 			await this.removeEmbedding(id);
 		}
+		this.searchCache.clear();
 
 		const tokens = this.tokenize(text);
 		if (tokens.length === 0) return;
@@ -80,6 +94,7 @@ export class BM25VectorStore implements VectorStore {
 	async removeEmbedding(id: string): Promise<void> {
 		const doc = this.documents.get(id);
 		if (!doc) return;
+		this.searchCache.clear();
 
 		this.documents.delete(id);
 		this.documentCount--;
@@ -106,6 +121,12 @@ export class BM25VectorStore implements VectorStore {
 	): Promise<
 		Array<{ id: string; score: number; metadata: Record<string, any> }>
 	> {
+		const cacheKey = `${query}:${limit}`;
+		const cached = this.searchCache.get(cacheKey);
+		if (cached && Date.now() - cached.timestamp < this.searchCacheTTL) {
+			return cached.results;
+		}
+
 		const queryTokens = this.tokenize(query);
 		if (queryTokens.length === 0 || this.documentCount === 0) return [];
 
@@ -151,7 +172,19 @@ export class BM25VectorStore implements VectorStore {
 			}
 		}
 
-		return results.sort((a, b) => b.score - a.score).slice(0, limit);
+		const sorted = results.sort((a, b) => b.score - a.score).slice(0, limit);
+		// Evict oldest cache entries when max size exceeded
+		if (this.searchCache.size >= this.searchCacheMaxSize) {
+			const oldestKeys = [...this.searchCache.entries()]
+				.sort((a, b) => a[1].timestamp - b[1].timestamp)
+				.slice(0, Math.max(1, Math.floor(this.searchCacheMaxSize * 0.1)))
+				.map(([key]) => key);
+			for (const key of oldestKeys) {
+				this.searchCache.delete(key);
+			}
+		}
+		this.searchCache.set(cacheKey, { results: sorted, timestamp: Date.now() });
+		return sorted;
 	}
 }
 

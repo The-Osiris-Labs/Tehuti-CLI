@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { StandardTool } from "../../api/base-client.js";
 import type { CustomProviderClient, KiloCodeClient } from "../../api/index.js";
 import { debug } from "../../utils/debug.js";
+import { createLogger } from "../../utils/structured-logger.js";
 import {
 	costTracker,
 	createStreamingState,
@@ -17,6 +18,7 @@ import { StandardAPIClient } from "../../api/standard-client.js";
 import { permissionManager } from "../../permissions/rules.js";
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
+import { metrics } from "../../utils/metrics.js";
 import type { AgentContext } from "../context.js";
 import {
 	addAssistantMessageWithTools,
@@ -37,6 +39,7 @@ import { manageContextWindow } from "./compression.js";
 import { withRetry } from "./retry.js";
 import { SelfHealingManager } from "./self-healing.js";
 import { processToolCalls } from "./tool-processing.js";
+const log = createLogger("agent-loop");
 
 export interface AgentLoopOptions {
 	onToken?: (token: string) => void;
@@ -146,10 +149,7 @@ export async function runAgentLoop(
 				},
 			);
 			if (selectedModel !== ctx.config.model) {
-				debug.log(
-					"agent",
-					`Model routing: ${ctx.config.model} → ${selectedModel}`,
-				);
+				log.info(`Model routing: ${ctx.config.model} → ${selectedModel}`);
 				ctx.config.model = selectedModel;
 			}
 		}
@@ -163,10 +163,7 @@ export async function runAgentLoop(
 		);
 		if (capabilities.contextLength) {
 			ctx.modelContextLength = capabilities.contextLength;
-			debug.log(
-				"agent",
-				`Model context length: ${capabilities.contextLength} (live)`,
-			);
+			log.info(`Model context length: ${capabilities.contextLength} (live)`);
 		}
 		const maxTokens =
 			capabilities.maxOutputTokens ?? ctx.config.maxTokens ?? 32000;
@@ -181,8 +178,8 @@ export async function runAgentLoop(
 		const selfHealer = new SelfHealingManager(ctx.cwd, ctx.config);
 
 		while (iteration < maxIterations) {
-			iteration++;
-			debug.log("agent", `Starting iteration ${iteration}/${maxIterations}`);
+			metrics.counter('agent.iteration', { model: ctx.config.model });
+			log.info(`Starting iteration ${iteration}/${maxIterations}`);
 
 			if (signal?.aborted) {
 				return {
@@ -470,16 +467,14 @@ export async function runAgentLoop(
 						state.usage.completionTokens,
 						costBreakdown.totalCost,
 					);
-					debug.log(
-						"agent",
-						`Request cost: ${costBreakdown.totalCost.toFixed(6)}`,
-					);
+					log.info(`Request cost: ${costBreakdown.totalCost.toFixed(6)}`);
 				}
 
 				warnOnContextLimit(ctx);
 
 				if (toolCalls.length === 0) {
-					debug.log("agent", "No tool calls, finishing");
+					metrics.counter('agent.completion', { model: ctx.config.model });
+					log.info("No tool calls, finishing");
 					// Non-blocking advisor review hook (fire-and-forget)
 					if (onAdvisorReview) {
 						Promise.resolve(onAdvisorReview(totalContent, ctx)).catch(() => {
@@ -521,6 +516,7 @@ export async function runAgentLoop(
 				);
 
 				if (remainingToolCalls.length > 0) {
+					const toolStart = performance.now();
 					const processedCount = await processToolCalls(
 						ctx,
 						remainingToolCalls,
@@ -532,6 +528,10 @@ export async function runAgentLoop(
 						},
 						combinedSignal,
 					);
+					const toolDuration = performance.now() - toolStart;
+					for (const tc of remainingToolCalls) {
+						metrics.histogram('agent.tool.duration', toolDuration, { tool: tc.function.name });
+					}
 					totalToolCalls += processedCount;
 					await onCheckpoint?.("tools_processed", ctx);
 				}
@@ -574,32 +574,47 @@ export async function runAgentLoop(
 					agentError = error;
 				} else if (error instanceof Error) {
 					const suggestions: string[] = [];
-					if (error.message.includes("API") || error.message.includes("key")) {
-						suggestions.push(
-							"Check your API key in ~/.tehuti.json or OPENROUTER_API_KEY environment variable",
-						);
-						suggestions.push("Run 'tehuti init' to reconfigure your API key");
-					} else if (
-						error.message.includes("timeout") ||
-						error.message.includes("Timeout")
-					) {
-						suggestions.push("Try increasing --timeout to a larger value");
-						suggestions.push("Use a faster model with --model <model-id>");
-						suggestions.push("Check your internet connection");
-					} else if (
-						error.message.includes("rate limit") ||
-						error.message.includes("429")
-					) {
-						suggestions.push("Wait a few minutes before making more requests");
-						suggestions.push("Try a different model with --model <model-id>");
-					} else if (error.message.includes("context")) {
-						suggestions.push("Try a model with larger context window");
-						suggestions.push("Simplify your prompt to reduce context length");
-						suggestions.push("Use /compact command to compress context");
-					} else {
-						suggestions.push("Check your internet connection");
-						suggestions.push("Try again later");
-						suggestions.push("Run with --debug for more details");
+					if (error.message.includes('ECONNRESET') || error.message.includes('EPIPE')) {
+						suggestions.push('Network connection lost. Check your internet connection.');
+						suggestions.push('The API server may be temporarily unavailable.');
+					}
+					if (error.message.includes('429') || error.message.includes('rate limit')) {
+						suggestions.push('Rate limited. Wait a few minutes before retrying.');
+					}
+					if (error.message.includes('context_length_exceeded')) {
+						suggestions.push('Context too long. Use /compact to compress.');
+					}
+					if (error.message.includes('invalid_api_key') || error.message.includes('401')) {
+						suggestions.push('Invalid API key. Run "tehuti init" to reconfigure.');
+					}
+					if (suggestions.length === 0) {
+						if (error.message.includes("API") || error.message.includes("key")) {
+							suggestions.push(
+								"Check your API key in ~/.tehuti.json or OPENROUTER_API_KEY environment variable",
+							);
+							suggestions.push("Run 'tehuti init' to reconfigure your API key");
+						} else if (
+							error.message.includes("timeout") ||
+							error.message.includes("Timeout")
+						) {
+							suggestions.push("Try increasing --timeout to a larger value");
+							suggestions.push("Use a faster model with --model <model-id>");
+							suggestions.push("Check your internet connection");
+						} else if (
+							error.message.includes("rate limit") ||
+							error.message.includes("429")
+						) {
+							suggestions.push("Wait a few minutes before making more requests");
+							suggestions.push("Try a different model with --model <model-id>");
+						} else if (error.message.includes("context")) {
+							suggestions.push("Try a model with larger context window");
+							suggestions.push("Simplify your prompt to reduce context length");
+							suggestions.push("Use /compact command to compress context");
+						} else {
+							suggestions.push("Check your internet connection");
+							suggestions.push("Try again later");
+							suggestions.push("Run with --debug for more details");
+						}
 					}
 
 					agentError = new AgentError(
@@ -615,12 +630,8 @@ export async function runAgentLoop(
 					);
 				}
 
-				debug.log(
-					"agent",
-					`Agent loop error (phase: ${agentError.phase}):`,
-					agentError,
-				);
-				debug.log("agent", "Error stack:", agentError.stack);
+				log.error(`Agent loop error (phase: ${agentError.phase}): ${formatError(agentError)}`);
+				log.debug(`Error stack: ${agentError.stack}`);
 
 				debug.log(
 					"agent",

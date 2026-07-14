@@ -337,15 +337,34 @@ function computeToolHeight(
 
 let lineCache = new WeakMap<any, number>();
 
+// Simple cache for message line counts (content-based, survives different object refs)
+const lineCountCache = new Map<string, number>();
+const MAX_CACHE_SIZE = 500;
+
 if (typeof process !== "undefined" && process.stdout && process.stdout.on) {
 	process.stdout.on("resize", () => {
 		lineCache = new WeakMap<any, number>();
+		lineCountCache.clear();
 	});
 }
 
 export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 	if (lineCache.has(msg)) {
 		return lineCache.get(msg)!;
+	}
+
+	// Content-based cache key: role + width + content signature
+	const role = typeof msg.role === "string" ? msg.role : "unknown";
+	const rawContent = msg.content;
+	const content = typeof rawContent === "string"
+		? rawContent
+		: Array.isArray(rawContent) || (typeof rawContent === "object" && rawContent !== null)
+			? JSON.stringify(rawContent)
+			: "";
+	const key = `${role}:${contentMaxWidth}:${content.length}:${content.substring(0, 100)}`;
+
+	if (lineCountCache.has(key)) {
+		return lineCountCache.get(key)!;
 	}
 
 	let lines = 0;
@@ -432,6 +451,14 @@ export function computeMessageLines(msg: any, contentMaxWidth: number): number {
 
 	lines += 1; // Margin bottom between messages
 	lineCache.set(msg, lines);
+	// Store in content-based cache (LRU eviction)
+	if (lineCountCache.size >= MAX_CACHE_SIZE) {
+		const firstKey = lineCountCache.keys().next().value;
+		if (firstKey !== undefined) {
+			lineCountCache.delete(firstKey);
+		}
+	}
+	lineCountCache.set(key, lines);
 	return lines;
 }
 

@@ -151,7 +151,7 @@ export async function executeToolsParallel(
 	signal?: AbortSignal,
 ): Promise<ToolResult[]> {
 	const {
-		maxConcurrency = 5,
+		maxConcurrency: maxConcurrencyOption,
 		onToolCall,
 		onToolResult,
 		addToolResult,
@@ -160,6 +160,7 @@ export async function executeToolsParallel(
 		signal: optionsSignal,
 		selfHealer,
 	} = options;
+	const maxConcurrency = maxConcurrencyOption ?? ctx.config?.performance?.maxParallelTools ?? 5;
 
 	const activeSignal = signal ?? optionsSignal;
 	const cache = getToolCache();

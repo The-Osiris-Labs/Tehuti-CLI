@@ -18,6 +18,7 @@ import {
 	encryptOAuthConfig,
 	decryptOAuthConfig,
 } from "./token-encryption.js";
+import { migrateConfig } from "./migration.js";
 const MODULE_NAME = "tehuti";
 export const configWarnings: string[] = [];
 const CONFIG_CWD =
@@ -162,6 +163,10 @@ export async function loadConfig(
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		consola.warn(`Failed to load config file: ${errorMessage}`);
 	}
+	// Run config migrations on the raw file config before env resolution
+	if (Object.keys(fileConfig).length > 0) {
+		fileConfig = migrateConfig(fileConfig as Record<string, any>);
+	}
 
 	const envModel = process.env.TEHUTI_MODEL;
 	const envBaseUrl = process.env.TEHUTI_BASE_URL?.trim();
@@ -287,11 +292,44 @@ export async function loadConfig(
 		return result.data;
 	}
 
+	const suggestions: string[] = [];
+	for (const issue of result.error.errors) {
+		const issuePath = issue.path.join(".");
+		if (issuePath.includes("apiKey")) {
+			suggestions.push(
+				`API key at "${issuePath}" is invalid. Run "tehuti init" to reconfigure.`,
+			);
+		} else if (issuePath.includes("model")) {
+			suggestions.push(
+				`Model "${issuePath}" is not recognized. Check available models.`,
+			);
+		} else if (issuePath.includes("provider")) {
+			suggestions.push(
+				`Provider "${issuePath}" is not supported. Check config/providers.ts for options.`,
+			);
+		} else if (issuePath.includes("baseUrl")) {
+			suggestions.push(
+				`Base URL at "${issuePath}" is invalid. It must be a valid URL without a trailing slash.`,
+			);
+		} else if (issuePath.includes("mcpServers")) {
+			suggestions.push(
+				`MCP server config at "${issuePath}": ${issue.message}. Check "tehuti mcp" for server options.`,
+			);
+		} else if (issuePath.includes("temperature")) {
+			suggestions.push(
+				`Temperature at "${issuePath}" must be between 0 and 2. Current value is out of range.`,
+			);
+		} else if (issuePath.includes("maxTokens")) {
+			suggestions.push(
+				`Max tokens at "${issuePath}" must be a positive integer. Current value is invalid.`,
+			);
+		} else {
+			suggestions.push(`Config field "${issuePath}": ${issue.message}`);
+		}
+	}
 	consola.warn(
-		"Config validation errors. Falling back to defaults for invalid fields:",
-		result.error.errors
-			.map((e) => `${e.path.join(".")}: ${e.message}`)
-			.join(", "),
+		"Config validation errors. Falling back to defaults for invalid fields:\n  " +
+			suggestions.join("\n  "),
 	);
 
 	const salvagedConfig = structuredClone(mergedConfig);

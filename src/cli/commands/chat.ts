@@ -73,6 +73,7 @@ import {
 	formatSessionHealthSummary,
 } from "../../session/health.js";
 import { sessionManager, writeJsonAtomic } from "../../session/manager.js";
+import { exportToMarkdown, exportToJSON } from "../../session/export.js";
 import {
 	createStreamingOutputManager,
 	type StreamingOutputManager,
@@ -146,6 +147,7 @@ import { sessionCommand } from "./session.js";
 import { skillsCommand } from "./skills.js";
 import { traceCommand } from "./trace.js";
 import { toolsCommand } from "./tools.js";
+import { installCompletions } from "../completions.js";
 
 interface PendingSessionFlush {
 	sessionId: string;
@@ -231,7 +233,6 @@ const TOOL_ICONS: Record<string, string> = {
 	// ── Configuration ──
 	config: "⚙️",
 	configure_streaming: "⚡",
-	configure_context_management: "⚙️",
 	configure_custom_provider: "⚙️",
 	set_custom_header: "📝",
 	remove_custom_header: "🗑️",
@@ -1446,6 +1447,18 @@ function ChatUI({
 		}, AUTO_SAVE_INTERVAL_MS);
 		return () => clearInterval(timer);
 	}, [sessionId]);
+	// SessionManager-level auto-save every 5 minutes.
+	// This is separate from the per-minute scheduleSave above and
+	// delegates persistence entirely to SessionManager internals.
+	useEffect(() => {
+		if (sessionId && ctxRef.current) {
+			sessionManager.startAutoSave(sessionId, () => ctxRef.current!);
+		}
+		return () => {
+			sessionManager.stopAutoSave();
+		};
+	}, [sessionId]);
+
 
 	// Keep module-level pending-flush registry in sync so the active session can
 	// be persisted on SIGINT/SIGTERM/uncaughtException. Runs on every render so
@@ -3365,36 +3378,13 @@ function ChatUI({
 				);
 
 				try {
-					let exportData = "";
 					const messages = ctxRef.current?.appendOnlyLog?.length
 						? ctxRef.current.appendOnlyLog
 						: ctxRef.current?.messages || [];
-					if (format === "json") {
-						exportData = JSON.stringify(
-							{
-								messages,
-								compactionHistory: ctxRef.current?.compactionHistory || [],
-							},
-							null,
-							2,
-						);
-					} else {
-						exportData = `# Tehuti Session Export\n\n`;
-						if (ctxRef.current?.compactionHistory?.length) {
-							exportData += `## Compaction digests\n\n${ctxRef.current.compactionHistory
-								.map((digest) => formatCompactionDigestForUi(digest))
-								.join("\n\n---\n\n")}\n\n---\n\n`;
-						}
-						for (const msg of messages) {
-							const role = msg.role.toUpperCase();
-							const content =
-								typeof msg.content === "string"
-									? msg.content
-									: JSON.stringify(msg.content, null, 2);
-							exportData += `## ${role}\n\n${content}\n\n---\n\n`;
-						}
-					}
-
+					const exportData =
+						format === "json"
+							? exportToJSON(messages)
+							: exportToMarkdown(messages);
 					fs.writeFileSync(filename, exportData, "utf8");
 					setMessages((m) => [
 						...m,
@@ -3404,13 +3394,15 @@ function ChatUI({
 							content: `✅ Session exported successfully to:\n${filename}`,
 						},
 					]);
-				} catch (err: any) {
+				} catch (err: unknown) {
+					const message =
+						err instanceof Error ? err.message : String(err);
 					setMessages((m) => [
 						...m,
 						{
 							id: msgIdRef.current++,
 							role: "system",
-							content: `❌ Failed to export session: ${err.message}`,
+							content: `❌ Failed to export session: ${message}`,
 						},
 					]);
 				}
@@ -4945,9 +4937,20 @@ export function createProgram(): Command {
 		.option("--reset-key", "Reset API key and re-prompt")
 		.option("-c, --continue", "Continue the previous session automatically")
 		.option("--companion", "Start in companion mode", false)
+		.option("--completions <shell>", "Output shell completion script (bash|zsh|fish)")
 		.argument("[prompt]", "One-shot prompt")
 		.action(async (prompt?: string, options?: ChatCommandOptions) => {
 			const opts = options ?? {};
+			if (opts.completions) {
+				const shell = opts.completions as string;
+				if (shell !== "bash" && shell !== "zsh" && shell !== "fish") {
+					consola.error(`Unsupported shell: ${shell}. Supported: bash, zsh, fish`);
+					process.exit(1);
+				}
+				console.log(installCompletions(shell));
+				process.exit(0);
+			}
+
 			const { cfg, apiKey, model, diffPreview } = await bootstrapCLI(
 				prompt,
 				opts as unknown as BootstrapOptions,
@@ -5089,6 +5092,8 @@ export function createProgram(): Command {
 					}),
 				);
 				registerCleanupHandler(async () => {
+					// Stop auto-save before tearing down so no stale writes race with the final flush.
+					sessionManager.stopAutoSave();
 					// Persist in-flight session before tearing down.
 					await flushPendingSession();
 					unmount();

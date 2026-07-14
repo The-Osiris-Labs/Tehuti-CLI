@@ -114,9 +114,9 @@ runAgentLoop (runner.ts)
 
 Registered in `src/agent/index.ts` at module load. MCP tools sync each loop iteration.
 
-**Categories:** fs, search, repo_map, bash, web, git, memory, background, plan, skills, semantic (grepai binary), ast (parse_ast), swarm, kilocode, collaboration, custom provider, system (todo/task/question), MCP prompts, dynamic MCP.
+**Categories:** fs, search, repo_map, bash, web, git, memory, background, plan, skills, semantic (grepai binary), ast (parse_ast), swarm, kilocode, debug, pipeline, custom provider, system (todo/task/question), MCP prompts, dynamic MCP.
 
-**Dead code (implemented, not registered):** `grepai-*.ts` (~17 tools).
+**Dead code:** None — all stubs removed. DAP replaced with single `debug` tool. Collaboration replaced with status placeholder.
 
 **Skills:** Prompt injection only. Three built-in (JS/TS, Python, Git) + user JSON in `~/.tehuti/skills/`. Activation is in-memory; not persisted.
 

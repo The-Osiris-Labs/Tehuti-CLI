@@ -13,6 +13,7 @@ import type { StandardMessage } from "../api/base-client.js";
 import type { TehutiConfig } from "../config/schema.js";
 import { debug } from "../utils/debug.js";
 import { consola } from "../utils/logger.js";
+import { SessionBackup } from "./backup.js";
 
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -218,7 +219,9 @@ function normalizeSessionData(data: SessionData): SessionData {
 class SessionManager {
 	private sessionsDir: string;
 	private currentSessionId: string | null = null;
-	private saveTimer: ReturnType<typeof setTimeout> | null = null;
+	private saveTimer: NodeJS.Timeout | null = null;
+	private autoSaveTimer: NodeJS.Timeout | null = null;
+	private backup?: SessionBackup;
 
 	constructor() {
 		const baseDir =
@@ -228,6 +231,12 @@ class SessionManager {
 				: path.join(os.homedir(), ".tehuti"));
 		this.sessionsDir = path.join(baseDir, "sessions");
 		this.ensureSessionsDir();
+	}
+	private getBackup(): SessionBackup {
+		if (!this.backup) {
+			this.backup = new SessionBackup(this.sessionsDir);
+		}
+		return this.backup;
 	}
 
 	getSessionsDir(): string {
@@ -406,6 +415,13 @@ class SessionManager {
 			swarmState: swarmManager.exportState(),
 		};
 
+		// Backup existing session before overwriting
+		try {
+			await this.getBackup().createBackup(id);
+		} catch (err) {
+			debug.log("session", `Backup failed: ${err}`);
+			// Don't fail save if backup fails
+		}
 		const sessionFile = path.join(sessionDir, "session.json");
 		if (sessionData.archiveFile) {
 			const archiveFile = path.join(sessionDir, sessionData.archiveFile);
@@ -655,6 +671,33 @@ class SessionManager {
 		}
 
 		return cleaned;
+	}
+	/**
+	 * Start auto-saving the session every 5 minutes. Only one auto-save
+	 * interval is active at a time — calling this again replaces the previous.
+	 * The `getContext` callback is invoked on each tick so the caller always
+	 * provides fresh state.
+	 */
+	startAutoSave(
+		sessionId: string,
+		getContext: () => AgentContext,
+	): NodeJS.Timeout {
+		this.stopAutoSave();
+		const autoSaveIntervalMs = getContext().config.performance?.autoSaveIntervalMs ?? 300_000;
+		this.autoSaveTimer = setInterval(() => {
+			this.saveSession(sessionId, getContext()).catch((err: unknown) => {
+				debug.log("session", `Auto-save failed: ${err}`);
+			});
+		}, autoSaveIntervalMs);
+		return this.autoSaveTimer;
+	}
+
+	/** Stop the auto-save interval if one is running. */
+	stopAutoSave(): void {
+		if (this.autoSaveTimer !== null) {
+			clearInterval(this.autoSaveTimer);
+			this.autoSaveTimer = null;
+		}
 	}
 }
 

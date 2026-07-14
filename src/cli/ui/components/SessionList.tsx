@@ -4,11 +4,12 @@ import {
 	useOnMouseLeave,
 } from "@ink-tools/ink-mouse";
 import { Box, Text, useInput, useStdout } from "ink";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BRANDING, DECORATIVE, isAsciiMode, ASCII_DECORATIVE } from "../../../branding/index.js";
 import type { SessionMetadata } from "../../../session/manager.js";
 import { useVimInput } from "../hooks/useVimInput.js";
 import { useVirtualScroll } from "../hooks/useVirtualScroll.js";
+import { respectReducedMotion, announceToScreenReader } from "../accessibility.js";
 
 interface SessionListProps {
 	sessions: SessionMetadata[];
@@ -124,6 +125,7 @@ export function SessionList({
 	const { stdout } = useStdout();
 	const terminalWidth = stdout?.columns || 80;
 	const terminalHeight = stdout?.rows || 24;
+	const reduceMotion = respectReducedMotion();
 
 	const {
 		selectedIndex,
@@ -153,6 +155,13 @@ export function SessionList({
 			// Stub for future rename support
 		},
 	});
+	// Announce session list for screen readers (suppress verbose counts in reduce-motion mode)
+	useEffect(() => {
+		const msg = reduceMotion
+			? "Session list loaded."
+			: `Session list: ${sessions.length} sessions loaded.`;
+		announceToScreenReader(msg);
+	}, [sessions.length, reduceMotion]);
 
 	// Keyboard navigation
 	useInput((_input, key) => {
