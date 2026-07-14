@@ -368,11 +368,15 @@ async function readFile(
 			? `\n\n(Showing lines ${offset + 1}-${offset + selectedLines.length} of ${lines.length})`
 			: "";
 
+
+		const hashLines = selectedLines
+			.map((line, i) => `${offset + i + 1}: ${computeHashline(line)}`)
+			.join("\n");
 		markFileAsRead(resolvedPath, ctx);
 
 		return {
 			success: true,
-			output: `<file_content>\n${numberedLines + summary}\n</file_content>\n\nFile Hash: ${fileHash}`,
+			output: `<file_content>\n${numberedLines + summary}\n</file_content>\n\nFile Hash: ${fileHash}\n\n[Hashes]\n${hashLines}`,
 			metadata: {
 				path: resolvedPath,
 				totalLines: lines.length,

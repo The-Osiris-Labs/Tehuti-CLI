@@ -769,7 +769,8 @@ ${projectInstructionsSection}${systemMemorySection}${personalityBlock}${skillsSe
 - Each line in a file has a unique 12-character SHA256 hash derived from its content.
 - Use \`hashTargets\` when you want to replace specific lines identified by their content hash, regardless of line number.
 - This is more resilient to context shifts — the hash verifies you're editing the exact line you intend.
-- **When to use hashTargets:** You have the hashes from the \`/read\` output header and need to replace specific lines.
+- **When to use hashTargets:** You have the hashes from the \`read\` tool output (the \`[Hashes]\` block at the end) and need to replace specific lines.
+- **Hash format in read output:** After each file read, a \`[Hashes]\` block lists line numbers and their 12-char SHA256 hash, e.g. \`10: a1b2c3d4e5f6\`. Use these directly as \`hashTargets\`.
 - **When to use old_string/new_string:** For multi-line replacements, structural changes, or when you need surrounding context for uniqueness.
 
 ## Output Format

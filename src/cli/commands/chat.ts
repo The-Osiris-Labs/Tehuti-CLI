@@ -3365,6 +3365,15 @@ function ChatUI({
 						// Daemon may not be ready
 					}
 				}
+
+				// Announce session via daemon IPC with standardized format
+				if (daemonClientRef.current) {
+					try {
+						daemonClientRef.current.send({ type: "collab", action: "announce", sessionId });
+					} catch {
+						// Daemon may not be running
+					}
+				}
 				return;
 			}
 

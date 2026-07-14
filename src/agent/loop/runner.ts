@@ -12,7 +12,8 @@ import {
 	isReasoningModel,
 	resolveModelCapabilities,
 } from "../../api/model-capabilities.js";
-import type { StandardAPIClient } from "../../api/standard-client.js";
+import type { StandardMessage } from "../../api/base-client.js";
+import { StandardAPIClient } from "../../api/standard-client.js";
 import { permissionManager } from "../../permissions/rules.js";
 import { AgentError, APIError, formatError } from "../../utils/errors.js";
 import { getTelemetry } from "../../utils/telemetry.js";
@@ -366,7 +367,7 @@ export async function runAgentLoop(
 											debug.log("agent", `Stream rule triggered: ${rule.pattern}`);
 											getTelemetry().recordRuleTrigger(rule.pattern);
 											client.abort();
-											ctx.injectionQueue.push(rule.remediation);
+											ctx.injectionQueue.push(`[Stream Rule: ${rule.pattern}] Remediation: ${rule.remediation}`);
 											break; // Only trigger one rule per stream
 										}
 									} catch (e) {
@@ -523,6 +524,19 @@ export async function runAgentLoop(
 					totalToolCalls += processedCount;
 					await onCheckpoint?.("tools_processed", ctx);
 				}
+
+				// Non-blocking advisor review using secondary model
+				if (ctx.config.advisorModel?.enabled) {
+					reviewWithAdvisor(ctx, totalContent, ctx.messages)
+						.then((advice) => {
+							if (advice) {
+								ctx.injectionQueue.push(`[Advisor Review] ${advice}`);
+							}
+						})
+						.catch((err) =>
+							debug.log("agent", `Advisor review failed: ${err}`),
+						);
+				}
 			} catch (error) {
 				if (
 					signal?.aborted ||
@@ -637,5 +651,55 @@ export async function runAgentLoop(
 				}
 
 		resetPrefetcher();
+	}
+}
+/**
+ * Fire a best-effort review to the advisor model.
+ * Returns advice text if the advisor has concerns, null otherwise.
+ */
+async function reviewWithAdvisor(
+	ctx: AgentContext,
+	_assistantContent: string,
+	messages: StandardMessage[],
+): Promise<string | null> {
+	const advisorCfg = ctx.config.advisorModel;
+	if (!advisorCfg?.enabled) return null;
+
+	try {
+		const advisorConfig = {
+			...ctx.config,
+			model: advisorCfg.model ?? ctx.config.model,
+			provider: advisorCfg.provider ?? ctx.config.provider,
+		};
+
+		const advisorClient = StandardAPIClient.getInstance(advisorConfig);
+
+		// Build a review prompt with the last few messages as context
+		const reviewMessages: StandardMessage[] = [
+			{
+				role: "system",
+				content:
+					advisorCfg.instructions ??
+					"Review the primary agent's output for correctness and safety",
+			},
+			...messages.slice(-8),
+		];
+
+		let advice = "";
+		const modelOverride = advisorCfg.model ?? ctx.config.model;
+		const stream = advisorClient.streamChat(
+			reviewMessages,
+			undefined,
+			modelOverride,
+		);
+		for await (const chunk of stream) {
+			const delta = chunk.choices?.[0]?.delta?.content;
+			if (delta) advice += delta;
+		}
+
+		return advice.trim() || null;
+	} catch (err) {
+		debug.log("agent", `Advisor review error: ${err}`);
+		return null;
 	}
 }
