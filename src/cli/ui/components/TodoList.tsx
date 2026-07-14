@@ -1,17 +1,15 @@
 import { Box, Text } from "ink";
 import React, { useEffect, useState } from "react";
 import { getTodos } from "../../../agent/tools/system.js";
-import { BRANDING, HIEROGLYPHS, isAsciiMode, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
+import { BRANDING, ROLE_COLORS, HIEROGLYPHS, isAsciiMode, ASCII_HIEROGLYPHS } from "../../../branding/index.js";
 import { GlobalInputState } from "../input-state.js";
 
 const COLORS = {
 	primary: BRANDING.colors.primary,
 	nile: BRANDING.colors.nile,
-	green: BRANDING.colors.green,
 	gray: BRANDING.colors.gray,
-	red: BRANDING.colors.red,
-	sand: BRANDING.colors.sand,
 	gold: BRANDING.colors.gold,
+	sand: BRANDING.colors.sand,
 } as const;
 
 interface TodoLike {
@@ -28,15 +26,15 @@ const ICONS: Record<
 	{ glyph: string; color: string; spin: boolean }
 > = {
 	pending: { glyph: "☐", color: COLORS.gray, spin: false },
-	in_progress: { glyph: "☐", color: COLORS.gold, spin: false },
-	completed: { glyph: "✓", color: COLORS.green, spin: false },
-	cancelled: { glyph: "✕", color: COLORS.red, spin: false },
+	in_progress: { glyph: "◐", color: COLORS.gold, spin: false },
+	completed: { glyph: "✓", color: ROLE_COLORS.success, spin: false },
+	cancelled: { glyph: "✕", color: ROLE_COLORS.error, spin: false },
 };
 
 const PRIORITY_COLORS: Record<NonNullable<TodoLike["priority"]>, string> = {
-	high: COLORS.red,
-	medium: COLORS.primary,
-	low: COLORS.green,
+	high: ROLE_COLORS.error,
+	medium: COLORS.gold,
+	low: ROLE_COLORS.success,
 };
 
 function formatAge(updatedAt: string | undefined): string {

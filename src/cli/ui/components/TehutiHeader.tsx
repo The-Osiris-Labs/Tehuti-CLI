@@ -17,13 +17,13 @@ export interface TehutiHeaderProps {
 	daemonStatus?: "connected" | "disconnected" | "none";
 	companionMode?: boolean;
 	isStreaming?: boolean;
-	sessionName?: string;
 	hasUpdate?: boolean;
 	onModelClick?: () => void;
 	onConfigClick?: () => void;
 	onCommandClick?: (cmd: string) => void;
 	activeSkills?: number;
 	advisorEnabled?: boolean;
+	contextUsage?: number;
 }
 
 function ClickableBadge({
@@ -62,13 +62,13 @@ export const TehutiHeader = memo(function TehutiHeader({
 	daemonStatus = "none",
 	companionMode = false,
 	isStreaming = false,
-	sessionName,
 	hasUpdate = false,
 	onModelClick,
 	onConfigClick,
 	onCommandClick,
-	advisorEnabled = false,
 	activeSkills,
+	contextUsage,
+	advisorEnabled,
 }: TehutiHeaderProps) {
 	const ascii = isAsciiMode();
 	const {
@@ -76,6 +76,7 @@ export const TehutiHeader = memo(function TehutiHeader({
 		sand: SAND,
 		coral: CORAL,
 		green: GREEN,
+		gray: GRAY,
 	} = BRANDING.colors;
 
 	const statusLabel = isStreaming
@@ -98,70 +99,22 @@ export const TehutiHeader = memo(function TehutiHeader({
 				flexDirection="row"
 				alignItems="center"
 				marginBottom={0.5}
-				borderStyle="round"
-				borderColor={GOLD}
-				paddingX={2}
+				paddingX={0}
 			>
 				<Text color={GOLD} bold>
-					{ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} TEHUTI{" "}
+					{ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis}
 				</Text>
 				<ClickableBadge
-					label={`Model: ${model || "Unknown"}`}
+					label={model || "Unknown"}
 					onClick={onModelClick}
 					color={SAND}
 					hoverColor={GOLD}
 				/>
-				<Text color={SAND} dimColor>
-					{" "}
-					│{" "}
-				</Text>
-				<ClickableBadge
-					label={`API: ${provider || "Unknown"}`}
-					onClick={onConfigClick}
-					color={SAND}
-					hoverColor={GOLD}
-				/>
-				<Text color={SAND} dimColor>
-					{" "}
-					│{" "}
-				</Text>
-				<Box>
-					<Text color={statusColor} bold>
-						{statusLabel}
+				<Box flexGrow={1} />
+				{contextUsage !== undefined && (
+					<Text color={GRAY} dimColor>
+						{contextUsage}% ctx
 					</Text>
-				</Box>
-				{sessionName && (
-					<>
-						<Text color={SAND} dimColor>
-							{" "}
-							│{" "}
-						</Text>
-						<Box>
-							<Text color={SAND}>{ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} {sessionName}</Text>
-						</Box>
-					</>
-				)}
-				{activeSkills !== undefined && activeSkills > 0 && (
-					<>
-						<Text color={SAND} dimColor>
-							{" "}
-							│{" "}
-						</Text>
-						<Text color={SAND} dimColor>
-							🎴 +{activeSkills}
-						</Text>
-					</>
-				)}
-				{advisorEnabled && (
-					<>
-						<Text color={SAND} dimColor>
-							{" "}
-							│{" "}
-						</Text>
-						<Text color="cyan" bold>
-							👁 Advisor
-						</Text>
-					</>
 				)}
 			</Box>
 		);

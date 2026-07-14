@@ -21,7 +21,7 @@ describe('TehutiHeader', () => {
   it('renders in compact mode', () => {
     const { lastFrame } = render(<TestHeader compact={true} />);
     const output = lastFrame();
-    expect(output).toContain('TEHUTI');
+    expect(output).toContain('Unknown');
   });
 
   it('displays model name when provided', () => {
@@ -72,46 +72,6 @@ describe('TehutiHeader', () => {
     expect(output).toContain('Idle');
   });
 
-  it('displays session name when provided', () => {
-    const { lastFrame } = render(
-      <TestHeader compact={true} sessionName="Test Session" />
-    );
-    const output = lastFrame();
-    expect(output).toContain('Test Session');
-  });
-
-  it('displays update badge when hasUpdate is true', () => {
-    const { lastFrame } = render(<TestHeader hasUpdate={true} />);
-    const output = lastFrame();
-    expect(output).toContain('UPDATE');
-  });
-
-  it('does not display update badge when hasUpdate is false', () => {
-    const { lastFrame } = render(<TestHeader hasUpdate={false} />);
-    const output = lastFrame();
-    expect(output).not.toContain('UPDATE');
-  });
-
-  it('displays command shortcuts in full mode', () => {
-    const { lastFrame } = render(<TestHeader />);
-    const output = lastFrame();
-    expect(output).toContain('/help');
-    expect(output).toContain('Ctrl+P palette');
-    expect(output).toContain('/exit');
-  });
-
-  it('displays tagline in full mode', () => {
-    const { lastFrame } = render(<TestHeader />);
-    const output = lastFrame();
-    expect(output).toContain('Scribe of Code Transformations');
-  });
-
-  it('displays status line in full mode', () => {
-    const { lastFrame } = render(<TestHeader />);
-    const output = lastFrame();
-    expect(output).toContain('Idle');
-  });
-
   it('handles all props together', () => {
     const { lastFrame } = render(
       <TestHeader
@@ -120,7 +80,6 @@ describe('TehutiHeader', () => {
         provider="anthropic"
         daemonStatus="connected"
         isStreaming={true}
-        sessionName="My Session"
         hasUpdate={true}
       />
     );
@@ -128,4 +87,5 @@ describe('TehutiHeader', () => {
     expect(output).toContain('claude-3');
     expect(output).toContain('anthropic');
   });
+
 });

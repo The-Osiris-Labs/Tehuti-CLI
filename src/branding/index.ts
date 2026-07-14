@@ -63,6 +63,16 @@ export const GRADIENT_STOPS = {
 	welcome: ["#D4AF37", "#FF6B35"] as const,
 } as const;
 
+export const ROLE_COLORS = {
+	user: BRANDING.colors.coral,
+	assistant: BRANDING.colors.gold,
+	system: BRANDING.colors.sand,
+	error: BRANDING.colors.red,
+	success: BRANDING.colors.green,
+	warning: BRANDING.colors.gold,
+	info: BRANDING.colors.cyan,
+} as const;
+
 export const SPLASH_ASCII = `
     ╔══════════════════════════════════════╗
     ║                                      ║

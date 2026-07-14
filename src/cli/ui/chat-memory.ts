@@ -26,6 +26,7 @@ export type UiMessage = {
 	id: number;
 	role: string;
 	content: string;
+	timestamp?: number;
 	kind?: "compaction";
 	compaction?: CompactionDigest;
 		toolCalls?: Array<{

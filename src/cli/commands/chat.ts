@@ -128,7 +128,7 @@ import { Profiler } from "../ui/components/Profiler.js";
 import { ProgressBar } from "../ui/components/ProgressBar.js";
 import { QuestionPrompt } from "../ui/components/QuestionPrompt.js";
 import { SessionList } from "../ui/components/SessionList.js";
-import { StatusIndicator } from "../ui/components/StatusIndicator.js";
+import { StatusBadge } from "../ui/components/StatusBadge.js";
 import { SwarmVisualizer } from "../ui/components/SwarmVisualizer.js";
 import { TehutiHeader } from "../ui/components/TehutiHeader.js";
 import { TodoList } from "../ui/components/TodoList.js";
@@ -692,6 +692,34 @@ export function getToolRenderStatus(
 }
 
 /**
+ * Strip the `[Timestamp: HH:MM:SS]\n` prefix from message content.
+ * This prefix is added by context.ts for persistence but should not
+ * appear in the UI display.
+ */
+function stripTimestampPrefix(content: string): string {
+	return content.replace(/^\[Timestamp: \d{2}:\d{2}:\d{2}\]\n/, "");
+}
+
+/**
+ * Format a Unix-millis timestamp to HH:MM display string.
+ */
+function formatTimeShort(ts: number): string {
+	const d = new Date(ts);
+	return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * Get the time string to display for a message, preferring the structured
+ * `timestamp` field, falling back to parsing `[Timestamp: ...]` from content.
+ */
+function getMessageTimeStr(m: { timestamp?: number | null; content: string }): string | null {
+	if (m.timestamp) return formatTimeShort(m.timestamp);
+	const match = m.content.match(/^\[Timestamp: (\d{2}:\d{2}:\d{2})\]\n/);
+	if (match) return match[1].slice(0, 5);
+	return null;
+}
+
+/**
  * Render a reasoning block with symmetric top and bottom borders.
  * The label is embedded in the top border; both borders span the same width.
  */
@@ -1143,8 +1171,39 @@ function ChatUI({
 	const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const streamingContentRef = useRef<string>("");
 	const streamingMsgIdRef = useRef<number | null>(null);
+	const streamingStartRef = useRef<number | null>(null);
+	const streamingTokenRef = useRef<number>(0);
 	const daemonClientRef = useRef<TehutiDaemonClient | null>(null);
 
+	const [streamingDisplayTokens, setStreamingDisplayTokens] = useState(0);
+	const [streamingDisplayElapsed, setStreamingDisplayElapsed] = useState("");
+
+	// Periodically sync streaming refs -> state during active loading so the UI
+	// shows the live token count and elapsed time without forcing a setState
+	// on every token callback.
+	useEffect(() => {
+		if (!loading) {
+			setStreamingDisplayTokens(0);
+			setStreamingDisplayElapsed("");
+			return;
+		}
+		const tick = () => {
+			setStreamingDisplayTokens(streamingTokenRef.current);
+			if (streamingStartRef.current) {
+				const elapsed = Date.now() - streamingStartRef.current;
+				const secs = Math.floor(elapsed / 1000);
+				if (secs >= 60) {
+					const m = Math.floor(secs / 60);
+					setStreamingDisplayElapsed(`${m}m${secs % 60}s`);
+				} else {
+					setStreamingDisplayElapsed(`${secs}s`);
+				}
+			}
+		};
+		tick();
+		const id = setInterval(tick, 1000);
+		return () => clearInterval(id);
+	}, [loading]);
 	// Check for updates asynchronously on mount
 	useEffect(() => {
 		checkForUpdatesAsync().then((result) => {
@@ -1902,6 +1961,7 @@ function ChatUI({
 							id: uiMsgId++,
 							role: m.role,
 							content: contentStr,
+							timestamp: (m as { timestamp?: number }).timestamp,
 						};
 
 						if (m.role === "assistant") {
@@ -3523,15 +3583,17 @@ function ChatUI({
 		const requestId = request.requestId;
 		const requestController = request.controller;
 
+		const now = Date.now();
 		setMessages((m) => [
 			...m,
-			{ id: userMsgId, role: "user", content: text },
+			{ id: userMsgId, role: "user", content: text, timestamp: now },
 			{
 				id: assistantMsgId,
 				role: "assistant",
 				content: "",
 				toolCalls: [],
 				blocks: [],
+				timestamp: now,
 			},
 		]);
 		setLoading(true);
@@ -3543,6 +3605,8 @@ function ChatUI({
 
 		streamingContentRef.current = "";
 		streamingMsgIdRef.current = assistantMsgId;
+		streamingStartRef.current = Date.now();
+		streamingTokenRef.current = 0;
 		batchedTokensRef.current = "";
 
 		try {
@@ -3582,6 +3646,7 @@ function ChatUI({
 					) {
 						return;
 					}
+					streamingTokenRef.current += t.length;
 					response += t;
 					batchToken(t);
 				},
@@ -3799,6 +3864,8 @@ function ChatUI({
 			if (!isCurrentRequest(requestId, requestController.signal)) {
 				streamingMsgIdRef.current = null;
 				streamingContentRef.current = "";
+				streamingStartRef.current = null;
+				streamingTokenRef.current = 0;
 				return;
 			}
 			flushBatchedTokens();
@@ -3870,6 +3937,8 @@ function ChatUI({
 
 			streamingMsgIdRef.current = null;
 			streamingContentRef.current = "";
+			streamingStartRef.current = null;
+			streamingTokenRef.current = 0;
 		} catch (e) {
 			const error = e instanceof Error ? e : new Error(String(e));
 			if (!isCurrentRequest(requestId, requestController.signal)) {
@@ -3878,6 +3947,8 @@ function ChatUI({
 			if (error.name === "AbortError") {
 				streamingMsgIdRef.current = null;
 				streamingContentRef.current = "";
+				streamingStartRef.current = null;
+				streamingTokenRef.current = 0;
 				return;
 			}
 			debug.log("chat", "Agent error:", error);
@@ -3928,6 +3999,9 @@ function ChatUI({
 				),
 			);
 			streamingMsgIdRef.current = null;
+			streamingContentRef.current = "";
+			streamingStartRef.current = null;
+			streamingTokenRef.current = 0;
 		}
 
 		const shouldFinalizeRequest =
@@ -3969,28 +4043,30 @@ function ChatUI({
 				content = [];
 			} else if (m.role === "user") {
 				const label = `${ascii ? "| " : "▎ "}${ascii ? ASCII_DECORATIVE.feather : DECORATIVE.feather} You`;
-				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2);
+				const timeStr = getMessageTimeStr(m);
+				const padLen = Math.max(10, contentMaxWidth - 3 - label.length - 2 - (timeStr ? 8 : 0));
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
 					{ flexDirection: "row", alignItems: "center", marginBottom: 0.5 },
 					React.createElement(Text, { bold: true, color: CORAL }, `${label} `),
 					React.createElement(Text, { color: CORAL, dimColor: true }, divider),
+					timeStr &&
+						React.createElement(
+							Box,
+							{ flexGrow: 1, flexDirection: "row", justifyContent: "flex-end" },
+							React.createElement(Text, { dimColor: true }, ` ${timeStr}`),
+						),
 				);
 				content = [
 					React.createElement(
 						Text,
 						{ key: 0, wrap: "wrap" },
-						m.content,
+						stripTimestampPrefix(m.content),
 					),
 				];
 			} else if (m.role === "system") {
 				const label = `${ascii ? ASCII_DECORATIVE.scroll : DECORATIVE.scroll} System`;
-				const padLen = Math.max(
-					10,
-					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
-				);
-				const divider = "─".repeat(padLen);
 				header = React.createElement(
 					Box,
 					{
@@ -4007,9 +4083,11 @@ function ChatUI({
 						React.createElement(
 							Box,
 							{ marginRight: 1 },
-							React.createElement(StatusIndicator, { status: m.status }),
+							React.createElement(StatusBadge, {
+								kind: m.status === "loading" ? "running" : m.status,
+								compact: true,
+							}),
 						),
-					React.createElement(Text, { color: SAND, dimColor: true }, divider),
 				);
 				if (m.content.startsWith("[SESSION_LIST]")) {
 					content = [
@@ -4030,9 +4108,10 @@ function ChatUI({
 				}
 			} else {
 				const label = `${ascii ? "| " : "▎ "}${ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} Tehuti`;
+				const timeStr = getMessageTimeStr(m);
 				const padLen = Math.max(
 					10,
-					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0),
+					contentMaxWidth - 3 - label.length - 2 - (m.status ? 10 : 0) - (timeStr ? 8 : 0),
 				);
 				const divider = "─".repeat(padLen);
 				header = React.createElement(
@@ -4047,166 +4126,180 @@ function ChatUI({
 						React.createElement(
 							Box,
 							{ marginRight: 1 },
-							React.createElement(StatusIndicator, { status: m.status }),
+							React.createElement(StatusBadge, {
+								kind: m.status === "loading" ? "running" : m.status,
+								compact: true,
+							}),
 						),
 					React.createElement(Text, { color: GOLD, dimColor: true }, divider),
-				);
-
-				if (m.blocks && m.blocks.length > 0) {
-					content = [];
-					m.blocks.forEach((block, bIdx) => {
-						if (block.type === "text") {
-							const subBlocks = parseContentBlocks(block.content);
-							subBlocks.forEach((subBlock, sbIdx) => {
-								if (subBlock.type === "text") {
-									content.push(
-										...renderMarkdown(
-											subBlock.content,
-											contentMaxWidth - 3,
-											`msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`,
-										),
-									);
-								} else if (subBlock.type === "reasoning") {
-									content.push(
-										renderReasoningBlock(
-											subBlock.content,
-											contentMaxWidth - 3,
-											`msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
-										),
-									);
-								}
-							});
-						} else if (block.type === "reasoning") {
-							content.push(
-								renderReasoningBlock(
-									block.content,
-									contentMaxWidth - 3,
-									`msg-${m.id}-reasoning-${bIdx}`,
-								),
-							);
-						} else if (block.type === "tool") {
-							content.push(
-								React.createElement(
-									Box,
-									{
-										flexDirection: "column",
-										marginTop: 0.5,
-										marginBottom: 0.5,
-										key: block.id || `tool-${bIdx}`,
-									},
-									React.createElement(ExpandableToolOutput, {
-										toolName: getEnhancedToolName(
-											block.name || "",
-											block.description || "",
-										),
-										toolArgs: (block as Record<string, unknown>).args,
-										result: block.result,
-										maxWidth: Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2)),
-										status: getToolRenderStatus(block.result),
-									}),
-								),
-							);
-						}
-					});
-				} else {
-					const subBlocks = parseContentBlocks(m.content);
-					content = [];
-					subBlocks.forEach((subBlock, sbIdx) => {
-						if (subBlock.type === "text") {
-							content.push(
-								...renderMarkdown(
-									subBlock.content,
-									contentMaxWidth - 3,
-									`msg-${m.id}-sub-${sbIdx}`,
-								),
-							);
-						} else if (subBlock.type === "reasoning") {
-							content.push(
-								renderReasoningBlock(
-									subBlock.content,
-									contentMaxWidth - 3,
-									`msg-${m.id}-reasoning-fallback-${sbIdx}`,
-								),
-							);
-						}
-					});
-
-					if (m.toolCalls && m.toolCalls.length > 0) {
-						const toolCount = m.toolCalls.length;
-						const isNarrow = terminalWidth < 80;
-						const isWide = terminalWidth >= 140;
-
-						let cardWidth: number;
-						let flexDir: "row" | "column" = "column";
-						let useWrap = false;
-						let useGap = false;
-
-						if (isNarrow) {
-							// Full-width fallback: single-column full-width layout
-							cardWidth = contentMaxWidth - 3;
-						} else if (toolCount === 1) {
-							// Single card with capped dynamic width
-							cardWidth = Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2));
-						} else {
-							// Multi-card layout
-							if (isWide) {
-								// Multi-column: split into two columns for parallel content
-								const availableWidth = contentMaxWidth - 3;
-								cardWidth = Math.floor((availableWidth - 2) / 2);
-								flexDir = "row";
-								useWrap = true;
-								useGap = true;
-							} else {
-								// Single row: distribute width proportionally
-								const gaps = (toolCount - 1) * 1;
-								cardWidth = Math.max(40, Math.floor((terminalWidth - 4 - gaps) / toolCount));
-								flexDir = "row";
-								useGap = true;
-							}
-						}
-
-						const toolElements = React.createElement(
+					timeStr &&
+						React.createElement(
 							Box,
-							{
-								flexDirection: flexDir,
-								flexWrap: useWrap ? "wrap" : undefined,
-								marginTop: 1,
-								gap: useGap ? 1 : 0,
-								key: `tool-calls-${m.id}`,
-							},
-							...m.toolCalls.map((tc, idx) =>
-								React.createElement(ExpandableToolOutput, {
-									key: tc.id || `tool-${idx}`,
-									toolName: getEnhancedToolName(
-										tc.name || "",
-										tc.description || "",
+							{ flexGrow: 1, flexDirection: "row", justifyContent: "flex-end" },
+							React.createElement(Text, { dimColor: true }, ` ${timeStr}`),
+						),
+				);
+			if (m.blocks && m.blocks.length > 0) {
+				content = [];
+				m.blocks.forEach((block, bIdx) => {
+					if (block.type === "text") {
+						const subBlocks = parseContentBlocks(stripTimestampPrefix(block.content));
+						subBlocks.forEach((subBlock, sbIdx) => {
+							if (subBlock.type === "text") {
+								content.push(
+									...renderMarkdown(
+										subBlock.content,
+										contentMaxWidth - 3,
+										`msg-${m.id}-blk-${bIdx}-sub-${sbIdx}`,
 									),
-									toolArgs: (tc as Record<string, unknown>).args,
-									result: tc.result,
-									maxWidth: cardWidth,
-									status: getToolRenderStatus(tc.result),
+								);
+							} else if (subBlock.type === "reasoning") {
+								content.push(
+									renderReasoningBlock(
+										subBlock.content,
+										contentMaxWidth - 3,
+										`msg-${m.id}-reasoning-${bIdx}-${sbIdx}`,
+									),
+								);
+							}
+						});
+					} else if (block.type === "reasoning") {
+						content.push(
+							renderReasoningBlock(
+								block.content,
+								contentMaxWidth - 3,
+								`msg-${m.id}-reasoning-${bIdx}`,
+							),
+						);
+					} else if (block.type === "tool") {
+						content.push(
+							React.createElement(
+								Box,
+								{
+									flexDirection: "column",
+									marginTop: 0.5,
+									marginBottom: 0.5,
+									key: block.id || `tool-${bIdx}`,
+								},
+								React.createElement(ExpandableToolOutput, {
+									toolName: getEnhancedToolName(
+										block.name || "",
+										block.description || "",
+									),
+									toolArgs: (block as Record<string, unknown>).args,
+									result: block.result,
+									maxWidth: Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2)),
+									status: getToolRenderStatus(block.result),
 								}),
 							),
 						);
-						content.push(toolElements);
 					}
+				});
+			} else {
+				const subBlocks = parseContentBlocks(stripTimestampPrefix(m.content));
+				content = [];
+				subBlocks.forEach((subBlock, sbIdx) => {
+					if (subBlock.type === "text") {
+						content.push(
+							...renderMarkdown(
+								subBlock.content,
+								contentMaxWidth - 3,
+								`msg-${m.id}-sub-${sbIdx}`,
+							),
+						);
+					} else if (subBlock.type === "reasoning") {
+						content.push(
+							renderReasoningBlock(
+								subBlock.content,
+								contentMaxWidth - 3,
+								`msg-${m.id}-reasoning-fallback-${sbIdx}`,
+							),
+						);
+					}
+				});
+
+				if (m.toolCalls && m.toolCalls.length > 0) {
+					const toolCount = m.toolCalls.length;
+					const isNarrow = terminalWidth < 80;
+					const isWide = terminalWidth >= 140;
+
+					let cardWidth: number;
+					let flexDir: "row" | "column" = "column";
+					let useWrap = false;
+					let useGap = false;
+
+					if (isNarrow) {
+						// Full-width fallback: single-column full-width layout
+						cardWidth = contentMaxWidth - 3;
+					} else if (toolCount === 1) {
+						// Single card with capped dynamic width
+						cardWidth = Math.min(100, Math.max(60, Math.floor(terminalWidth / 2) - 2));
+					} else {
+						// Multi-card layout
+						if (isWide) {
+							// Multi-column: split into two columns for parallel content
+							const availableWidth = contentMaxWidth - 3;
+							cardWidth = Math.floor((availableWidth - 2) / 2);
+							flexDir = "row";
+							useWrap = true;
+							useGap = true;
+						} else {
+							// Single row: distribute width proportionally
+							const gaps = (toolCount - 1) * 1;
+							cardWidth = Math.max(40, Math.floor((terminalWidth - 4 - gaps) / toolCount));
+							flexDir = "row";
+							useGap = true;
+						}
+					}
+
+					const toolElements = React.createElement(
+						Box,
+						{
+							flexDirection: flexDir,
+							flexWrap: useWrap ? "wrap" : undefined,
+							marginTop: 1,
+							gap: useGap ? 1 : 0,
+							key: `tool-calls-${m.id}`,
+						},
+						...m.toolCalls.map((tc, idx) =>
+							React.createElement(ExpandableToolOutput, {
+								key: tc.id || `tool-${idx}`,
+								toolName: getEnhancedToolName(
+									tc.name || "",
+									tc.description || "",
+								),
+								toolArgs: (tc as Record<string, unknown>).args,
+								result: tc.result,
+								maxWidth: cardWidth,
+								status: getToolRenderStatus(tc.result),
+							}),
+						),
+					);
+					content.push(toolElements);
 				}
+			}
 			}
 			const msgBorderColor =
 				m.role === "user" ? CORAL :
 				m.role === "assistant" ? GOLD :
 				undefined;
 
+			const isAssistant = m.role === "assistant";
+
 			return React.createElement(
 				Box,
 				{
 					key: m.id,
 					flexDirection: "column",
-					marginBottom: 0.5,
-					...(msgBorderColor ? { borderLeft: true, borderColor: msgBorderColor } : {}),
+					marginBottom: isAssistant ? 1 : 0.5,
+					paddingX: isAssistant ? 1 : 0,
+					paddingY: isAssistant ? 0.5 : 0,
+					borderStyle: isAssistant ? "round" : undefined,
+					borderColor: isAssistant ? GOLD : undefined,
+					...(msgBorderColor && !isAssistant ? { borderLeft: true, borderColor: msgBorderColor } : {}),
 				},
 				header,
-				React.createElement(Box, { flexDirection: "column", paddingLeft: 0.5 }, ...content),
+				React.createElement(Box, { flexDirection: "column", paddingLeft: isAssistant ? 0 : 0.5 }, ...content),
 			);
 		});
 	}, [visibleMessages, contentMaxWidth, terminalWidth]);
@@ -4381,6 +4474,7 @@ function ChatUI({
 										onCommandClick: handleHeaderCommandClick,
 										activeSkills: activeSkillsCount,
 										advisorEnabled: cfg?.advisorModel?.enabled ?? false,
+										contextUsage: contextInfo.pct,
 									}),
 								),
 							...messageElements,
@@ -4450,6 +4544,18 @@ function ChatUI({
 						{ color: SAND, dimColor: true },
 						operationLabel,
 					),
+					streamingDisplayTokens > 0 &&
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							` (${streamingDisplayTokens} tok)`,
+						),
+					streamingDisplayElapsed &&
+						React.createElement(
+							Text,
+							{ color: SAND, dimColor: true },
+							` · ${streamingDisplayElapsed}`,
+						),
 				),
 				React.createElement(ProgressBar, {
 					value: progress,
