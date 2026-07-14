@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Conf from "conf";
@@ -433,7 +434,21 @@ export function getGlobalConfig(): {
 }
 
 export function isInitialized(): boolean {
-	return globalConfig.get("initialized") ?? false;
+	// Check global config store (~/.config/tehuti/config.json)
+	if (globalConfig.get("initialized")) return true;
+
+	// Check local .tehuti.json (written by wizard's "update local" path)
+	try {
+		const localPath = path.join(process.cwd(), ".tehuti.json");
+		if (fs.existsSync(localPath)) {
+			const local = JSON.parse(fs.readFileSync(localPath, "utf-8"));
+			if (local.initialized) return true;
+		}
+	} catch {
+		// File read errors → not initialized
+	}
+
+	return false;
 }
 
 export function resetGlobalConfig(): void {
