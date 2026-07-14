@@ -218,6 +218,7 @@ function normalizeSessionData(data: SessionData): SessionData {
 class SessionManager {
 	private sessionsDir: string;
 	private currentSessionId: string | null = null;
+	private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor() {
 		const baseDir =
@@ -416,6 +417,33 @@ class SessionManager {
 			"session",
 			`Saved session: ${id} (${sessionName}, ${ctx.messages.length} messages)`,
 		);
+	}
+
+	/**
+	 * Schedule a debounced auto-save (500ms). Multiple rapid state changes
+	 * coalesce into a single write. Callers should use this instead of
+	 * saveSession for automatic saves triggered by message/state changes.
+	 * Immediate saves (/save, exit) should still call saveSession directly.
+	 */
+	scheduleSave(
+		id: string,
+		ctx: AgentContext,
+		name?: string,
+	): void {
+		this.clearSaveTimer();
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = null;
+			this.saveSession(id, ctx, name).catch((err: unknown) => {
+				debug.log("session", `Debounced auto-save failed: ${err}`);
+			});
+		}, 500);
+	}
+
+	private clearSaveTimer(): void {
+		if (this.saveTimer !== null) {
+			clearTimeout(this.saveTimer);
+			this.saveTimer = null;
+		}
 	}
 
 	async loadSession(id: string): Promise<SessionData | null> {

@@ -194,6 +194,12 @@ export async function runAgentLoop(
 				};
 			}
 
+			// Create per-iteration timeout to prevent hung iterations
+			const iterationSignal = AbortSignal.timeout(120_000);
+			const combinedSignal = signal
+				? AbortSignal.any([signal, iterationSignal])
+				: iterationSignal;
+
 			try {
 				if (ctx.isSleeping) {
 					debug.log("agent", "Agent is sleeping, waiting for event...");
@@ -276,7 +282,7 @@ export async function runAgentLoop(
 							ctx.messages,
 							tools,
 							undefined,
-							signal,
+							combinedSignal,
 						);
 						if (isReasoningModel(modelId)) {
 							debug.log("agent", `Using reasoning model: ${modelId}`);
@@ -346,7 +352,7 @@ export async function runAgentLoop(
 											ctx,
 											[tcTyped],
 											{ onToolCall, onToolResult, onProgress, selfHealer },
-											signal,
+										combinedSignal,
 										).catch((err) => {
 											debug.log("agent", "Mid-stream tool error:", err);
 											return 0;
@@ -400,7 +406,7 @@ export async function runAgentLoop(
 						}
 					},
 					{
-						signal,
+						signal: combinedSignal,
 						maxRetries: 3,
 						initialDelayMs: 2000,
 						onRetry: (attempt, maxRetries, _error) => {
@@ -524,7 +530,7 @@ export async function runAgentLoop(
 							onProgress,
 							selfHealer,
 						},
-						signal,
+						combinedSignal,
 					);
 					totalToolCalls += processedCount;
 					await onCheckpoint?.("tools_processed", ctx);
@@ -543,6 +549,12 @@ export async function runAgentLoop(
 						);
 				}
 			} catch (error) {
+				// Iteration timeout — skip this iteration, don't crash the loop
+				if (iterationSignal.aborted) {
+					debug.log("agent", `Iteration ${iteration} timed out after 120s, skipping to next iteration`);
+					continue;
+				}
+
 				if (
 					signal?.aborted ||
 					(error instanceof Error && error.message.includes("aborted"))
@@ -636,7 +648,21 @@ export async function runAgentLoop(
 		};
 	} finally {
 		// Post-session personality learning (non-blocking)
-		if (ctx.config.personality?.learningEnabled !== false) {
+		// Determine if learning should run
+		const personalityConfig = ctx.config.personality;
+		let shouldLearn = personalityConfig?.learningEnabled !== false;
+		if (personalityConfig?.autoEnable && !shouldLearn) {
+			try {
+				const { autoDetectLearning } = await import(
+					"../../agent/memory/personality.js"
+				);
+				shouldLearn = autoDetectLearning(ctx.cwd || process.cwd());
+			} catch {
+				// If auto-detect fails, keep the original shouldLearn value
+			}
+		}
+
+		if (shouldLearn) {
 			try {
 				const { updateProjectProfile, getActualGitDiff } = await import(
 					"../../agent/memory/personality.js"
@@ -650,15 +676,14 @@ export async function runAgentLoop(
 				} catch (err) {
 					debug.log("agent", `Best-effort profile update failed: ${err}`);
 				}
-				} catch (err) {
+			} catch (err) {
 				debug.log("agent", `Failed to update project profile: ${err}`);
-				}
-				}
+			}
+		}
 
 		resetPrefetcher();
 	}
 }
-/** Sliding window of advisor review timestamps (ms) for rate limiting */
 const advisorReviewTimestamps: number[] = [];
 /** Cumulative advisor review cost estimate across the session */
 let advisorCumulativeCost = 0;

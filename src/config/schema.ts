@@ -418,12 +418,15 @@ export const PERSONALITY_CONFIG_SCHEMA = z.object({
 		.describe("Personality interaction style"),
 	verbosity: z
 		.enum(["low", "medium", "high"])
-		.default("medium")
-		.describe("Response length preference"),
+		.default("medium"),
 	learningEnabled: z
 		.boolean()
 		.default(true)
 		.describe("Enable user preference learning"),
+	autoEnable: z
+		.boolean()
+		.default(false)
+		.describe("Auto-detect whether to enable learning based on git repo and session count"),
 	styleInjection: z
 		.boolean()
 		.default(true)
@@ -871,6 +874,7 @@ export const DEFAULT_CONFIG: TehutiConfig = {
 		style: "helpful",
 		verbosity: "medium",
 		learningEnabled: true,
+		autoEnable: false,
 		styleInjection: true,
 		analysisFrequency: 1,
 	},

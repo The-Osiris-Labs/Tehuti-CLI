@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { logger } from "../../utils/logger.js";
 import { agentEventBus } from "../events.js";
 import { debug } from "../../utils/debug.js";
@@ -211,6 +213,39 @@ export function setUserPreference(key: string, value: string): void {
 	} catch (error) {
 		logger.error(`Failed to set user preference ${key}: ${error}`);
 	}
+}
+
+/**
+ * Auto-detects whether personality learning should be enabled.
+ * Returns true when the project has a git repo or the user has run more than 5 sessions.
+ */
+export function autoDetectLearning(cwd: string): boolean {
+	try {
+		// Check for git repo
+		const gitDir = path.join(cwd, ".git");
+		if (fs.existsSync(gitDir)) return true;
+
+		// Check session count in messaging_sessions
+		try {
+			const stmt = db.prepare("SELECT COUNT(*) as cnt FROM messaging_sessions");
+			const row = stmt.get() as { cnt: number } | undefined;
+			if (row && row.cnt > 5) return true;
+		} catch {
+			// Table may not exist yet
+		}
+
+		// Also check user_profiles for additional session tracking
+		try {
+			const stmt = db.prepare("SELECT COUNT(*) as cnt FROM user_profiles");
+			const row = stmt.get() as { cnt: number } | undefined;
+			if (row && row.cnt > 5) return true;
+		} catch {
+			// Table may not exist yet
+		}
+	} catch {
+		// If anything fails, default to disabled
+	}
+	return false;
 }
 
 /**

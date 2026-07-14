@@ -124,6 +124,7 @@ export async function searchGraph(
 	query: string,
 	cwd: string = process.cwd(),
 	maxDepth: number = 2,
+	maxAgeDays: number = 30,
 ): Promise<Node[]> {
 	const lowerQuery = query.toLowerCase();
 	const resolvedCwd = cwd ? path.resolve(cwd) : undefined;
@@ -136,11 +137,25 @@ export async function searchGraph(
 	const allNodesRows = allNodesStmt.all() as any[];
 	const nodes = allNodesRows.map(mapRowToNode);
 
+	const now = Date.now();
+
+	// Filter by scope and age
 	const scopedNodes = nodes.filter(
-		(n) =>
-			!n.cwd ||
-			n.cwd === "global" ||
-			(resolvedCwd && path.resolve(n.cwd) === resolvedCwd),
+		(n) => {
+			// Only keep nodes in scope
+			if (n.cwd && n.cwd !== "global" && (!resolvedCwd || path.resolve(n.cwd) !== resolvedCwd)) {
+				return false;
+			}
+
+			// Skip old nodes unless they are important types
+			if (maxAgeDays > 0 && n.type !== "project_rule" && n.type !== "critical_fact") {
+				const accessTime = n.lastAccessed || n.timestamp || now;
+				const ageDays = (now - accessTime) / (1000 * 60 * 60 * 24);
+				if (ageDays > maxAgeDays) return false;
+			}
+
+			return true;
+		},
 	);
 
 	const matchedNodes = scopedNodes.filter(
@@ -156,8 +171,26 @@ export async function searchGraph(
 	const results: Map<string, { node: Node; relevance: number }> = new Map();
 
 	matchedNodes.forEach((n) => {
-		const baseRelevance =
+		let baseRelevance =
 			((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 + (n.timestamp ?? 0);
+
+		// Apply time-decay factor: relevance *= exp(-daysSinceAccess / 30)
+		const accessTime = n.lastAccessed || n.timestamp || now;
+		const daysSinceAccess = Math.max(0, (now - accessTime) / (1000 * 60 * 60 * 24));
+		const timeDecay = Math.exp(-daysSinceAccess / 30);
+		baseRelevance = baseRelevance * timeDecay;
+
+		// Boost recent nodes (last 7 days) by 2x
+		if (daysSinceAccess <= 7) {
+			baseRelevance *= 2;
+		}
+
+		// Boost nodes that have been accessed more than once
+		const accessCount = n.accessCount ?? 1;
+		if (accessCount > 1) {
+			baseRelevance *= 1 + Math.log10(accessCount);
+		}
+
 		results.set(n.id, { node: n, relevance: baseRelevance });
 	});
 
@@ -191,22 +224,43 @@ export async function searchGraph(
 
 				const neighborRow = db
 					.prepare(`SELECT * FROM nodes WHERE id = ?`)
-					.get(neighborId) as any;
+					.get(neighborId) as Record<string, unknown> | undefined;
 				if (neighborRow) {
 					const n = mapRowToNode(neighborRow);
-					const baseRelevance =
+
+					// Apply scoped and age filter for neighbor
+					const inScope = !n.cwd ||
+						n.cwd === "global" ||
+						(resolvedCwd && path.resolve(n.cwd) === resolvedCwd);
+					if (!inScope) continue;
+
+					if (maxAgeDays > 0 && n.type !== "project_rule" && n.type !== "critical_fact") {
+						const accessTime = n.lastAccessed || n.timestamp || now;
+						const ageDays = (now - accessTime) / (1000 * 60 * 60 * 24);
+						if (ageDays > maxAgeDays) continue;
+					}
+
+					let baseRelevance =
 						((n.priority ?? 0) + (n.importance ?? 0)) * 1e13 +
 						(n.timestamp ?? 0);
 					const decayedRelevance = baseRelevance * 0.5 ** depth;
 
-					// Apply scoped filter for neighbor
-					if (
-						!n.cwd ||
-						n.cwd === "global" ||
-						(resolvedCwd && path.resolve(n.cwd) === resolvedCwd)
-					) {
-						results.set(n.id, { node: n, relevance: decayedRelevance });
+					// Apply time-decay, recency boost, access boost for neighbors too
+					const accessTime = n.lastAccessed || n.timestamp || now;
+					const daysSinceAccess = Math.max(0, (now - accessTime) / (1000 * 60 * 60 * 24));
+					const timeDecay = Math.exp(-daysSinceAccess / 30);
+					let finalRelevance = decayedRelevance * timeDecay;
+
+					if (daysSinceAccess <= 7) {
+						finalRelevance *= 2;
 					}
+
+					const accessCount = n.accessCount ?? 1;
+					if (accessCount > 1) {
+						finalRelevance *= 1 + Math.log10(accessCount);
+					}
+
+					results.set(n.id, { node: n, relevance: finalRelevance });
 				}
 			}
 		}
@@ -258,9 +312,9 @@ export async function getSystemPromptMemory(
 
 	const sortedNodes = scopedNodes.sort((a, b) => {
 		const relA =
-			((a.priority ?? 0) + (a.importance ?? 0)) * 1e13 + (a.timestamp ?? 0);
+			(a.priority ?? 0) * 10 + (a.importance ?? 0) * 10 + (a.accessCount ?? 1);
 		const relB =
-			((b.priority ?? 0) + (b.importance ?? 0)) * 1e13 + (b.timestamp ?? 0);
+			(b.priority ?? 0) * 10 + (b.importance ?? 0) * 10 + (b.accessCount ?? 1);
 		return relB - relA;
 	});
 
@@ -451,6 +505,43 @@ export async function optimizeInsights(
 			}
 		}
 	}
+
+	// Compute and store relevanceScore for surviving nodes
+	const relevanceStmt = db.prepare(`
+		UPDATE nodes
+		SET metadata = @metadata
+		WHERE id = @id
+	`);
+
+	const executeRelevanceUpdate = db.transaction(() => {
+		for (const node of nodes) {
+			if (toRemove.has(node.id)) continue;
+			const p = node.priority ?? 0;
+			const i = node.importance ?? 0;
+			const ac = node.accessCount ?? 1;
+			const relevanceScore = p * 10 + i * 10 + ac;
+
+			const meta = {
+				cwd: node.cwd,
+				priority: p,
+				importance: i,
+				accessCount: ac,
+				relevance: relevanceScore,
+			};
+
+			relevanceStmt.run({
+				metadata: JSON.stringify(meta),
+				id: node.id,
+			});
+		}
+	});
+
+	try {
+		executeRelevanceUpdate();
+	} catch {
+		// Best-effort: relevance scoring should not block consolidation
+	}
+
 
 	if (toRemove.size > 0) {
 		const idsToRemove = Array.from(toRemove);

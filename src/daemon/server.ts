@@ -113,15 +113,24 @@ export class TehutiDaemonServer extends EventEmitter {
 			});
 
 			socket.on("error", (err: Error) => {
+				debug.log("daemon", `Socket error: ${err.message}`);
 				this.emit("clientError", err);
+				this.activeSockets.delete(socket);
+				if (!socket.destroyed) {
+					socket.destroy();
+				}
 			});
 
-			socket.on("close", () => {
+			socket.on("close", (hadError: boolean) => {
 				this.activeSockets.delete(socket);
+				if (hadError) {
+					debug.log("daemon", "Socket closed after error");
+				}
 			});
 
 			socket.on("end", () => {
 				this.emit("clientDisconnect");
+				this.activeSockets.delete(socket);
 			});
 		});
 

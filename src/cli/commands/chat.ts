@@ -1441,9 +1441,7 @@ function ChatUI({
 			const sid = sessionId;
 			const ctx = ctxRef.current;
 			if (sid && ctx) {
-				sessionManager.saveSession(sid, ctx).catch((err: unknown) => {
-					console.warn("Auto-save failed:", err);
-				});
+				sessionManager.scheduleSave(sid, ctx);
 			}
 		}, AUTO_SAVE_INTERVAL_MS);
 		return () => clearInterval(timer);
@@ -4050,11 +4048,7 @@ function ChatUI({
 		}
 
 		if (sessionId && ctxRef.current) {
-			void sessionManager
-				.saveSession(sessionId, ctxRef.current)
-				.catch((err) => {
-					console.warn("Auto-save failed:", err);
-				});
+			sessionManager.scheduleSave(sessionId, ctxRef.current);
 		}
 	}
 	const messageElements = useMemo(() => {
