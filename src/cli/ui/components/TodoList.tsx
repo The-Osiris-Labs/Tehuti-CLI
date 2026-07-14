@@ -78,7 +78,7 @@ export function TodoList(): React.ReactElement | null {
 	);
 	const [frame, setFrame] = useState(0);
 
-	// Data polling: every 1s, but only when no component is being hovered
+	// Data polling: every 2s, but only when no component is being hovered
 	// (to avoid UI thrash while the user is interacting with another panel).
 	useEffect(() => {
 		const interval = setInterval(() => {
@@ -86,7 +86,7 @@ export function TodoList(): React.ReactElement | null {
 				setTodos(getTodos() as TodoLike[]);
 			}
 			setFrame((f) => (f + 1) % (ascii ? ASCII_HIEROGLYPHS.loading : HIEROGLYPHS.loading).length);
-		}, 1000);
+		}, 2000);
 		return () => clearInterval(interval);
 	}, []);
 

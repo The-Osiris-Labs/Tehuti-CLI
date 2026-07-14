@@ -37,7 +37,10 @@ import {
 } from "../../agent/index.js";
 import {
 	clearTodos,
+	completeTodoById,
+	deleteTodoById,
 	getTodos,
+	getTodosByPhase,
 	type QuestionData,
 	setQuestionResolver,
 } from "../../agent/tools/system.js";
@@ -2787,6 +2790,72 @@ function ChatUI({
 				return;
 			}
 
+			if (cmd.startsWith("/todos done ")) {
+				const id = cmd.slice("/todos done ".length).trim();
+				if (!id) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Usage: /todos done <id>",
+						},
+					]);
+				} else if (completeTodoById(id)) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `✅ Marked todo '${id}' as completed.`,
+						},
+					]);
+				} else {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Todo '${id}' not found.`,
+						},
+					]);
+				}
+				return;
+			}
+
+			if (cmd.startsWith("/todos rm ")) {
+				const id = cmd.slice("/todos rm ".length).trim();
+				if (!id) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "Usage: /todos rm <id>",
+						},
+					]);
+				} else if (deleteTodoById(id)) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Deleted todo '${id}'.`,
+						},
+					]);
+				} else {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: `Todo '${id}' not found.`,
+						},
+					]);
+				}
+				return;
+			}
+
 			if (cmd === "/todos") {
 				const currentTodos = getTodos();
 				if (currentTodos.length === 0) {
@@ -2821,6 +2890,48 @@ function ChatUI({
 							id: msgIdRef.current++,
 							role: "system",
 							content: `## Tasks (${currentTodos.length})\n\n${lines.join("\n")}\n\nUse \`/todos clear\` to clear.`,
+						},
+					]);
+				}
+				return;
+			}
+
+			if (cmd === "/roadmap") {
+				const currentTodos = getTodos();
+				if (currentTodos.length === 0) {
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: "No tasks in the backlog. Use the `todo_write` tool to add tasks.",
+						},
+					]);
+				} else {
+					const statusEmoji: Record<string, string> = {
+						completed: "  ✅",
+						in_progress: "  🔄",
+						pending: "  ☐",
+						cancelled: "  ❌",
+					};
+					const byPhase = getTodosByPhase();
+					const lines: string[] = ["## Roadmap\n"];
+					for (const [phase, todos] of Object.entries(byPhase)) {
+						const total = todos.length;
+						const done = todos.filter((t) => t.status === "completed").length;
+						lines.push(`### ${phase} (${done}/${total})`);
+						for (const todo of todos) {
+							const icon = statusEmoji[todo.status] || "  ?";
+							lines.push(`${icon} [${todo.id}] ${todo.content}`);
+						}
+						lines.push("");
+					}
+					setMessages((m) => [
+						...m,
+						{
+							id: msgIdRef.current++,
+							role: "system",
+							content: lines.join("\n"),
 						},
 					]);
 				}

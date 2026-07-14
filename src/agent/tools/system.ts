@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { addNode } from "../memory/graph.js";
 import { z } from "zod";
 import type { AgentContext } from "../context.js";
 import { type SubagentType, spawnSubagent } from "../subagents/manager.js";
@@ -197,7 +198,7 @@ export function clearSystemState(): void {
 
 async function writeTodos(
 	args: z.infer<typeof TODO_WRITE_SCHEMA>,
-	_ctx: ToolContext,
+	ctx: ToolContext,
 ): Promise<ToolResult> {
 	const seenIds = new Set<string>();
 	for (const todo of args.todos) {
@@ -211,8 +212,27 @@ async function writeTodos(
 		seenIds.add(todo.id);
 	}
 
+	// Detect newly completed todos for memory storage
+	const newlyCompleted = args.todos.filter(
+		t => t.status === "completed" && !currentTodos.some(ct => ct.id === t.id && ct.status === "completed"),
+	);
+
 	currentTodos = args.todos;
 	saveTodos(currentTodos);
+
+	// Store completed todos as memory insights for persistence across sessions
+	for (const todo of newlyCompleted) {
+		await addNode(
+			`todo-done-${todo.id}`,
+			"insight",
+			`Completed: ${todo.content}`,
+			ctx.cwd,
+			todo.priority === "high" ? 3 : todo.priority === "medium" ? 2 : 1,
+			0,
+			"verified_fact",
+			1.0,
+		);
+	}
 
 	type TodoItem = (typeof args.todos)[number];
 	interface TreeNode extends TodoItem {
@@ -274,6 +294,47 @@ async function writeTodos(
 		success: true,
 		output: lines.join("\n") || "No todos",
 		metadata: { count: args.todos.length },
+	};
+}
+
+async function todoComplete(
+	args: { id: string },
+	_ctx: ToolContext,
+): Promise<ToolResult> {
+	const todo = currentTodos.find((t) => t.id === args.id);
+	if (!todo) {
+		return {
+			success: false,
+			output: "",
+			error: `Todo '${args.id}' not found`,
+		};
+	}
+	todo.status = "completed";
+	todo.updatedAt = new Date().toISOString();
+	saveTodos(currentTodos);
+	return {
+		success: true,
+		output: `✅ Marked '${args.id}' as completed`,
+	};
+}
+
+async function todoDelete(
+	args: { id: string },
+	_ctx: ToolContext,
+): Promise<ToolResult> {
+	const index = currentTodos.findIndex((t) => t.id === args.id);
+	if (index === -1) {
+		return {
+			success: false,
+			output: "",
+			error: `Todo '${args.id}' not found`,
+		};
+	}
+	currentTodos.splice(index, 1);
+	saveTodos(currentTodos);
+	return {
+		success: true,
+		output: `Deleted '${args.id}'`,
 	};
 }
 
@@ -469,6 +530,28 @@ export const systemTools: ToolDefinition[] = [
 		isReadonly: true,
 	},
 	{
+		name: "todo_complete",
+		description: "Mark a specific todo item as completed by ID",
+		parameters: z.object({
+			id: z.string().describe("ID of the todo to mark complete"),
+		}),
+		execute: todoComplete as AnyToolExecutor,
+		category: "system",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
+		name: "todo_delete",
+		description: "Delete a todo item by ID",
+		parameters: z.object({
+			id: z.string().describe("ID of the todo to delete"),
+		}),
+		execute: todoDelete as AnyToolExecutor,
+		category: "system",
+		requiresPermission: false,
+		isReadonly: true,
+	},
+	{
 		name: "task",
 		description:
 			"Launch a new agent to handle complex, multistep tasks autonomously. Use for exploration, research, or parallel execution.",
@@ -512,7 +595,35 @@ export function getTodos() {
 	return currentTodos;
 }
 
+export function getTodosByPhase(): Record<string, z.infer<typeof TODO_WRITE_SCHEMA>["todos"]> {
+	const todos = getTodos();
+	const phases: Record<string, z.infer<typeof TODO_WRITE_SCHEMA>["todos"]> = {};
+	for (const todo of todos) {
+		const phase = todo.id.split(/[./]/)[0];
+		if (!phases[phase]) phases[phase] = [];
+		phases[phase].push(todo);
+	}
+	return phases;
+}
+
 export function clearTodos() {
 	currentTodos = [];
 	saveTodos(currentTodos);
+}
+
+export function completeTodoById(id: string): boolean {
+	const todo = currentTodos.find((t) => t.id === id);
+	if (!todo) return false;
+	todo.status = "completed";
+	todo.updatedAt = new Date().toISOString();
+	saveTodos(currentTodos);
+	return true;
+}
+
+export function deleteTodoById(id: string): boolean {
+	const index = currentTodos.findIndex((t) => t.id === id);
+	if (index === -1) return false;
+	currentTodos.splice(index, 1);
+	saveTodos(currentTodos);
+	return true;
 }
