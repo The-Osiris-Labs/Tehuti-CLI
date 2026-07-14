@@ -63,12 +63,101 @@ const CORAL = BRANDING.colors.accent;
 const GREEN = BRANDING.colors.green;
 const GRAY = BRANDING.colors.gray;
 const CYAN = BRANDING.colors.cyan;
+const RED = BRANDING.colors.red;
+const SAND = BRANDING.colors.sand;
 
 function highlightSyntax(code: string, language?: string): string {
 	if (isHighlighterReady()) {
 		return highlightToAnsi(code, language);
 	}
 	return code;
+}
+
+function isDiffContent(code: string): boolean {
+	const lines = code.split("\n");
+	const checkCount = Math.min(lines.length, 15);
+	for (let i = 0; i < checkCount; i++) {
+		const line = lines[i];
+		if (
+			line.startsWith("diff --git") ||
+			line.startsWith("--- ") ||
+			line.startsWith("+++ ") ||
+			/^@@ -\d+/.test(line)
+		) {
+			return true;
+		}
+	}
+	// Require at least 2 hunk headers for deeper diff detection
+	let hunkCount = 0;
+	for (const line of lines) {
+		if (/^@@ -\d+/.test(line)) hunkCount++;
+		if (hunkCount >= 2) return true;
+	}
+	return false;
+}
+
+function renderDiffContent(
+	code: string,
+	key: string,
+	codeWidth: number,
+): React.ReactNode {
+	const lines = code.split("\n");
+	const lineNumWidth = Math.max(2, String(lines.length).length);
+
+	const diffRows = lines.map((line, i) => {
+		const lineNum = String(i + 1).padStart(lineNumWidth);
+		let color: string | undefined;
+		let bold = false;
+
+		if (line.startsWith("diff --git")) {
+			color = GOLD;
+			bold = true;
+		} else if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+			color = SAND;
+		} else if (line.startsWith("@@")) {
+			color = CYAN; // CYAN for @@ hunk headers
+		} else if (line.startsWith("+")) {
+			color = GREEN; // GREEN for + lines (additions)
+		} else if (line.startsWith("-")) {
+			color = RED; // RED for - lines (deletions)
+		}
+
+		return React.createElement(
+			Box,
+			{ key: `diff-line-${i}`, flexDirection: "row" },
+			React.createElement(
+				Box,
+				{ width: lineNumWidth + 3, flexShrink: 0 },
+				React.createElement(Text, { dimColor: true }, `${lineNum} │ `),
+			),
+			React.createElement(
+				Box,
+				{ flexDirection: "column", flexGrow: 1, flexBasis: 0 },
+				React.createElement(
+					Text,
+					{ color, bold, wrap: "truncate-end" },
+					line,
+				),
+			),
+		);
+	});
+
+	return React.createElement(
+		Box,
+		{
+			key,
+			flexDirection: "column",
+			marginTop: 1,
+			marginBottom: 1,
+			paddingLeft: 1,
+			paddingRight: 1,
+			borderStyle: "round",
+			borderColor: GOLD,
+			width: codeWidth,
+		},
+		React.createElement(Text, { color: CORAL, bold: true }, "◆ diff"),
+		...diffRows,
+	);
 }
 
 // Cache for renderMarkdown to avoid re-parsing markdown for unchanged content
@@ -140,6 +229,12 @@ export function renderToken(
 					},
 					React.createElement(Text, { wrap: "wrap" }, code),
 				);
+			}
+
+			// Check for unified diff content and render with per-line coloring
+			if (isDiffContent(code)) {
+				const codeWidth = maxWidth ? Math.max(10, maxWidth - 4) : 100;
+				return renderDiffContent(code, getKey(), codeWidth);
 			}
 
 			const highlighted = highlightSyntax(code, lang);

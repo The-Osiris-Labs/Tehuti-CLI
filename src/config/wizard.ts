@@ -21,6 +21,7 @@ const DIM = "\x1b[2m";
 const GREEN = "\x1b[32m";
 const NILE = "\x1b[38;5;27m";
 const RED = "\x1b[31m";
+const CODE_BG = "\x1b[48;5;236m";
 
 const IBIS = "\u{131A3}";
 const ANKH = "\u{13269}";
@@ -116,6 +117,42 @@ function formatModelLabel(m: LiveModelInfo): string {
 	}
 
 	return parts.join("  ");
+}
+
+/** Show a live theme preview using the terminal color palette */
+function showThemePreview(model: string, provider: string): void {
+	console.log();
+	console.log(
+		`  ${GOLD}┌─ Preview ─────────────────────────────────────────┐${RESET}`,
+	);
+	console.log(
+		`  ${GOLD}│${RESET}  ${IBIS} ${GOLD}Tehuti${RESET} ${DIM}v1.2.1${RESET}                                    ${GOLD}│${RESET}`,
+	);
+
+	const mpLine = `  ${SAND}Model: ${model}${RESET}  ${SAND}Provider: ${provider}${RESET}`;
+	const mpVisibleLen =
+		`  Model: ${model}  Provider: ${provider}`.length;
+	const mpPadding = Math.max(1, 48 - mpVisibleLen);
+	console.log(
+		`  ${GOLD}│${RESET}${mpLine}${" ".repeat(mpPadding)}${GOLD}│${RESET}`,
+	);
+
+	console.log(
+		`  ${GOLD}│${RESET}  ${DIM}┌──────────────────────────────────────────┐${RESET}  ${GOLD}│${RESET}`,
+	);
+	console.log(
+		`  ${GOLD}│${RESET}  ${DIM}│${RESET}${CODE_BG}  ${SAND}code block with syntax highlighting${RESET}  ${DIM}│${RESET}  ${GOLD}│${RESET}`,
+	);
+	console.log(
+		`  ${GOLD}│${RESET}  ${DIM}└──────────────────────────────────────────┘${RESET}  ${GOLD}│${RESET}`,
+	);
+	console.log(
+		`  ${GOLD}│${RESET}  ${GREEN}✓ Tool completed${RESET}  ${DIM}·${RESET}  ${RED}✗ Error state${RESET}                ${GOLD}│${RESET}`,
+	);
+	console.log(
+		`  ${GOLD}└──────────────────────────────────────────────────────────┘${RESET}`,
+	);
+	console.log();
 }
 
 const SUGGESTED_MODELS: Record<
@@ -339,6 +376,7 @@ export async function runSetupWizard(): Promise<TehutiConfig> {
 		});
 	}
 
+	showThemePreview(model, provider);
 	console.log();
 	console.log(c.cyan("  [Advanced Features]"));
 

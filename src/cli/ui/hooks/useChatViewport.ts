@@ -22,12 +22,14 @@ export interface UseChatViewportOptions {
 	/** External setScrollOffset (from parent). Must be provided alongside scrollOffset. */
 	setScrollOffset?: React.Dispatch<React.SetStateAction<number>>;
 }
-
 export interface UseChatViewportReturn {
 	/** Visible messages for the current render window. */
 	visibleMessages: any[];
-	/** Kept as a compatibility alias; scrolling is intentionally synchronous. */
-	deferredVisibleMessages: any[];
+	/*
+	 * The deferredVisibleMessages slot is intentionally removed from this
+	 * return type. It is available for re-addition if a swap-based viewport
+	 * implementation ever needs a deferred visible-messages alias.
+	 */
 	/** Current scroll offset (in lines, 0 = at bottom). */
 	scrollOffset: number;
 	/** Total estimated lines for all messages. */
@@ -274,7 +276,6 @@ export function useChatViewport({
 
 	return {
 		visibleMessages,
-		deferredVisibleMessages: visibleMessages,
 		scrollOffset,
 		totalMessageLines,
 		contentMaxWidth,

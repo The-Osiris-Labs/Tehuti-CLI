@@ -175,6 +175,11 @@ export const TehutiHeader = memo(function TehutiHeader({
 					</Text>
 					<Text color={GOLD}> {ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis}</Text>
 				</Box>
+				<Box>
+					<Text color="gray" dimColor>
+						{"─".repeat(38)}
+					</Text>
+				</Box>
 
 				<Box marginTop={1} flexDirection="row" gap={2}>
 					<ClickableBadge
@@ -210,6 +215,13 @@ export const TehutiHeader = memo(function TehutiHeader({
 						</Text>
 					</Box>
 				)}
+				{model && (
+					<Box marginTop={1}>
+						<Text color={SAND}>
+							{ascii ? ASCII_DECORATIVE.ibis : DECORATIVE.ibis} {model} — ready
+						</Text>
+					</Box>
+				)}
 
 				<Box marginTop={1} flexDirection="row" gap={2}>
 					<Text color={statusColor} bold>
@@ -229,30 +241,33 @@ export const TehutiHeader = memo(function TehutiHeader({
 						</Text>
 					</Box>
 				)}
-				<Box 
-					marginTop={1} 
-					flexDirection="row" 
+				<Box
+					marginTop={1}
+					flexDirection="row"
+					borderStyle="round"
+					borderColor={SAND}
+					paddingX={2}
 					gap={1}
 				>
 					<ClickableBadge
 						label="/help"
 						onClick={() => onCommandClick?.("/help")}
-						color="gray"
-						hoverColor="white"
+						color={SAND}
+						hoverColor={GOLD}
 					/>
-					<Text color="gray">•</Text>
+					<Text color={SAND} dimColor>•</Text>
 					<ClickableBadge
 						label="/clear"
 						onClick={() => onCommandClick?.("/clear")}
-						color="gray"
-						hoverColor="white"
+						color={SAND}
+						hoverColor={GOLD}
 					/>
-					<Text color="gray">•</Text>
+					<Text color={SAND} dimColor>•</Text>
 					<ClickableBadge
 						label="/exit"
 						onClick={() => onCommandClick?.("/exit")}
-						color="gray"
-						hoverColor="white"
+						color={SAND}
+						hoverColor={GOLD}
 					/>
 				</Box>
 			</Box>

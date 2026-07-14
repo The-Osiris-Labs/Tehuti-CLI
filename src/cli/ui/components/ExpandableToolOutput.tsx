@@ -163,10 +163,31 @@ function countDiffLines(text: string): DiffCounts | null {
 
 function formatDiffAnsi(line: string): string {
 	const trimmed = line.trimStart();
+	if (trimmed.startsWith("diff --git"))
+		return chalk.bold.hex(BRANDING.colors.primary)(line);
+	if (trimmed.startsWith("--- ") || trimmed.startsWith("+++ "))
+		return chalk.hex(BRANDING.colors.sand)(line);
 	if (trimmed.startsWith("@@")) return chalk.cyan(line);
 	if (trimmed.startsWith("+") && !trimmed.startsWith("+++")) return chalk.green(line);
 	if (trimmed.startsWith("-") && !trimmed.startsWith("---")) return chalk.red(line);
 	return line;
+}
+
+function looksLikeDiff(text: string): boolean {
+	const lines = text.split("\n");
+	const checkCount = Math.min(lines.length, 15);
+	for (let i = 0; i < checkCount; i++) {
+		const line = lines[i];
+		if (
+			line.startsWith("diff --git") ||
+			line.startsWith("--- ") ||
+			line.startsWith("+++ ") ||
+			/^@@ -\d+/.test(line)
+		) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function extractResultText(result: unknown): string {
@@ -374,6 +395,9 @@ export const ExpandableToolOutput = React.memo(function ExpandableToolOutput({
 			return visibleLines.map((line) => formatDiffAnsi(line));
 		}
 		const text = visibleLines.join("\n");
+		if (looksLikeDiff(text)) {
+			return visibleLines.map((line) => formatDiffAnsi(line));
+		}
 		if (!language) return visibleLines;
 		const ansi = highlightToAnsi(text, language);
 		return ansi.split("\n");
